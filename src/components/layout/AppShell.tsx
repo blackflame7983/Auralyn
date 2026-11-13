@@ -19,7 +19,13 @@ import { VstPanelAside } from './VstPanelAside';
 import { useLayoutMotion } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { deriveHomeChrome } from './homeChrome';
-import { Header } from './Header';
+import { AppRail, type RailDestination } from './AppRail';
+import { StatusBand } from './StatusBand';
+import { useSessionElapsed } from '@/hooks/useSessionElapsed';
+import { formatAudioRoute } from '@/lib/audioRouteLine';
+import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
+import type { MessageKey } from '@/i18n/messages';
+import type { PreparationUse } from '@/lib/preparation';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
@@ -43,6 +49,13 @@ interface AppShellProps {
     onOpenOBSSettings: () => void;
     children: ReactNode;
     onOpenSettings: () => void;
+    /** 設定のモーダルが開いているか。レールの現在地は、開いている区分で決める。 */
+    settingsOpen?: boolean;
+    settingsTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
+    onOpenSettingsTab?: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
+    onCloseSettings?: () => void;
+    /** 上の帯に置く歌／雑談の切替。説明は liveControls に残す。 */
+    liveModeSwitch?: ReactNode;
     onOpenShortcuts?: () => void;
     onOpenAudioSettingsRetry?: () => void;
     onOpenSoundSettings?: () => void;
@@ -90,6 +103,11 @@ export const AppShell: React.FC<AppShellProps> = ({
     preparationBlocked,
     onOpenOBSSettings,
     onOpenSettings,
+    settingsOpen = false,
+    settingsTab = 'audio',
+    onOpenSettingsTab,
+    onCloseSettings,
+    liveModeSwitch,
     onOpenShortcuts,
     onOpenAudioSettingsRetry,
     onOpenSoundSettings,
@@ -140,6 +158,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
+    const mainRef = useRef<HTMLElement>(null);
+    const listenButton = useRef<HTMLButtonElement>(null);
     // 状態や幅で区画の高さ・並びが変わっても跳ねさせず、位置を補間する（#298）。
     const homeContentRef = useRef<HTMLDivElement>(null);
     useLayoutMotion(homeContentRef);
@@ -242,8 +262,25 @@ export const AppShell: React.FC<AppShellProps> = ({
         window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
-        vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
+        vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
+    // 設定のモーダルが前面なので、開いている間は右パネルより設定の区分を現在地にする。
+    const railCurrent: RailDestination = settingsOpen
+        ? settingsTab === 'sound' ? 'sound' : settingsTab === 'audio' ? 'connect' : 'settings'
+        : Boolean(vstPanel) && vstPanelOpen ? 'vst' : 'home';
+    const openSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => {
+        if (onOpenSettingsTab) onOpenSettingsTab(tab);
+        else onOpenSettings();
+    };
+    const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
+    const usage = preparation.context.usage;
+    const route = configured ? formatAudioRoute(
+        preparation.observation.config?.input ?? currentInput,
+        preparation.observation.config?.output ?? currentOutput,
+        usage ? `${t(destinations[usage])}${usage !== 'listening' && preparation.context.receiver ? ` · ${preparation.context.receiver}` : ''}` : undefined,
+        purpose === 'music',
+    ) : null;
+    const elapsed = useSessionElapsed(isEngineRunning);
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -280,29 +317,35 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02] bg-[linear-gradient(currentColor_1px,transparent_1px),linear-gradient(90deg,currentColor_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,transparent_40%,black_80%)]" />
             </div>
 
-            <div className="relative z-10 flex flex-col h-screen">
-                <Header
+            <div className="relative z-10 flex h-screen">
+                <AppRail current={railCurrent}
+                    onHome={() => { onCloseSettings?.(); setVstPanelOpen(false); mainRef.current?.scrollTo({ top: 0 }); }}
+                    onSound={() => openSettingsTab('sound')}
+                    onVst={() => openRack()}
+                    onConnect={() => openSettingsTab('audio')}
+                    onSettings={() => openSettingsTab('appearance')}
                     onOpenShortcuts={onOpenShortcuts}
-                    onOpenSettings={onOpenSettings}
                     onOpenOBSGuide={onOpenOBSGuide}
                     onOpenDiscordGuide={onOpenDiscordGuide}
                     onOpenTroubleshoot={onOpenTroubleshoot}
                     onOpenWizard={onOpenWizard}
-                    stats={runtimeStats}
-                    currentHost={currentHost}
-                    currentSampleRate={currentSampleRate}
-                    currentBufferSize={currentBufferSize}
-                    isEngineRunning={isEngineRunning}
-                    engineProcessReady={engineProcessReady}
-                    stoppedInStrip={quietStopped}
                 />
                 {/* 通知の行は中央の列の中に置く。通知が出ても、右の列の操作は動かさない。 */}
-                <div className="flex min-h-0 flex-1">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <StatusBand stats={runtimeStats} host={currentHost} sampleRate={currentSampleRate} bufferSize={currentBufferSize}
+                    isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route}
+                    modeSwitch={liveModeSwitch} showListen={configured}
+                    listenLabel={t(purpose === 'music' ? 'band.listenMusic' : 'home.voiceCheck')}
+                    listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
+                    listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
+                        input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
+                        onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
+                />
                 <NoticeLane />
                 {/* 重ね表示と暗幕は中央の作業領域だけを覆う。右の列は操作できるままにする。 */}
                 <div className="workspace-body relative flex min-h-0 min-w-0 flex-1">
                 <main
+                    ref={mainRef}
                     data-density="home"
                     inert={panelOverlays}
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
@@ -415,7 +458,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                         </TooltipProvider>}
                     />
                 </aside>
-                </div>
             </div>
         </div></RuntimeStatsContext.Provider></MeterProvider>
     );

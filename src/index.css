@@ -472,6 +472,7 @@
    予約幅だけはレイアウトを遷移させる。ホーム全体を scale で伸ばして文字を変形させない。 */
 .app-shell {
   --vst-panel-width: 0px;
+  --rail-width: 76px;
   --safety-column-width: 212px;
 }
 .app-shell[data-vst-open] {
@@ -501,7 +502,8 @@
 }
 .vst-panel-space[data-state="open"] {
   /* 狭い窓のホームは縮めない。余白が増えるにつれ、パネル用の幅を少しずつ空ける。 */
-  width: clamp(0px, calc(100vw - var(--safety-column-width) - 1020px), 420px);
+  /* レールは作業領域の外なので、予約幅の計算からレール分を引く。横に並べる境目（1200px）は変えない。 */
+  width: clamp(0px, calc(100vw - var(--rail-width) - var(--safety-column-width) - 1020px), 420px);
 }
 @media (min-width: 1200px) {
   .vst-panel-space[data-state="open"] { width: 420px; }
@@ -679,10 +681,23 @@ html[data-app-hidden="true"] *::after {
 .sound-nr-gauge { width: 4.5rem; height: 2.75rem; flex-shrink: 0; }
 .sound-eq-graph, .sound-vst-bars { width: 100%; height: 2.5rem; flex: 1 1 0%; min-width: 0; }
 .sound-visual-badge { font-size: 0.8125rem; line-height: 1.2; font-weight: 600; color: hsl(var(--foreground)); flex-shrink: 0; }
-/* 右の列（212px）を置いても、配信・通話の最小 960×640（音調整の内側の幅 666px）で3列を保つ。 */
-/* カードの中身（音色の形とスライダー）が3列で読める幅。960×640 の中央と、レール後の約590pxでも3列を保つ。 */
-/* 声の種類（配信・低め・明瞭）が3列だと欠ける幅で1列にする。960の帯（内容幅およそ676px）は3列のまま。 */
-@container (max-width: 650px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } }
+/* 1列にするのは内側の幅が520px未満のとき。レール後の960×640（内容幅およそ600px）と1024×768は3列。 */
+@container (max-width: 519px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } }
+/* 声の種類は等分し、チェック印を幅に数えない。文字は省略せず、狭いときは折り返す。 */
+/* 声の種類は3つ並ぶ。ノイズの2択と同じボタン幅にすると、960のカード（約164px）に収まる。
+   印は幅に含めず、日本語2文字は1行のまま。長い英語は折り返し、省略もしない。 */
+.sound-chain .segment-option {
+  width: 3.375rem;
+  min-width: 3.375rem;
+  max-width: 3.375rem;
+  justify-content: flex-start;
+  gap: 0;
+  padding-left: 1.125rem;
+  padding-right: 0.125rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sound-chain .segment-option > svg { position: absolute; left: 0.125rem; }
 @media (max-height: 700px) { .sound-module-card { padding-block: 0.375rem; } .sound-module-visual { min-height: 2.5rem; padding: 0.25rem 0.5rem; } .sound-nr-gauge { width: 3.75rem; height: 2.25rem; } .sound-eq-graph, .sound-vst-bars { height: 2rem; } }
 
 /* 音調整を開いた舞台は、低い窓でだけ下限を外して開いた操作の場所を空ける。 */

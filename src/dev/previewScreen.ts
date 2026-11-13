@@ -39,7 +39,7 @@ export interface PreviewScreenControls {
     setIsLicenseModalOpen: (open: boolean) => void;
 }
 
-// 開けたら true。使い方は Header が同じクエリを見て開く。
+// 開けたら true。使い方はレールのヘルプが同じクエリを見て開く。
 export function applyPreviewScreen(screen: string, ui: PreviewScreenControls): boolean {
     switch (screen) {
         case 'settings-audio': ui.setIsSettingsOpen(true); return true;

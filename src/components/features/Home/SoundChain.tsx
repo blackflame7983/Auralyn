@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { useRef, type ReactNode } from 'react';
-import { MdHearing, MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension, MdChevronRight } from 'react-icons/md';
+import { type ReactNode } from 'react';
+import { MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension, MdChevronRight } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
@@ -9,7 +9,6 @@ import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
-import { MusicListeningCheck } from './MusicListeningCheck';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { BuiltinAmount, BuiltinPresets, BuiltinSwitch, NoiseQuick, NoiseSwitch, ToneGuide, useVoiceQuick } from './VoiceQuickControls';
 
@@ -26,9 +25,6 @@ interface Props {
     /** 各 VST の画面を開く。2段目に置く。 */
     vstEditors?: ReactNode;
     vstUnrestored?: string[];
-    listenOpen: boolean;
-    onListen: () => void;
-    onListenClose: () => void;
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
@@ -38,12 +34,11 @@ interface Props {
 }
 
 // 音調整は開閉しない3枚のカード。2段目は data-home-tier で分け、窓が低いときに隠すのは後の段階。
-export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors, listenOpen, onListen, onListenClose,
+export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstPanelOpen = false, vstUnrestored = [], unconfigured = false }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
-    const listenButton = useRef<HTMLButtonElement>(null);
     const { stats, running } = useRuntimeStats();
     const stage = currentStageBreakdown(stats, running);
     const controls = audioReady && !music && !stopped;
@@ -64,8 +59,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
     const builtinTone: StatusTone = deesserOnly || partial ? 'ok' : tone(stage?.builtinVoiceEnabled);
-    const actualInput = model.observation.config?.input ?? inputName;
-    const actualOutput = model.observation.config?.output ?? outputName;
     const checkUnavailable = audioReady && !stopped && (!stage || !validVst || stage.vst.some(item => item.state === 'unavailable') || !music && !live);
     const voiceUnavailable = audioReady && !stopped && !music && !live;
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
@@ -152,9 +145,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {stage && <p className="mt-2">{t(stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? 'flow.broadcastPath' : 'flow.monitorPath')}</p>}
                 </InfoPopover>
             </div>
-            {!unconfigured && <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="default" type="button" ref={listenButton} onClick={onListen} disabled={!audioReady} className="home-action gap-1.5"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</Button>
-                {!music && <DropdownMenu>
+            {!unconfigured && !music && <div className="flex flex-wrap gap-2">
+                <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="icon" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action home-action-icon">
                             <MdMoreHoriz aria-hidden="true" className="h-5 w-5" />
@@ -164,7 +156,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         {model.context.usage === 'obs' && <DropdownMenuItem onSelect={onOpenOBSSettings} className="gap-2"><MdCast aria-hidden="true" className="h-4 w-4" />{t('shell.obs')}</DropdownMenuItem>}
                         <DropdownMenuItem onSelect={onOpenSoundSettings ?? onOpenSettings} className="gap-2"><MdTune aria-hidden="true" className="h-4 w-4" />{t('home.moreSound')}</DropdownMenuItem>
                     </DropdownMenuContent>
-                </DropdownMenu>}
+                </DropdownMenu>
             </div>}
         </div>
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
@@ -173,6 +165,5 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         <ol aria-label={t('flow.title')} className="sound-tool-list mt-3 grid grid-cols-3 gap-3">
             {rows}
         </ol>
-        {music && listenOpen && <MusicListeningCheck running={isEngineRunning} input={actualInput} output={actualOutput} onSettings={onOpenSettings} onClose={() => { onListenClose(); listenButton.current?.focus(); }} />}
     </section>;
 }

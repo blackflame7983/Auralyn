@@ -17,9 +17,11 @@ export interface SegmentedControlProps<T extends string> {
     value: T | null;
     onValueChange: (value: T) => void;
     className?: string;
+    /** 切替の途中・失敗など、別の場所に残した説明へつなぐ。 */
+    describedBy?: string;
 }
 
-export function SegmentedControl<T extends string>({ label, options, value, onValueChange, className }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ label, options, value, onValueChange, className, describedBy }: SegmentedControlProps<T>) {
     const choices = options.filter(option => !option.readOnly);
     const buttons = useRef<(HTMLButtonElement | null)[]>([]);
     const enabled = choices.map((option, index) => option.disabled ? -1 : index).filter(index => index >= 0);
@@ -29,7 +31,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onVa
     // 反映待ちでは印を隠し、直前の位置だけ保持する。確定後も同じ要素を使って移動を補間する。
     const lastPosition = useRef(selected >= 0 ? selected : 0);
     if (selected >= 0) lastPosition.current = selected;
-    return <TooltipProvider delayDuration={300}><div role="radiogroup" aria-label={label}
+    return <TooltipProvider delayDuration={300}><div role="radiogroup" aria-label={label} aria-describedby={describedBy}
         className={cn('inline-flex max-w-full flex-wrap items-center gap-3', className)}>
         <div className="relative inline-grid rounded-control border border-input bg-background"
             style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(max-content, 1fr))` }}>
@@ -38,7 +40,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onVa
             style={{ width: `${100 / Math.max(1, choices.length)}%`, transform: `translateX(${lastPosition.current * 100}%)`, opacity: selected >= 0 ? 1 : 0 }} />
         {choices.map((option, index) => {
             const active = option.value === value;
-            const style = cn('segment-option relative inline-flex items-center justify-center gap-1.5 min-w-16 whitespace-nowrap rounded-control px-2 py-2 text-ui-control transition-colors',
+            const style = cn('segment-option relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control py-2 text-ui-control transition-colors min-w-16 px-2',
                 active ? 'text-foreground' : 'text-muted-foreground',
                 'hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50');
             const control = <button type="button" className={style} ref={element => { buttons.current[index] = element; }} disabled={option.disabled} role="radio" aria-checked={active} tabIndex={index === (tabStop >= 0 ? tabStop : enabled[0]) ? 0 : -1}
