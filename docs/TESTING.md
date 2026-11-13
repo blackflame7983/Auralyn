@@ -99,7 +99,7 @@ Node対象は `vitest.config.ts` に明示し、DOM・Storageを使うテスト�
 900×600のライト・ダーク・ゲーミング、1024×768の200%ページ拡大で、初回画面・設定・ライセンスの操作とフォーカス復帰を検証する。
 200%ページ拡大はWindowsの実DPI変更とは別の検証である。
 未定義IPCとブラウザの実行時例外は失敗にし、モックの既定成功で隠さない。
-大型メーターの縦横切替（高さ1100px）では、表示ボタンのフォーカスと本番帯の音量小窓を維持する。出力メーター内に入力音量を重複させない。
+右の列の入出力メーターは、パネルを重ねても隠れない。出力の dBFS はピーク保持、バーは平滑化値である。大型メーターは置かない。
 入力・出力音量、緊急ミュート、モード初回取得の通信失敗を注入し、保存値の保護、次の行動、再試行を確認する。モックでの失敗注入は実機障害の証拠とは分ける。
 通常画面の評価ではミュート・復元警告のない条件を別に用意し、警告を隠して正常扱いにしない。既存の監査画像を保護する場合はPlaywrightの `--output` に新しい専用サブディレクトリを指定する。
 失敗時のtraceはignoredの `test-results/` に出力する。
@@ -122,7 +122,7 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 ブラウザ画面試験のIPCモックの本体は `src/dev/tauriMock.ts` にあり、`e2e/browser/tauriFixture.ts` と開発プレビューで共有する。開発サーバー（`npm run dev`）で `http://localhost:1420/?mock=<状態>` を開くと、Tauriなしのブラウザで画面を再現できる。用途は Pencil（pen.dev）などのデザインツールへの取り込みと見た目の確認で、音声処理・IPC・実機の受入には使わない。
 
 - 状態は `live-home`（実行中・登録済みモード）、`live-home-builtin`（内蔵エフェクトON）、`stopped-home`（停止中）、`first-run`（初回セットアップ）。定義は `src/dev/previewMock.ts`。
-- 画面は `?screen=` で最初から開く。`settings-audio`、`settings-sound`、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`large-meter`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst-panel`。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。モーダルは `#root` の外に出るため、取り込みは `body` を使う。
+- 画面は `?screen=` で最初から開く。`settings-audio`、`settings-sound`、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst-panel`。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。モーダルは `#root` の外に出るため、取り込みは `body` を使う。
 - 設定済みの状態では、開いたブラウザの localStorage にセットアップ完了と機器設定を書き込む。状態が持つ保存値以外は、切り替えるたびに消す。プレビュー専用のブラウザで使う。
 - 未定義のIPCはプレビューでは失敗させず `window.__e2eUnexpected` に記録する。試験（`strict: true`）では従来どおり失敗させる。
 - 読込は `vite.config.ts` の serve 専用プラグインで行い、本番ビルドには含まれない。Tauri上（`__TAURI_INTERNALS__` がある場合）では何もしない。
