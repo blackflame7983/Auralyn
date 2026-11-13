@@ -315,10 +315,11 @@
 
 /* 発光は、主ボタンを押している間と、緊急ミュート中だけ。影は輪（box-shadow）を潰さない。明滅はしない。 */
 .gaming :is(button, a)[class~="bg-primary"]:active:not(:disabled) {
-  filter: drop-shadow(0 0 14px hsl(var(--primary) / 0.7));
+  filter: drop-shadow(0 0 12px hsl(var(--primary) / 0.85));
 }
 .gaming #emergency-mute[aria-pressed="true"] {
-  filter: drop-shadow(0 0 16px hsl(var(--destructive-text) / 0.75));
+  /* 列の内側余白に収まる距離で光らせる。明滅はしない。 */
+  filter: drop-shadow(0 0 8px hsl(var(--destructive-text))) drop-shadow(0 0 16px hsl(var(--destructive-text) / 0.9));
 }
 @media (prefers-reduced-motion: reduce) {
   .gaming :is(button, a)[class~="bg-primary"]:active:not(:disabled),
