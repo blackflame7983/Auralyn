@@ -169,10 +169,9 @@ test.describe('本番中の配信ミックスの配置', () => {
                 const bounds = await panel.evaluate(el => {
                     const strip = document.querySelector('.live-strip')!;
                     const chain = document.querySelector('.sound-chain')!;
-                    const footer = document.querySelector('footer')!.getBoundingClientRect();
                     const box = el.getBoundingClientRect();
                     return { top: box.top, bottom: box.bottom, stripBottom: strip.getBoundingClientRect().bottom,
-                        chainTop: chain.getBoundingClientRect().top, footerTop: footer.top,
+                        chainTop: chain.getBoundingClientRect().top, footerTop: window.innerHeight,
                         borders: ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'].map(key => getComputedStyle(el).getPropertyValue(key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`))) };
                 });
                 expect(bounds.top).toBeGreaterThanOrEqual(bounds.stripBottom);

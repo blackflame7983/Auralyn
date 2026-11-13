@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import { HowToUseModal } from '../features/Guide/HowToUseModal';
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,13 +9,10 @@ import { DiscordIcon } from '../ui/DiscordIcon';
 import {
     MdSettings,
     MdHelpOutline,
-    MdMicOff,
     MdFavorite,
     MdSystemUpdateAlt
 } from 'react-icons/md';
-import { listen } from '@tauri-apps/api/event';
-import { audioApi, type EngineRuntimeStats } from '../../api/audio';
-import { toast } from 'sonner';
+import { type EngineRuntimeStats } from '../../api/audio';
 import { useAppUpdate, UpdateGuide } from './AppUpdate';
 import { AvailableUpdateDialog } from './AvailableUpdateDialog';
 import {
@@ -90,35 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
     const t = useMessages();
     const { theme } = useTheme();
     const appUpdate = useAppUpdate();
-    const [isGlobalMuted, setIsGlobalMuted] = useState(false);
     const [isBeginnerMode] = useBeginnerMode();
-
-    useEffect(() => {
-        const unlisten = listen<boolean>('global-mute-changed', (event) => {
-            setIsGlobalMuted(event.payload);
-            toast.dismiss('emergency-mute-failed');
-            if (event.payload) {
-                toast.warning(<LocalizedMessage id="header.muteOn" />);
-            } else {
-                toast.success(<LocalizedMessage id="header.muteOff" />);
-            }
-        });
-
-        return () => {
-            unlisten.then(f => f());
-        };
-    }, []);
-
-
-    const handleToggleMute = async () => {
-        try {
-            await audioApi.toggleGlobalMute();
-        } catch (e) {
-            console.error("Failed to toggle global mute", e);
-            toast.error(t('header.muteFailed'), { id: 'emergency-mute-failed', duration: Infinity,
-                action: { label: t('header.audioSettingsOpen'), onClick: onOpenSettings } });
-        }
-    };
 
     return (
         <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-(--motion-panel) gaming:backdrop-blur-md ${theme === 'light'
@@ -148,32 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 xl:gap-4 shrink-0 pl-2">
-                    {/* Panic Button (Global Mute) */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                id="emergency-mute" aria-pressed={isGlobalMuted}
-                                onClick={handleToggleMute}
-                                aria-label={t('header.emergency')}
-                                aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-medium text-ui-support shadow-sm text-foreground ${isGlobalMuted
-                                    ? 'bg-destructive/10 border-destructive-text ring-2 ring-destructive-text'
-                                    : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
-                                    }`}
-                            >
-                                <MdMicOff aria-hidden="true" className="w-5 h-5 shrink-0" />
-                                <span className="flex flex-col items-start whitespace-nowrap">
-                                    <span>{t('header.emergency')}</span>
-                                    {isGlobalMuted && <span id="header-mute-state" className="text-ui-support font-medium">{t('header.muted')}</span>}
-                                </span>
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>{isGlobalMuted ? t('header.unmuteHint') : t('header.muteHint')}</p>
-                        </TooltipContent>
-                    </Tooltip>
-
-                    {/* 大型メーターは本番帯のメーター横へ移した。表示モード（かんたん／詳細）はなくし、VST 構成は右パネル、細かい数値は設定の外観で切り替える。 */}
+                    {/* 緊急ミュートは右の列へ移した。大型メーターは本番帯のメーター横。VST 構成は右パネル、細かい数値は設定の外観で切り替える。 */}
 
                     {/* Audio Settings */}
                     <Tooltip>

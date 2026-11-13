@@ -502,7 +502,8 @@ it.each(['ja', 'en'] as const)('フッターの出力ラベルは操作用の文
     expect(label).not.toHaveClass('font-mono');
     expect(label).not.toHaveClass('tracking-widest');
     expect(label).not.toHaveClass('text-xs');
-    expect(container.querySelector('#master-output-gain')).toHaveClass('w-32', 'shrink-0');
+    expect(container.querySelector('#master-output-gain')).toHaveClass('w-full');
+    expect(container.querySelector('#master-output-gain')).not.toHaveClass('w-32');
     expect(screen.getByText('50%')).toHaveClass('font-mono');
 });
 

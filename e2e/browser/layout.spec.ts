@@ -51,13 +51,13 @@ test.describe('通常のホーム表示', () => {
             expect(input.width).toBeGreaterThan(120);
             expect(output.width).toBeGreaterThan(120);
             await expect(summary.getByRole('button', { name: '出力音量', exact: true })).toHaveCount(0);
-            const slider = page.locator('footer').getByRole('slider', { name: '出力音量', exact: true });
+            const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
             await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toHaveCount(1);
             await expect(slider).toBeInViewport({ ratio: 1 });
             if (width === 1280) await page.screenshot({ path: testInfo.outputPath('footer-output-volume.png') });
         }
     });
-    test('フッターの出力音量は外部更新と縮小後の操作に追従する', async ({ page }) => {
+    test('右の列の出力音量は外部更新と縮小後の操作に追従する', async ({ page }) => {
         await page.setViewportSize({ width: 1280, height: 768 });
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
@@ -65,7 +65,7 @@ test.describe('通常のホーム表示', () => {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
-        const slider = page.locator('footer').getByRole('slider', { name: '出力音量', exact: true });
+        const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
         await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toHaveCount(1);
         await expect(slider).toHaveAttribute('aria-valuenow', '100');
         expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
@@ -117,10 +117,12 @@ test.describe('通常のホーム表示', () => {
             await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toBeFocused();
             // 復旧操作へ案内するだけで、ミュートを勝手に解除しない。
             await expect(recovery).toBeVisible();
-            const footer = page.locator('footer');
-            const box = (await footer.boundingBox())!;
-            expect(box.y + box.height).toBe(640);
-            expect(box.height).toBeLessThan(64);
+            const column = page.getByRole('complementary', { name: '本番中の操作' });
+            const box = (await column.boundingBox())!;
+            expect(Math.round(box.x + box.width)).toBe(width);
+            expect(Math.round(box.y + box.height)).toBe(640);
+            expect(Math.round(box.width)).toBe(212);
+            expect(await column.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
             await page.screenshot({ path: testInfo.outputPath(`normal-home-${width}.png`) });
         }
     });
@@ -244,7 +246,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await expect(page.getByRole('button', { name: 'Open Settings', exact: true })).toBeFocused();
 });
 
-// 重ね表示では背後を操作させず、ヘッダーとフッターの本番操作は使える。
+// 重ね表示では背後を操作させず、右の列の本番操作は使える。
 test('最小〜最大: VST は作業幅を保って重なり、広い窓ではメーターと並ぶ', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 768 });
     await page.addInitScript(() => {
@@ -267,7 +269,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         if (overlays) {
             await expect(main).toHaveAttribute('inert', '');
             await expect(meter).toBeHidden();
-            await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(Math.min(width, 1020) - 1);
+            await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(width - 212 - 1);
         } else {
             await expect(main).not.toHaveAttribute('inert', '');
             await expect(meter).toBeVisible();
@@ -423,7 +425,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     await expect(panel).toHaveAttribute('data-state', 'open');
     await expect(panel).not.toHaveAttribute('inert', '');
     await settleLayoutMotion(page);
-    await expect(page.getByRole('complementary')).toBeVisible();
+    await expect(page.getByRole('complementary', { name: 'VST構成' })).toBeVisible();
     const closing = await panel.evaluate(async e => {
         const main = document.querySelector('main')!;
         const reserved = document.querySelector('.vst-panel-space')!;
