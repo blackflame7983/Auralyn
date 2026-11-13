@@ -7,7 +7,7 @@ import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { actionWord, ChannelAction } from '../features/Home/ChannelAction';
 import { LiveStrip } from '../features/Home/LiveStrip';
-import { InputGainDisabledContext } from '../features/Home/InputGainContext';
+import { SoundFlow } from '../features/Home/SoundFlow';
 import { LiveControlsHiddenContext } from '../features/Home/LiveControlsContext';
 import { SoundChain } from '../features/Home/SoundChain';
 import { UnsetFlow } from '../features/Home/UnsetFlow';
@@ -23,8 +23,9 @@ import { Header } from './Header';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
+import { SafetyInput } from './SafetyLevels';
 import { audioApi } from '../../api/audio';
-import { AudioCheckIcon, LevelMeterIcon } from '@/components/ui/AudioControlIcons';
+import { AudioCheckIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
@@ -51,8 +52,6 @@ interface AppShellProps {
     onOpenTroubleshoot: () => void;
     onOpenVoiceCheck: () => void;
     onOpenWizard: () => void;
-    onToggleLargeMeter: () => void;
-    isLargeMeterOpen: boolean;
     currentHost: string;
     currentSampleRate?: number;
     currentBufferSize?: number;
@@ -60,13 +59,17 @@ interface AppShellProps {
     engineProcessReady?: boolean | null;
     currentInput?: string;
     currentOutput?: string;
-    /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
+    /** いまの状態に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
+    /** 右の列に置く操作ロック。 */
+    liveProtect?: ReactNode;
     liveModeName?: string;
     /** 未設定でも歌・雑談の欄を出すか。登録済み・操作ロック中・処理中・失敗のときだけ true にする（#297）。 */
     liveControlsWhileUnconfigured?: boolean;
-    /** チェーン列の VST 段の中身。 */
+    /** チェーン列の VST 段の中身。ON/OFF。 */
     vstChain?: ReactNode;
+    /** 各 VST の画面を開く操作。カードの2段目に置く。 */
+    vstEditors?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
     vstUnrestored?: string[];
     /** 右パネルに出す VST ラック。 */
@@ -96,8 +99,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     onOpenTroubleshoot,
     onOpenVoiceCheck,
     onOpenWizard,
-    onToggleLargeMeter,
-    isLargeMeterOpen,
     currentHost,
     currentSampleRate,
     currentBufferSize,
@@ -106,9 +107,11 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentInput,
     currentOutput,
     liveControls,
+    liveProtect,
     liveModeName,
     liveControlsWhileUnconfigured = false,
     vstChain,
+    vstEditors,
     vstUnrestored,
     vstPanel,
     streamMixPanel
@@ -149,7 +152,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     const startErrorDetail = startError === null ? null : renderClientError(t,
         startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
-    const [soundExpanded, setSoundExpanded] = useState(false);
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
@@ -166,7 +168,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         update();
         media.addEventListener('change', update);
         return () => media.removeEventListener('change', update);
-    }, [isLargeMeterOpen]);
+    }, []);
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen, panelRef);
@@ -212,7 +214,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     const chrome = deriveHomeChrome({
         configured,
-        soundExpanded,
         vstPanel: { present: Boolean(vstPanel), open: vstPanelOpen, wide: panelBeside },
     });
     // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
@@ -220,18 +221,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
     // 開いた後の測定・停止・閉じるはパネル側に集める。押せない理由は画面にも出し、押せるときの対象範囲は読み上げだけにする。
     const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
-    // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
-    const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
-    const meterSuspended = isLargeMeterOpen && panelMotion.present && !panelBeside;
-    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><ChannelAction id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
-        aria-label={largeMeterLabel} aria-describedby={meterSuspended ? 'large-meter-suspended' : undefined}
-        word={actionWord(t('home.largeMeterLabel'))}
-        icon={<span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span>}
-        className={cn(isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}
-    /></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-ui-support">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
-    const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-ui-support text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
-        <span id="loudness-toggle-description" className={!audioReady && !quietStopped ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+        <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
         <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><ChannelAction aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
@@ -250,8 +241,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         target.dataset.attention = '';
         window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
-    const soundChain = <SoundChain onExpandedChange={setSoundExpanded} stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
-        vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
+    const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
+        vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
@@ -276,8 +267,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <InputGainDisabledContext.Provider value={panelOverlays}><MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
-            data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined} data-large-meter={isLargeMeterOpen || undefined}
+        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
+            data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined}
             data-meter-suspended={panelMotion.present && !panelBeside || undefined}
             className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-(--motion-panel)">
             {/* ゲーミングだけに表示する静止した背景の光と格子。 */}
@@ -319,16 +310,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
                     <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]">
                         {notices}
-                        {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
-                            未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
-                            歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
+                        {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
+                            歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip stage={chrome.kind === 'daily' ? chrome.stage : 'full'} liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} controlsDisabled={panelOverlays} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} controlsDisabled={panelOverlays} liveControls={liveControls} onOpenDevices={onOpenSettings} outputName={currentOutput} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
-                        {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
+                        {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
+                        {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
                         {configured && streamMixPanel}
-                        {/* 音量チェックは開いたメーターの近くに出す。 */}
                         <div><LoudnessCheck
                             music={purpose === 'music'}
                             enabled={loudnessEnabled}
@@ -359,7 +349,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                         <div id="home-rack">{children}</div>
                         </div>
                         {!configured && soundChain}
-                        {isLargeMeterOpen && <div id="home-large-meter" className="home-large-meter" />}
                     </div>
                 </main>
                 {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
@@ -370,7 +359,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     data-pointer-focus={rackPointerFocus || undefined} onKeyDownCapture={() => setRackPointerFocus(false)}
                     {...panelMotion.motionProps}
                     className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">
-                    {meterSuspendedNotice}
                     {vstPanel}
                 </VstPanelAside>}
                 </AnimatePresence>
@@ -380,7 +368,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <aside data-density="home" aria-label={t('shell.safetyColumn')} className="flex w-[var(--safety-column-width)] shrink-0 flex-col gap-3 overflow-hidden border-l border-border bg-card p-3">
                     <EmergencyMuteButton onOpenSettings={onOpenSettings} />
                     <MasterBar
-                        outputMeterInHome={!chrome.footer.outputMeter}
+                        input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={currentInput} />}
+                        lock={liveProtect}
+                        outputName={currentOutput}
+                        outputMuted={preparation.observation.availability === 'muted'}
+                        onCheckOutput={focusOutputControl}
                         onStatsChange={setRuntimeStats}
                         isRunning={isEngineRunning}
                         processReady={engineProcessReady}
@@ -425,6 +417,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </aside>
                 </div>
             </div>
-        </div></RuntimeStatsContext.Provider></MeterProvider></InputGainDisabledContext.Provider>
+        </div></RuntimeStatsContext.Provider></MeterProvider>
     );
 };

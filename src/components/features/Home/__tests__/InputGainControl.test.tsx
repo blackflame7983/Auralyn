@@ -6,7 +6,7 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 
 // Slider は Radix の操作を jsdom で再現しにくいため、値の変更だけを渡す部品に置き換える。
-vi.mock('@/components/ui/slider', () => ({ Slider: ({ onValueChange }: { onValueChange: (value: number[]) => void }) => <button type="button" onClick={() => onValueChange([150])}>set150</button> }));
+vi.mock('@/components/ui/slider', () => ({ Slider: ({ onValueChange, 'aria-label': label, disabled }: { onValueChange: (value: number[]) => void; 'aria-label'?: string; disabled?: boolean }) => <button type="button" role="slider" aria-label={label} disabled={disabled} onClick={() => onValueChange([150])}>set150</button> }));
 beforeEach(() => { localStorage.clear(); vi.useFakeTimers(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -14,11 +14,10 @@ it.each([['ja', '入力音量'], ['en', 'Input volume']] as const)('音楽鑑賞
     localStorage.setItem('auralyn_display_purpose', 'music');
     const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><InputGainControl /></LocaleProvider>);
-    act(() => screen.getByRole('button', { name: `${label} 100%` }).click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: `${label} 100%` }).click());
     await act(async () => { vi.advanceTimersByTime(60); });
     expect(set).toHaveBeenCalledWith(1.5);
-    expect(screen.getByRole('button', { name: `${label} 150%` })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: `${label} 150%` })).toBeInTheDocument();
 });
 
 it('保存済みのマイク音量を表示し、変更を保存・反映して他の表示へ知らせる', async () => {
@@ -28,9 +27,7 @@ it('保存済みのマイク音量を表示し、変更を保存・反映して�
     window.addEventListener('input-gain-sync', event => events.push((event as CustomEvent<number>).detail));
     render(<InputGainControl />);
     // 読み上げの名前にも、画面に出ている今の値を含める。
-    const trigger = screen.getByRole('button', { name: 'マイク音量 80%' });
-    act(() => trigger.click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: 'マイク音量 80%' }).click());
     await act(async () => { vi.advanceTimersByTime(60); });
     expect(set).toHaveBeenCalledWith(1.5);
     expect(localStorage.getItem('vst_host_input_gain')).toBe('150');
@@ -45,7 +42,7 @@ it('大型メーターなど外部からの同期では、値を反映しても�
     act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 120 })); });
     window.addEventListener('input-gain-sync', listener);
     await act(async () => { vi.advanceTimersByTime(60); });
-    expect(screen.getByRole('button', { name: 'マイク音量 120%' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'マイク音量 120%' })).toBeInTheDocument();
     expect(events).toEqual([]);
     expect(set).not.toHaveBeenCalled();
     window.removeEventListener('input-gain-sync', listener);
@@ -54,12 +51,11 @@ it('大型メーターなど外部からの同期では、値を反映しても�
 it('プロファイル復帰の同期は、送信待ちの古いスライダー変更を取り消しEngineへ再送しない', async () => {
     const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
     render(<InputGainControl />);
-    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: 'マイク音量 100%' }).click());
     localStorage.setItem('vst_host_input_gain', '70'); // 適用結果の同期元が保存済み。
     act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 70 })); });
     await act(async () => { vi.advanceTimersByTime(60); });
-    expect(screen.getByRole('button', { name: 'マイク音量 70%' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'マイク音量 70%' })).toBeInTheDocument();
     expect(set).not.toHaveBeenCalled();
     expect(localStorage.getItem('vst_host_input_gain')).toBe('70');
 });
@@ -67,8 +63,7 @@ it('プロファイル復帰の同期は、送信待ちの古いスライダー�
 it('同じ値の適用結果でも、別の構成変更として古い送信待ちを取り消す', async () => {
     const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
     render(<InputGainControl />);
-    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: 'マイク音量 100%' }).click());
     act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 150 })); });
     await act(async () => { vi.advanceTimersByTime(60); });
     expect(set).not.toHaveBeenCalled();
@@ -78,8 +73,7 @@ it('音量変更の失敗を保存せず、同じ値で再試行できる', asyn
     localStorage.setItem('vst_host_input_gain', '80');
     const set = vi.spyOn(audioApi, 'setInputGain').mockRejectedValueOnce(new Error('pipe closed')).mockResolvedValue(undefined);
     render(<InputGainControl />);
-    act(() => screen.getByRole('button', { name: 'マイク音量 80%' }).click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: 'マイク音量 80%' }).click());
     await act(async () => { vi.advanceTimersByTime(60); });
     expect(screen.getByRole('alert')).toHaveTextContent('接続を確認して再試行');
     expect(screen.getByRole('alert')).not.toHaveTextContent('pipe closed');
@@ -95,8 +89,7 @@ it('古い音量変更の失敗は、新しい操作の成功を上書きしな�
     let rejectOld!: (error: Error) => void;
     vi.spyOn(audioApi, 'setInputGain').mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject; })).mockResolvedValue(undefined);
     render(<InputGainControl />);
-    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
-    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => screen.getByRole('slider', { name: 'マイク音量 100%' }).click());
     await act(async () => { vi.advanceTimersByTime(60); });
     act(() => screen.getByRole('button', { name: '100%に戻す' }).click());
     await act(async () => { vi.advanceTimersByTime(60); });

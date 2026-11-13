@@ -13,9 +13,11 @@ import { VstChainItems } from '../VstChainItems';
 
 const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true }));
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, chainOn: true }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, chainOn: true, preset: 'broadcast', shownAmount: 50 }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
+    BuiltinAmount: () => <span>builtin-amount</span>, BuiltinPresets: () => <span>builtin-presets</span>,
+    ToneGuide: () => <svg data-tone-guide />,
 }));
 
 const stats = (): EngineRuntimeStats => ({ queueDiagnostics: { state: 'running', epoch: 'stream1' }, latencyMetadata: {
@@ -31,9 +33,6 @@ it('一部のVST状態だけが不明でも声の操作を禁止と案内せず�
     const p = props(); const settings = vi.fn();
     render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} audioReady onOpenSoundSettings={settings} /></RuntimeStatsContext.Provider>);
     expect(screen.getByText(message('ja', 'home.checkUnavailable'))).toBeInTheDocument();
-    expect(document.getElementById(screen.getByRole('button', { name: /^VST / }).getAttribute('aria-controls')!)).toHaveAttribute('aria-hidden', 'true');
-    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
-    expect(document.getElementById(screen.getByRole('button', { name: /^VST / }).getAttribute('aria-controls')!)).toHaveAttribute('aria-hidden', 'false');
     expect(screen.getAllByText(message('ja', 'home.checkUnavailable'))).toHaveLength(1);
     expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
     expect(screen.getByText('noise-switch')).toBeInTheDocument();
@@ -56,11 +55,10 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
     const row = screen.getAllByRole('listitem')[2];
     expect(row).toHaveTextContent('外部VST'); expect(row).toHaveTextContent('使っていません');
-    expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'false');
+    expect(row).toHaveAttribute('data-on', 'false');
     expect(screen.queryByRole('button', { name: 'VSTを編集' })).not.toBeInTheDocument();
     const hint = message('ja', 'chain.vstEmptyHint');
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^外部VST / }));
     fireEvent.click(screen.getByRole('button', { name: '外部VST' }));
     expect(screen.getByRole('dialog', { name: '外部VST' })).toHaveTextContent(hint);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
@@ -83,7 +81,7 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     expect(rows[0]).toHaveTextContent(message(locale, 'flow.enabled'));
     expect(rows[0].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     // ON の段は左端の帯と枠の光で示す。
-    expect(rows[0].querySelector('[data-on]')).toHaveAttribute('data-on', 'true');
+    expect(rows[0]).toHaveAttribute('data-on', 'true');
     expect(rows[1]).toHaveTextContent(message(locale, 'flow.reverbOnly'));
     expect(rows[1]).toHaveTextContent(message(locale, 'flow.builtinParts', { voice: message(locale, 'flow.disabled'), reverb: message(locale, 'flow.enabled') }));
     // 範囲の説明は常設せず、見出し横の情報ボタンから読む。
@@ -95,7 +93,6 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
 
 it('内蔵ボイスチェーンの意味を見出し横の情報ボタンから確認できる', () => {
     render(<SoundChain {...props()} />);
-    fireEvent.click(screen.getByRole('button', { name: /声を整える.*状態/ }));
     const description = message('ja', 'settings.AudioSettingsModal.096');
     expect(screen.queryByText(description)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.builtinHelp') }));
@@ -108,7 +105,8 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     const rows = screen.getAllByRole('listitem');
     expect(rows[0]).toHaveTextContent('noise-switch'); expect(rows[0]).toHaveTextContent('noise-quick');
     expect(within(rows[0]).queryByText(message('ja', 'flow.enabled'), { exact: true })).toBeNull();
-    expect(rows[1]).toHaveTextContent('builtin-switch'); expect(rows[1]).toHaveTextContent('builtin-quick');
+    expect(rows[1]).toHaveTextContent('builtin-switch'); expect(rows[1]).toHaveTextContent('builtin-amount');
+    expect(rows[1].querySelector('[data-home-tier="2"]')).toHaveTextContent('builtin-presets');
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
 });
 
@@ -122,8 +120,8 @@ it.each(['ja', 'en'] as const)('声の処理と残響がOFFでも歯擦音があ
     </RuntimeStatsContext.Provider></LocaleProvider>);
     const row = screen.getAllByRole('listitem')[1];
     const summary = message(locale, 'flow.deesserOnly');
-    expect(screen.getByRole('button', { name: new RegExp(summary) })).toBeInTheDocument();
-    expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'true');
+    expect(row).toHaveTextContent(summary);
+    expect(row).toHaveAttribute('data-on', 'true');
     expect(row.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     expect(row).toHaveTextContent(message(locale, 'flow.builtinParts', { voice: message(locale, 'flow.disabled'), reverb: message(locale, 'flow.disabled') }));
     expect(row).toHaveTextContent(message(locale, 'flow.deesserLine', { amount: 80 }));
@@ -175,7 +173,6 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
     fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' })); expect(p.onListen).toHaveBeenCalledOnce();
@@ -227,25 +224,12 @@ it('保存済みのVSTを読み込めていない空の段は「未追加」と�
     expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
 });
 
-it('項目は1つだけ開き、Escapeで閉じて項目にフォーカスを戻す', () => {
+it('音調整のカードは開閉せず、声の種類は2段目に常に出す', () => {
     const expanded = vi.fn();
     render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
-    const triggers = screen.getAllByRole('button', { expanded: false }).filter(button => button.hasAttribute('aria-controls') && button.closest('ol') && button.id !== 'vst-panel-toggle');
-    expect(triggers).toHaveLength(3);
-    fireEvent.click(triggers[0]);
-    expect(triggers[0]).toHaveAttribute('aria-expanded', 'true');
-    expect(expanded).toHaveBeenLastCalledWith(true);
-    fireEvent.click(triggers[1]);
-    expect(triggers[0]).toHaveAttribute('aria-expanded', 'false');
-    const closed = document.getElementById(triggers[0].getAttribute('aria-controls')!)!;
-    expect(closed).toHaveAttribute('inert');
-    expect(closed).toHaveClass('disclosure-panel');
-    expect(closed.querySelector('.disclosure-content')).not.toBeNull();
-    const panel = document.getElementById(triggers[1].getAttribute('aria-controls')!)!;
-    fireEvent.keyDown(panel, { key: 'Escape' });
-    expect(triggers[1]).toHaveFocus();
-    expect(triggers[1]).toHaveAttribute('aria-expanded', 'false');
-    expect(expanded).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByRole('button', { expanded: true })).toBeNull();
+    expect(document.querySelectorAll('[data-home-tier="2"]').length).toBeGreaterThan(0);
+    expect(expanded).not.toHaveBeenCalled();
 });
 
 
@@ -254,11 +238,12 @@ it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示に�
         <SoundChain {...props()} stopped audioReady isEngineRunning={false} />
     </RuntimeStatsContext.Provider></LocaleProvider>);
     const chain = screen.getByRole('list');
-    const buttons = within(chain).getAllByRole('button').filter(button => button.id !== 'vst-panel-toggle');
-    expect(buttons).toHaveLength(3);
-    for (const button of buttons) {
-        expect(button).toHaveTextContent(message(locale, 'shell.stopped'));
-        expect(button.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'off');
+    const items = within(chain).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+        expect(item).toHaveTextContent('—');
+        expect(item).not.toHaveTextContent(message(locale, 'shell.stopped'));
+        expect(item.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'off');
     }
     expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
@@ -270,7 +255,6 @@ it('空のVSTの追加は右パネルを開いている間は重ねない', () =
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
     const p = props();
     const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen /></RuntimeStatsContext.Provider>);
-    fireEvent.click(screen.getByRole('button', { name: /^外部VST / }));
     expect(screen.queryByRole('button', { name: '追加' })).not.toBeInTheDocument();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen={false} /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
@@ -280,29 +264,27 @@ it('空のVSTの追加は右パネルを開いている間は重ねない', () =
 it('ノイズ低減と声を整えるの情報ボタンはパネルの名前の右に置く', () => {
     render(<SoundChain {...props()} />);
     for (const [name, info] of [['ノイズ低減', 'info.noise'], ['声を整える', 'settings.builtinHelp']] as const) {
-        fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name} `) }));
         const heading = screen.getByRole('heading', { name, level: 3 });
         expect(within(heading.parentElement!).getByRole('button', { name: message('ja', info) })).toBeInTheDocument();
     }
 });
 
 
-it.each(['voice', 'music'] as const)('起動時の音調整は声で閉じ、音楽鑑賞でVSTを開く (%s)', purpose => {
+it.each(['voice', 'music'] as const)('起動時の音調整カードは開閉しない (%s)', purpose => {
     localStorage.setItem('auralyn_display_purpose', purpose);
     render(<SoundChain {...props()} vstPanelOpen />);
-    const items = within(screen.getByRole('list')).getAllByRole('button').filter(button => button.id !== 'vst-panel-toggle');
-    expect(items.every(item => item.getAttribute('aria-expanded') === (purpose === 'music' && item.textContent?.startsWith('VST') ? 'true' : 'false'))).toBe(true);
+    expect(within(screen.getByRole('list')).queryAllByRole('button', { expanded: true }).filter(button => button.id !== 'vst-panel-toggle')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'VSTを編集' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 
-it('設定済みの声表示では3連モジュールに専用SVGビジュアル（ゲージ・トーンカーブ・スロット）を描画し、未設定時は隠す', () => {
+it('設定済みの声表示では音色の形だけを描き、未設定時は隠す', () => {
     const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
-    expect(view.container.querySelector('[data-signal-visual="noise"] svg')).not.toBeNull();
-    expect(view.container.querySelector('[data-signal-visual="builtin"] svg')).not.toBeNull();
-    expect(view.container.querySelector('[data-signal-visual="vst"] svg')).not.toBeNull();
+    expect(view.container.querySelector('[data-tone-guide]')).not.toBeNull();
+    expect(view.container.querySelector('[data-signal-visual]')).toBeNull();
     expect(view.container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} unconfigured /></RuntimeStatsContext.Provider>);
-    expect(view.container.querySelector('[data-signal-visual]')).toBeNull();
+    expect(view.container.querySelector('[data-tone-guide]')).toBeNull();
 });
 
 it.each(['ja', 'en'] as const)('ノイズ低減の図は実測にないdB値を出さず、現在のモードと停止状態を示す (%s)', locale => {
@@ -310,7 +292,7 @@ it.each(['ja', 'en'] as const)('ノイズ低減の図は実測にないdB値を�
         <RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>
     </LocaleProvider>;
     const view = render(content());
-    const graphic = () => view.container.querySelector('[data-signal-visual="noise"]')!;
+    const graphic = () => within(screen.getByRole('list')).getAllByRole('listitem')[0];
     for (const [mode, label] of [['low', 'master.nrLow'], ['high', 'master.nrHigh'], ['smart', 'master.nrLearn'], ['venue', 'master.nrVenue']] as const) {
         quick.noiseMode = mode;
         view.rerender(content());

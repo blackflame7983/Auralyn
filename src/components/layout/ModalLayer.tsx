@@ -18,7 +18,6 @@ const SetupWizardModal = lazy(() => import('../features/SetupWizard/SetupWizardM
 const PresetManagerModal = lazy(() => import('../features/Presets/PresetManagerModal').then(m => ({ default: m.PresetManagerModal })));
 const TemplateWizardModal = lazy(() => import('../features/Templates/TemplateWizardModal').then(m => ({ default: m.TemplateWizardModal })));
 const RecoveryModal = lazy(() => import('../features/Recovery/RecoveryModal').then(m => ({ default: m.RecoveryModal })));
-const LargeLevelMeter = lazy(() => import('../features/LevelMeter/LargeLevelMeter').then(m => ({ default: m.LargeLevelMeter })));
 const TroubleshootModal = lazy(() => import('../features/Troubleshoot/TroubleshootModal').then(m => ({ default: m.TroubleshootModal })));
 const VoiceCheckModal = lazy(() => import('../features/VoiceCheck/VoiceCheckModal').then(m => ({ default: m.VoiceCheckModal })));
 
@@ -56,8 +55,6 @@ interface UIState {
     crashExit?: AudioEngineExit;
     isPresetManagerOpen: boolean;
     setIsPresetManagerOpen: (v: boolean) => void;
-    isLargeMeterOpen: boolean;
-    setIsLargeMeterOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
     isTroubleshootOpen: boolean;
     setIsTroubleshootOpen: (v: boolean) => void;
     isVoiceCheckOpen: boolean;
@@ -330,11 +327,6 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                             await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig), ...(audioConfig.inputSource ? [{ source: audioConfig.inputSource }] as const : [])));
                         }}
                     />
-                </Suspense>
-            )}
-            {ui.isLargeMeterOpen && (
-                <Suspense fallback={null}>
-                    <LargeLevelMeter running={isAudioRunning} onClose={() => ui.setIsLargeMeterOpen(false)} />
                 </Suspense>
             )}
             {ui.isTroubleshootOpen && (

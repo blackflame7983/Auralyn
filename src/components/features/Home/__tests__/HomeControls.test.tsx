@@ -7,6 +7,7 @@ import { LocaleContext } from '@/i18n/LocaleProvider';
 import { useLiveModes } from '@/hooks/useLiveModes';
 import { liveSnapshot } from '@/hooks/__tests__/liveModesFixture';
 import { LiveModeBar } from '../../AudioSettings/LiveModeBar';
+import { LiveProtectButton } from '../../AudioSettings/LiveProtectButton';
 import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from '../VoiceQuickControls';
 import { SoundChain } from '../SoundChain';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -64,7 +65,7 @@ it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽�
     const snapshot = liveSnapshot({ armed: kind === 'protected', error: kind === 'snapshotError' ? 'fixture error' : null,
         transaction: kind === 'recovery' ? { id: 'tx', phase: 'recovery_required', target: null, error: null, recoveryAvailable: true } : null });
     const request = vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
-    function MusicSafety() { const model = useLiveModes(); return <LiveModeBar model={model} safetyOnly />; }
+    function MusicSafety() { const model = useLiveModes(); return <><LiveModeBar model={model} safetyOnly /><LiveProtectButton model={model} safetyOnly /></>; }
     render(<MusicSafety />);
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'snapshot' }));
     await act(async () => {});
@@ -149,7 +150,7 @@ it.each([
     const snapshot = liveSnapshot({ running: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } });
     vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
     const protect = vi.spyOn(liveModesApi, 'protect').mockImplementation(async armed => ({ ...snapshot, armed }));
-    function Bar() { return <LiveModeBar model={useLiveModes()} />; }
+    function Bar() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} /></>; }
     render(<LocaleContext.Provider value={{ locale: labels.locale, setLocale: vi.fn() }}><Bar /></LocaleContext.Provider>);
     await screen.findByRole('region', { name: labels.region });
     expect(screen.getByRole('radio', { name: labels.sing })).toBeEnabled();

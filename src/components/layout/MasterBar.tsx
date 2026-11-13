@@ -3,13 +3,11 @@ import { displayAudioHost } from '@/lib/audioDevices';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
+import { MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { type EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../api/audio';
-import { useSharedMeter } from '../features/LevelMeter/MeterContext';
-import { MeterVisual } from '../features/LevelMeter/MeterVisual';
-import { useBeginnerMode } from '@/hooks/useBeginnerMode';
+import { SafetyOutput } from './SafetyLevels';
 import { invalidateRuntimeStats, useRuntimeStats, useRuntimeStatsUnavailable } from '@/hooks/useRuntimeStats';
 import { recentAnomalyWarning } from './processingHealth';
 import { AudioQueueDetails } from './AudioQueueDetails';
@@ -17,7 +15,6 @@ import { LatencyDetails } from './LatencyDetails';
 import { OutputGainControl } from './OutputGainControl';
 
 interface MasterBarProps {
-    outputMeterInHome?: boolean;
     isRunning?: boolean;
     processReady?: boolean | null;
     host?: string;
@@ -27,13 +24,19 @@ interface MasterBarProps {
     onOpenVoiceCheck?: () => void;
     onOpenSoundSettings?: () => void;
     onOpenAudioTuning?: () => void;
+    /** 出力の上に置く入力欄。 */
+    input?: ReactNode;
+    /** 比較の下に置く操作ロック。 */
+    lock?: ReactNode;
+    outputName?: string;
+    outputMuted?: boolean;
+    onCheckOutput?: (anchor: HTMLButtonElement) => void;
     /** 出力音量と、下端の状態表示のあいだに置く操作。 */
     compare?: ReactNode;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning, compare }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning, compare, input, lock, outputName, outputMuted = false, onCheckOutput }) => {
     const t = useMessages();
-    const [simple] = useBeginnerMode();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
     const stats = useRuntimeStats();
     const statsUnavailable = useRuntimeStatsUnavailable();
@@ -113,10 +116,12 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
     const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     return (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-            {!outputMeterInHome && <div className="flex shrink-0 items-center justify-between gap-2"><MasterOutputMeter running={isRunning} numbers={!simple} /></div>}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+            {input}
+            <SafetyOutput running={isRunning} name={outputName} muted={outputMuted} onCheckOutput={onCheckOutput} />
             <OutputGainControl />
             {compare}
+            {lock}
             {/* 状態の表示が重なって列に収まらないときは、ここだけを縦に送る。上の操作は押し出さない。 */}
             {/* 切り抜きでフォーカスの輪が欠けないよう、輪の分の余白を内側に取り、同じ量を外側で打ち消す。 */}
             <div className="-mx-1 -mb-1 mt-auto flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto p-1 scrollbar-thin">
@@ -194,25 +199,3 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
         </div>
     );
 };
-
-// クリップの印もメーターと同じ葉で描き、右の列の操作へ更新を伝えない。
-function MasterOutputMeter({ running, numbers }: { running: boolean; numbers: boolean }) {
-    const t = useMessages();
-    const meter = useSharedMeter(running, 'output');
-    const isClipping = meter.clipped;
-    return <>
-            {/* Label */}
-            <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
-                <div className="flex items-center gap-2 text-muted-foreground text-ui-control font-medium">
-                    <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
-                    {t('meter.output')}
-                </div>
-            </div>
-
-            {/* Meters */}
-            <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
-                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues numbers={numbers} />
-            </div>
-
-    </>;
-}

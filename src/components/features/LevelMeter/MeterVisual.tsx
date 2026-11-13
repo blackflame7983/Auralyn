@@ -3,10 +3,12 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
-export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false, statusOverlay = false }: {
+export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false, statusOverlay = false, fill = 'success' }: {
     reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean;
     /** false では dBFS 値を出さず、無音・停止などの状態だけを言葉で示す（数値の詳細 OFF）。 */
     numbers?: boolean; scale?: boolean; stackValues?: boolean;
+    /** 正常域だけオーロラの色にする。注意・危険の色は変えない。 */
+    fill?: 'success' | 'aurora';
     /** 本番帯は状態をバーの中に重ね、高さと位置を変えない。 */
     statusOverlay?: boolean;
 }) {
@@ -55,7 +57,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
                 const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;
-                const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : 'bg-success';
+                const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : fill === 'aurora' ? 'meter-fill-aurora' : 'bg-success';
                 return <div key={i} title={orientation === 'vertical' ? t(i === 0 ? 'meter.left' : 'meter.right') : undefined}
                     className={`relative overflow-hidden rounded ${empty ? 'bg-muted/40 ring-border/40' : 'bg-muted ring-border'} ring-1 ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
                     <div className={`absolute inset-0 ${orientation === 'horizontal' ? 'origin-left' : 'origin-bottom'} ${color}`} style={{ transform: orientation === 'horizontal' ? `scaleX(${pct / 100})` : `scaleY(${pct / 100})` }} />

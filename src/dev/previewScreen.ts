@@ -14,7 +14,6 @@ export const previewScreenNames = [
     'troubleshoot',
     'voice-check',
     'help',
-    'large-meter',
     'plugin-browser',
     'presets',
     'template-wizard',
@@ -34,7 +33,6 @@ export interface PreviewScreenControls {
     setIsDiscordGuideOpen: (open: boolean) => void;
     setIsTroubleshootOpen: (open: boolean) => void;
     setIsVoiceCheckOpen: (open: boolean) => void;
-    setIsLargeMeterOpen: (open: boolean) => void;
     setIsBrowserOpen: (open: boolean) => void;
     setIsPresetManagerOpen: (open: boolean) => void;
     setIsTemplateWizardOpen: (open: boolean) => void;
@@ -55,7 +53,6 @@ export function applyPreviewScreen(screen: string, ui: PreviewScreenControls): b
         case 'troubleshoot': ui.setIsTroubleshootOpen(true); return true;
         case 'voice-check': ui.setIsVoiceCheckOpen(true); return true;
         case 'help': return true;
-        case 'large-meter': ui.setIsLargeMeterOpen(true); return true;
         case 'plugin-browser': ui.setIsBrowserOpen(true); return true;
         case 'presets': ui.setIsPresetManagerOpen(true); return true;
         case 'template-wizard': ui.setIsTemplateWizardOpen(true); return true;

@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef } from 'react';
-import { MdLock, MdExpandMore, MdMic, MdMusicNote } from 'react-icons/md';
+import { MdExpandMore, MdMic, MdMusicNote } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -33,7 +33,8 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
         <p role="alert" className="text-ui-support text-warning">{error}</p>
         <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} className={cn(embedded && 'home-action')}>{t('settings.LiveModeControls.236')}</Button>
     </section> : null;
-    if (safetyOnly && !value.armed && !value.transaction && !error && !value.error) return null;
+    // 鍵は右の列。音楽鑑賞でロックだけのときは、ここには出さない。
+    if (safetyOnly && !value.transaction && !error && !value.error) return null;
     if (!registered && !onRegister && !value.transaction && !value.armed && !error && !value.error) return null;
 
     const name = (mode: 'singing' | 'talk') => mode === 'singing' ? t('settings.LiveModeControls.212') : t('settings.LiveModeControls.213');
@@ -66,13 +67,6 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                     : !value.running || value.phase === 'stopped' ? t('liveBar.stopped')
                     : ''}
             </span>}
-            {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" aria-disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby="live-protect-state" onClick={() => { if (!busy && !model.changesBlocked) void model.protect(!value.armed); }}
-                title={t(value.armed ? 'liveBar.unlockHint' : 'liveBar.protect')}
-                className={cn('inline-flex min-h-6 min-w-6 items-center justify-center gap-1.5 rounded-control border px-2 py-1 text-ui-support font-medium transition-colors aria-disabled:opacity-50', !embedded && 'ml-auto',
-                    value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
-                <MdLock aria-hidden="true" className="h-4 w-4" />
-                <span id="live-protect-state" className={value.armed ? "font-semibold" : "sr-only"}>{t(value.armed ? 'liveBar.protectOn' : 'liveBar.protectOff')}</span>
-            </button>}
             {/* 登録後も同じボタンを保ち、設定を閉じたときのフォーカス復帰先を失わない。 */}
             {!safetyOnly && (onRegister || onPrepareSinging) && <details ref={actionsDetails} className="group min-w-0 max-w-full" onKeyDown={event => {
                 if (event.key === 'Escape' && actionsDetails.current?.open) {

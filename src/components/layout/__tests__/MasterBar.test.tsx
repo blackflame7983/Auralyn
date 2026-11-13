@@ -207,8 +207,8 @@ describe('起動時の保存ゲイン復元', () => {
         } as EngineRuntimeStats);
         const view = render(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning={false} />);
         await act(async () => { finishListening(); });
-        // 常設の停止表示はヘッダーへ集約し、メーターの状態名は残す。
-        expect(screen.queryByText('音声停止中')).not.toBeInTheDocument();
+        // 停止の札はホームの「いまの状態」へ集約する。右の列では、メーター自身の状態の語だけが残る。
+        expect(screen.getAllByText('音声停止中').every(node => node.closest('[role="meter"]') !== null || node.classList.contains('invisible'))).toBe(true);
         expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '音声停止中');
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -542,9 +542,7 @@ it('出力音量は1つで、マウスで100%にでき、キーの刻みと30ms�
     } finally { vi.unstubAllGlobals(); }
 });
 
-it.each([true, false])('本番帯に出力表示があればフッターに重ねず、なければ残す（稼働=%s）', isRunning => {
-    const view = render(<MasterBar isRunning={isRunning} outputMeterInHome />);
-    expect(screen.queryByRole('meter', { name: message('ja', 'meter.output') })).toBeNull();
-    view.rerender(<MasterBar isRunning={isRunning} />);
-    expect(screen.getByRole('meter', { name: message('ja', 'meter.output') })).toBeInTheDocument();
+it.each([true, false])('出力メーターは右の列に常に1つ出す（稼働=%s）', isRunning => {
+    render(<MasterBar isRunning={isRunning} />);
+    expect(screen.getAllByRole('meter', { name: message('ja', 'meter.output') })).toHaveLength(1);
 });

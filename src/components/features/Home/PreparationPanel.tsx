@@ -23,6 +23,8 @@ interface Props {
     mutedInStrip?: boolean;
     diagnosticAttention?: boolean;
     stoppedInStrip?: boolean;
+    /** いまの状態の札と同じ文言のとき、ここの状態文は出さない。 */
+    statusCovered?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
@@ -49,7 +51,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
+export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -124,7 +126,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {!open && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-ui-support">
-                    {!homeActionInStrip && !(mutedInStrip && observation.availability === 'muted') && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
+                    {!statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted') && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
                     {devices && <span className="min-w-0 text-muted-foreground">{devices}</span>}
                 </span>}
             </div>

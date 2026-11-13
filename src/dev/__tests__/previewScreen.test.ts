@@ -22,7 +22,6 @@ function controls(): PreviewScreenControls {
         setIsDiscordGuideOpen: vi.fn(),
         setIsTroubleshootOpen: vi.fn(),
         setIsVoiceCheckOpen: vi.fn(),
-        setIsLargeMeterOpen: vi.fn(),
         setIsBrowserOpen: vi.fn(),
         setIsPresetManagerOpen: vi.fn(),
         setIsTemplateWizardOpen: vi.fn(),

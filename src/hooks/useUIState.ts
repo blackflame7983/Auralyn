@@ -73,7 +73,6 @@ export const useUIState = () => {
     const [crashError, setCrashError] = useState<string | null>(null);
     const [crashExit, setCrashExit] = useState<AudioEngineExit>();
     const [isPresetManagerOpen, setIsPresetManagerOpen] = useState(false);
-    const [isLargeMeterOpen, setIsLargeMeterOpen] = useState(false);
     const [isTroubleshootOpen, setIsTroubleshootOpen] = useState(false);
     const [isVoiceCheckOpen, setIsVoiceCheckOpen] = useState(false);
 
@@ -110,8 +109,6 @@ export const useUIState = () => {
         setCrashExit,
         isPresetManagerOpen,
         setIsPresetManagerOpen,
-        isLargeMeterOpen,
-        setIsLargeMeterOpen,
         isLicenseModalOpen,
         setIsLicenseModalOpen,
         isTroubleshootOpen,
