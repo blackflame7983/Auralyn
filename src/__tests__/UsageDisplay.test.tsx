@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '../App';
 import { saveBeginnerMode } from '../hooks/useBeginnerMode';
-import { saveVstPanelOpen } from '../hooks/useVstPanel';
 
 const { audioState, modalCallbacks } = vi.hoisted(() => ({
     audioState: { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true as boolean | null },
@@ -31,36 +30,38 @@ vi.mock('@/components/features/PluginRack/PluginList', () => ({
         <span data-testid="plugins" data-audio-ready={audioReady}>{plugins.map((p) => p.id).join()}</span>
     ),
 }));
-vi.mock('@/components/layout/ModalLayer', () => ({
-    ModalLayer: ({ onPluginAdded, ui }: { onPluginAdded: () => void; ui: { setIsWizardOpen: (value: boolean) => void } }) => {
+vi.mock('@/components/layout/ModalLayer', async () => {
+    const { useEffect } = await import('react');
+    const { registerSettingsCloser } = await import('@/components/layout/pageLeave');
+    return { ModalLayer: ({ onPluginAdded, ui }: { onPluginAdded: () => void; ui: { setIsWizardOpen: (value: boolean) => void; applyNavigation: (target: { page: 'home' }) => void } }) => {
         modalCallbacks.onPluginAdded = onPluginAdded;
         modalCallbacks.setWizardOpen = ui.setIsWizardOpen;
+        useEffect(() => registerSettingsCloser(() => ui.applyNavigation({ page: 'home' })), [ui.applyNavigation]);
         return <span data-testid="modals">設定入口</span>;
-    },
-}));
-vi.mock('@/components/layout/AppShell', async () => {
-    // 右パネルの開閉は共有の保存値（useVstPanel）で行う。本物の AppShell と同じく、開いている間だけラックを出す。
-    const { useVstPanel, saveVstPanelOpen } = await import('@/hooks/useVstPanel');
-    return { AppShell: ({ children, overlays, vstPanel }: { children: React.ReactNode; overlays?: React.ReactNode; vstPanel?: React.ReactNode }) => {
-        const [open] = useVstPanel();
-        return <>
-            <button onClick={() => saveVstPanelOpen(true)}>VSTを編集</button>
-            {open && vstPanel}
-            {overlays}
-            {children}
-        </>;
     } };
+});
+vi.mock('@/components/layout/AppShell', async () => {
+    const { PageSlot } = await import('@/components/layout/pageSlot');
+    return { AppShell: ({ children, overlays, onOpenVst, onCloseSettings }: {
+        children: React.ReactNode; overlays?: React.ReactNode;
+        onOpenVst?: (focusAdd?: boolean) => void; onCloseSettings?: () => void;
+    }) => <>
+        <button type="button" onClick={() => onOpenVst?.(false)}>VSTを編集</button>
+        <button type="button" onClick={() => onCloseSettings?.()}>ホーム</button>
+        <PageSlot />
+        {overlays}
+        {children}
+    </> };
 });
 vi.mock('sonner', () => ({ Toaster: () => null, toast: { success: vi.fn() } }));
 
 beforeEach(() => {
     localStorage.clear();
     localStorage.setItem('vst_host_wizard_done', 'true');
-    saveVstPanelOpen(false);
     Object.assign(audioState, { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true });
 });
 afterEach(cleanup);
-it('VST 構成は右パネルを開いたときだけ出し、エフェクトと全チュートリアルを保持する', () => {
+it('VST のページを開いたときだけ構成を出し、エフェクトと全チュートリアルを保持する', () => {
     render(<App />);
     expect(screen.queryByTestId('plugins')).not.toBeInTheDocument();
     expect(screen.getByTestId('modals')).toBeVisible();
@@ -83,7 +84,7 @@ it('以前の詳細表示でも声用途では閉じて始め、明示的に開�
     expect(screen.getByTestId('plugins')).toBeVisible();
     act(() => saveBeginnerMode(true));
     expect(screen.getByTestId('plugins')).toBeVisible();
-    act(() => saveVstPanelOpen(false));
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     expect(screen.queryByTestId('plugins')).not.toBeInTheDocument();
     expect(screen.queryAllByTestId('tutorial')).toHaveLength(0);
 });
@@ -94,11 +95,10 @@ it.each([
     { label: '停止中', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: true },
     { label: '稼働未確認', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: null },
     { label: '開始失敗', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: false },
-])('$labelでも右パネルのVST準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
+])('$labelでも開いたVSTのページは残し、チュートリアルは稼働確認後まで表示しない', state => {
     Object.assign(audioState, state);
-    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
-    saveVstPanelOpen(true);
     render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     expect(screen.getByTestId('plugins')).toBeVisible();
     expect(screen.getByTestId('plugins')).toHaveAttribute('data-audio-ready', 'false');
     expect(screen.queryAllByTestId('tutorial')).toHaveLength(0);
@@ -107,9 +107,8 @@ it.each([
 });
 
 it('停止中の遅い追加完了で進めず、稼働再開時に同じチュートリアル手順へ戻る', () => {
-    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
-    saveVstPanelOpen(true);
     const view = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     const activeStep = () => screen.getAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBe('click_add_effect');
     const lateAddition = modalCallbacks.onPluginAdded!;
@@ -135,9 +134,8 @@ it('停止中の遅い追加完了で進めず、稼働再開時に同じチュ�
 
 it('同じウィンドウの完了通知後もモーダル中は隠し、閉じて稼働確認できた時に最初の案内を表示する', () => {
     localStorage.removeItem('vst_host_wizard_done');
-    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
-    saveVstPanelOpen(true);
     const view = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     const activeStep = () => screen.queryAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBeUndefined();
     act(() => modalCallbacks.setWizardOpen?.(true));

@@ -34,7 +34,7 @@ function Home({ extra = false }: { extra?: boolean }) {
         <section id="strip" data-top="0" data-h="100" />
         <section id="chain" data-top="100" data-h="200"><div id="row" data-layout-motion data-top="120" data-left="0" data-h="40" /></section>
         {extra && <section id="extra" data-top="300" data-h="50" />}
-    </div><div id="space" className="vst-panel-space" /></div>;
+    </div></div>;
 }
 const el = (id: string) => document.getElementById(id)!;
 const calls = (id: string) => animate.mock.calls.filter((_, index) => animate.mock.contexts[index] === el(id)).map(call => (call as unknown[])[0]);
@@ -79,82 +79,7 @@ describe('ホームの配置の補間（#298）', () => {
     });
 });
 
-// jsdom に TransitionEvent がないため、実際のバブリング経路とプロパティを再現する。
-const transition = (id: string, type: string, propertyName = 'width') => {
-    const event = new Event(type, { bubbles: true });
-    Object.defineProperties(event, { propertyName: { value: propertyName }, pseudoElement: { value: '' } });
-    act(() => { el(id).dispatchEvent(event); });
-};
-const frame = () => act(() => { vi.advanceTimersByTime(16); });
-
-describe('幅変更と区画補間の競合防止（#345）', () => {
-    it.each(['transitionend', 'transitioncancel'])('%s 後に1回だけ位置を記録し、通知中は計測も補間もしない', end => {
-        render(<Home />);
-        reads.mockClear();
-        transition('workspace', 'transitionrun', 'max-width');
-        transition('space', 'transitionrun');
-        el('chain').dataset.top = '160';
-        act(() => { notify?.(); notify?.(); });
-        expect(reads).not.toHaveBeenCalled();
-        expect(animate).not.toHaveBeenCalled();
-        transition('space', end);
-        frame();
-        expect(reads).not.toHaveBeenCalled();
-        transition('workspace', end, 'max-width');
-        act(() => notify?.());
-        expect(reads).not.toHaveBeenCalled();
-        frame();
-        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
-        expect(animate).not.toHaveBeenCalled();
-        // 直後の通常通知も遷移前へ引き戻さず、以後の内容変更は補間できる。
-        act(() => notify?.());
-        expect(animate).not.toHaveBeenCalled();
-        el('chain').dataset.top = '180';
-        act(() => notify?.());
-        expect(calls('chain')).toEqual([[{ transform: 'translate(0px, -20px)' }, { transform: 'translate(0px, 0px)' }]]);
-    });
-
-    it('開閉の反転では cancel と次の run の間を計測しない', () => {
-        render(<Home />);
-        reads.mockClear();
-        transition('space', 'transitionrun');
-        transition('space', 'transitioncancel');
-        transition('space', 'transitionrun');
-        frame();
-        act(() => notify?.());
-        expect(reads).not.toHaveBeenCalled();
-        transition('space', 'transitionend');
-        frame();
-        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
-    });
-
-    it('次のrunが古いcancelより先に届いても、実際の幅遷移が終わるまで計測しない', () => {
-        render(<Home />);
-        let running = true;
-        Object.defineProperty(el('space'), 'getAnimations', { configurable: true, value: () => running ? [{ transitionProperty: 'width', playState: 'running' }] : [] });
-        reads.mockClear();
-        transition('space', 'transitionrun');
-        transition('space', 'transitionrun');
-        transition('space', 'transitioncancel');
-        frame();
-        act(() => notify?.());
-        expect(reads).not.toHaveBeenCalled();
-        frame();
-        expect(reads).not.toHaveBeenCalled();
-        running = false;
-        frame();
-        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
-    });
-
-    it('子要素の色・transform や無関係な幅の遷移は計測を止めない', () => {
-        render(<Home />);
-        transition('space', 'transitionrun', 'transform');
-        transition('row', 'transitionrun');
-        el('chain').dataset.top = '160';
-        act(() => notify?.());
-        expect(calls('chain')).toHaveLength(1);
-    });
-
+describe('窓の大きさの変更と区画補間（#345）', () => {
     it('窓を連続リサイズしている間は既存補間を止め、静まった位置を1回だけ記録する', () => {
         render(<Home />);
         el('chain').dataset.top = '160';
@@ -175,45 +100,8 @@ describe('幅変更と区画補間の競合防止（#345）', () => {
         expect(animate).not.toHaveBeenCalled();
     });
 
-    it('窓のリサイズとパネル遷移の両方が終わるまで待つ', () => {
-        render(<Home />);
-        reads.mockClear();
-        transition('space', 'transitionrun');
-        act(() => window.dispatchEvent(new Event('resize')));
-        act(() => vi.advanceTimersByTime(200));
-        expect(reads).not.toHaveBeenCalled();
-        transition('space', 'transitioncancel');
-        frame();
-        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
-    });
-
-    it('動きを減らす設定では終了後も補間しない', () => {
-        vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
-        render(<Home />);
-        transition('space', 'transitionrun');
-        el('chain').dataset.top = '160';
-        transition('space', 'transitionend');
-        frame();
-        act(() => notify?.());
-        expect(animate).not.toHaveBeenCalled();
-    });
-
-    it('予約要素が終了通知前に取り外されても計測を再開する', async () => {
-        render(<Home />);
-        reads.mockClear();
-        transition('space', 'transitionrun');
-        await act(async () => { el('space').remove(); });
-        frame();
-        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
-        el('chain').dataset.top = '160';
-        act(() => notify?.());
-        expect(calls('chain')).toHaveLength(1);
-    });
-
     it('アンマウント時は予約済みの計測とリスナーを解除する', () => {
         const view = render(<Home />);
-        transition('space', 'transitionrun');
-        transition('space', 'transitionend');
         view.unmount();
         reads.mockClear();
         act(() => { vi.advanceTimersByTime(200); window.dispatchEvent(new Event('resize')); vi.advanceTimersByTime(200); });

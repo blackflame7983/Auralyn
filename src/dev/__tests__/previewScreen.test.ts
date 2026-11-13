@@ -6,7 +6,6 @@ import { useUIState } from '@/hooks/useUIState';
 import { applyPreviewScreen, previewScreenNames, type PreviewScreenControls } from '../previewScreen';
 import { applyPreviewStorage, previewStorageKeys } from '../previewMock';
 
-vi.mock('@/hooks/useVstPanel', () => ({ saveVstPanelOpen: vi.fn() }));
 vi.mock('@/lib/streamMixPanel', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/streamMixPanel')>(), openStreamMixPanel: vi.fn() }));
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 
@@ -26,6 +25,7 @@ function controls(): PreviewScreenControls {
         setIsPresetManagerOpen: vi.fn(),
         setIsTemplateWizardOpen: vi.fn(),
         setIsLicenseModalOpen: vi.fn(),
+        openVst: vi.fn(),
     };
 }
 
