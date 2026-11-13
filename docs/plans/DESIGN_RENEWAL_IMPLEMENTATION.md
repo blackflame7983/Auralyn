@@ -139,6 +139,7 @@ npm run release:check
 
 - `e2e/browser/` の試験の型は、1つ目でだけ検査される。段階 A では、これを手元で実行しておらず、足した試験の型の読み込み元の誤りを CI で初めて見つけた（PR #520）。
 - `npm run test:release` は PowerShell で実行する。Git Bash では `tar` が Windows のパスを扱えず、変更と関係なく2件失敗する。
+- CI の `browser` は、`npx vite build` のあと本番ビルドを配って2並列で試験する。手元の `npm run test:e2e` は開発サーバーで直列なので、同じ条件ではない。本番ビルドでだけ出る失敗を疑うときは、`npx vite build` のあと `E2E_PREVIEW=1` を付けて `npm run test:e2e` を実行する（`playwright.config.ts`）。
 - CI の手順が変わっていないかは、段階ごとにワークフローのファイルで確かめる。
 - Rust は変えないので、`cargo` の確認は不要。変えた場合は `docs/BUILD_GUIDE.md` の手順を足す。
 - 画面は、開発プレビュー（`?mock=live-home`、`stopped-home`、`first-run`）のスクリーンショットを、完了の条件3の4サイズ × 3テーマのうち代表で撮る。保存先は `docs/verification/` の下に段階ごとのフォルダーを作る。
