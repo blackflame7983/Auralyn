@@ -2,12 +2,12 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Edit VST", "Add"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Edit VST", "Add", "Voice Check", "Listen and compare"]
 ---
 
 ## Current status {#stage}
 
-Check “Running” or “Audio stopped”. Use “Choose destination” to select a purpose such as streaming or a call. “Sing” and “Talk” switch saved adjustments. An unsaved adjustment is shown as “Custom sound”. There is at most one primary button.
+Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. “Sing” and “Talk” switch there too. An unsaved adjustment is shown as “Custom sound”. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. While listening to music, the label is “Listen and compare”.
 
 “Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
