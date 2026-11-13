@@ -4,7 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
-beforeEach(() => { vi.mocked(invoke).mockReset(); localStorage.clear(); });
+beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    localStorage.clear();
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', input: '', output: '', sampleRate: 48000, bufferSize: 512 }));
+});
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 function open(status: unknown) {

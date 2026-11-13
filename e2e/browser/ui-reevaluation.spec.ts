@@ -35,8 +35,8 @@ for (const locale of ['ja', 'en'] as const) {
             localStorage.setItem('vst_host_tutorial_completed', 'true');
         }, locale);
         await page.goto('/');
-        await page.getByRole('button', { name: t('rail.connectName'), exact: true }).click();
-        const settings = page.getByRole('dialog', { name: t('common.settings'), exact: true });
+        await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: t('rail.settings'), exact: true }).click();
+        const settings = page.locator('[data-settings-page]');
         await settings.getByRole('tab', { name: t('settings.shortcuts'), exact: true }).click();
         const save = settings.getByRole('button', { name: t('settings.ShortcutsPanel.390'), exact: true });
         await expect(save).toBeVisible();

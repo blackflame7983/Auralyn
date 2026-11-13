@@ -38,9 +38,8 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.setViewportSize(zoomed ? { width: 900, height: 600 } : { width: 1280, height: 800 });
         await prepare(page, locale, theme);
         if (zoomed) await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
-        await dialog.getByRole('tab', { name: message(locale, 'settings.sound'), exact: true }).click();
+        await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.sound'), exact: true }).click();
+        const dialog = page.locator('[data-settings-page]');
         const section = dialog.locator('#live-mode-settings');
         await expect(section.getByText(message(locale, 'settings.LiveModeControls.232'), { exact: true })).toHaveCount(2);
         await aligned(section, locale);
@@ -69,21 +68,21 @@ test.describe('未登録の本番帯', () => {
             await page.screenshot({ path: info.outputPath('unregistered.png'), animations: 'disabled' });
             await actions.click();
             await live.getByRole('button', { name: message(locale, 'liveBar.register'), exact: true }).click();
-            const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+            const dialog = page.locator('[data-settings-page]');
             const section = dialog.locator('#live-mode-settings');
             for (const modeKey of ['settings.LiveModeControls.212', 'settings.LiveModeControls.213'] as const) {
                 await expect(section.getByRole('heading')).toBeFocused();
                 await section.getByRole('button', { name: message(locale, 'settings.mode.save', { mode: message(locale, modeKey) }), exact: true }).click();
                 await expect(section.getByText(message(locale, 'settings.LiveModeControls.232'), { exact: true })).toHaveCount(modeKey.endsWith('212') ? 1 : 2);
                 await aligned(section, locale);
-                await page.keyboard.press('Escape');
-                await expect(actions).toBeFocused();
+                await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
+                await expect(actions).toBeVisible();
                 expect(await controls.evaluate(el => getComputedStyle(el).marginInlineStart)).toBe('0px');
                 await expect(page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message(locale, 'liveBar.protect'), exact: true })).toBeVisible();
                 await actions.click();
                 await live.getByRole('button', { name: message(locale, 'liveBar.editRegistration'), exact: true }).click();
             }
-            await page.keyboard.press('Escape');
+            await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
             await page.setViewportSize({ width: 900, height: 600 });
             await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
             await expect(actions).toBeVisible();

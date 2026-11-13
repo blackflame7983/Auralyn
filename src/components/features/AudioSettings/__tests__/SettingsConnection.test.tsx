@@ -370,14 +370,15 @@ it('U03: エラー時もデバイス選択フォームを維持し、また未�
     fireEvent.change(micSelect, { target: { value: 'Broken Mic' } });
     expect(screen.getByText('変更予定：マイク')).toBeInTheDocument();
 
-    // 別タブ（外観・表示）へ移動しても未保存変更と適用フッターが消えないことを確認する
+    // システムの再起動へ進んでも接続の変更は捨てない。適用の行は接続のページに残る。
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    expect(screen.queryByText('変更予定：マイク')).not.toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'オーディオ' }), { button: 0, ctrlKey: false });
     expect(screen.getByText('変更予定：マイク')).toBeVisible();
     const saveBtn = screen.getByRole('button', { name: '接続を保存して再起動' });
     expect(saveBtn).toBeEnabled();
 
-    // オーディオタブへ戻り、エラーが発生してもフォームが消えず別デバイスを選び直せることを確認する
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'オーディオ' }), { button: 0, ctrlKey: false });
+    // エラーが発生してもフォームが消えず、別の機器を選び直せる。
     fireEvent.click(saveBtn);
     await screen.findByText(/Device start rejected/);
     expect(screen.getByRole('combobox', { name: 'マイク' })).toBeVisible();

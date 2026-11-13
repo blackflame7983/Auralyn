@@ -16,8 +16,8 @@ for (const input of ['pointer', 'keyboard'] as const) test(`詳しく調整は�
     if (input === 'pointer') await more.click(); else await more.press('Enter');
     const adjust = page.getByRole('menuitem', { name: '詳しく調整', exact: true });
     if (input === 'pointer') await adjust.click(); else await adjust.press('Enter');
-    const settings = page.getByRole('dialog', { name: '設定', exact: true });
-    await expect(settings.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
+    const settings = page.locator('[data-settings-page]');
+    await expect(settings).toHaveAttribute('data-settings-page', 'sound');
     await expect(settings.getByRole('heading', { name: 'ノイズ低減', exact: true })).toBeInViewport();
     await expect(settings.locator('#singing-settings')).not.toHaveAttribute('open');
 });
@@ -43,8 +43,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
     await actions.click();
     await register.click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-    await expect(dialog.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
+    const dialog = page.locator('[data-settings-page]');
+    await expect(dialog).toHaveAttribute('data-settings-page', 'sound');
     const section = dialog.locator('#live-mode-settings');
     await expect(section.getByRole('heading', { name: 'モード登録', exact: true })).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
@@ -60,17 +60,18 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await page.screenshot({ path: testInfo.outputPath('live-registration.png') });
     await saveSinging.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
-    await page.keyboard.press('Escape');
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
     const modes = page.getByRole('region', { name: '状態の帯', exact: true }).getByRole('radiogroup', { name: 'モード切替', exact: true });
     await expect(modes.getByRole('radio', { name: '歌', exact: true })).toBeEnabled();
     await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeDisabled();
-    await expect(actions).toBeFocused();
+    await expect(actions).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true })).toBeFocused();
     await actions.click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     await expect(saveTalk).toBeInViewport();
     await saveTalk.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(2);
-    await page.keyboard.press('Escape');
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
     await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeEnabled();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(2);
     await expect(register).toHaveCount(0);
@@ -84,20 +85,20 @@ test('設定の通常操作を先に置き、アイコンと必要時の説明�
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-    for (const name of ['オーディオ', '音づくり', 'OBS連携', '外観', 'ホットキー', 'システム']) {
-        const tab = dialog.getByRole('tab', { name, exact: true });
-        await expect(tab.locator('svg[aria-hidden=true]')).toHaveCount(1);
+    const dialog = page.locator('[data-settings-page]');
+    const rail = page.getByRole('navigation', { name: '行き先' });
+    for (const name of ['ホーム', '音づくり', 'VST', '接続（オーディオの設定）', '設定']) {
+        await expect(rail.getByRole('button', { name, exact: true }).locator('svg[aria-hidden=true]')).toHaveCount(1);
     }
     const driver = dialog.getByRole('combobox', { name: '接続方式', exact: true });
     const permissions = dialog.getByText('マイクのアクセス許可を確認する', { exact: true });
     const tuning = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(tuning).not.toHaveAttribute('open', '');
-    await tuning.locator('summary').click();
+    await tuning.locator('summary').filter({ hasText: '接続方式・音切れの設定' }).click();
     await driver.scrollIntoViewIfNeeded();
     await expect(driver).toBeInViewport();
     await expect(permissions).not.toBeInViewport();
-    await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
+    await rail.getByRole('button', { name: '音づくり', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: '声を整える', exact: true })).toBeInViewport();
     await dialog.getByRole('button', { name: '声を整える機能の処理内容', exact: true }).click();
     const help = page.getByRole('dialog', { name: '声を整える機能の処理内容', exact: true });

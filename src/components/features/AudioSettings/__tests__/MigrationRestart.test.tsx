@@ -21,6 +21,8 @@ function Harness() {
     const plugins = usePlugins();
     return <>
         <button onClick={() => ui.setIsSettingsOpen(true)}>設定を表示</button>
+        <button onClick={() => ui.setIsSettingsOpen(true, 'system')}>システムを開く</button>
+        <button onClick={() => ui.setIsSettingsOpen(true, 'audio')}>接続を開く</button>
         <output data-testid="chain">{plugins.plugins.map(p => p.path).join(',')}</output>
         <ModalLayer ui={ui} audioConfig={audio.audioConfig} handleConfigUpdate={audio.handleConfigUpdate}
             pluginsApi={plugins} onPluginAdded={() => {}} />
@@ -133,7 +135,7 @@ it.each([
             expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
             await openSystemTab();
             expect(screen.getByRole('button', { name: '音声処理を再起動' })).toBeDisabled();
-            fireEvent.keyDown(screen.getByRole('tab', { name: 'オーディオ' }), { key: 'Enter' });
+            fireEvent.click(screen.getByRole('button', { name: '接続を開く' }));
             expect(enginePaths).toEqual([]);
             expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
             expect(invoke).not.toHaveBeenCalledWith('restart_audio_engine', expect.anything());

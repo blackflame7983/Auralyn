@@ -26,7 +26,12 @@ async function fixture(page: Page, configPresent = true, running = false, panelS
         };
     }, { configPresent, running, panelShown });
 }
-async function settings(page: Page) { await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click(); return page.getByRole('dialog').first(); }
+async function settings(page: Page) {
+    await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
+    const surface = page.locator('[data-settings-page]');
+    await expect(surface).toHaveAttribute('data-settings-page', 'connect');
+    return surface;
+}
 async function streamMix(page: Page) { const panel = page.locator('#stream-mix-panel'); await expect(panel).toBeVisible(); return panel; }
 async function keyboardOpen(page: Page, element: Locator) { await element.scrollIntoViewIfNeeded(); await element.focus(); await page.keyboard.press('Enter'); }
 async function noOverflow(dialog: Locator) { expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1); }
@@ -123,7 +128,9 @@ test('配信ミックスのパネルは既定で出さず、ホームの状態�
     // オーディオタブには機器と接続だけを残し、配信ミックスの操作は置かない。
     await expect(dialog.locator('#mixing-settings')).toHaveCount(0);
     const show = dialog.getByRole('checkbox', { name: 'ホームにパネルを出す' }); await expect(show).toBeChecked(); await show.uncheck();
-    await page.keyboard.press('Escape'); await expect(page.locator('#stream-mix-panel')).toHaveCount(0);
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+    await expect(page.locator('[data-settings-page]')).toHaveCount(0);
+    await expect(page.locator('#stream-mix-panel')).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('auralyn_stream_mix_panel'))).toBe('hidden');
 });
 
@@ -134,12 +141,12 @@ test('配信ミックスのパネルから出力先の区画へ移り、音づ�
     const panel = await streamMix(page);
     await panel.locator('#mixing-settings > summary').click();
     await panel.getByRole('button', { name: '配信用の分離出力を設定' }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
     await expect(dialog.locator('#live-output-settings select').first()).toBeFocused();
-    await dialog.getByRole('tab', { name: '音づくり' }).click();
-    await dialog.getByRole('button', { name: '配信ミックスの設定' }).click();
-    await expect(page.getByRole('dialog', { name: '設定', exact: true })).toHaveCount(0);
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '音づくり', exact: true }).click();
+    await page.locator('[data-settings-page]').getByRole('button', { name: '配信ミックスの設定' }).click();
+    await expect(page.locator('[data-settings-page]')).toHaveCount(0);
     await expect(page.locator('#stream-mix-panel #mixing-settings > summary')).toBeFocused();
 });
 

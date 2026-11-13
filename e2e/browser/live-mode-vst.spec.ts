@@ -58,7 +58,8 @@ test('登録したVST構成で切替を始め、進行中は二重操作を防�
     await expect(modes).toContainText('切替中は音が止まります');
     await modes.getByRole('button', { name: '歌モードの組み合わせを保存', exact: true }).click();
     await expect(modes).toContainText('保存済みのVST：歌用VST');
-    await page.keyboard.press('Escape');
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+    await expect(page.locator('[data-settings-page]')).toHaveCount(0);
     const singing = page.getByRole('radio', { name: '歌', exact: true });
     await singing.click();
     await expect(singing).toBeDisabled();

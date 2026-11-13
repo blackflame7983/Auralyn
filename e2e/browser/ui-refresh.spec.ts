@@ -82,6 +82,9 @@ test('音の流れは共有メーターで描き、動きを減らす設定で�
     await expect(graph).toHaveAttribute('data-flow', 'still');
     await expect(page.locator('.live-aurora')).toHaveCount(0);
     await page.getByRole('button', { name: message('ja', 'rail.connectName'), exact: true }).click();
+    await page.getByRole('navigation', { name: message('ja', 'rail.label') }).getByRole('button', { name: message('ja', 'rail.settings'), exact: true }).click();
+    const leave = page.getByRole('alertdialog', { name: message('ja', 'settings.leave.title') });
+    if (await leave.isVisible()) await leave.getByRole('button', { name: message('ja', 'settings.leave.discard'), exact: true }).click();
     await page.getByRole('tab', { name: message('ja', 'settings.appearance'), exact: true }).click();
     await expect(page.getByRole('switch', { name: /オーロラ/ })).toHaveCount(0);
 });

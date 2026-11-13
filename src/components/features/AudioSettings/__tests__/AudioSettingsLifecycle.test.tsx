@@ -6,6 +6,7 @@ import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-libra
 import { afterEach, beforeAll, it, expect, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ModalLayer } from '@/components/layout/ModalLayer';
+import { requestSettingsClose } from '@/components/layout/pageLeave';
 import { useUIState } from '@/hooks/useUIState';
 import type { ObsSetupHistory } from '@/api/obs';
 
@@ -20,6 +21,9 @@ function AppModals() {
     return (
         <>
             <button onClick={() => ui.setIsSettingsOpen(true)}>設定を表示</button>
+            <button onClick={() => ui.openSoundSettings()}>音づくりを開く</button>
+            <button onClick={() => ui.openObsSettings()}>OBS連携を開く</button>
+            <button onClick={() => requestSettingsClose()}>ホーム</button>
             <button onClick={ui.openObsSettings}>OBSを整える</button>
             <button onClick={() => ui.setIsOBSGuideOpen(true)}>ガイドを直接表示</button>
             <button onClick={() => ui.setIsPresetManagerOpen(true)}>配信状態の管理を開く</button>
@@ -76,7 +80,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
     await waitFor(() => expect(connected).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     expect(await screen.findByRole('tab', { name: '今の設定' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
@@ -128,18 +132,18 @@ it('設定画面を閉じると切断し、再接続後も履歴は残して誤�
     });
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    fireEvent.keyDown(await screen.findByRole('tab', { name: 'OBS連携' }), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'OBS連携を開く' }));
     const connect = await screen.findByRole('button', { name: '接続' });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
     fireEvent.click(await screen.findByRole('button', { name: '変更予定を確認する' }));
     fireEvent.click(await screen.findByRole('button', { name: 'この変更を適用する' }));
     await screen.findByRole('button', { name: '変更 #1 を元に戻す' });
-    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     await waitFor(() => expect(connected).toBe(false));
     expect(history).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    fireEvent.keyDown(await screen.findByRole('tab', { name: 'OBS連携' }), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'OBS連携を開く' }));
     expect(await screen.findByRole('button', { name: '変更 #1 を元に戻す' })).toBeDisabled();
     await screen.findByText(/現在の接続では安全に復元できません/);
     const reconnect = await screen.findByRole('button', { name: '接続' });
@@ -169,12 +173,9 @@ it('OBSの入口からはOBSタブを開き、通常の設定入口はオーデ�
         'true',
     );
     expect(invoke).not.toHaveBeenCalledWith('connect_obs', expect.anything());
-    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    expect(await screen.findByRole('tab', { name: 'オーディオ' })).toHaveAttribute(
-        'aria-selected',
-        'true',
-    );
+    expect(await screen.findByRole('heading', { level: 1, name: '接続' })).toBeVisible();
 });
 
 function timingBackend() {
@@ -260,7 +261,7 @@ it('認証は既存設定へ進み、閉じるとタイミング最終段へ戻�
     fireEvent.change(screen.getByRole('textbox', { name: 'OBSホスト名' }), { target: { value: 'authenticated-host' } });
     fireEvent.change(screen.getByLabelText('OBSパスワード'), { target: { value: 'private-test-value' } });
     fireEvent.click(connect); await screen.findByRole('button', { name: '切断' });
-    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     await screen.findByText(/現在のOBS接続を利用します/);
     expect(screen.getByRole('combobox', { name: '比較するもの' })).toBeInTheDocument();
     expect(backend.calls('disconnect_obs')).toHaveLength(0);
@@ -276,8 +277,8 @@ it('認証は既存設定へ進み、閉じるとタイミング最終段へ戻�
     hidden.mockRestore();
     const afterClose = backend.calls('disconnect_obs').length;
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    await screen.findByRole('tab', { name: 'オーディオ' });
-    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    await screen.findByRole('heading', { level: 1, name: '接続' });
+    fireEvent.click(screen.getByRole('button', { name: 'ホーム' }));
     await act(async () => {});
     expect(backend.calls('disconnect_obs')).toHaveLength(afterClose);
 });
@@ -291,7 +292,7 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     render(<AppModals />);
     expect(builtin).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    fireEvent.keyDown(await screen.findByRole('tab', { name: '音づくり' }), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: '音づくりを開く' }));
     const defaults = await screen.findByRole('button', { name: '歌向けの音から始める' });
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);

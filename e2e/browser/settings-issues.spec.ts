@@ -45,7 +45,7 @@ async function openSettings(page: Page) {
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     await expect(dialog.getByRole('combobox', { name: '接続方式', exact: true, includeHidden: true })).toBeAttached();
     return dialog;
 }
@@ -57,7 +57,7 @@ test('稼働中は設定差分で再起動を有効化し、元に戻すと無�
     await expect(dialog.getByText('変更はありません')).toBeVisible();
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).not.toHaveAttribute('open');
-    await details.locator('summary').click();
+    await details.locator('summary').filter({ hasText: '接続方式・音切れの設定' }).click();
     await expect(details.getByRole('heading', { name: '音の途切れにくさ' })).toBeVisible();
     await expect(details.getByRole('radio', { name: '標準', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(details.getByRole('radio', { name: /48 kHz/ })).toHaveAttribute('aria-checked', 'true');
@@ -74,7 +74,7 @@ test('保存済み256サンプルは数値選択として復元する', async ({
     await page.addInitScript(saved => localStorage.setItem('vst_host_audio_config', JSON.stringify({ ...saved, bufferSize: 256 })), config);
     const dialog = await openSettings(page);
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
-    if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
+    if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').filter({ hasText: '接続方式・音切れの設定' }).click();
     await expect(details.getByRole('radio', { name: '数値で指定', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(details.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
     await expect(dialog.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
@@ -114,7 +114,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
     await expect(entry).toBeVisible();
     await expect(page.getByRole('button', { name: '直近で音切れを検出' })).toBeVisible();
     await entry.click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).toHaveAttribute('open');
     await expect(details.getByRole('radio', { name: 'おまかせ', exact: true })).toBeFocused();
@@ -125,6 +125,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
 test('ホットキーは未設定を示し、一覧から変更・取消・保存できる', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const dialog = await openSettings(page);
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
     await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
     const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: '緊急ミュート（オン）' }) });
     await expect(field.locator('[data-shortcut-binding]')).toHaveText('未設定');
@@ -158,6 +159,7 @@ test('ホットキーは未設定を示し、一覧から変更・取消・保�
 
 test('OBS接続後は接続先を折りたたみ、明示操作で確認できる', async ({ page }) => {
     const dialog = await openSettings(page);
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
     await dialog.getByRole('tab', { name: 'OBS連携', exact: true }).click();
     const host = dialog.getByRole('textbox', { name: 'OBSホスト名' });
     await expect(host).toBeVisible();
@@ -178,16 +180,28 @@ for (const theme of ['light', 'dark', 'gaming']) {
             await page.goto('/');
             // CSS拡大で狭い表示を検査する。Windows実DPIやブラウザ本来のズームではない。
             await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
-            await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-            const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-            for (const tab of ['オーディオ', 'ホットキー', 'システム', '外観']) {
+            const rail = page.getByRole('navigation', { name: '行き先' });
+            await rail.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
+            const dialog = page.locator('[data-settings-page]');
+            await expect(dialog.getByRole('heading', { level: 1, name: '接続' })).toBeInViewport();
+            // CSS拡大は 100vh の下端を画面の外へ出す。保存ボタンはページの下端に固定されていることだけを見る。
+            const saveInPage = await dialog.getByRole('button', { name: /保存して(開始|再起動)/ }).evaluate(button => {
+                const pageBox = button.closest('[data-settings-page]')!.getBoundingClientRect();
+                const box = button.getBoundingClientRect();
+                return box.top >= pageBox.top - 1 && box.bottom <= pageBox.bottom + 1;
+            });
+            expect(saveInPage).toBe(true);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+            await page.screenshot({ path: info.outputPath(`${theme}-${zoom}-接続.png`) });
+            await rail.getByRole('button', { name: '設定', exact: true }).click();
+            for (const tab of ['ホットキー', 'システム', '外観']) {
                 await dialog.getByRole('tab', { name: tab, exact: true }).click();
                 await expect(dialog.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('data-state', 'active');
                 await expect(dialog.getByRole('tab', { name: tab, exact: true })).toBeInViewport();
                 expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
                 await page.screenshot({ path: info.outputPath(`${theme}-${zoom}-${tab}.png`) });
             }
-            await expect(dialog.getByRole('button', { name: '設定画面を閉じる', exact: true })).toBeInViewport();
+            await expect(rail.getByRole('button', { name: 'ホーム', exact: true })).toBeInViewport();
         });
     }
 }
@@ -224,8 +238,8 @@ test.describe('ホームと設定の共通操作', () => {
         expect(sizes.slice(2).every(size => JSON.stringify(size) === JSON.stringify(sizes[2]))).toBe(true);
         const settingsSizes: Awaited<ReturnType<typeof dimensions>>[] = [];
         await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-        await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
+        const dialog = page.locator('[data-settings-page]');
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '音づくり', exact: true }).click();
         for (let i = 0; i < names.length; i++) {
             const button = dialog.getByRole('radio', { name: names[i], exact: true });
             await expect(button).toBeVisible();

@@ -138,6 +138,7 @@ test.describe('操作部品のサイズとテーマ', () => {
             const button = page.getByRole('button', { name: 'ボイスチェック', exact: true });
             expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
             await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
+            await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
             await page.getByRole('tab', { name: 'システム', exact: true }).click();
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('radio', { name: '自分で聴く', exact: true }).click();
@@ -201,6 +202,9 @@ for (const theme of ['light', 'dark', 'gaming']) {
         const setup = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
         await reachable(setup, page);
         await setup.click();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
+        const leave = page.getByRole('alertdialog', { name: '保存していない変更があります' });
+        if (await leave.isVisible()) await leave.getByRole('button', { name: '変更を捨てて移動', exact: true }).click();
         await page.getByRole('tab', { name: '外観', exact: true }).click();
         await reachable(page.getByRole('combobox', { name: '表示言語' }), page);
         await page.getByRole('tab', { name: 'システム', exact: true }).click();
@@ -222,19 +226,25 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
     const setup = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
     await setup.click();
-    const dialog = page.getByRole('dialog').last();
-    const tab = dialog.getByRole('tab', { name: '外観', exact: true });
+    const rail = page.getByRole('navigation', { name: '行き先' });
+    await rail.getByRole('button', { name: '設定', exact: true }).click();
+    const leave = page.getByRole('alertdialog', { name: '保存していない変更があります' });
+    if (await leave.isVisible()) await leave.getByRole('button', { name: '変更を捨てて移動', exact: true }).click();
+    const surface = page.locator('[data-settings-page]');
+    const tab = surface.getByRole('tab', { name: '外観', exact: true });
     await reachable(tab, page);
     await tab.click();
-    const language = dialog.getByRole('combobox', { name: '表示言語' });
+    const language = surface.getByRole('combobox', { name: '表示言語' });
     await reachable(language, page);
     await language.focus();
     await page.keyboard.press('ArrowDown');
-    await expect(dialog.getByRole('combobox', { name: 'Display language' })).toHaveValue('en');
+    await expect(surface.getByRole('combobox', { name: 'Display language' })).toHaveValue('en');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole('button', { name: 'Connection (audio settings)', exact: true })).toBeFocused();
+    await expect(surface).toBeVisible();
+    await page.getByRole('navigation', { name: 'Destinations' }).getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(surface).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Connection (audio settings)', exact: true })).toBeVisible();
 });
 
 // 重ね表示では背後を操作させず、右の列の本番操作は使える。

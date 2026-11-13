@@ -8,6 +8,7 @@ import { AudioSettingsModal } from '../AudioSettingsModal';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 beforeEach(() => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', input: '', output: '', sampleRate: 48000, bufferSize: 512 }));
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
@@ -19,7 +20,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it.each(['音声処理の設定', '診断情報', '設定の移行'])('StrictModeでも%sを開閉し、タブ移動後に開閉状態を保持する', async name => {
+it.each(['音声処理の設定', '設定の移行'])('StrictModeでも%sを開閉し、タブ移動後に開閉状態を保持する', async name => {
     render(<StrictMode><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></StrictMode>);
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
     const details = screen.getByText(name).closest('details')!;
@@ -30,6 +31,19 @@ it.each(['音声処理の設定', '診断情報', '設定の移行'])('StrictMod
     expect(screen.getByText(name).closest('details')).toHaveAttribute('open');
     fireEvent.click(screen.getByText(name));
     await waitFor(() => expect(screen.getByText(name).closest('details')).not.toHaveAttribute('open'));
+});
+
+it('診断情報はダイアログで開き、区分を移って戻っても開いたままにする', async () => {
+    render(<StrictMode><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></StrictMode>);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole('button', { name: '診断情報を開く' }));
+    expect(await screen.findByRole('dialog', { name: '診断情報' })).toBeVisible();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '外観', hidden: true }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム', hidden: true }), { button: 0, ctrlKey: false });
+    const dialog = screen.getByRole('dialog', { name: '診断情報' });
+    expect(dialog).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '診断情報' })).not.toBeInTheDocument());
 });
 
 it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別する (%s)', async locale => {

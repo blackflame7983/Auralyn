@@ -16,6 +16,7 @@ const devices = { inputs: [{ name: '実名のマイク', host: 'Wasapi', channel
 const current: BuiltinSnapshot = { epoch: 'engine', revision: '2', appliedRevision: '2', pending: false, undoToken: null, error: null, config: { active: true, preset: 'singing', amount: .6, singing: { lowCutHz: 100, dynamics: .5, brightnessDb: 0 } } };
 beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', input: '実名のマイク', output: '実名の出力', sampleRate: 48000, bufferSize: 512 }));
     localStorage.setItem('vst_host_cached_devices', JSON.stringify(devices));
     localStorage.setItem('vst_host_session_plugins', 'opaque-session-original');
     vi.mocked(invoke).mockReset();
@@ -38,11 +39,11 @@ it('実設定dialogのタブと未保存入力を保ち、言語変更だけで�
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
     await screen.findByRole('option', { name: '実名のマイク' });
     fireEvent.change(screen.getByRole('textbox', { name: '保存する名前' }), { target: { value: '未保存の実名' } });
-    const dialog = screen.getByRole('dialog');
+    const page = document.querySelector('[data-settings-page]');
     const driver = screen.getByRole('combobox', { name: '接続方式' });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(document.querySelector('[data-settings-page]')).toBe(page);
     expect(screen.getByRole('combobox', { name: 'Connection method' })).toBe(driver);
     expect(screen.getByRole('textbox', { name: 'Name to save' })).toHaveValue('未保存の実名');
     expect(screen.getByRole('tab', { name: 'Audio' })).toHaveAttribute('aria-selected', 'true');

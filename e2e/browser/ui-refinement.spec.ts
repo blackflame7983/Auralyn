@@ -107,7 +107,7 @@ for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字�
     await page.screenshot({ path: info.outputPath('zoom-waiting.png') });
     await live.getByRole('button', { name: message(locale, 'liveBar.actions'), exact: true }).click();
     await page.getByRole('button', { name: message(locale, 'liveBar.editRegistration'), exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+    const dialog = page.locator('[data-settings-page]');
     const modes = dialog.locator('#live-mode-settings');
     for (const key of ['settings.LiveModeControls.212', 'settings.LiveModeControls.213'] as const) {
         const card = modes.getByRole('region', { name: message(locale, key), exact: true });
@@ -130,14 +130,19 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
     // 拡大時の境界線は物理ピクセルに丸められるため、CSS上の厳密な3px比較はしない。
     expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     const input = dialog.getByRole('group', { name: '入力元と用途', exact: true });
     await expect(input).toBeVisible();
     expect(await input.locator('legend').evaluate(el => getComputedStyle(el).fontSize)).toBe('20px');
     expect(await input.getByRole('combobox', { name: '入力元', exact: true }).evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
     await page.screenshot({ path: info.outputPath('audio-zoom.png') });
+    const rail = page.getByRole('navigation', { name: '行き先' });
     for (const tab of ['settings.sound', 'settings.obs', 'settings.shortcuts', 'settings.system', 'settings.appearance'] as const) {
-        await dialog.getByRole('tab', { name: message('ja', tab), exact: true }).click();
+        if (tab === 'settings.sound') await rail.getByRole('button', { name: '音づくり', exact: true }).click();
+        else {
+            await rail.getByRole('button', { name: '設定', exact: true }).click();
+            await dialog.getByRole('tab', { name: message('ja', tab), exact: true }).click();
+        }
         const headings = dialog.getByRole('tabpanel').getByRole('heading', { level: 3 });
         expect(await headings.evaluateAll(nodes => nodes.filter(el => parseFloat(getComputedStyle(el).fontSize) < 20).map(el => ({ text: el.textContent, size: getComputedStyle(el).fontSize })))).toEqual([]);
         expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);

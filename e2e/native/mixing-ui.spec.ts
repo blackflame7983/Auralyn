@@ -43,17 +43,19 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
         await expect.poll(() => context.pages().some(p => p.url().startsWith('http://127.0.0.1:1427')), { timeout: 20_000 }).toBe(true);
         page = context.pages().find(p => p.url().startsWith('http://127.0.0.1:1427'))!;
         page.on('pageerror', e => errors.push(e.message));
-        const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible({ timeout: 30_000 });
         await page.setViewportSize({ width: 900, height: 600 });
-        const englishAppearance = dialog.getByRole('tab', { name: 'Appearance', exact: true });
+        const englishAppearance = page.getByRole('tab', { name: 'Appearance', exact: true });
         if (await englishAppearance.count()) {
             await englishAppearance.click();
-            await dialog.getByRole('combobox', { name: 'Display language' }).selectOption('ja');
+            await page.getByRole('combobox', { name: 'Display language' }).selectOption('ja');
+        } else {
+            const wizard = page.getByRole('dialog', { name: 'セットアップ' });
+            if (await wizard.isVisible()) await wizard.getByRole('button', { name: 'セットアップをスキップ' }).click();
         }
-        await dialog.getByRole('tab', { name: 'オーディオ', exact: true }).click();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         // 配信ミックスはホームのパネルで操作する（#299）。設定からパネルを出して開く。
-        await dialog.getByRole('button', { name: 'ホームで開く', exact: true }).click();
-        await expect(dialog).toHaveCount(0);
+        await page.locator('[data-settings-page]').getByRole('button', { name: 'ホームで開く', exact: true }).click();
+        await expect(page.locator('[data-settings-page]')).toHaveCount(0);
         const panel = page.locator('#stream-mix-panel'); await expect(panel).toBeVisible({ timeout: 30_000 });
         const post = panel.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げるVST', { exact: true }) }).last();
         await post.locator('summary').first().focus(); await page.keyboard.press('Enter');
@@ -96,14 +98,15 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
         await expect(apply).toBeDisabled(); await expect(apply).toHaveAccessibleDescription(/配信用の出力先/);
         await page.screenshot({ path: info.outputPath('mixing-ja.png') });
         await writeFile(info.outputPath('mixing-ja-aria.txt'), await mixing.ariaSnapshot());
-        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-        await dialog.getByRole('tab', { name: '外観', exact: true }).click();
-        await dialog.getByRole('combobox', { name: '表示言語' }).selectOption('en');
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
+        await page.getByRole('tab', { name: '外観', exact: true }).click();
+        await page.getByRole('combobox', { name: '表示言語' }).selectOption('en');
         await page.setViewportSize({ width: 1024, height: 768 });
         const originalDpr = await page.evaluate(() => devicePixelRatio);
         // 隔離ビルド専用 capability を通し、WebView2 自体のズームを変更する。
         await page.evaluate(() => (window as any).__TAURI__.core.invoke('plugin:webview|set_webview_zoom', { label: 'main', value: 1.5 }));
-        await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+        await page.getByRole('navigation', { name: 'Destinations' }).getByRole('button', { name: 'Home', exact: true }).click();
+        await expect(page.locator('[data-settings-page]')).toHaveCount(0);
         if (!await mixing.evaluate(el => (el as HTMLDetailsElement).open)) { await mixing.locator('summary').first().focus(); await page.keyboard.press('Enter'); }
         await expect(mixing.getByRole('slider', { name: 'Voice volume' })).toBeVisible();
         await mixing.getByRole('slider', { name: 'Voice volume' }).focus(); await page.keyboard.press('ArrowRight');
