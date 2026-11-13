@@ -7,7 +7,12 @@ import { listen } from '@tauri-apps/api/event';
 import { peakProtectionApi, type PeakStatus } from '@/api/peakProtection';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function PeakProtectionPanel() {
+export function PeakProtectionPanel({ onPendingChange, applyInHeading = false, hideApplyNote = false }: {
+    onPendingChange?: (pending: boolean) => void;
+    /** 枠の見出しの行へ適用ボタンを出す。狭い窓で下のボタンまで届かないとき。 */
+    applyInHeading?: boolean;
+    hideApplyNote?: boolean;
+} = {}) {
     const t = useMessages();
     const [status, setStatus] = useState<PeakStatus | null>(null);
     const [ceiling, setCeiling] = useState(-1);
@@ -45,10 +50,20 @@ export function PeakProtectionPanel() {
         } catch { if (alive.current && serial === version.current) { setStatus(null); setFailed(true); } }
         finally { writing.current = false; if (alive.current) setBusy(false); }
     };
+    const pending = status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
+    useEffect(() => {
+        onPendingChange?.(pending);
+        return () => onPendingChange?.(false);
+    }, [pending, onPendingChange]);
+    const applyDisabled = !status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
+    const applyButton = <Button type="button" variant="outline" className="h-auto min-h-10 shrink-0 whitespace-normal" disabled={applyDisabled} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'peak.apply' : 'peak.enable')}</Button>;
     return <section aria-label={t('peak.title')} className="p-4 rounded-card border space-y-3">
-        <h3 className="text-ui-heading font-semibold">{t('peak.title')}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-ui-heading font-semibold">{t('peak.title')}</h3>
+            {applyInHeading && applyButton}
+        </div>
         <p className="text-ui-support text-muted-foreground">{t('peak.scope')}</p>
-        <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>
+        {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
         <div className="grid sm:grid-cols-2 gap-3 text-ui-support">
             <Field label={t('peak.ceiling')}><Input type="number"  min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
             <Field label={t('peak.release')}><Input type="number"  min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
@@ -59,7 +74,7 @@ export function PeakProtectionPanel() {
             {status && !status.running && ` · ${t('peak.stopped')}`}
         </p>
         {status && <p className="text-ui-support">{t('peak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
-        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'peak.apply' : 'peak.enable')}</Button>
+        {!applyInHeading && applyButton}
         <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status?.config.enabled || busy} onClick={() => void apply(false)}>{t('peak.disable')}</Button>
         <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('peak.limitsTitle')}</summary><p className="mt-2">{t('peak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('peak.failed')}</p>}

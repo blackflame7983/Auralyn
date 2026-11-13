@@ -22,6 +22,7 @@ import { deriveHomeChrome } from './homeChrome';
 import { AppRail, type RailDestination } from './AppRail';
 import { PageSlot } from './pageSlot';
 import { requestLeave } from './pageLeave';
+import { registerRackOpener } from './openRackBridge';
 import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
@@ -218,6 +219,11 @@ export const AppShell: React.FC<AppShellProps> = ({
         setRackPointerFocus(Boolean(event && event.detail > 0));
         setVstPanelOpen(true); setFocusRack(n => n + 1);
     };
+    useEffect(() => registerRackOpener(() => {
+        setRackPointerFocus(true);
+        setVstPanelOpen(true);
+        setFocusRack(n => n + 1);
+    }), []);
     useEffect(() => {
         if (!focusRack) return;
         document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });

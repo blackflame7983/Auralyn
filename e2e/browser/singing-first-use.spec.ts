@@ -38,9 +38,9 @@ test('初回は準備・試聴・適用を見せ、数値を開いた編集も�
     const fine = section.locator('details').filter({ has: page.locator('summary', { hasText: '数値を細かく調整' }) });
     await expect(fine).not.toHaveAttribute('open');
     await expect(section.getByRole('button', { name: '試しに聴く', exact: true })).toBeVisible();
-    await expect(section.getByRole('button', { name: 'この音をマイクへ適用', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'この音をマイクへ適用', exact: true })).toBeDisabled();
     await section.getByRole('button', { name: '歌向けの音から始める', exact: true }).click();
-    await expect(section).toContainText('適用するまで配信・通話へ反映しません');
+    await expect(section).toContainText('適用するまで、配信・通話の音は変わりません。');
     await page.screenshot({ path: testInfo.outputPath('guided-960x640.png') });
     await fine.locator('summary').press('Enter');
     await fine.getByRole('spinbutton', { name: '低音の整理（Hz）', exact: true }).fill('130');
@@ -50,8 +50,7 @@ test('初回は準備・試聴・適用を見せ、数値を開いた編集も�
     await expect(preview).toBeVisible();
     await expect.poll(() => page.evaluate(() => (window as any).__singingActions.includes('preview:open'))).toBe(true);
     await preview.getByRole('button', { name: '閉じる', exact: true }).click();
-    await expect(section.locator(':scope > summary')).toBeFocused();
-    await expect(section).toHaveAttribute('open', '');
+    await expect(page.locator('#sound-section-heading')).toBeFocused();
     await fine.locator('summary').press('Enter');
     await expect(fine.getByRole('spinbutton', { name: '低音の整理（Hz）', exact: true })).toHaveValue('130');
     expect(await page.evaluate(() => (window as any).__singingActions.filter((s: string) => !s.startsWith('preview:')))).toEqual(expect.arrayContaining(['snapshot']));
@@ -146,5 +145,5 @@ for (const locale of ['ja', 'en'] as const) test(`6つの数値の説明は値�
     }
     expect(await values()).toEqual(before);
     expect(await page.evaluate(() => (window as any).__singingActions.includes('apply'))).toBe(false);
-    await expect(section.getByRole('button', { name: t('settings.SingingControls.427'), exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: t('settings.SingingControls.427'), exact: true })).toBeEnabled();
 });

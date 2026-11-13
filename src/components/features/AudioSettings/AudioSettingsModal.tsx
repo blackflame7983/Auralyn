@@ -9,6 +9,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
 import { connectionDeviceKey, resolveAudioDevice } from '@/lib/audioDevices';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
+import { singingDraftIsDirty } from './SingingControls';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,8 @@ import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDra
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { PagePortal } from '@/components/layout/pageSlot';
 import { allowNextLeave, registerLeaveGuard, requestLeave, setPageLocked } from '@/components/layout/pageLeave';
+import { requestOpenRack } from '@/components/layout/openRackBridge';
+import type { SoundPlace } from '@/hooks/useUIState';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import React, { useCallback, useEffect, useId, useLayoutEffect, useState, useMemo, useRef } from 'react';
 import { MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete } from 'react-icons/md';
@@ -58,6 +61,10 @@ interface AudioSettingsModalProps {
   /** 区分の切替を、未保存の確認を通す親の入口へ渡す。無いときはこの画面の中で切り替える。 */
   onRequestTab?: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+  /** 音づくりの小区分。親が持つとき、ページを離れても下書きの確認を同じ規則で出す。 */
+  soundPlace?: SoundPlace;
+  soundFocusNonce?: number;
+  onSoundPlace?: (place: SoundPlace, focus?: boolean) => void;
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
   currentConfig?: AudioPreferences;
@@ -78,7 +85,7 @@ interface AudioSettingsModalProps {
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   liveModel: providedLive,
   singingModel: providedSinging, onPreviewSinging, onSaveSingingProfile,
-  initialTab = 'audio', tabRequest = 0, onRequestTab, initialSection,
+  initialTab = 'audio', tabRequest = 0, onRequestTab, initialSection, soundPlace: soundPlaceProp, soundFocusNonce = 0, onSoundPlace,
   isOpen,
   onClose,
   onConfigChange,
@@ -225,16 +232,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
   const [shortcutsDirty, setShortcutsDirty] = useState(false);
+  const [peakPending, setPeakPending] = useState({ peak: false, broadcast: false });
+  const protectionPending = peakPending.peak || peakPending.broadcast;
+  const onPeakPending = useCallback((source: 'peak' | 'broadcast', pending: boolean) => {
+    setPeakPending(current => current[source] === pending ? current : { ...current, [source]: pending });
+  }, []);
   useEffect(() => {
     setPageLocked(isApplying);
     const unregister = registerLeaveGuard(() => {
       if (isApplying) return 'block';
       if (activeTab === 'audio' && hasConnectionChanges) return 'confirm';
       if (activeTab === 'shortcuts' && shortcutsDirty) return 'confirm';
+      if (activeTab === 'sound' && protectionPending) return 'confirm';
       return 'allow';
     });
     return () => { unregister(); setPageLocked(false); };
-  }, [isApplying, activeTab, hasConnectionChanges, shortcutsDirty]);
+  }, [isApplying, activeTab, hasConnectionChanges, shortcutsDirty, protectionPending]);
   // 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。
   useEffect(() => { setActiveTab(initialTab); }, [initialTab, tabRequest]);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
@@ -291,8 +304,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     });
     return () => cancelAnimationFrame(frame);
   }, [isOpen, initialSection, loading, error, activeTab, tabRequest]);
-  const soundStart = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab, tabRequest]);
+  const placeFromSection = (section: typeof initialSection): SoundPlace => section === 'liveModes' ? 'liveModes' : section === 'singing' ? 'singing' : 'basic';
+  const [localPlace, setLocalPlace] = useState<SoundPlace>(() => placeFromSection(initialSection));
+  const [localFocus, setLocalFocus] = useState(0);
+  const soundPlace = onSoundPlace ? (soundPlaceProp ?? 'basic') : localPlace;
+  useEffect(() => {
+    if (!onSoundPlace) setLocalPlace(placeFromSection(initialSection));
+  }, [initialSection, tabRequest, onSoundPlace]);
+  const chooseSoundPlace = (next: SoundPlace, focus = false) => {
+    if (onSoundPlace) { onSoundPlace(next, focus); return; }
+    if (next === localPlace && !focus) return;
+    requestLeave(() => {
+      setLocalPlace(next);
+      if (focus) setLocalFocus(n => n + 1);
+    });
+  };
+  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab, tabRequest, soundPlace]);
   // 場所の指定が無いときは、開いたページの見出しへ移す。ページ内の操作からは焦点を奪わない。
   // 確認を閉じた直後は、入口のボタンへ焦点が戻るのが見出しより後になるので、そのときだけ取り直す。
   useLayoutEffect(() => {
@@ -312,17 +339,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     const frame = requestAnimationFrame(focusHeading);
     return () => cancelAnimationFrame(frame);
   }, [isOpen, activeTab, tabRequest, initialSection, headingNode]);
+  const focusNonce = onSoundPlace ? soundFocusNonce : localFocus;
   useEffect(() => {
-    if (isOpen && initialTab === 'sound') {
-      const frame = requestAnimationFrame(() => {
-        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
-        if (target instanceof HTMLDetailsElement) target.open = true;
-        target?.scrollIntoView?.({ block: 'start' });
-        if (initialSection) (initialSection === 'liveModes' ? target?.querySelector<HTMLElement>('h3') : target?.querySelector<HTMLElement>('summary') ?? target)?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [isOpen, initialTab, initialSection]);
+    if (!isOpen || activeTab !== 'sound' || !focusNonce) return;
+    const frame = requestAnimationFrame(() => {
+      settingsBody.current?.querySelector<HTMLElement>('#sound-section-heading')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+    // 番号が進んだときだけ移す。小区分の変更を依存に入れると、タブに残すべき焦点が見出しへ移る。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, focusNonce]);
 
   // OBS State
   // Preset State
@@ -361,7 +387,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setConfirmDialog({ ...opts, isOpen: true });
   };
 
-  const sound = useSoundSettings(engineStats, singingModel, initialSection === 'liveOutput' || initialSection === 'primaryInput' ? undefined : initialSection);
+  const sound = useSoundSettings(engineStats, singingModel);
   const system = useSystemSettings({ isOpen, currentSampleRate, currentBufferSize, isBeginnerMode, showConfirm });
 
   const sampleRates = sampleRateOptions(selectedInputDevice, selectedOutputDevice, isAsio, selectedSampleRate, currentSampleRate);
@@ -526,8 +552,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   if (!isOpen) return null;
   const pageKind = activeTab === 'audio' ? 'connect' : activeTab === 'sound' ? 'sound' : 'settings';
   const pageTitle = t(pageKind === 'connect' ? 'rail.connect' : pageKind === 'sound' ? 'rail.sound' : 'rail.settings');
+  const musicSound = activeTab === 'sound' && displayPurpose === 'music';
+  const singingDirty = singingDraftIsDirty(singingModel.snapshot, singingModel.draft);
+  const showSingingBar = activeTab === 'sound' && soundPlace === 'singing' && !musicSound;
   const pageLead = activeTab === 'audio' ? t('settings.page.connectLead')
-    : activeTab === 'sound' ? t('settings.apply.soundImmediate')
+    : activeTab === 'sound' ? (musicSound ? t('sound.musicLead') : '')
     : activeTab === 'appearance' ? t('settings.apply.appearanceImmediate')
     : activeTab === 'shortcuts' ? t('settings.apply.shortcutsDraft')
     : activeTab === 'obs' ? t('settings.page.obsLead')
@@ -549,7 +578,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       <div data-settings-page={pageKind} className="settings-page flex h-full min-h-0 flex-col overflow-hidden">
         <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
           <h1 ref={headingRef} tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{pageTitle}</h1>
-          <p className="min-w-0 flex-1 break-words text-ui-support text-muted-foreground">{pageLead}</p>
+          {pageLead && <p className="min-w-0 flex-1 break-words text-ui-support text-muted-foreground">{pageLead}</p>}
+          {musicSound && <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => requestOpenRack()}>{t('sound.openVst')}</Button>}
         </header>
         <Tabs value={activeTab} onValueChange={value => chooseTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col">
           {/* レールが移動を持つときは、設定のページでだけ4区分を出す。単体で開いたときは、この画面の中で切り替える。 */}
@@ -920,9 +950,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>}
           </TabsContent>
 
+          <TabsContent value="sound" className="space-y-4">
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
-            isBeginnerMode={isBeginnerMode} settingsBody={settingsBody} soundStart={soundStart}
-            onClose={leavePage} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) requestLeave(() => { openStreamMixPanel(); onClose(); }); }} />
+            isBeginnerMode={isBeginnerMode} place={soundPlace} onPlace={chooseSoundPlace} onPeakPending={onPeakPending}
+            music={displayPurpose === 'music'} singingDirty={singingDirty}
+            onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) requestLeave(() => { openStreamMixPanel(); onClose(); }); }} />
+          </TabsContent>
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
               showConfirm={showConfirm}
@@ -981,6 +1014,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             onClose={leavePage} onOpenWizard={onOpenWizard} onOpenLicense={onOpenLicense} handleRestart={handleRestart}
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
+        {showSingingBar && (
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/20 px-4 py-2">
+            <p className="min-w-0 flex-1 text-ui-support text-muted-foreground">{singingDirty ? t('sound.unapplied') : t('sound.noChanges')}</p>
+            <Button type="button" className="shrink-0" disabled={singingModel.busy || !singingDirty || Boolean(singingModel.snapshot?.pending) || singingModel.conflict} onClick={() => void singingModel.apply()}>{t('settings.SingingControls.427')}</Button>
+          </div>
+        )}
         {activeTab === 'audio' && !loading && (
           <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-between gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}

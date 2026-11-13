@@ -293,6 +293,7 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     expect(builtin).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
     fireEvent.click(screen.getByRole('button', { name: '音づくりを開く' }));
+    fireEvent.keyDown(await screen.findByRole('tab', { name: '歌向け' }), { key: 'Enter' });
     const defaults = await screen.findByRole('button', { name: '歌向けの音から始める' });
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);
@@ -303,7 +304,7 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     expect(screen.getByText(/下書き：低音 135/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '音づくりの下書きへ戻る' }));
     expect(await screen.findByRole('spinbutton', { name: '低音の整理（Hz）' })).toHaveValue(135);
-    await waitFor(() => expect(document.querySelector('#singing-settings > summary')).toHaveFocus());
+    await waitFor(() => expect(document.querySelector('#sound-section-heading')).toHaveFocus());
     expect(builtin.mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ action: 'close' }));
     builtin.mockRestore(); preview.mockRestore();

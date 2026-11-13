@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { SliderField } from '@/components/ui/SliderField';
 import { Disclosure } from '@/components/ui/Disclosure';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioApi, type BuiltInEffectsPreset, type EngineRuntimeStats, type NoiseControlMode } from '../../../api/audio';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { refreshRuntimeStatsChecked } from '@/hooks/useRuntimeStats';
@@ -11,19 +11,17 @@ import { toast } from 'sonner';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { SoundPlace } from '@/hooks/useUIState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { PeakProtectionPanel } from './PeakProtectionPanel';
 import { BroadcastTruePeakPanel } from './BroadcastTruePeakPanel';
-import { SingingControls } from './SingingControls';
+import { SingingControls, SingingGuideHelp } from './SingingControls';
 import { LiveModeControls } from './LiveModeControls';
 
-export function useSoundSettings(engineStats: EngineRuntimeStats | null, singingModel: SingingDraft, initialSection?: 'liveModes' | 'singing' | 'audioTuning') {
+export function useSoundSettings(engineStats: EngineRuntimeStats | null, singingModel: SingingDraft) {
   const t = useMessages();
-  const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
-  const [singingOpen, setSingingOpen] = useState(initialSection === 'singing');
-  const [peakOpen, setPeakOpen] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
   const [noiseMeasurementOpen, setNoiseMeasurementOpen] = useState(false);
   const [noiseAdvancedOpen, setNoiseAdvancedOpen] = useState(false);
@@ -159,7 +157,7 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
     void applyDeesser(true, value);
   };
 
-  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen };
+  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount };
 }
 
 interface SoundSettingsProps {
@@ -168,27 +166,66 @@ interface SoundSettingsProps {
   singingModel: SingingDraft;
   liveModel: LiveModesModel;
   isBeginnerMode: boolean;
-  settingsBody: RefObject<HTMLDivElement | null>;
-  soundStart: RefObject<HTMLHeadingElement | null>;
-  onClose: () => void;
+  place: SoundPlace;
+  onPlace: (place: SoundPlace, focus?: boolean) => void;
+  onPeakPending: (source: 'peak' | 'broadcast', pending: boolean) => void;
+  /** 音楽鑑賞では声向けの小区分を出さず、音量の保護だけにする。 */
+  music?: boolean;
+  singingDirty?: boolean;
   onOpenVoiceCheck?: () => void;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   onOpenMixing: () => void;
   streamMixAvailable?: boolean;
 }
-export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, settingsBody, soundStart, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true }: SoundSettingsProps) {
+
+const places = ['basic', 'liveModes', 'singing', 'peak'] as const satisfies readonly SoundPlace[];
+
+export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, place, onPlace, onPeakPending, music = false, singingDirty = false, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true }: SoundSettingsProps) {
   const t = useMessages();
-  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
+  const shown = music ? 'peak' : place;
+  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount } = model;
+  // 基本の声の値も歌向けの下書きと同じ取得を使う。小区分を開くまで待たない。
+  useEffect(() => {
+    if (music) return;
+    const release = singingModel.activate();
+    void singingModel.refresh();
+    return release;
+  }, [music, singingModel.activate, singingModel.refresh]);
+  const onPeak = useCallback((pending: boolean) => onPeakPending('peak', pending), [onPeakPending]);
+  const onBroadcast = useCallback((pending: boolean) => onPeakPending('broadcast', pending), [onPeakPending]);
+  const lead = shown === 'basic' ? t('settings.apply.soundImmediate')
+    : shown === 'liveModes' ? t('sound.lead.liveModes')
+    : shown === 'singing' ? t('sound.lead.singing')
+    : t('settings.apply.protectionDraft');
+  const sectionId = shown === 'singing' ? 'singing-settings' : shown === 'liveModes' ? 'live-mode-section' : 'sound-section';
   return (
-          <TabsContent value="sound" className="space-y-4">
+          <div className="space-y-4">
+            {!music && <Tabs value={place} onValueChange={value => onPlace(value as SoundPlace)}>
+              <TabsList aria-label={t('sound.tabs')} className="h-auto w-full justify-start gap-1 overflow-x-auto">
+                {places.map(value => <TabsTrigger key={value} value={value} className="text-ui-control">
+                  {t(`sound.section.${value}`)}
+                  {value === 'singing' && singingDirty && <span className="ml-1 inline-flex items-center gap-1">
+                    <span aria-hidden="true" className="inline-block size-1.5 rounded-full bg-foreground" />
+                    <span className="sr-only">{t('sound.unappliedMark')}</span>
+                  </span>}
+                </TabsTrigger>)}
+              </TabsList>
+            </Tabs>}
+            <section id={sectionId} aria-labelledby="sound-section-heading" className="space-y-4">
+            <div className="flex items-center gap-1">
+              <h2 id="sound-section-heading" tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t(`sound.section.${shown}`)}</h2>
+              {shown === 'singing' && <SingingGuideHelp />}
+            </div>
+            <p className="text-ui-support text-muted-foreground">{lead}</p>
+            {shown === 'basic' && <>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
                 {/* Noise reduction */}
                 <div className="p-4 bg-muted/20 rounded-card border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1">
-                      <h3 ref={soundStart} tabIndex={-1} className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.105')}</h3>
+                      <h3 tabIndex={-1} className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.105')}</h3>
                       <InfoPopover label={t('info.noise')}>
                     <div className="space-y-1.5">
                       <p>
@@ -231,7 +268,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       }} />
                   </fieldset>
                   {(noiseMode === 'smart' || noiseMode === 'venue') && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.noiseAdvancedActive', { mode: t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue') })}</p>}
-                  {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-ui-support text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
+                  <p className="text-ui-support text-muted-foreground">{t('sound.noiseMix')}</p>
                   <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
                     <summary className="cursor-pointer text-ui-control font-semibold">
                       {t('settings.noiseDetails')}
@@ -312,9 +349,11 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       min={0} max={100} step={5} value={builtInEffectsAmount} formatValue={value => `${value}%`}
                       onValueChange={value => { builtInEffectsAmountEditing.current = true; setBuiltInEffectsAmount(value); }}
                       onValueCommit={value => commitBuiltInEffectsAmount(String(value))} />
+                    {singingModel.snapshot?.config.preset !== 'singing' && <p className="text-ui-support text-muted-foreground">{t('sound.amountMeans')}</p>}
                   </div>
                   </fieldset>
-                  <div className="space-y-3 border-t border-border pt-3">
+                </div>
+                <div className="space-y-3 rounded-card border border-border bg-muted/20 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <Label className="font-bold text-foreground text-ui-control">{t('settings.deesser')}</Label>
@@ -335,7 +374,6 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         onValueChange={value => { deesserEditing.current = true; setDeesserAmount(value); }}
                         onValueCommit={value => commitDeesserAmount(value)} />
                     </div>
-                  </div>
                 </div>
 
             </fieldset>
@@ -344,28 +382,18 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <Button type="button" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : "sound-stream-mix-voice-only"} onClick={onOpenMixing} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('mixingHome.open')}</Button>
               {!streamMixAvailable && <p id="sound-stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
             </div>
-            <LiveModeControls model={liveModel} onAdjust={mode => {
-              setPreparingMode(mode);
-              const target = mode === 'singing' ? settingsBody.current?.querySelector<HTMLDetailsElement>('#singing-settings') : soundStart.current;
-              if (target instanceof HTMLDetailsElement) target.open = true;
-              target?.scrollIntoView?.({ block: 'start' });
-              (target instanceof HTMLDetailsElement ? target.querySelector('summary') : target)?.focus({ preventScroll: true });
-            }} />
-            <details id="singing-settings" open={singingOpen} onToggle={event => setSingingOpen(event.currentTarget.open)} className="rounded-control border border-border p-3 space-y-3">
-              <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.singing')}</summary>
-              <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
-              {preparingMode === 'singing' && <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => {
-                const target = settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings');
-                if (target) { target.scrollIntoView?.({ block: 'start' }); (target.querySelector<HTMLElement>('h3') ?? target).focus({ preventScroll: true }); }
-              }}>{t('settings.mode.return')}</Button>}
-            </details>
-            {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}
-            {isBeginnerMode ? <details open={peakOpen} onToggle={event => setPeakOpen(event.currentTarget.open)} className="rounded-control border border-border p-3 space-y-3">
-              <summary className="cursor-pointer text-ui-heading font-semibold">{t('peak.title')}</summary>
-              <PeakProtectionPanel />
-              <BroadcastTruePeakPanel />
-            </details> : <><PeakProtectionPanel /><BroadcastTruePeakPanel /></>}
-          </TabsContent>
+            </>}
+            {shown === 'liveModes' && <LiveModeControls model={liveModel} onAdjust={() => onPlace('singing', true)} />}
+            {shown === 'singing' && <>
+              <SingingControls showHeading={false} hideApplyButton suspendActivation model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
+              <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => onPlace('liveModes', true)}>{t('settings.mode.return')}</Button>
+            </>}
+            {shown === 'peak' && <div className="flex flex-col gap-4">
+              <PeakProtectionPanel applyInHeading hideApplyNote onPendingChange={onPeak} />
+              <BroadcastTruePeakPanel applyInHeading hideApplyNote onPendingChange={onBroadcast} />
+            </div>}
+            </section>
+          </div>
 
   );
 }

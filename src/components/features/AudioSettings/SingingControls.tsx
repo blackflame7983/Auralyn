@@ -12,8 +12,21 @@ import { listen } from '@tauri-apps/api/event';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { SingingDraft } from '@/hooks/useSingingDraft';
 
-export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false, showHeading = true }: {
+export function singingDraftIsDirty(snapshot: SingingDraft['snapshot'], draft: SingingDraft['draft']) {
+    return Boolean(snapshot && draft && JSON.stringify(snapshot.config) !== JSON.stringify(draft));
+}
+
+export function SingingGuideHelp() {
+    const t = useMessages();
+    return <InfoPopover label={t('singing.guideHelp')}><p>{t('settings.SingingControls.395')}</p><p className="mt-2">{t('settings.SingingControls.433')}</p></InfoPopover>;
+}
+
+export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false, showHeading = true, hideApplyButton = false, suspendActivation = false }: {
     model: SingingDraft; running?: boolean; previewActive?: boolean; onPreview?: () => void; onSaveProfile?: () => void; compact?: boolean; showHeading?: boolean;
+    /** 適用ボタンをページ下の固定行へ出すとき、本文からは外す。 */
+    hideApplyButton?: boolean;
+    /** 親がすでに取得を始めているとき、重ねて snapshot を取らない。 */
+    suspendActivation?: boolean;
 }) {
     const t = useMessages();
     const fieldId = useId();
@@ -56,7 +69,10 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
         };
     }, [running]);
     const activeRunning = running ?? observedRunning;
-    useEffect(() => { const release = model.activate(); void model.refresh(); return release; }, [model.activate, model.refresh]);
+    useEffect(() => {
+        if (suspendActivation) return;
+        const release = model.activate(); void model.refresh(); return release;
+    }, [model.activate, model.refresh, suspendActivation]);
     useEffect(() => {
         if (!snapshot?.pending) return;
         const refresh = () => { if (!isAppHidden()) void model.refresh(); };
@@ -66,7 +82,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     }, [snapshot?.pending, model.refresh]);
     const params = draft?.singing;
     const reverb = draft?.reverb ?? defaultReverb;
-    const dirty = Boolean(snapshot && draft && JSON.stringify(snapshot.config) !== JSON.stringify(draft));
+    const dirty = singingDraftIsDirty(snapshot, draft);
     const refreshVisible = compact || !snapshot || Boolean(error || snapshot.error || conflict) || activeRunning !== true;
     const refreshButton = <Button type="button" variant="outline" disabled={busy} onClick={() => { void model.refresh(); refreshStream.current(); }} className="h-auto whitespace-normal">{t('settings.SingingControls.425')}</Button>;
     const historyButtons = <>
@@ -85,10 +101,11 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     return <section aria-label={t('settings.SingingControls.393')} className="space-y-4 text-ui-support">
         <div className="flex items-center gap-1">
             {showHeading && <h3 className={`${compact ? 'text-ui-control' : 'text-ui-heading'} font-semibold`}>{t('settings.SingingControls.394')}</h3>}
-            <InfoPopover label={t('singing.guideHelp')}><p>{t('settings.SingingControls.395')}</p><p className="mt-2">{t('settings.SingingControls.433')}</p></InfoPopover>
-            <p className="text-ui-support text-muted-foreground">{t('singing.draftSafety')}</p>
+            {/* 見出しを出さないときは、説明を音づくりの小区分の見出しの横に置く（SingingGuideHelp）。 */}
+            {showHeading && <SingingGuideHelp />}
+            {!hideApplyButton && <p className="text-ui-support text-muted-foreground">{t('singing.draftSafety')}</p>}
         </div>
-        <p role="status" className="text-ui-support text-muted-foreground">{!snapshot ? t('settings.SingingControls.396') : activeRunning === false ? t('settings.SingingControls.397') : snapshot.pending ? t('settings.SingingControls.398') : activeRunning === true && snapshot.appliedRevision === snapshot.revision ? t('settings.SingingControls.399') : t('settings.SingingControls.400')}{dirty && t('settings.SingingControls.401')}</p>
+        <p role="status" className="text-ui-support text-muted-foreground">{!snapshot ? t('settings.SingingControls.396') : activeRunning === false ? t('settings.SingingControls.397') : snapshot.pending ? t('settings.SingingControls.398') : activeRunning === true && snapshot.appliedRevision === snapshot.revision ? t('settings.SingingControls.399') : t('settings.SingingControls.400')}{dirty && !hideApplyButton && t('settings.SingingControls.401')}</p>
         {snapshot && <p className="text-ui-support">{t('settings.SingingControls.402')}{snapshot.config.preset === 'singing' ? t('settings.SingingControls.403') : t(`obsTyped.preset.${snapshot.config.preset}`)} ／ {snapshot.config.active ? 'ON' : 'OFF'}</p>}
         {compact && snapshot?.config.singing && <p className="text-ui-support">{t('singing.appliedValues')}{t('settings.SingingControls.404', { arg0: snapshot.config.singing.lowCutHz, arg1: Math.round(snapshot.config.singing.dynamics * 100), arg2: snapshot.config.singing.brightnessDb })}</p>}
         {compact && draft?.preset === 'singing' && params && <p className="text-ui-support">{t('settings.singing.draft', { low: params.lowCutHz, dynamics: Math.round(params.dynamics * 100), brightness: params.brightnessDb })}</p>}
@@ -139,7 +156,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
             {!compact && <p className="text-ui-support text-muted-foreground">{previewActive ? t('singing.stopPreview') : !snapshot ? t('singing.waitForSettings') : snapshot.pending ? t('singing.waitForApply') : dirty ? t('singing.previewThenApply') : t('singing.noChanges')}</p>}
             <div className="flex flex-wrap gap-2">
                 {onPreview && <Button type="button" variant="secondary" disabled={busy || !draft || conflict} onClick={onPreview} className="h-auto whitespace-normal">{t('settings.SingingControls.426')}</Button>}
-                <Button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="h-auto whitespace-normal">{t('settings.SingingControls.427')}</Button>
+                {!hideApplyButton && <Button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="h-auto whitespace-normal">{t('settings.SingingControls.427')}</Button>}
             </div>
             {(refreshVisible || canUndo) && <div className="flex flex-wrap gap-2">{refreshVisible && refreshButton}{canUndo && historyButtons}</div>}
         </div>

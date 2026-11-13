@@ -19,7 +19,7 @@ for (const input of ['pointer', 'keyboard'] as const) test(`詳しく調整は�
     const settings = page.locator('[data-settings-page]');
     await expect(settings).toHaveAttribute('data-settings-page', 'sound');
     await expect(settings.getByRole('heading', { name: 'ノイズ低減', exact: true })).toBeInViewport();
-    await expect(settings.locator('#singing-settings')).not.toHaveAttribute('open');
+    await expect(settings.locator('#singing-settings')).toHaveCount(0);
 });
 
 test('未登録の入口から歌・雑談を登録し、ホームの切替と編集へ戻れる', async ({ page }, testInfo) => {
@@ -46,7 +46,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog).toHaveAttribute('data-settings-page', 'sound');
     const section = dialog.locator('#live-mode-settings');
-    await expect(section.getByRole('heading', { name: 'モード登録', exact: true })).toBeFocused();
+    await expect(dialog.locator('#sound-section-heading')).toHaveText('歌・雑談');
+    await expect(dialog.locator('#sound-section-heading')).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });
     await expect(saveSinging).toBeInViewport();

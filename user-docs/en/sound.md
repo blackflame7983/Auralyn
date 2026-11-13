@@ -2,12 +2,12 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Noise reduction", "Shape voice", "Compare without VST", "Sing", "Talk", "Custom sound", "Voice Check"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Compare without VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check"]
 ---
 
 ## Noise reduction {#noise-reduction}
 
-1. Open “Settings”, then “Sound”, and check “Noise reduction”.
+1. Open “Settings”, then “Sound”, then “Basics”, and check “Noise reduction”.
 2. Adjust with fan or air-conditioning noise present. Nearby speech and music are not fully removed.
 3. [Listen in Voice Check](./sound.md#voice-check) for missing speech.
 
@@ -27,7 +27,7 @@ While the saved chain is protected, current VST changes are not saved automatica
 
 ## Singing and talking {#modes}
 
-1. Save singing and talking adjustments in “Sound”.
+1. Save singing and talking adjustments in “Sound”, under “Singing and talking”.
 2. Switch with “Sing” and “Talk” on Home.
 3. If the mode also switches VSTs, sound may pause briefly. Check before going live.
 

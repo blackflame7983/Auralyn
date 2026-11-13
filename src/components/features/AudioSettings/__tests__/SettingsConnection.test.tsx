@@ -321,12 +321,13 @@ it('入力元の入口は機器一覧の読み込み後に入力選択へフォ�
     await waitFor(() => expect(screen.getByRole('combobox', { name: '入力元' })).toHaveFocus());
 });
 
-it('音楽鑑賞では音づくりの配信ミックス入口も理由付きで無効にする', async () => {
+it('音楽鑑賞の音づくりは声向けの入口を出さず、理由とVSTの入口を示す', async () => {
     localStorage.setItem('vst_host_setup_goal', 'music');
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const button = await screen.findByRole('button', { name: '配信ミックスの設定' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/.+/);
+    expect(await screen.findByText('音楽鑑賞では、声向けの処理を使いません。音の加工は VST で行います。')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '配信ミックスの設定' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: '基本' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'VSTを開く' })).toBeEnabled();
 });
 
 it('入力元への移動は設定のエラー表示が終わるまで待機する', async () => {
