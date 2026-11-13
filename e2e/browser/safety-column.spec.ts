@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
-import { test, expect, type Page } from './tauriFixture';
+import { test, expect } from './tauriFixture';
+import type { Page } from '@playwright/test';
 
 mkdirSync('docs/verification/design-renewal-stage-a', { recursive: true });
 
