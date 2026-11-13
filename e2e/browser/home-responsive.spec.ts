@@ -66,7 +66,8 @@ test('接続のページは見出しへ移り、Escでは閉じず、未保存�
     const home = page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true });
     const leave = page.getByRole('alertdialog', { name: '保存していない変更があります' });
     await home.click();
-    await expect(leave.getByRole('button', { name: 'このページに戻る', exact: true })).toBeVisible();
+    await expect(leave.getByRole('button', { name: 'このページに戻る', exact: true })).toBeFocused();
+    await expect(leave).toHaveAccessibleDescription('保存せずに移動すると、このページで変えた内容は捨てられます。');
     await leave.getByRole('button', { name: 'このページに戻る', exact: true }).click();
     await expect(surface).toHaveAttribute('data-settings-page', 'connect');
     await home.click();
