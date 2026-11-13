@@ -1,68 +1,79 @@
 import { openStreamMixPanel } from '@/lib/streamMixPanel';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
+import { consumeLeaveSkip, requestLeave } from '@/components/layout/pageLeave';
+
+export type AppPage = 'home' | 'sound' | 'connect' | 'settings';
+export type SettingsPane = 'appearance' | 'shortcuts' | 'obs' | 'system';
+export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
+export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+
+type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean };
+
+const settingsPanes: SettingsPane[] = ['appearance', 'shortcuts', 'obs', 'system'];
+
+function pageOf(tab: SettingsTab): AppPage {
+    if (tab === 'audio') return 'connect';
+    if (tab === 'sound') return 'sound';
+    return 'settings';
+}
+
+function paneOf(tab: SettingsTab): SettingsPane {
+    return settingsPanes.includes(tab as SettingsPane) ? tab as SettingsPane : 'appearance';
+}
 
 export const useUIState = () => {
-    const [isSettingsOpen, setSettingsOpen] = useState(false);
-    const [settingsTab, setStoredSettingsTab] = useState<'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system'>('audio');
-    // 同じタブへの移動を続けて頼まれても切り替わるよう、頼むたびに番号を進める。
+    const [page, setPage] = useState<AppPage>('home');
+    const [settingsPane, setSettingsPane] = useState<SettingsPane>('appearance');
+    // 同じ場所への移動を続けて頼まれても切り替わるよう、頼むたびに番号を進める。
     const [settingsTabRequest, setSettingsTabRequest] = useState(0);
-    const setSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => { setStoredSettingsTab(tab); setSettingsTabRequest(n => n + 1); };
-    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput'>();
+    const [settingsSection, setSettingsSection] = useState<SettingsAnchor>();
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
-    // 開く画面とタブを一度に指定し、既定タブへの初期化で移動先を失わないようにする。
-    const setIsSettingsOpen = (open: boolean, tab: typeof settingsTab = 'audio') => {
-        setSettingsNeedsRetry(false);
-        setSettingsSection(undefined);
-        setSettingsTab(tab);
-        setSettingsOpen(open);
+    // ホームと接続は、以前の音声タブと同じ入口として扱う。
+    const settingsTab: SettingsTab = page === 'sound' ? 'sound' : page === 'settings' ? settingsPane : 'audio';
+    const isSettingsOpen = page !== 'home';
+
+    const commit = useCallback((next: Navigation) => {
+        if (next.pane) setSettingsPane(next.pane);
+        setSettingsSection(next.section);
+        setSettingsNeedsRetry(next.retry ?? false);
+        setSettingsTabRequest(n => n + 1);
+        setPage(next.page);
+    }, []);
+
+    const samePlace = (next: Navigation) => page === next.page && (next.page !== 'settings' || !next.pane || next.pane === settingsPane);
+
+    const go = (next: Navigation) => {
+        // システムの再起動は、接続ページの未保存の変更を適用する。ここで捨てると、再起動の条件が変わる（6.3）。
+        const restartKeepsConnection = page === 'connect' && next.page === 'settings' && next.pane === 'system';
+        // 保存成功の一度だけは、同じ場所でも処理中の停止を消費する。
+        if (restartKeepsConnection || consumeLeaveSkip() || samePlace(next)) { commit(next); return; }
+        requestLeave(() => commit(next));
     };
-    const openShortcuts = () => {
-        setSettingsNeedsRetry(false);
-        setSettingsSection(undefined);
-        setSettingsTab('shortcuts');
-        setSettingsOpen(true);
+
+    const applyNavigation = commit;
+    const leave = useCallback((action: () => void) => requestLeave(action), []);
+
+    // 開く画面と区分を一度に指定し、既定の場所への初期化で移動先を失わないようにする。
+    const setIsSettingsOpen = (open: boolean, tab: SettingsTab = 'audio') => {
+        if (!open) { go({ page: 'home' }); return; }
+        const destination = pageOf(tab);
+        go({ page: destination, pane: destination === 'settings' ? paneOf(tab) : undefined });
     };
-    const openObsSettings = () => {
-        setSettingsNeedsRetry(false);
-        setSettingsSection(undefined);
-        setSettingsTab('obs');
-        setSettingsOpen(true);
-    };
-    const openAudioTuning = () => {
-        setSettingsNeedsRetry(false);
-        setSettingsSection('audioTuning');
-        setSettingsTab('audio');
-        setSettingsOpen(true);
-    };
+    const openShortcuts = () => go({ page: 'settings', pane: 'shortcuts' });
+    const openObsSettings = () => go({ page: 'settings', pane: 'obs' });
+    const openAudioTuning = () => go({ page: 'connect', section: 'audioTuning' });
     // 配信ミックスは設定ではなくホームのパネルで扱う（#299）。
     const openMixingSettings = () => openStreamMixPanel();
     // 配信ミックスのパネルから、出力先・入力元の区画を開いて案内する。
-    const openDeviceSettings = (target: 'output' | 'input') => {
-        setSettingsNeedsRetry(false);
-        setSettingsSection(target === 'output' ? 'liveOutput' : 'primaryInput');
-        setSettingsTab('audio');
-        setSettingsOpen(true);
-    };
+    const openDeviceSettings = (target: 'output' | 'input') => go({ page: 'connect', section: target === 'output' ? 'liveOutput' : 'primaryInput' });
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
-        setSettingsNeedsRetry(false);
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
-        setSettingsSection(section === 'liveModes' || section === 'singing' ? section : undefined);
-        setSettingsTab('sound');
-        setSettingsOpen(true);
+        const anchor = section === 'liveModes' || section === 'singing' ? section : undefined;
+        go({ page: 'sound', section: anchor });
     };
-    const openLiveModeSettings = () => {
-        setSettingsNeedsRetry(false);
-        setSettingsTab('sound');
-        setSettingsSection('liveModes');
-        setSettingsOpen(true);
-    };
-    const openAudioSettingsRetry = () => {
-        setSettingsSection(undefined);
-        setSettingsTab('audio');
-        setSettingsNeedsRetry(true);
-        setSettingsOpen(true);
-    };
+    const openLiveModeSettings = () => go({ page: 'sound', section: 'liveModes' });
+    const openAudioSettingsRetry = () => go({ page: 'connect', retry: true });
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
     const [isOBSGuideOpen, setIsOBSGuideOpen] = useState(false);
     const [isDiscordGuideOpen, setIsDiscordGuideOpen] = useState(false);
@@ -77,6 +88,8 @@ export const useUIState = () => {
     const [isVoiceCheckOpen, setIsVoiceCheckOpen] = useState(false);
 
     return {
+        page,
+        settingsPane,
         isSettingsOpen,
         setIsSettingsOpen,
         settingsTab,
@@ -91,6 +104,8 @@ export const useUIState = () => {
         openMixingSettings,
         openDeviceSettings,
         openSoundSettings,
+        leave,
+        applyNavigation,
         isBrowserOpen,
         setIsBrowserOpen,
         isOBSGuideOpen,

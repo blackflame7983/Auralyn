@@ -45,7 +45,7 @@ function normalized(value: string) {
     const modifiers = parts.map(part => part === 'ctrl' ? 'control' : part === 'meta' ? 'super' : part).sort();
     return `${modifiers.join('+')}+${key}`;
 }
-export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturing: boolean) => void } = {}) {
+export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureChange?: (capturing: boolean) => void; onDirtyChange?: (dirty: boolean) => void } = {}) {
     const t = useMessages();
     const headingId = useId();
     const [values, setValues] = useState<Values>({});
@@ -120,6 +120,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         const previous = saved[action]?.trim() ?? '';
         return (current ? normalized(current) : '') !== (previous ? normalized(previous) : '');
     });
+    useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     const applyRecommended = () => {
         const next = { ...values };
         const result: SettingsNotice[] = [];
@@ -196,13 +197,14 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
     };
     return <section className="space-y-3 rounded-card border border-border p-4 pb-0">
         <h3 className="text-ui-heading font-semibold text-left">{t('settings.ShortcutsPanel.378')}</h3>
-        <p className="text-ui-support text-muted-foreground">{t('settings.apply.shortcutsDraft')}</p>
-        <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
-            <p>{t('shortcuts.streamDeckHint')}</p>
-            <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1 text-ui-support text-muted-foreground">
+                <p>{t('shortcuts.streamDeckHint')}</p>
+                <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
+            </div>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal"
+                disabled={!ready || busy || !!capturing} onClick={() => setConfirmRecommended(true)}>{t('shortcuts.applyRecommended')}</Button>
         </div>
-        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal"
-            disabled={!ready || busy || !!capturing} onClick={() => setConfirmRecommended(true)}>{t('shortcuts.applyRecommended')}</Button>
         <ConfirmDialog isOpen={confirmRecommended} title={t('shortcuts.confirmRecommended')}
             description={t('shortcuts.recommendedDescription', { bindings: recommended.map(({ action, shortcut }) => `${t(actions[action])}: ${formatShortcut(shortcut)}`).join(' / ') })}
             confirmLabel={t('shortcuts.fillRecommended')} onCancel={() => setConfirmRecommended(false)} onConfirm={applyRecommended} />

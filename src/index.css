@@ -282,6 +282,16 @@
   select {
     color: hsl(var(--foreground));
   }
+  /* 選択欄は、いまの値の横にテーマ色の矢印を出す（#505）。 */
+  .select-chevron {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 1.1rem) 55%, calc(100% - 0.7rem) 55%;
+    background-size: 0.4rem 0.4rem, 0.4rem 0.4rem;
+    background-repeat: no-repeat;
+    max-width: 100%;
+  }
   option, optgroup {
     color: hsl(var(--popover-foreground));
     background-color: hsl(var(--popover));
@@ -360,6 +370,17 @@
 [data-density="home"] {
   --text-ui-control: 0.8125rem;
   --ui-control-weight: 500;
+}
+/* 中央のページはホームの中に出すが、設定の操作は16pxのままにする。 */
+.settings-page {
+  --text-ui-control: 1rem;
+  --ui-control-weight: 600;
+}
+/* CSS拡大で窓より高くなっても、文書自体は動かさない。レールの上端が画面の外へずれない。 */
+html:has(.app-shell),
+body:has(.app-shell) {
+  height: 100%;
+  overflow: clip;
 }
 .segment-option, .home-control { font-weight: var(--ui-control-weight, 600); }
 .notice-lane [data-sonner-toaster] { position: absolute; top: 0; height: var(--front-toast-height); }

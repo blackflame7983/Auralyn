@@ -29,7 +29,7 @@ interface ObsConnectionSettingsProps {
 }
 
 // OBS接続の寿命はこのタブの表示に合わせ、音声デバイス設定とは独立して管理する。
-export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, onOpenTroubleshoot }: ObsConnectionSettingsProps) {
+export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroubleshoot }: ObsConnectionSettingsProps) {
     const t = useMessages();
     const reasonId = useId();
     const { locale } = useLocale();
@@ -438,10 +438,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                             {onOpenTroubleshoot && (
                               <Button
                                 type="button"
-                                onClick={() => {
-                                  onClose();
-                                  onOpenTroubleshoot();
-                                }}
+                                onClick={() => onOpenTroubleshoot()}
                                 variant="outline" className="h-auto min-h-10 whitespace-normal"
                               >
                                 {t('settings.ObsConnectionSettings.307')}</Button>

@@ -19,6 +19,7 @@ import { recentAnomalyWarning } from '@/components/layout/processingHealth';
 import { MigrationPanel } from './MigrationPanel';
 import { UpdatePreferences } from './UpdatePreferences';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
+import { Modal } from '@/components/ui/modal';
 
 type ConfirmOptions = { title: SettingsNotice; description?: SettingsNotice; confirmLabel?: SettingsNotice; variant?: 'default' | 'destructive'; onConfirm: () => void };
 interface SystemSettingsOptions {
@@ -128,7 +129,7 @@ interface SystemSettingsProps {
   loading: boolean; setLoading: Dispatch<SetStateAction<boolean>>; showConfirm: (options: ConfirmOptions) => void;
   onOpenLicense?: () => void; onClose: () => void; onOpenWizard?: () => void; handleRestart: () => void; canRestart: boolean; knownStopped: boolean;
 }
-export function SystemSettings({ model, engineStats, loading, setLoading, showConfirm, onClose, onOpenWizard, onOpenLicense, handleRestart, canRestart, knownStopped }: SystemSettingsProps) {
+export function SystemSettings({ model, engineStats, loading, setLoading, showConfirm, onOpenWizard, onOpenLicense, handleRestart, canRestart, knownStopped }: SystemSettingsProps) {
   const t = useMessages();
   const { autostartEnabled, setAutostartEnabled, autostartCanChange, setAutostartCanChange, autostartReason, setAutostartReason, engineTuningConfig, setEngineTuningConfig, systemSaving, statsLoading, refreshEngineRuntimeStats, saveEngineTuningConfig, handleDangerousToggle, openSections, setOpenSections } = model;
   return (
@@ -177,7 +178,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
               <h3 className="text-ui-heading font-semibold">{t('settings.system.setup')}</h3>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
-              <Button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
+              <Button type="button" disabled={loading} onClick={onOpenWizard} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
             </section>}
 
 
@@ -286,11 +287,11 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             </div>
 
             </details>
-            <details open={openSections.diagnostics} onToggle={event => {
-              const open = event.currentTarget.open;
-              setOpenSections(prev => ({ ...prev, diagnostics: open }));
-            }} className="rounded-card border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline text-ui-heading font-semibold">{t('structure.diagnostics')}</h3></summary>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpenSections(prev => ({ ...prev, diagnostics: true }))}>{t('settings.diagnosticsOpen')}</Button>
+            {openSections.diagnostics && <Modal title={t('structure.diagnostics')} onClose={() => setOpenSections(prev => ({ ...prev, diagnostics: false }))}>
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-background/90 p-4 gaming:bg-background/60">
+              <div className="modal-surface-base max-h-[80vh] w-full max-w-lg space-y-3 overflow-y-auto p-6">
+              <h2 className="text-ui-heading font-semibold text-foreground">{t('structure.diagnostics')}</h2>
               <Button
                     onClick={refreshEngineRuntimeStats}
                     disabled={statsLoading}
@@ -346,7 +347,10 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 </table>
             <MixingDiagnostics open={openSections.diagnostics} />
             <LatencyDetails stats={engineStats} isRunning={!knownStopped} />
-            </details>
+              <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpenSections(prev => ({ ...prev, diagnostics: false }))}>{t('common.close')}</Button>
+              </div>
+            </div>
+            </Modal>}
             {/* Plugin Management */}
             <section className="rounded-card border border-border p-4 space-y-4">
               <h3 className="text-foreground flex items-center gap-2 text-ui-heading font-semibold">

@@ -26,6 +26,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { usePageLock } from './pageLeave';
 import type { MessageKey } from '@/i18n/messages';
 
 export type RailDestination = 'home' | 'sound' | 'vst' | 'connect' | 'settings';
@@ -58,6 +59,7 @@ export function AppRail({
     onOpenShortcuts, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onOpenWizard,
 }: AppRailProps) {
     const t = useMessages();
+    const pageLocked = usePageLock();
     const [helpOpen, setHelpOpen] = useState(false);
     // 開発プレビューの ?screen=help だけ、使い方を最初から開く。本番ビルドでは消える。
     useEffect(() => {
@@ -94,13 +96,14 @@ export function AppRail({
                 <div className="flex min-h-0 flex-1 flex-col">
                     {destinations.map(item => {
                         const active = item.id === current;
-                        const name = t(item.name ?? item.label);
+                        const name = pageLocked ? t('settings.leave.blocked') : t(item.name ?? item.label);
                         const button = (
                             <Button key={item.id} type="button" variant="ghost" size="sm"
                                 aria-current={active ? 'page' : undefined}
-                                aria-label={item.name ? name : undefined}
-                                title={item.name ? name : undefined}
-                                onClick={go[item.id]}
+                                aria-disabled={pageLocked || undefined}
+                                aria-label={item.name && !pageLocked ? name : undefined}
+                                title={name}
+                                onClick={() => { if (!pageLocked) go[item.id](); }}
                                 className={cn(
                                     'h-14 w-full shrink-0 flex-col gap-0.5 rounded-control border-l-[3px] px-1 font-normal text-ui-support',
                                     active ? 'border-l-brand bg-segment-accent/10 font-bold text-foreground' : 'border-l-transparent text-muted-foreground',

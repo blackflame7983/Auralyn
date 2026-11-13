@@ -5,6 +5,8 @@ import { useObsUsage } from '../../hooks/useObsUsage';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
 import { channelRoutingFor } from '@/lib/audioChannelRouting';
+import { registerSettingsCloser, useLeaveGeneration } from './pageLeave';
+import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
 
@@ -33,7 +35,7 @@ interface UIState {
     settingsTabRequest?: number;
     settingsNeedsRetry?: boolean;
     isSettingsOpen: boolean;
-    setIsSettingsOpen: (v: boolean) => void;
+    setIsSettingsOpen: (open: boolean, tab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
     openSoundSettings: (section?: 'liveModes' | 'singing') => void;
     openObsSettings: () => void;
     openAudioTuning: () => void;
@@ -59,6 +61,8 @@ interface UIState {
     setIsTroubleshootOpen: (v: boolean) => void;
     isVoiceCheckOpen: boolean;
     setIsVoiceCheckOpen: (v: boolean) => void;
+    applyNavigation?: (next: { page: 'home' }) => void;
+    leave?: (action: () => void) => void;
 }
 
 type AudioConfig = import('@/lib/audioPreferences').AudioPreferences;
@@ -104,6 +108,7 @@ interface ModalLayerProps {
 
 export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, onPluginAdded, liveModel, isAudioRunning = false }: ModalLayerProps) {
     const singingModel = useSingingDraft();
+    const leaveGeneration = useLeaveGeneration();
     const [singingPreview, setSingingPreview] = useState(false);
     const [returnToTiming, setReturnToTiming] = useState(false);
     const [returnToBundle, setReturnToBundle] = useState(false);
@@ -113,6 +118,17 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
     useEffect(() => {
         if (!ui.isOBSGuideOpen && !ui.isSettingsOpen) setReturnToTiming(false);
     }, [ui.isOBSGuideOpen, ui.isSettingsOpen]);
+    // ホームへ戻す処理は確認の外に置き、レールや試験の入口が同じ確認を通す。
+    useEffect(() => registerSettingsCloser(() => {
+        ui.applyNavigation?.({ page: 'home' });
+        if (returnToTiming) ui.setIsOBSGuideOpen(true);
+        if (returnToBundle) ui.setIsPresetManagerOpen(true);
+    }), [ui.applyNavigation, ui.setIsOBSGuideOpen, ui.setIsPresetManagerOpen, returnToTiming, returnToBundle]);
+    const leaveHome = (after?: () => void) => {
+        const apply = () => { ui.applyNavigation?.({ page: 'home' }); after?.(); };
+        if (ui.leave) ui.leave(apply);
+        else apply();
+    };
     const handleEngineRestart = async () => {
         pluginsApi.resetPlugins();
         await pluginsApi.restoreSession();
@@ -128,40 +144,34 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
 
     return (
         <>
+            <UnsavedLeaveDialog />
             {ui.isSettingsOpen && (
                 <Suspense fallback={null}>
                     <AudioSettingsModal
+                        key={leaveGeneration}
                         allowConnectionRetry={ui.settingsNeedsRetry ?? false}
                         isAudioRunning={isAudioRunning}
                         currentConfig={audioConfig}
                         liveModel={liveModel}
                         singingModel={singingModel}
-                        onPreviewSinging={() => { setSingingPreview(true); ui.setIsSettingsOpen(false); ui.setIsVoiceCheckOpen(true); }}
-                        onSaveSingingProfile={() => { ui.setIsSettingsOpen(false); ui.setIsPresetManagerOpen(true); }}
+                        onPreviewSinging={() => leaveHome(() => { setSingingPreview(true); ui.setIsVoiceCheckOpen(true); })}
+                        onSaveSingingProfile={() => leaveHome(() => ui.setIsPresetManagerOpen(true))}
                         initialTab={ui.settingsTab ?? 'audio'}
                 tabRequest={ui.settingsTabRequest ?? 0}
                         initialSection={ui.settingsSection}
                         isOpen={ui.isSettingsOpen}
+                        onRequestTab={tab => ui.setIsSettingsOpen(true, tab)}
                         onClose={() => {
-                            ui.setIsSettingsOpen(false);
+                            ui.applyNavigation?.({ page: 'home' });
                             if (returnToTiming) ui.setIsOBSGuideOpen(true);
                             if (returnToBundle) ui.setIsPresetManagerOpen(true);
                         }}
                         onConfigChange={handleConfigUpdate}
                         onEngineRestarted={handleEngineRestart}
-                        onOpenWizard={() => ui.setIsWizardOpen(true)}
-                        onOpenOBSGuide={() => {
-                            ui.setIsSettingsOpen(false);
-                            ui.setIsOBSGuideOpen(true);
-                        }}
-                        onOpenTroubleshoot={() => {
-                            ui.setIsSettingsOpen(false);
-                            ui.setIsTroubleshootOpen(true);
-                        }}
-                        onOpenVoiceCheck={() => {
-                            ui.setIsSettingsOpen(false);
-                            ui.setIsVoiceCheckOpen(true);
-                        }}
+                        onOpenWizard={() => leaveHome(() => ui.setIsWizardOpen(true))}
+                        onOpenOBSGuide={() => leaveHome(() => ui.setIsOBSGuideOpen(true))}
+                        onOpenTroubleshoot={() => leaveHome(() => ui.setIsTroubleshootOpen(true))}
+                        onOpenVoiceCheck={() => leaveHome(() => ui.setIsVoiceCheckOpen(true))}
                         onOpenLicense={() => ui.setIsLicenseModalOpen(true)}
                         currentSampleRate={audioConfig.sampleRate}
                         currentBufferSize={audioConfig.bufferSize}

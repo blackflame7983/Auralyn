@@ -18,6 +18,8 @@ import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { VstChainItems } from './components/features/Home/VstChainItems';
 import { ModalLayer } from './components/layout/ModalLayer';
+import { PageSlotProvider } from './components/layout/pageSlot';
+import { runSettingsCloser } from './components/layout/pageLeave';
 import { SessionRecoveryNotice } from './components/features/Recovery/SessionRecoveryNotice';
 import { usePlugins } from './hooks/usePlugins';
 import { usePluginHealthNotices } from './hooks/usePluginHealthNotices';
@@ -164,17 +166,29 @@ function AppContent() {
         </div>
       )}
 
-      <AppShell
+      <PageSlotProvider><AppShell
+        page={ui.page}
         onStartAudio={sessionMode().reviewOnly || localStorage.getItem(REVIEW_KEY) === 'true' ? undefined : async () => {
           await startHomeAudio(audioConfig, config => handleConfigUpdate(config, { audioStarted: true }));
         }}
         onOpenShortcuts={ui.openShortcuts}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
-        settingsOpen={ui.isSettingsOpen}
-        settingsTab={ui.settingsTab}
         onOpenSettingsTab={tab => ui.setIsSettingsOpen(true, tab)}
-        onCloseSettings={() => ui.setIsSettingsOpen(false)}
+        onCloseSettings={runSettingsCloser}
+        overlays={<ModalLayer
+          isAudioRunning={isEngineRunning}
+          liveModel={liveModel}
+          ui={ui}
+          audioConfig={audioConfig}
+          handleConfigUpdate={async (config, options) => {
+            await handleConfigUpdate(config, options);
+            // 音声設定からの開始と保存が揃った後だけ、ホームの開始失敗を解除する。
+            if (options?.audioStarted) window.dispatchEvent(new Event('audio-settings-started'));
+          }}
+          pluginsApi={pluginsApi}
+          onPluginAdded={handlePluginAdded}
+        />}
         onOpenAudioSettingsRetry={ui.openAudioSettingsRetry}
         onOpenSoundSettings={ui.openSoundSettings}
         onOpenAudioTuning={ui.openAudioTuning}
@@ -285,20 +299,8 @@ function AppContent() {
           </>
         )}
 
-        <ModalLayer
-          isAudioRunning={isEngineRunning}
-          liveModel={liveModel}
-          ui={ui}
-          audioConfig={audioConfig}
-          handleConfigUpdate={async (config, options) => {
-            await handleConfigUpdate(config, options);
-            // 音声設定からの開始と保存が揃った後だけ、ホームの開始失敗を解除する。
-            if (options?.audioStarted) window.dispatchEvent(new Event('audio-settings-started'));
-          }}
-          pluginsApi={pluginsApi}
-          onPluginAdded={handlePluginAdded}
-        />
       </AppShell>
+      </PageSlotProvider>
     </>
   );
 }
