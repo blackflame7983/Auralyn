@@ -215,7 +215,7 @@
   --background: 270 25% 3%;
   --foreground: 0 0% 98%;
 
-  /* Darker cards for contrast against glowing borders */
+  /* カードは不透明な面にする。半透明や光る枠は使わない。 */
   --card: 270 25% 5%;
   --card-foreground: 0 0% 98%;
 
@@ -250,8 +250,57 @@
   --input: 295 45% 48%;
 
   --ring: 300 100% 68%;
-  /* Sharp Neon Ring */
 
+}
+
+/*
+  ゲーミングの形（DESIGN.md 10.10）。
+  corner-shape は枠・背景・影・フォーカスの輪を同じ切り欠きに沿わせる。clip-path は輪まで切るので使わない。
+  未対応のときは小さい角丸。丸い印とつまみ（rounded-full）は丸のまま。
+  色見本は、いまのテーマに引きずられず、見本ごとの角を保つ。
+*/
+.gaming {
+  --radius-card: 2px;
+  --radius-control: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+}
+[data-theme-preview="light"],
+[data-theme-preview="dark"] {
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: 0.75rem;
+  corner-shape: round;
+}
+@supports (corner-shape: bevel) {
+  .gaming {
+    /* 区画・ダイアログは 10px、操作は 6px。 */
+    --radius-card: 10px;
+    --radius-lg: 10px;
+    --radius-xl: 10px;
+    --radius-control: 6px;
+    --radius-sm: 6px;
+    --radius-md: 6px;
+  }
+  .gaming :where(:not(.rounded-full, [data-theme-preview], [data-theme-preview] *)) {
+    corner-shape: bevel;
+  }
+  .gaming .rounded-full {
+    corner-shape: round;
+  }
+}
+
+/* ページの見出しと、区画・カードの見出しだけ斜体。本文・数値・ボタンは直立。 */
+.gaming :is(h1, h2.home-title, h3.home-card-name, h2.text-ui-heading, h3.text-ui-heading, h4.text-ui-heading, legend.text-ui-heading, summary.text-ui-heading) {
+  font-style: italic;
+}
+.gaming :is(button, [role="button"], input, textarea, select) {
+  font-style: normal;
 }
 
 @layer base {
