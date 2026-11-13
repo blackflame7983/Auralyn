@@ -118,7 +118,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             <OutputGainControl />
             {compare}
             {/* 状態の表示が重なって列に収まらないときは、ここだけを縦に送る。上の操作は押し出さない。 */}
-            <div className="mt-auto flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto">
+            {/* 切り抜きでフォーカスの輪が欠けないよう、輪の分の余白を内側に取り、同じ量を外側で打ち消す。 */}
+            <div className="-mx-1 -mb-1 mt-auto flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto p-1 scrollbar-thin">
             {processingStalled && <div role="alert" className="flex min-w-0 items-start gap-2 text-ui-support text-warning">
                 <MdWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="min-w-0 whitespace-normal break-words">
@@ -131,9 +132,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             </p>}
             {hasRecentGlitch && <Button variant="ghost" size="sm" type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.recentDropout')} title={t('master.recentDropout')}
-                ><MdBolt aria-hidden="true" className="h-4 w-4" /></Button>}
+                className="shrink-0"><MdBolt aria-hidden="true" className="h-4 w-4" /></Button>}
             {hasRecentGlitch && onOpenAudioTuning && <Button variant="outline" size="sm" type="button" onClick={onOpenAudioTuning}
-                >{t('settings.audioTuning.open')}</Button>}
+                className="shrink-0">{t('settings.audioTuning.open')}</Button>}
 
             <Button variant="ghost" size="icon" ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.details')} title={t('master.details')}
