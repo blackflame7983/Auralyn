@@ -66,13 +66,13 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     const output = useSharedMeter(running, 'output');
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const history = useRef<Sample[]>([]);
+    const lastPaint = useRef<{ samples: Sample[]; flowing: boolean }>({ samples: [], flowing: false });
     const live = running && (input.state === 'live' || output.state === 'live');
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-        const hidden = document.hidden;
-        if (hidden) return;
+        if (document.hidden) return;
         const sample = {
             inn: live ? Math.max(0, ...input.levels) : 0,
             out: live ? Math.max(0, ...output.levels) : 0,
@@ -81,16 +81,21 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         const flowing = live && !reduced;
         history.current = flowing ? pushFlowSample(history.current, sample, true) : [];
         const shown = !live ? [] : flowing ? history.current : [sample];
+        lastPaint.current = { samples: shown, flowing };
         paint(canvas, shown, flowing);
         canvas.dataset.flow = !live ? 'idle' : flowing ? 'time' : 'still';
-        if (typeof ResizeObserver === 'undefined') return;
+    }, [input, output, live]);
+    // 大きさが変わったときだけ、最後の値で描き直す。監視は一度だけ作る。
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || typeof ResizeObserver === 'undefined') return;
         const observer = new ResizeObserver(() => {
             if (document.hidden) return;
-            paint(canvas, !live ? [] : flowing ? history.current : [sample], flowing);
+            paint(canvas, lastPaint.current.samples, lastPaint.current.flowing);
         });
         observer.observe(canvas);
         return () => observer.disconnect();
-    }, [input, output, live]);
+    }, []);
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
         className="mb-3 rounded-card bg-card px-4 py-2 gaming:bg-card/70">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
