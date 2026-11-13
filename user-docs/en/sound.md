@@ -2,7 +2,7 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Compare without VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Compare without VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Edit VST", "Add"]
 ---
 
 ## Noise reduction {#noise-reduction}
@@ -19,7 +19,7 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Com
 
 ## VST {#vst}
 
-1. Open the VST setup from Home and choose an effect to add.
+1. Open the VST page from the rail, or from “Edit VST” or “Add” on Home, and choose an effect to add.
 2. Adjust values in each VST's editor.
 3. Use “Compare without VST” to listen with and without external VST effects.
 
