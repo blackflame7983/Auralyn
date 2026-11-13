@@ -1,4 +1,5 @@
-import { test, expect, type Locator, type Page } from './tauriFixture';
+import type { Locator, Page } from '@playwright/test';
+import { test, expect } from './tauriFixture';
 import sharp from 'sharp';
 import { message } from '../../src/i18n/messages';
 import type { Locale } from '../../src/i18n/locale';
@@ -6,7 +7,7 @@ import type { Locale } from '../../src/i18n/locale';
 // 切り欠いた形でも、フォーカスの輪が欠けずに全周へ出ることを計算値と画素で確かめる。
 async function openHome(page: Page, locale: Locale, theme: string) {
     await page.setViewportSize({ width: 960, height: 640 });
-    await page.addInitScript(({ locale, theme }) => {
+    await page.addInitScript(({ locale, theme }: { locale: string; theme: string }) => {
         localStorage.setItem('vst_host_locale', locale);
         localStorage.setItem('vst_host_theme', theme);
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -19,8 +20,9 @@ async function openHome(page: Page, locale: Locale, theme: string) {
 async function showFocus(locator: Locator) {
     await locator.evaluate(element => {
         element.scrollIntoView({ block: 'center', inline: 'center' });
-        (element as HTMLElement).blur();
-        (element as HTMLElement).focus({ focusVisible: true });
+        const target = element as HTMLElement;
+        target.blur();
+        target.focus({ focusVisible: true } as FocusOptions);
     });
     await expect(locator).toBeFocused();
 }
@@ -65,8 +67,9 @@ async function ringAround(page: Page, locator: Locator) {
     const style = await locator.evaluate(element => {
         element.scrollIntoView({ block: 'center', inline: 'center' });
         // ダイアログが先にフォーカスしていると、同じ要素への focus では輪が付かない。
-        (element as HTMLElement).blur();
-        (element as HTMLElement).focus({ focusVisible: true });
+        const target = element as HTMLElement;
+        target.blur();
+        target.focus({ focusVisible: true } as FocusOptions);
         const css = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
         const reach = 6;
@@ -79,7 +82,7 @@ async function ringAround(page: Page, locator: Locator) {
             if (parentStyle.overflowY !== 'visible') contained &&= outline.top >= box.top - 1 && outline.bottom <= box.bottom + 1;
         }
         return {
-            corner: css.cornerShape,
+            corner: css.getPropertyValue('corner-shape'),
             clip: css.clipPath,
             shadow: css.boxShadow,
             outline: css.outlineStyle,

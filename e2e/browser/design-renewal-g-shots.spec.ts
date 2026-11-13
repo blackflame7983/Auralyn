@@ -60,8 +60,9 @@ async function openPreview(page: Page, shot: Shot) {
         await expect(dialog).toBeVisible();
         const stay = dialog.getByRole('button', { name: message(shot.locale, 'settings.leave.stay'), exact: true });
         await stay.evaluate(element => {
-            (element as HTMLElement).blur();
-            (element as HTMLElement).focus({ focusVisible: true });
+            const target = element as HTMLElement;
+            target.blur();
+            target.focus({ focusVisible: true } as FocusOptions);
         });
     }
 }
