@@ -28,14 +28,14 @@ interface Props {
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
-    onOpenVst?: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    vstPanelOpen?: boolean;
+    /** 追加から開くときは true。ページの「VSTを追加」へ焦点を移す。 */
+    onOpenVst?: (focusAdd: boolean) => void;
     unconfigured?: boolean;
 }
 
 // 音調整は開閉しない3枚のカード。2段目は data-home-tier で分け、窓が低いときに隠すのは後の段階。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstPanelOpen = false, vstUnrestored = [], unconfigured = false }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstUnrestored = [], unconfigured = false }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -66,7 +66,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const builtinOn = (live ? q.chainOn || partial : voiceEnabled || partial) || deesserOnly;
     const vstOn = vstTone === 'ok';
     const builtinBreakdown = builtinDetails && <span className={music && partial ? 'text-ui-support text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
-    const vstEdit = onOpenVst && !(emptyVst && vstPanelOpen) && <Button variant="outline" size="default" type="button" id="vst-panel-toggle" onClick={onOpenVst} aria-controls="vst-panel" aria-expanded={vstPanelOpen}
+    const vstEdit = onOpenVst && <Button variant="outline" size="default" type="button" id="home-vst-open" onClick={() => onOpenVst(emptyVst)}
         className="home-action gap-1">
         {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </Button>;

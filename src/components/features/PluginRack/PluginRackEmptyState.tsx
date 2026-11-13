@@ -10,13 +10,16 @@ interface PluginRackEmptyStateProps {
     onOpenTemplates: () => void;
     /** 保存済み構成から読み込めていないVST。空のラックを「まだない」と見せない。 */
     unrestored?: string[];
+    /** ページの主ボタンが追加を持つとき、ここには出さない。 */
+    hideAdd?: boolean;
 }
 
 export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     audioReady = false,
     onAddClick,
     onOpenTemplates,
-    unrestored = []
+    unrestored = [],
+    hideAdd = false,
 }) => {
     const t = useMessages();
     const names = unrestoredNamesText(t, unrestored);
@@ -30,14 +33,14 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-                <Button
+                {!hideAdd && <Button
                     id="add-effect-btn"
                     variant={audioReady ? 'default' : 'outline'}
                     onClick={onAddClick}
                     className="gap-2"
                 >
                     <MdAdd className="w-4 h-4" />
-                    {t('rack.empty.addVst')}</Button>
+                    {t('rack.empty.addVst')}</Button>}
 
                 <Button variant="link" size="sm"
                     onClick={onOpenTemplates}

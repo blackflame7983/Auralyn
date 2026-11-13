@@ -3,13 +3,13 @@ import { useCallback, useState } from 'react';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
 import { consumeLeaveSkip, requestLeave } from '@/components/layout/pageLeave';
 
-export type AppPage = 'home' | 'sound' | 'connect' | 'settings';
+export type AppPage = 'home' | 'sound' | 'vst' | 'connect' | 'settings';
 export type SettingsPane = 'appearance' | 'shortcuts' | 'obs' | 'system';
 export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
 export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
 export type SoundPlace = 'basic' | 'liveModes' | 'singing' | 'peak';
 
-type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean };
+type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean; vstFocusAdd?: boolean };
 
 function soundPlaceFrom(section?: SettingsAnchor): SoundPlace {
     if (section === 'liveModes') return 'liveModes';
@@ -38,10 +38,14 @@ export const useUIState = () => {
     const [soundPlace, setSoundPlace] = useState<SoundPlace>('basic');
     // 入口から小区分を指定して開いたときだけ、見出しへ焦点を移す。
     const [soundFocusNonce, setSoundFocusNonce] = useState(0);
+    // VST のページを開くたびに進める。追加から開いたときだけ、追加ボタンへ焦点を移す。
+    const [vstFocusAdd, setVstFocusAdd] = useState(false);
+    const [vstOpenNonce, setVstOpenNonce] = useState(0);
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     // ホームと接続は、以前の音声タブと同じ入口として扱う。
     const settingsTab: SettingsTab = page === 'sound' ? 'sound' : page === 'settings' ? settingsPane : 'audio';
-    const isSettingsOpen = page !== 'home';
+    // VST は設定のページではない。未保存の確認は、移動のときに pageLeave が行う。
+    const isSettingsOpen = page === 'sound' || page === 'connect' || page === 'settings';
 
     const commit = useCallback((next: Navigation) => {
         if (next.pane) setSettingsPane(next.pane);
@@ -49,6 +53,10 @@ export const useUIState = () => {
         if (next.page === 'sound') {
             setSoundPlace(next.soundPlace ?? soundPlaceFrom(next.section));
             if (next.soundFocus) setSoundFocusNonce(n => n + 1);
+        }
+        if (next.page === 'vst') {
+            setVstFocusAdd(Boolean(next.vstFocusAdd));
+            setVstOpenNonce(n => n + 1);
         }
         setSettingsNeedsRetry(next.retry ?? false);
         setSettingsTabRequest(n => n + 1);
@@ -98,6 +106,8 @@ export const useUIState = () => {
         soundFocus: focus,
     });
     const openAudioSettingsRetry = () => go({ page: 'connect', retry: true });
+    // 追加から開いたときだけ、ページの「VSTを追加」へ焦点を移す。
+    const openVst = (focusAdd = false) => go({ page: 'vst', vstFocusAdd: focusAdd });
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
     const [isOBSGuideOpen, setIsOBSGuideOpen] = useState(false);
     const [isDiscordGuideOpen, setIsDiscordGuideOpen] = useState(false);
@@ -121,6 +131,9 @@ export const useUIState = () => {
         settingsSection,
         soundPlace,
         soundFocusNonce,
+        vstFocusAdd,
+        vstOpenNonce,
+        openVst,
         moveSoundPlace,
         settingsNeedsRetry,
         openAudioSettingsRetry,

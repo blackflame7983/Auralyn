@@ -36,6 +36,8 @@ export interface SetupWizardModalProps {
     onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
+    /** セットアップを終えて閉じるとき、VST を選んでいれば true。 */
+    onCompleted?: (openVstPage: boolean) => void;
 }
 
 export type WizardState = 'welcome' | 'usage_selection' | 'input_selection' | 'output_selection' | 'confirmation' | 'configuring' | 'complete';

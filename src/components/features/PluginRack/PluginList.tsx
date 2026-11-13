@@ -26,7 +26,9 @@ interface PluginListProps {
     onReorder: (plugins: Plugin[]) => void;
     onOpenPresets: () => void;
     onOpenTemplates: () => void;
-    /** 右パネルの閉じるボタンなど、見出し行の右端に置く操作。 */
+    /** ページ側が見出しと追加を持つとき、ラック自身の見出しと末尾の追加は出さない。 */
+    embedded?: boolean;
+    /** 埋め込みでない一覧の見出し行の右端に置く操作。 */
     headerAction?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
     unrestored?: string[];
@@ -91,6 +93,7 @@ export const PluginList: React.FC<PluginListProps> = ({
     onReorder,
     onOpenPresets,
     onOpenTemplates,
+    embedded = false,
     headerAction,
     unrestored = []
 }) => {
@@ -140,8 +143,8 @@ export const PluginList: React.FC<PluginListProps> = ({
             <div className="min-w-0 w-full space-y-4 wrap-anywhere">
                 {/* Header / Rack Ears */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
-                    <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-ui-heading font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>
-                    <div className="flex items-center gap-2">
+                    {!embedded && <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-ui-heading font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>}
+                    <div className="ml-auto flex items-center gap-2">
                         {/* View Mode Toggle */}
                         {plugins.length > 0 && (
                             <SegmentedControl label={t('rack.viewFormat')} value={simpleMode ? 'simple' : 'detailed'}
@@ -154,7 +157,9 @@ export const PluginList: React.FC<PluginListProps> = ({
                         {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="gap-2">
                             <MdFolderOpen className="w-3.5 h-3.5" />
                             {t('rack.manageProfiles')}</Button>}
-                        {headerAction}
+                        {embedded && rackKind === 'voice' && plugins.length > 0 && <Button variant="outline" size="sm" type="button" onClick={onOpenTemplates} className="gap-2">
+                            {t('rack.empty.templates')}</Button>}
+                        {!embedded && headerAction}
                     </div>
                 </div>
 
@@ -200,8 +205,9 @@ export const PluginList: React.FC<PluginListProps> = ({
                         onAddClick={onAddClick}
                         onOpenTemplates={onOpenTemplates}
                         unrestored={unrestored}
+                        hideAdd={embedded}
                     />
-                ) : (
+                ) : embedded ? null : (
                     <Button
                         id="add-effect-btn"
                         variant="outline"

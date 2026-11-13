@@ -20,23 +20,9 @@ vi.mock('../../features/Home/VoiceQuickControls', () => ({
 
 afterEach(() => { cleanup(); });
 
-const panels = [
-  { present: false, open: true, wide: true, place: 'closed' },
-  { present: true, open: false, wide: true, place: 'closed' },
-  { present: true, open: true, wide: true, place: 'beside' },
-  { present: true, open: true, wide: false, place: 'overlay' },
-] as const;
-
-it('deriveHomeChrome は設定の有無とパネルの組合せだけで比較の出し分けを決める', () => {
-  for (const panel of panels) {
-    const vstPanel = { present: panel.present, open: panel.open, wide: panel.wide };
-    expect(deriveHomeChrome({ configured: false, vstPanel })).toEqual({
-      kind: 'setup', vstPanel: panel.place, footer: { compare: 'whileActive' },
-    });
-    expect(deriveHomeChrome({ configured: true, vstPanel })).toEqual({
-      kind: 'daily', vstPanel: panel.place, footer: { compare: 'always' },
-    });
-  }
+it('deriveHomeChrome は設定の有無だけで比較の出し分けを決める', () => {
+  expect(deriveHomeChrome({ configured: false })).toEqual({ kind: 'setup', footer: { compare: 'whileActive' } });
+  expect(deriveHomeChrome({ configured: true })).toEqual({ kind: 'daily', footer: { compare: 'always' } });
 });
 
 it('空の操作名は受け取らない', () => {

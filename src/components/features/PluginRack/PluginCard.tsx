@@ -121,7 +121,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         <MdDragIndicator className="w-4 h-4 opacity-50 hover:opacity-100" />
                     </button>
 
-                    {/* 右パネルの幅でも名前が潰れないよう、名前と操作の行と、ゲインの行に分ける。 */}
+                    {/* 狭い幅でも名前が潰れないよう、名前と操作の行と、ゲインの行に分ける。 */}
                     <div className="flex flex-col gap-1.5 py-2 pl-9 pr-3">
                         <div data-plugin-row="primary" className="flex items-center gap-2">
                             <Switch
@@ -242,7 +242,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     <MdDragIndicator className="w-4 h-4 opacity-50 hover:opacity-100" />
                 </button>
 
-                {/* 右パネルの幅でも名前が潰れないよう、名前と操作の行と、ゲインの行に分ける。 */}
+                {/* 狭い幅でも名前が潰れないよう、名前と操作の行と、ゲインの行に分ける。 */}
                 <div className="flex flex-col gap-2 py-3 pl-9 pr-3">
                     <div className="flex items-center gap-2">
                         {/* ON/OFF は1行表示と同じく名前の左に置く。 */}

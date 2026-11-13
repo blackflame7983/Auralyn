@@ -1,4 +1,4 @@
-// 音づくりのページから、右パネルの VST を開く。開く処理そのものは AppShell の openRack。
+// 音づくりのページから、VST のページを開く。開く処理そのものは AppShell が登録する。
 let opener: (() => void) | null = null;
 
 export function registerRackOpener(next: () => void) {
