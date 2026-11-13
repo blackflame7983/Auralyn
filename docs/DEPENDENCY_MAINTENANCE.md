@@ -434,3 +434,4 @@ npm 10.9.4 で `npm install` / `npm uninstall` を行うと `libc` 欄が再び�
 - 開発サーバーのブラウザで、transform と opacity が CSS transition ではなく WAAPI の Animation で動くことを確認した。開くときは予約幅の CSS transition よりパネルが数十ms遅れて始まる（React の確定後に開始するため）。
 - フロント1,632件、右パネルを含むブラウザ e2e 46件、型検査、release readiness が成功。実 Tauri（WebView2）でのフレーム間隔、非表示ウィンドウでの退場の片付け、署名付き配布は未確認。
 - 他の動きへ広げるかは、この結果と実 Tauri の確認を見て別途決める。
+- 2026-11-14 追記：段階 F（#526）で右パネルを消したため、`motion` を読み込む製品のコードはなくなった。依存の削除は規約整理と混ぜず、別の変更で判断する。
