@@ -12,7 +12,7 @@ for (const size of [{ width: 960, height: 640 }, { width: 1280, height: 800 }]) 
         });
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
         await expect(dialog.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeVisible();

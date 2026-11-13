@@ -4,12 +4,13 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { AppShell } from '../AppShell';
+
+vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({ busy: false, label: '更新の確認', description: '', checkUpdates: vi.fn() }), UpdateGuide: () => null }));
 import { actionWord, ChannelAction } from '@/components/features/Home/ChannelAction';
 import { deriveHomeChrome } from '../homeChrome';
 import { NoticeLane } from '../NoticeLane';
 import { focusOutputGain, OutputGainControl } from '../OutputGainControl';
 
-vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: () => null }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({
   useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }),

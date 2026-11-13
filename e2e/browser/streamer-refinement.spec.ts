@@ -93,10 +93,10 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
     });
     // 通知は中央の列の中に出る。右の列には重ならず、列の位置も動かさない。
     const column = (await page.getByRole('complementary', { name: '本番中の操作' }).boundingBox())!;
-    const header = (await page.locator('header').boundingBox())!;
+    const rail = (await page.getByRole('navigation', { name: '行き先', exact: true }).boundingBox())!;
     const toast = (await failure.boundingBox())!;
     expect(toast.x + toast.width).toBeLessThanOrEqual(column.x + 1);
-    expect(Math.abs(column.y - (header.y + header.height))).toBeLessThanOrEqual(1);
+    expect(Math.abs(column.y - rail.y)).toBeLessThanOrEqual(1);
     const mute = (await page.getByRole('button', { name: '緊急ミュート', exact: true }).boundingBox())!;
     expect(mute.y - column.y).toBeLessThanOrEqual(16);
     await page.screenshot({ path: testInfo.outputPath('mute-failure.png') });

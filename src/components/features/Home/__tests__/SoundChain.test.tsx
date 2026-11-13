@@ -43,7 +43,7 @@ it('一部のVST状態だけが不明でも声の操作を禁止と案内せず�
 });
 const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
-const props = () => ({ model: model(), audioReady: false, isEngineRunning: true, listenOpen: false, onListen: vi.fn(), onListenClose: vi.fn(),
+const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
 beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; });
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -168,14 +168,15 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
     expect(screen.queryByText('OFF')).not.toBeInTheDocument();
 });
 
-it('VST の行から右パネルの VST 構成を開き、見出しから聴き比べ、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
+it('VST の行から右パネルの VST 構成を開き、ボイスチェックは音調整に置かず、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
     const p = props();
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
-    fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' })); expect(p.onListen).toHaveBeenCalledOnce();
+    // ボイスチェックは上の帯へ移した。音調整の見出しには残さない。
+    expect(screen.queryByRole('button', { name: 'ボイスチェック' })).not.toBeInTheDocument();
     // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });

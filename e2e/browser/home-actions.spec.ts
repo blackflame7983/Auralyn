@@ -105,7 +105,8 @@ test.describe('設定済みの停止中', () => {
         await expect(start).toHaveCount(1);
         await expect(start).toBeInViewport();
         await expect(page.getByRole('region', { name: '音声チェック', exact: true }).getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
-        await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(page.getByRole('region', { name: '状態の帯', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(0);
         await page.screenshot({ path: info.outputPath('stopped.png') });
         await start.click();
         await expect(start).toHaveCount(0);

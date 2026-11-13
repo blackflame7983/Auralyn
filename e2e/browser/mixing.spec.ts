@@ -26,7 +26,7 @@ async function fixture(page: Page, configPresent = true, running = false, panelS
         };
     }, { configPresent, running, panelShown });
 }
-async function settings(page: Page) { await page.getByRole('button', { name: '設定を開く', exact: true }).click(); return page.getByRole('dialog').first(); }
+async function settings(page: Page) { await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click(); return page.getByRole('dialog').first(); }
 async function streamMix(page: Page) { const panel = page.locator('#stream-mix-panel'); await expect(panel).toBeVisible(); return panel; }
 async function keyboardOpen(page: Page, element: Locator) { await element.scrollIntoViewIfNeeded(); await element.focus(); await page.keyboard.press('Enter'); }
 async function noOverflow(dialog: Locator) { expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1); }

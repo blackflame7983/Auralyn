@@ -1,11 +1,12 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
-import { Header } from '../Header';
+import { AppRail } from '../AppRail';
 import { EmergencyMuteButton } from '../EmergencyMuteButton';
 import { DeviceStatus } from '@/components/features/DeviceStatus/DeviceStatus';
 
@@ -17,23 +18,26 @@ vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: v
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it.each(['ja', 'en'] as const)('共通ヘッダーの入口を公開し、緊急ミュートは置かない（%s）', async locale => {
+const rail = (over: Partial<ComponentProps<typeof AppRail>> = {}) => ({
+    current: 'home' as const, onHome: vi.fn(), onSound: vi.fn(), onVst: vi.fn(), onConnect: vi.fn(), onSettings: vi.fn(),
+    onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(), onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(), ...over,
+});
+
+it.each(['ja', 'en'] as const)('レールから現行の画面を開き、緊急ミュートは置かない（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
-    const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
-        onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
-        currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
-    const view = render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
+    const props = rail();
+    render(<LocaleProvider store={store}><AppRail {...props} /></LocaleProvider>);
     expect(screen.queryByText(message(locale, 'device.engine'))).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.emergency') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.compare') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.audioSettingsOpen') }));
-    expect(props.onOpenSettings).toHaveBeenCalledOnce();
-    // 数値の詳細でもセットアップは設定と問題発生時の入口に置く。
-    localStorage.setItem('vst_host_beginner_mode', 'false');
-    act(() => window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })));
-    view.rerender(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
-    expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'rail.connectName') }));
+    expect(props.onConnect).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'rail.sound') }));
+    expect(props.onSound).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${message(locale, 'rail.settings')}$`) }));
+    expect(props.onSettings).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: message(locale, 'rail.home') })).toHaveAttribute('aria-current', 'page');
     expect(props.onOpenWizard).not.toHaveBeenCalled();
 });
 
@@ -76,27 +80,22 @@ it.each([
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
-it.each(['ja', 'en'] as const)('表示モードの切替・大型メーター・マイク音量・テーマはヘッダーに置かない（%s）', locale => {
+it.each(['ja', 'en'] as const)('製品名は読み上げ用にし、表示モードや大型メーターはレールに置かない（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
-    // 以前の詳細表示を使っていた人（数値の詳細を表示）でも同じ。
-    localStorage.setItem('vst_host_beginner_mode', 'false');
-    const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
-        onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
-        currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
-    render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><AppRail {...rail({ current: 'vst' })} /></LocaleProvider>);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('sr-only', 'lg:not-sr-only');
-    expect(document.querySelector('header img')).toHaveAttribute('alt', '');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('sr-only');
+    expect(screen.getByRole('heading', { level: 1 })).not.toHaveClass('lg:not-sr-only');
+    expect(document.querySelector('nav img')).toHaveAttribute('alt', '');
+    expect(screen.getByRole('button', { name: message(locale, 'rail.vst') })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByRole('button', { name: message(locale, 'header.inputGain') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /テーマ|theme/i })).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('ヘルプからホームと同じ名前・行き先の診断を開く（%s）', async locale => {
     const onOpenTroubleshoot = vi.fn();
-    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><Header
-        onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
-        onOpenTroubleshoot={onOpenTroubleshoot} onOpenWizard={vi.fn()}
-        currentHost="WASAPI" isEngineRunning engineProcessReady /></LocaleProvider>);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AppRail
+        {...rail({ onOpenTroubleshoot })} /></LocaleProvider>);
     const help = screen.getByRole('button', { name: message(locale, 'header.helpOpen') });
     fireEvent.keyDown(help, { key: 'Enter' });
     const entry = await screen.findByRole('menuitem', { name: new RegExp(message(locale, 'header.noSound')) });

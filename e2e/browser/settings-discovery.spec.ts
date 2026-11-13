@@ -61,8 +61,7 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await saveSinging.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
     await page.keyboard.press('Escape');
-    const live = page.getByRole('region', { name: 'いまの状態', exact: true });
-    const modes = live.getByRole('radiogroup', { name: 'モード切替', exact: true });
+    const modes = page.getByRole('region', { name: '状態の帯', exact: true }).getByRole('radiogroup', { name: 'モード切替', exact: true });
     await expect(modes.getByRole('radio', { name: '歌', exact: true })).toBeEnabled();
     await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeDisabled();
     await expect(actions).toBeFocused();
@@ -84,7 +83,7 @@ test('設定の通常操作を先に置き、アイコンと必要時の説明�
     await page.setViewportSize({ width: 960, height: 640 });
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
-    await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+    await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     for (const name of ['オーディオ', '音づくり', 'OBS連携', '外観', 'ホットキー', 'システム']) {
         const tab = dialog.getByRole('tab', { name, exact: true });

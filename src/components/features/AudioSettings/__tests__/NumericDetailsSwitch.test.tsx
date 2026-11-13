@@ -9,9 +9,9 @@ it('外観の「数値の詳細を表示」は以前の詳細表示と同じ保�
     const toggle = screen.getByRole('switch', { name: '数値の詳細を表示' });
     // 未設定の人は数値を出さない状態から始める。
     expect(toggle).toHaveAttribute('aria-checked', 'false');
-    expect(toggle).toHaveAccessibleDescription(/ヘッダーの遅延/);
+    expect(toggle).toHaveAccessibleDescription(/上の帯に、状態の札の横へ遅延/);
     fireEvent.click(screen.getByRole('button', { name: '数値の詳細を表示' }));
-    expect(screen.getByRole('dialog', { name: '数値の詳細を表示' })).toHaveTextContent('ヘッダーの遅延');
+    expect(screen.getByRole('dialog', { name: '数値の詳細を表示' })).toHaveTextContent('上の帯に、状態の札の横へ遅延');
     fireEvent.click(toggle);
     expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     expect(toggle).toHaveAttribute('aria-checked', 'true');

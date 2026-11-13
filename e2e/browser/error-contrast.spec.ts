@@ -52,7 +52,7 @@ for (const theme of ['dark', 'light', 'gaming']) {
         expect(await contrast(mute, 'borderTopColor')).toBeGreaterThanOrEqual(3);
         expect(await contrast(mute, '--tw-ring-color')).toBeGreaterThanOrEqual(3);
         await page.screenshot({ path: info.outputPath(`${theme}-mute-on.png`) });
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('combobox', { name: '入力元', exact: true }).selectOption('process');
         const error = dialog.getByRole('alert');

@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 async function openSettings(page: Page) {
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+    await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     await expect(dialog.getByRole('combobox', { name: '接続方式', exact: true, includeHidden: true })).toBeAttached();
     return dialog;
@@ -178,7 +178,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
             await page.goto('/');
             // CSS拡大で狭い表示を検査する。Windows実DPIやブラウザ本来のズームではない。
             await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
-            await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+            await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
             const dialog = page.getByRole('dialog', { name: '設定', exact: true });
             for (const tab of ['オーディオ', 'ホットキー', 'システム', '外観']) {
                 await dialog.getByRole('tab', { name: tab, exact: true }).click();
@@ -223,7 +223,7 @@ test.describe('ホームと設定の共通操作', () => {
         expect(sizes.slice(0, 2).every(size => JSON.stringify(size) === JSON.stringify(sizes[0]))).toBe(true);
         expect(sizes.slice(2).every(size => JSON.stringify(size) === JSON.stringify(sizes[2]))).toBe(true);
         const settingsSizes: Awaited<ReturnType<typeof dimensions>>[] = [];
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
         for (let i = 0; i < names.length; i++) {

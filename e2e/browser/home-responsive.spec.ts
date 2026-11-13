@@ -52,7 +52,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
 test('設定の拡大表示はポインター時だけで、動きを減らす設定では止まる', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
-    const settings = page.getByRole('button', { name: '設定を開く', exact: true });
+    const settings = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
     const surface = page.locator('.settings-surface');
     await settings.click();
     expect(await surface.evaluate(e => getComputedStyle(e).animationName)).toBe('surface-open');

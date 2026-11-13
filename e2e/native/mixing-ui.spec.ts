@@ -96,7 +96,7 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
         await expect(apply).toBeDisabled(); await expect(apply).toHaveAccessibleDescription(/配信用の出力先/);
         await page.screenshot({ path: info.outputPath('mixing-ja.png') });
         await writeFile(info.outputPath('mixing-ja-aria.txt'), await mixing.ariaSnapshot());
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         await dialog.getByRole('tab', { name: '外観', exact: true }).click();
         await dialog.getByRole('combobox', { name: '表示言語' }).selectOption('en');
         await page.setViewportSize({ width: 1024, height: 768 });

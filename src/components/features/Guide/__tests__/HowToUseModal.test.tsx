@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { glossary, glossaryDocName, getUserDocUrl } from '@/lib/userDocs';
 import { invoke } from '@tauri-apps/api/core';
-import { Header } from '@/components/layout/Header';
+import { AppRail } from '@/components/layout/AppRail';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
@@ -17,8 +17,8 @@ beforeEach(() => { localStorage.clear(); vi.mocked(invoke).mockReset(); vi.mocke
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function open(locale: 'ja' | 'en' = 'ja') {
     const store = createLocaleStore(() => locale, () => true);
-    const props = { onOpenSettings: vi.fn(), onOpenShortcuts: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(), onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(), currentHost: '', isEngineRunning: false };
-    render(<LocaleProvider store={store}><input aria-label="入力" /><Header {...props} /></LocaleProvider>);
+    const props = { current: 'home' as const, onHome: vi.fn(), onSound: vi.fn(), onVst: vi.fn(), onConnect: vi.fn(), onSettings: vi.fn(), onOpenShortcuts: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(), onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn() };
+    render(<LocaleProvider store={store}><input aria-label="入力" /><AppRail {...props} /></LocaleProvider>);
     return { store, props };
 }
 

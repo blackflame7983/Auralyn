@@ -86,7 +86,7 @@ test.describe('右の本番中の操作', () => {
         await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toHaveCount(1);
         await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toHaveCount(1);
         await expect(page.getByRole('switch', { name: 'VSTを外して比較', exact: true })).toHaveCount(1);
-        await expect(page.locator('header').getByRole('button', { name: '緊急ミュート', exact: true })).toHaveCount(0);
+        await expect(page.locator('header')).toHaveCount(0);
     });
 
     test('音楽鑑賞の最小 900×600 でも右の列の操作が見える', async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe('右の本番中の操作', () => {
         }
     });
 
-    test('Tab はヘッダー、中央、右の列の順に進む', async ({ page }) => {
+    test('Tab はレール、上の帯、中央、右の列の順に進む', async ({ page }) => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.addInitScript(configuredStorage);
         await page.goto('/');
@@ -169,19 +169,26 @@ test.describe('右の本番中の操作', () => {
             const region = await page.evaluate(() => {
                 const current = document.activeElement as HTMLElement | null;
                 if (!current || current === document.body) return '';
-                if (current.closest('header')) return 'header';
+                if (current.closest('nav[aria-label="行き先"]')) return 'rail';
+                if (current.closest('[data-status-band]')) return 'band';
                 if (current.closest('aside[aria-label="本番中の操作"]')) return 'column';
                 if (current.closest('main')) return 'main';
                 return 'other';
             });
-            if (region) regions.push(region);
+            if (region && regions[regions.length - 1] !== region) regions.push(region);
         }
-        const header = regions.indexOf('header');
+        const rail = regions.indexOf('rail');
+        const band = regions.indexOf('band');
         const main = regions.indexOf('main');
         const safety = regions.indexOf('column');
-        expect(header).toBeGreaterThanOrEqual(0);
-        expect(main).toBeGreaterThan(header);
+        expect(rail).toBe(0);
+        expect(main).toBeGreaterThan(rail);
         expect(safety).toBeGreaterThan(main);
+        // 帯に押せる操作があるときだけ、レールと中央のあいだに入る。
+        if (band >= 0) {
+            expect(band).toBeGreaterThan(rail);
+            expect(main).toBeGreaterThan(band);
+        }
     });
 });
 

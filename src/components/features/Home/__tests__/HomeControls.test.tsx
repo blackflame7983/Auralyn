@@ -42,7 +42,7 @@ it('閉じたモジュールのヘッダーで直接ON/OFFでき、詳細の開�
         context: { location: 'home', usage: 'obs', signal: 'separate', receiver: '' }, observation: emptyObservation('ready'), records: {}, checking: false, confirming: false,
         confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn(),
     };
-    const view = render(<SoundChain model={model} audioReady isEngineRunning listenOpen={false} onListen={vi.fn()} onListenClose={vi.fn()}
+    const view = render(<SoundChain model={model} audioReady isEngineRunning
         onOpenSettings={vi.fn()} onOpenOBSSettings={vi.fn()} onExpandedChange={expanded} />);
     const noise = await screen.findByRole('switch', { name: 'ノイズ低減' });
     const builtin = screen.getByRole('switch', { name: '声を整える' });

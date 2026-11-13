@@ -52,7 +52,7 @@ for (const locale of ['ja', 'en'] as const) {
         }, locale);
         await page.goto('/');
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         const dialog = page.getByRole('dialog');
         const device = dialog.getByRole('combobox', { name: message(locale, 'guide.copy.188'), exact: true });
         const note = dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true });
