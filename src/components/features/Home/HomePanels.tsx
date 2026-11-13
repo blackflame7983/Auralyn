@@ -42,6 +42,10 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const music = purpose === 'music';
     // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
     const configured = model.observation.availability !== 'unconfigured';
+    // いまの状態の札と同じ文言は、札が出ている間は重ねない。
+    const stripStatus = !configured ? null : audioReady ? t('device.engine') : statusText ?? null;
+    const resolvedStatus = statusText ?? t(availabilityLabels[model.observation.availability]);
+    const statusCovered = stripStatus !== null && resolvedStatus === stripStatus;
     // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。
     const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);
     const actualInput = model.observation.config?.input ?? inputName;
@@ -49,7 +53,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);
     return <div className="mb-4 space-y-4">
-        <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={<RouteLine output={actualOutput} broadcastName={broadcastName} split={Boolean(broadcastId || model.observation.routing?.splitProcessing)} local={music || model.context.usage === 'listening'} receiver={model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : t('flow.receiverUnknown')} />}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
@@ -59,7 +63,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
                 branches={broadcastId ? [{ label: t('flow.broadcastOutput'), value: broadcastName ?? t('flow.unknown') }] : undefined}
                 receiver={{ label: t(music && !broadcastId ? 'prep.localReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('prep.local') : model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : undefined,
                     warning: !music && model.context.usage !== 'listening' && confirmationState(model.records, 'receiver') !== 'confirmed' ? t('flow.receiverUnknown') : undefined }} /></div>
-            {!homeActionInStrip && model.observation.availability !== 'muted' && <p role="status" className="text-ui-support text-muted-foreground">{statusText ?? t(availabilityLabels[model.observation.availability])}</p>}
+            {!statusCovered && !homeActionInStrip && model.observation.availability !== 'muted' && <p role="status" className="text-ui-support text-muted-foreground">{resolvedStatus}</p>}
             {(music || configured && !configureIsPrimary) && <Button variant="outline" size="default" type="button" onClick={onOpenSettings} className="home-action">{t('home.changeDevices')}</Button>}
             {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <div className="basis-full"><RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} resolvedName={broadcastName ?? null} /></div>}
         </section>} />

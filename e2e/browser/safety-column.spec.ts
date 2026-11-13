@@ -77,8 +77,8 @@ test.describe('右の本番中の操作', () => {
         ];
         for (const size of [{ width: 960, height: 640 }, { width: 1024, height: 768 }, { width: 1920, height: 1080 }]) {
             await expectColumnFits(page, size.width, size.height, columnName, names);
-            // li は display: contents で大きさを持たないため、中の見出しボタンで並びを測る。
-            const tops = await page.locator('.sound-tool-list > li > div > button').evaluateAll(items => items.map(item => item.getBoundingClientRect().top));
+            // 音調整の3枚は開閉せず、最小窓でも横に並ぶ。
+            const tops = await page.locator('.sound-module-item').evaluateAll(items => items.map(item => item.getBoundingClientRect().top));
             expect(tops.length).toBeGreaterThanOrEqual(2);
             // 配信・通話の最小サイズでも、音調整は横に並んだままにする。
             expect(Math.abs(tops[1] - tops[0])).toBeLessThanOrEqual(8);
@@ -130,9 +130,6 @@ test.describe('右の本番中の操作', () => {
         await ready(page);
         for (const size of [{ width: 960, height: 640 }, { width: 1024, height: 768 }]) {
             await page.setViewportSize(size);
-            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') {
-                await page.locator('.sound-tool-list > li > div > button').last().click();
-            }
             await page.locator('#vst-panel-toggle').click();
             await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
             await expect(page.locator('main')).toHaveAttribute('inert', '');
@@ -228,9 +225,6 @@ async function shoot(page: Page, state: string, theme: string, width: number, he
     if (state === 'first') await expect(page.getByRole('dialog', { name: 'セットアップ' })).toBeVisible();
     else await ready(page);
     if (panel) {
-        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') {
-            await page.locator('.sound-tool-list > li > div > button').last().click();
-        }
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toBeVisible();
     }

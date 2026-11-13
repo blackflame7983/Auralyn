@@ -13,10 +13,10 @@ import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
 vi.mock('../Header', () => ({ Header: () => null }));
-vi.mock('../MasterBar', () => ({ MasterBar: ({ compare }: { compare?: React.ReactNode }) => <>{compare}</> }));
+vi.mock('../MasterBar', () => ({ MasterBar: ({ compare, input, lock }: { compare?: React.ReactNode; input?: React.ReactNode; lock?: React.ReactNode }) => <>{input}{lock}{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
-vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null }));
+vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveVstPanelOpen(false); saveStreamMixPanel(false); });
 afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
 
@@ -25,7 +25,7 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
     render(<AppShell onOpenOBSSettings={vi.fn()}
         onOpenSettings={onOpenSettings} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" engineProcessReady={true} isEngineRunning={running}>
+currentHost="WASAPI" engineProcessReady={true} isEngineRunning={running}>
         <p>エフェクト設定</p>
     </AppShell>);
     const button = screen.queryByRole('button', { name: 'マイクと出力先を設定する' });
@@ -39,12 +39,12 @@ it('音声停止中の音量チェックは本番帯で無効表示にし、押�
     render(<AppShell onOpenOBSSettings={vi.fn()}
         onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
+currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
         <p>rack</p>
     </AppShell>);
     const button = screen.getByRole('button', { name: '音量チェックを開始' });
     expect(button).toHaveTextContent('音量チェック');
-    expect(screen.getByRole('button', { name: '大型レベルメーターを開く' })).toHaveTextContent('大型レベルメーター');
+    expect(screen.queryByRole('button', { name: '大型レベルメーターを開く' })).not.toBeInTheDocument();
     expect(button).toBeDisabled();
     expect(button.className).toContain('disabled:opacity-50');
     expect(button).toHaveAccessibleDescription('音声処理中に使えます');
@@ -59,12 +59,12 @@ it('未設定時は音の流れと次の1歩だけを示し、音声を自動変
     render(<AppShell onOpenOBSSettings={vi.fn()}
         onOpenSettings={settings} onOpenSoundSettings={sound} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={voice} onOpenWizard={wizard}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="" isEngineRunning={false}>
+currentHost="" isEngineRunning={false}>
         <p>エフェクト設定</p>
     </AppShell>);
     // 未設定の間は音量チェックも本番帯ごと出さない（押しても使えないため）。
     expect(screen.queryByRole('button', { name: '音量チェックを開始' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'いまの状態' })).not.toBeInTheDocument();
     // 準備の確認と同じ意味のボタン・警告を重ねない。
     expect(screen.queryByRole('region', { name: '音声チェック' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
@@ -92,7 +92,7 @@ it.each([null, false])('古い稼働表示が残っていても状態=%sでは�
     render(<AppShell onOpenOBSSettings={vi.fn()}
         onOpenSettings={settings} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" isEngineRunning engineProcessReady={engineProcessReady}>
+currentHost="WASAPI" isEngineRunning engineProcessReady={engineProcessReady}>
         <p>エフェクト設定</p>
     </AppShell>);
     fireEvent.click(screen.getByRole('button', { name: 'マイクと出力先を設定する' }));
@@ -103,8 +103,8 @@ it.each([null, false])('古い稼働表示が残っていても状態=%sでは�
 const commonProps = {
     onOpenOBSSettings: vi.fn(), onOpenSettings: vi.fn(),
     onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(), onOpenTroubleshoot: vi.fn(),
-    onOpenVoiceCheck: vi.fn(), onOpenWizard: vi.fn(), onToggleLargeMeter: vi.fn(),
-    isLargeMeterOpen: false, currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true,
+    onOpenVoiceCheck: vi.fn(), onOpenWizard: vi.fn(),
+    currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true,
 };
 
 it.each(['ja', 'en'] as const)('保護中の確認失敗を現在の言語で表示する (%s)', async locale => {
@@ -143,8 +143,9 @@ it('開始後の設定失敗は、別経路で稼働しても残し、設定で�
     fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: message('ja', 'home.changeDevices') }));
     expect(retry).toHaveBeenCalledOnce();
     expect(settings).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /Mic/ }));
-    expect(settings).toHaveBeenCalledOnce();
+    // 機器名は右の列の文字であり、押すと設定を開くボタンではない。
+    expect(screen.getByTitle('Mic')).toBeInTheDocument();
+    expect(settings).not.toHaveBeenCalled();
     act(() => window.dispatchEvent(new Event('audio-settings-started')));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
@@ -202,7 +203,7 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
 it('音量チェックは本番帯のメーター横に置き、明示要求だけを送り、再描画で再要求しない', () => {
     const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);
     const button = screen.getByRole('button', {name: '音量チェックを開始'});
-    expect(button.closest('section[aria-label="本番"]')).not.toBeNull();
+    expect(button.closest('section[aria-label="声の流れ"]')).not.toBeNull();
     expect(measurementProps.current.request).toBeUndefined();
     fireEvent.click(button);
     const start = measurementProps.current.request;
@@ -235,14 +236,14 @@ it('入出力・声の調整・試聴を保持する', async () => {
     const sound = vi.fn(); const voice = vi.fn(); const obs = vi.fn();
     render(<AppShell {...commonProps} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
         currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
-    // 入力機器の名前は本番帯に1つだけ出し、押すと機器の設定を開く。声の処理には入力・出力の段を置かない。
-    fireEvent.click(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: /^入力：USB マイク/ }));
-    expect(commonProps.onOpenSettings).toHaveBeenCalled();
+    // 入力機器の名前は右の列に1つだけ出し、声の処理には入力・出力の段を置かない。
+    const column = screen.getByRole('complementary', { name: '本番中の操作' });
+    expect(within(column).getByTitle('USB マイク')).toBeInTheDocument();
+    expect(within(column).queryByRole('button', { name: /USB マイク/ })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: '音調整' })).queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
-    // 入力メーターは本番帯の1か所だけにし、音声チェックとは重ねない。
     const meters = screen.getAllByRole('meter', { name: 'マイクの入力レベル' });
     expect(meters).toHaveLength(1);
-    expect(meters[0].closest('section[aria-label="本番"]')).not.toBeNull();
+    expect(meters[0].closest('aside')).toBe(column);
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' }));
@@ -252,26 +253,19 @@ it('入出力・声の調整・試聴を保持する', async () => {
 });
 
 
-it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメーター横から開く', () => {
-    const toggleMeter = vi.fn();
-    const view = render(<AppShell {...commonProps} onToggleLargeMeter={toggleMeter} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
+it('VST 構成は右パネルで開閉し、大型メーターの入口は置かない', () => {
+    render(<AppShell {...commonProps} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
     expect(screen.queryByText('rack-panel')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
+    expect(screen.queryByRole('button', { name: /大型レベルメーター/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
     expect(screen.getByRole('complementary', { name: 'rack-panel' })).toHaveTextContent('rack-panel');
     expect(screen.getByText('rack-panel')).toHaveFocus();
     expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('true');
-    const meter = within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: '大型レベルメーターを開く' });
-    fireEvent.click(meter);
-    expect(toggleMeter).toHaveBeenCalledOnce();
-    view.rerender(<AppShell {...commonProps} isLargeMeterOpen vstPanel={<span>rack-panel</span>}><p>rack</p></AppShell>);
-    expect(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: message('ja', 'header.meterClose') })).toHaveAttribute('aria-pressed', 'true');
 });
 
 it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じたら入口へ戻す', () => {
     const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
-    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     const toggle = screen.getByRole('button', { name: 'VSTを編集' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
@@ -309,13 +303,13 @@ it('フッターはなく、右の列は大型メーター用のフッター高�
 
 it('モード切替は本番帯の中に置く', () => {
     render(<AppShell {...commonProps} liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
-    const strip = screen.getByRole('region', { name: '本番' });
+    const strip = screen.getByRole('region', { name: 'いまの状態' });
     expect(strip).toContainElement(screen.getByRole('button', { name: '歌' }));
 });
 
 it('本番帯を出さない未設定の間も、登録済み・誤操作防止中のモード切替（本番保護の解除）はホームに残す', () => {
     render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} liveControlsWhileUnconfigured liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
-    expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'いまの状態' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '歌' })).toBeInTheDocument();
 });
 
@@ -339,7 +333,7 @@ it('チェーン列は本番操作の後で音声チェックより前に置き�
     const view = render(<AppShell {...commonProps} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
     const chain = screen.getByRole('region', { name: '音調整' });
     expect(chain).toHaveTextContent('vst-items');
-    expect(follows(screen.getByRole('region', { name: '本番' }), chain)).toBe(true);
+    expect(follows(screen.getByRole('region', { name: 'いまの状態' }), chain)).toBe(true);
     expect(follows(chain, screen.getByRole('region', { name: '音声チェック' }))).toBe(true);
     expect(follows(chain, screen.getByText('rack'))).toBe(true);
     view.rerender(<AppShell {...commonProps} currentHost="" isEngineRunning={false} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
@@ -357,14 +351,14 @@ it('配信ミックスは表示を選んだとき本番帯の直後へ置き、�
     const props = { ...commonProps, streamMixPanel: <section aria-label="配信ミックス">mix</section> };
     const view = render(<AppShell {...props}><p>rack</p></AppShell>);
     act(() => saveStreamMixPanel(true));
-    const strip = screen.getByRole('region', { name: '本番' });
+    const now = screen.getByRole('region', { name: 'いまの状態' });
+    const flow = screen.getByRole('region', { name: '声の流れ' });
     const mix = screen.getByRole('region', { name: '配信ミックス' });
     const chain = screen.getByRole('region', { name: '音調整' });
-    expect(strip.nextElementSibling).toBe(mix);
+    expect(now.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(flow.compareDocumentPosition(mix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mix.compareDocumentPosition(chain) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip).toHaveAttribute('data-stage', 'full');
-    expect(strip).not.toHaveAttribute('data-roomy');
-    expect(strip.closest('.home-content')).not.toHaveAttribute('data-roomy');
+    expect(chain.querySelector('[data-home-tier="2"]')).not.toBeNull();
     // 未設定に戻ったら、表示を選んでいても音の流れと次の1歩より上へ出さない（#297）。
     view.rerender(<AppShell {...props} currentHost=""><p>rack</p></AppShell>);
     expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();
@@ -380,7 +374,7 @@ it('音量チェックの停止未確認でもホームの診断へ直接進め�
     const diagnose = vi.fn();
     render(<AppShell onOpenOBSSettings={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={diagnose} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" currentInput="Mic" currentOutput="Speakers" engineProcessReady isEngineRunning={false}>
+currentHost="WASAPI" currentInput="Mic" currentOutput="Speakers" engineProcessReady isEngineRunning={false}>
         <p>rack</p>
     </AppShell>);
     const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
@@ -398,19 +392,16 @@ it('広い窓で別の音調整を開いてからVSTパネルを閉じても、�
     vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(min-width: 1200px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
         const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
-        const tool = screen.getByRole('button', { name: /^VST / });
-        fireEvent.click(tool);
         const edit = screen.getByRole('button', { name: 'VSTを編集' });
         fireEvent.click(edit);
         expect(container.querySelector('main')).not.toHaveAttribute('inert');
-        fireEvent.click(screen.getByRole('button', { name: /^ノイズ低減 / }));
         expect(edit.closest('[inert]')).toBeNull();
         const close = screen.getByRole('button', { name: 'close-panel' });
         close.focus();
         fireEvent.click(close);
         expect(edit).toHaveFocus();
         expect(edit.closest('[inert], [aria-hidden="true"]')).toBeNull();
-        expect(tool).toHaveAttribute('aria-expanded', 'false');
+        expect(edit).toHaveAttribute('aria-expanded', 'false');
         // 詳細を開き直さず、復帰先からVSTの編集を再開できる。
         fireEvent.click(edit);
         expect(screen.getByRole('button', { name: 'close-panel' })).toBeInTheDocument();

@@ -90,21 +90,52 @@ export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
     return <Switch checked={q.chainOn} disabled={q.disabled} onCheckedChange={active => void q.toggleChain(active)} aria-label={t('settings.AudioSettingsModal.097')} />;
 }
 
-export function BuiltinQuick({ q }: { q: VoiceQuick }) {
-    const t = useMessages();
-    if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
+function presetOptions(q: VoiceQuick, t: ReturnType<typeof useMessages>) {
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
-    // 5%刻みの操作に十分な長さを保ち、広い窓でもスライダーだけを伸ばし続けない。
-    return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
-        <SegmentedControl label={t('home.chainPreset')}
-            options={quickPresets.map(value => ({ value, label: presetLabel(value), disabled: q.disabled,
-                hint: t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint') }))}
-            value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
-        <div className="min-w-[10rem] max-w-[15rem] flex-1">
-            <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
-                disabled={q.disabled || !q.chainOn} formatValue={value => `${value}%`}
-                onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
-        </div>
+    return quickPresets.map(value => ({ value, label: presetLabel(value), disabled: q.disabled,
+        hint: t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint') }));
+}
+
+/** 1段目。整え具合のスライダー。割合はスライダーと同じ語で示す。 */
+export function BuiltinAmount({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
+    return <div className="min-w-0 w-full max-w-[15rem]">
+        <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
+            disabled={q.disabled || !q.chainOn} formatValue={value => `${value}%`}
+            onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
     </div>;
+}
+
+/** 2段目。声の種類。歌向けのときはホームの短い選択に出さない。 */
+export function BuiltinPresets({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    if (q.preset === 'singing') return null;
+    return <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
+        value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />;
+}
+
+export function BuiltinQuick({ q }: { q: VoiceQuick }) {
+    return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+        <BuiltinPresets q={q} />
+        <BuiltinAmount q={q} />
+    </div>;
+}
+
+/** 整え具合に合わせた形の目安。効果の保証ではなく、設定の形を見せる。 */
+export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
+    const t = useMessages();
+    const factor = on ? amount / 100 : 0;
+    const yLow = Math.round(42 - factor * 4);
+    const yMid = Math.round(36 - factor * 12);
+    const yHigh = Math.round(36 - factor * 18);
+    const curve = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
+    return <figure className="w-full" aria-label={t('home.toneGuide')}>
+        <figcaption className="text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
+        <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
+            <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />
+            <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" />
+        </svg>
+    </figure>;
 }

@@ -58,7 +58,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
         details: t('prep.steps'), setup: t('header.setupOpen'), check: t('prep.title'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
-        input: t('live.voice'), output: t('live.meterOutput'),
+        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
     };
     return <Modal title={t('help.title')} onClose={onClose}>
         <div className="modal-overlay-base">

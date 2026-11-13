@@ -12,6 +12,7 @@ import { useVstPanel } from './hooks/useVstPanel';
 import { MdClose } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
+import { LiveProtectButton } from './components/features/AudioSettings/LiveProtectButton';
 import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
@@ -178,8 +179,6 @@ function AppContent() {
         onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}
         onOpenVoiceCheck={() => ui.setIsVoiceCheckOpen(true)}
         onOpenWizard={() => ui.setIsWizardOpen(true)}
-        onToggleLargeMeter={() => ui.setIsLargeMeterOpen((prev) => !prev)}
-        isLargeMeterOpen={ui.isLargeMeterOpen}
         currentHost={audioConfig.host}
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
@@ -189,9 +188,11 @@ function AppContent() {
         liveModeName={t(stageModeKey(liveModel.snapshot))}
         liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
         liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
+        liveProtect={<LiveProtectButton model={liveModel} safetyOnly={displayPurpose === 'music'} />}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
-        vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstEditors={<VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}
         isEngineRunning={isEngineRunning}

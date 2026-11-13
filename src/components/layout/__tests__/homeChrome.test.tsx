@@ -12,8 +12,9 @@ import { focusOutputGain, OutputGainControl } from '../OutputGainControl';
 vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: () => null }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({
-  useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true }),
+  useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }),
   NoiseSwitch: () => null, NoiseQuick: () => null, BuiltinSwitch: () => null, BuiltinQuick: () => null,
+  BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null,
 }));
 
 afterEach(() => { cleanup(); });
@@ -25,17 +26,15 @@ const panels = [
   { present: true, open: true, wide: false, place: 'overlay' },
 ] as const;
 
-it('deriveHomeChrome は設定の有無・音調整・パネルの組合せだけで舞台とフッターを決める', () => {
+it('deriveHomeChrome は設定の有無とパネルの組合せだけで比較の出し分けを決める', () => {
   for (const panel of panels) {
-    for (const soundExpanded of [false, true]) {
-      const vstPanel = { present: panel.present, open: panel.open, wide: panel.wide };
-      expect(deriveHomeChrome({ configured: false, soundExpanded, vstPanel })).toEqual({
-        kind: 'setup', vstPanel: panel.place, footer: { compare: 'whileActive', outputMeter: true },
-      });
-      expect(deriveHomeChrome({ configured: true, soundExpanded, vstPanel })).toEqual({
-        kind: 'daily', vstPanel: panel.place, stage: soundExpanded ? 'yield' : 'full', footer: { compare: 'always', outputMeter: false },
-      });
-    }
+    const vstPanel = { present: panel.present, open: panel.open, wide: panel.wide };
+    expect(deriveHomeChrome({ configured: false, vstPanel })).toEqual({
+      kind: 'setup', vstPanel: panel.place, footer: { compare: 'whileActive' },
+    });
+    expect(deriveHomeChrome({ configured: true, vstPanel })).toEqual({
+      kind: 'daily', vstPanel: panel.place, footer: { compare: 'always' },
+    });
   }
 });
 
@@ -51,8 +50,8 @@ it('空の操作名は受け取らない', () => {
 
 it('設定済みホームの出力音量は本文の外に1つだけで、本番帯にはそのボタンがない', () => {
   render(<AppShell onOpenOBSSettings={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
-    onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()} onToggleLargeMeter={vi.fn()}
-    isLargeMeterOpen={false} currentHost="WASAPI" currentInput="Mic" currentOutput="Out" isEngineRunning engineProcessReady>
+    onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
+    currentHost="WASAPI" currentInput="Mic" currentOutput="Out" isEngineRunning engineProcessReady>
     <p>rack</p>
   </AppShell>);
   const sliders = screen.getAllByRole('slider', { name: '出力音量' });
@@ -62,7 +61,7 @@ it('設定済みホームの出力音量は本文の外に1つだけで、本番
   expect(column).toHaveAttribute('aria-label', '本番中の操作');
   expect(document.querySelector('footer')).toBeNull();
   expect(column).toContainElement(screen.getByRole('button', { name: '緊急ミュート' }));
-  const strip = screen.getByRole('region', { name: '本番' });
+  const strip = screen.getByRole('region', { name: 'いまの状態' });
   expect(strip.querySelector('button[aria-label="出力音量"]')).toBeNull();
   expect(screen.getAllByRole('switch', { name: 'VSTを外して比較' })).toHaveLength(1);
 });

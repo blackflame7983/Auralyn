@@ -87,8 +87,7 @@ it.each(['ja', 'en'] as const)('表示モードの切替・大型メーター・
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1 })).toHaveClass('sr-only', 'lg:not-sr-only');
     expect(document.querySelector('header img')).toHaveAttribute('alt', '');
-    for (const id of ['header.meterOpen', 'header.inputGain'] as const)
-        expect(screen.queryByRole('button', { name: message(locale, id) })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message(locale, 'header.inputGain') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /テーマ|theme/i })).not.toBeInTheDocument();
 });
 

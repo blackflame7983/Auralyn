@@ -35,7 +35,7 @@ import { OutputChannelSelector } from './OutputChannelSelector';
 import { readOutputRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { ShortcutsPanel } from './ShortcutsPanel';
-import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
+import { DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { audioApi } from '@/api/audio';
@@ -874,7 +874,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <LanguageSelector />
             <DisplayPurposeSelector />
             <NumericDetailsSwitch />
-            <AuroraDisplaySwitch />
             <div className="space-y-4">
               <div>
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">

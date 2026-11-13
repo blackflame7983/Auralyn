@@ -2,36 +2,38 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Voice", "Output", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Edit VST", "Add"]
 ---
 
-## Live strip {#stage}
+## Current status {#stage}
 
-The top of the stage shows “Running” while active and “Audio stopped” when stopped. Read the status and mode name. Use “Choose destination” to select your purpose, such as streaming or calls. “Sing” and “Talk” switch saved adjustments. When no saved mode is in use, the display reads “Custom sound”.
+Check “Running” or “Audio stopped”. Use “Choose destination” to select a purpose such as streaming or a call. “Sing” and “Talk” switch saved adjustments. An unsaved adjustment is shown as “Custom sound”. There is at most one primary button.
 
-The key icon for “Lock controls” protects against accidental setting changes. While locked, “Locked” appears beside it. Stop and emergency mute remain available.
+“Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
 ## Meters {#meters}
 
-“Voice” shows incoming sound; “Output” shows sound after processing. Moving meters do not confirm reception in a stream or call.
+In the right column, “Microphone” (“Playback source” while listening to music) shows incoming sound, and “Output” shows the level after processing. The bar follows the current level. The output number holds a recent peak. The output may also say “A bit low”, “In range”, or “Too loud”. Moving meters do not confirm that a stream or call is receiving you.
 
-While waiting for a signal, silent or stopped, the bars keep their size and position. Empty bars appear faint, with their state shown above.
+While waiting, silent, or stopped, the bars keep their size and position.
+
+## Sound flow {#flow}
+
+One band stacks the level before processing and the level after. The loudness check starts from the heading of this band.
 
 ## Sound adjustments {#sound}
 
-Use the switches in the noise reduction and voice shaping headers to turn each effect on or off directly. The VST header has a button to add or edit effects. Press an item name to open detailed adjustments. Change one thing at a time and [listen](./sound.md#voice-check).
-
-For voice use, detailed adjustments and the VST panel start closed to leave more room for the stage. The header switches remain available while details are closed. For music listening, VST starts open. You can open or close them after startup.
+Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. For VST, use “Edit VST” or “Add”. Change one thing at a time and [listen](./sound.md#voice-check).
 
 ## Audio check {#audio-check}
 
-Use “Preparation” to check connections and destination. “Connection details” leads to setup. Distinguish the output device from the destination purpose and check the receiving app too.
+Use “Preparation” to check the connection and destination. “Connection details” continues into setup. Tell the output device apart from the destination, and confirm the receiving app as well.
 
 ## Live controls on the right {#output-volume}
 
-Use the column on the right for “Emergency mute”, “Output volume”, and “Compare without VST”. Adjust loudness with “Output volume”. “Compare without VST” temporarily bypasses external VST effects only. Noise reduction and voice shaping continue.
+The column on the right runs, from the top, through “Emergency mute”, microphone volume, “Output” and “Output volume”, “Compare without VST”, and “Lock controls”. Use “Output volume” to set the level. “Compare without VST” temporarily bypasses external VST effects only. Noise reduction and voice shaping continue.
 
-To silence audio immediately, use “Emergency mute” in the same column.
+To silence the sound immediately, use “Emergency mute” in the same column.
 
 ## Related pages {#related}
 

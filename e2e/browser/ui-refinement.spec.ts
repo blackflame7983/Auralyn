@@ -53,25 +53,22 @@ async function prepare(page: Page, theme = 'dark', locale: 'ja' | 'en' = 'ja') {
 for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 1280, height: 800 }, { width: 900, height: 600 }]) {
     test(`本番帯の優先順位と高さ配分 ${theme} ${size.width}x${size.height}`, async ({ page }, info) => {
         await page.setViewportSize(size); await prepare(page, theme);
-        const live = page.getByRole('region', { name: message('ja', 'live.strip'), exact: true });
+        const live = page.getByRole('region', { name: message('ja', 'home.now'), exact: true });
         const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
         for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
         await expect(modes.locator('[aria-current=true]')).toHaveText(message('ja', 'liveBar.custom'));
-        await expect(live.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
+        await expect(page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         if (size.width === 1280) {
             // 配置が落ち着く前（区画が滑って移る途中）の位置で比べない。
             await settleLayoutMotion(page);
-            expect((await live.getByRole('meter').first().boundingBox())!.height).toBe(18);
-            expect((await live.locator('.live-stage').boundingBox())!.height).toBeGreaterThanOrEqual(160);
-            expect((await live.locator('.live-stage').boundingBox())!.height).toBeLessThanOrEqual(256);
-            const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; }));
+            const column = page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true });
+            expect((await column.getByRole('meter').first().boundingBox())!.height).toBe(16);
+            const bars = await column.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; }));
             expect(bars).toHaveLength(2);
-            expect(Math.abs(bars[0].top - bars[1].top)).toBeLessThanOrEqual(1);
-            expect(bars[0].right).toBeLessThan(bars[1].left);
-            // 状態文は別の行を増やさず、18pxのバー内に重ねて収める。
-            const statuses = live.locator('[data-meter-status]');
+            expect(bars[0].top).toBeLessThan(bars[1].top);
+            const statuses = column.locator('[role="meter"] [data-meter-status]');
             await expect(statuses).toHaveCount(2);
             expect(await statuses.evaluateAll(nodes => nodes.every(el => {
                 const meter = el.closest('[role="meter"]');
@@ -83,12 +80,11 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
                     && text.top >= bar.top && text.bottom <= bar.bottom
                     && el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight;
             }))).toBe(true);
-            const box = await live.boundingBox(); expect(box!.height).toBeGreaterThan(250);
             await expect(page.getByRole('region', { name: message('ja', 'prep.title'), exact: true })).toBeInViewport();
         }
         await page.screenshot({ path: info.outputPath('healthy.png') });
         await page.getByRole('button', { name: message('ja', 'prep.steps'), exact: true }).click();
-        await expect(live).toHaveAttribute('data-stage', 'full');
+        await expect(live).toBeVisible();
         await expect(page.getByRole('radiogroup', { name: message('ja', 'prep.usage') })).toBeVisible();
         await live.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
         await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
@@ -102,8 +98,8 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
 for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字と操作が切れない ${locale}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, 'light', locale);
     await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-    const live = page.getByRole('region', { name: message(locale, 'live.strip'), exact: true });
-    const statuses = live.locator('[data-meter-status]');
+    const live = page.getByRole('region', { name: message(locale, 'home.now'), exact: true });
+    const statuses = page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true }).locator('[role="meter"] [data-meter-status]');
     await expect(statuses.first()).toHaveText(message(locale, 'meter.waitingShort'));
     expect(await statuses.evaluateAll(nodes => nodes.every(el => getComputedStyle(el).textOverflow !== 'ellipsis' && el.scrollHeight <= el.clientHeight + 1))).toBe(true);
     expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
@@ -125,7 +121,7 @@ for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字�
 for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示スタイルを150%で維持する ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
     await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-    const live = page.getByRole('region', { name: message('ja', 'live.strip'), exact: true });
+    const live = page.getByRole('region', { name: message('ja', 'home.now'), exact: true });
     const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
     const custom = modes.locator('[aria-current=true]');
     expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);
@@ -152,7 +148,6 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
 
 test('選択背景が確定値へ移動し、ミュート押下と動きを減らす設定を守る', async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page);
-    await page.locator('.sound-tool-list > li > div > button').first().click();
     const noise = page.getByRole('radiogroup', { name: message('ja', 'structure.noise.standard') });
     const indicator = noise.locator('[data-segment-indicator]');
     await expect(noise.getByRole('radio', { name: message('ja', 'master.nrLow'), exact: true })).toHaveAttribute('aria-checked', 'true');

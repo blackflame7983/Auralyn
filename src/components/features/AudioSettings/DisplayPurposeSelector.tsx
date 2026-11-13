@@ -2,7 +2,6 @@ import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
-import { useAuroraDisplay } from '@/hooks/useAuroraDisplay';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -35,19 +34,5 @@ export function NumericDetailsSwitch() {
             <InfoPopover label={t('details.label')}>{t('details.hint')}</InfoPopover>
         </div>
         <span id="numeric-details-hint" className="sr-only">{t('details.hint')}</span>
-    </div>;
-}
-
-// 本番帯のオーロラは飾りなので、ホームには切替を置かず外観の設定でだけ出し分ける（DESIGN.md 5.1）。
-export function AuroraDisplaySwitch() {
-    const t = useMessages();
-    const [shown, setShown] = useAuroraDisplay();
-    return <div className="mb-3 space-y-1 text-ui-support">
-        <div className="flex items-center gap-3">
-            <Label className="text-ui-control" htmlFor="aurora-display">{t('aurora.label')}</Label>
-            <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />
-            <InfoPopover label={t('aurora.label')}>{t('aurora.hint')}</InfoPopover>
-        </div>
-        <span id="aurora-display-hint" className="sr-only">{t('aurora.hint')}</span>
     </div>;
 }

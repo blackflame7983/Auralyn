@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { MeterProvider, useSharedMeter } from '../MeterContext';
 import { LiveStrip } from '../../Home/LiveStrip';
 import { MasterBar } from '@/components/layout/MasterBar';
+import { SafetyInput } from '@/components/layout/SafetyLevels';
 import type { PreparationModel } from '@/hooks/usePreparation';
 
 const controls = vi.hoisted(() => ({ input: vi.fn(), output: vi.fn() }));
@@ -42,7 +43,7 @@ it.each(['input', 'output'] as const)('%sだけの更新は反対側の購読者
 
 it('レベルとクリップが変わっても本番帯とフッターの操作部品を再描画しない', () => {
     const model = { context: { usage: 'obs', receiver: '' }, observation: { availability: 'ready', config: null } } as PreparationModel;
-    render(<MeterProvider running><LiveStrip running model={model} /><MasterBar isRunning host="WASAPI" processReady /></MeterProvider>);
+    render(<MeterProvider running><LiveStrip running model={model} /><MasterBar isRunning host="WASAPI" processReady input={<SafetyInput running music={false} name="Mic" />} /></MeterProvider>);
     const previous = { input: controls.input.mock.calls.length, output: controls.output.mock.calls.length };
     for (let i = 0; i < 20; i++) { emit(.3 + i / 100, i === 19 ? 1.2 : .4 + i / 100); act(() => vi.advanceTimersByTime(16)); }
     expect(controls.input).toHaveBeenCalledTimes(previous.input);

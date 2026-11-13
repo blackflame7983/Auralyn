@@ -167,7 +167,7 @@ test.describe('本番中の配信ミックスの配置', () => {
                 // 起動画面の退場と区画の位置の補間（transform）が終わってから測る。
                 await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
                 const bounds = await panel.evaluate(el => {
-                    const strip = document.querySelector('.live-strip')!;
+                    const strip = document.querySelector('[aria-label="声の流れ"]')!;
                     const chain = document.querySelector('.sound-chain')!;
                     const box = el.getBoundingClientRect();
                     return { top: box.top, bottom: box.bottom, stripBottom: strip.getBoundingClientRect().bottom,
@@ -178,7 +178,7 @@ test.describe('本番中の配信ミックスの配置', () => {
                 expect(bounds.bottom).toBeLessThanOrEqual(bounds.chainTop);
                 expect(bounds.bottom).toBeLessThanOrEqual(bounds.footerTop);
                 expect(bounds.borders).toEqual(['0px', '0px', '0px', '0px']);
-                await expect(page.locator('.live-strip')).toHaveAttribute('data-stage', 'full');
+                await expect(page.getByRole('region', { name: 'いまの状態', exact: true })).toBeVisible();
                 // 折りたたみが0件でも素通りしないよう、先に件数を確かめる。
                 await expect(panel.locator(':scope > details > summary')).not.toHaveCount(0);
                 for (const summary of await panel.locator(':scope > details > summary').all()) {

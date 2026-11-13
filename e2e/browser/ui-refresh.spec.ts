@@ -57,33 +57,31 @@ test('音楽鑑賞は送り先を変更せず、再生元と聴く機器を示�
     await expect(page.locator('main')).not.toContainText('通話');
     await expect(page.locator('main')).not.toContainText('マイク');
     await expect(page.locator('main')).not.toContainText(message('ja', 'purpose.liveDetails'));
-    await expect(page.locator('main')).toContainText('CABLE Output');
+    await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true })).toContainText('CABLE Output');
     await expect(page.locator('main')).toContainText('スピーカー');
     const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
     await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
     await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
-    await expect(page.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText(message('ja', 'music.source'));
+    await expect(prep.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText(message('ja', 'music.source'));
     expect(await page.evaluate(() => localStorage.getItem('vst_host_setup_goal'))).toBe('obs');
     await page.screenshot({ path: info.outputPath('music.png') });
 });
 
-test('オーロラは入力に反応し、動きを減らす設定と表示OFFを守る', async ({ page }) => {
+test('音の流れは共有メーターで描き、動きを減らす設定では静止し、オーロラの切替は出さない', async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_setup_goal', 'obs');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
     await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
-    const glow = page.locator('.live-aurora');
-    // 普通の話し声に近い −20 dBFS でも、見て分かる強さで反応する。
+    const graph = page.getByRole('img', { name: '加工前と加工後の音量', exact: true });
     await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.1, 0.08], output: [0.05, 0.04] }));
-    await expect.poll(() => glow.evaluate(el => Number((el as HTMLElement).style.getPropertyValue('--aurora-energy')))).toBeGreaterThanOrEqual(0.6);
+    await expect(graph).toHaveAttribute('data-flow', 'time');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    expect(await glow.evaluate(el => getComputedStyle(el).transform)).toBe('none');
-    expect(await glow.evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
+    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.1, 0.08], output: [0.05, 0.04] }));
+    await expect(graph).toHaveAttribute('data-flow', 'still');
+    await expect(page.locator('.live-aurora')).toHaveCount(0);
     await page.getByRole('button', { name: message('ja', 'header.audioSettingsOpen'), exact: true }).click();
     await page.getByRole('tab', { name: message('ja', 'settings.appearance'), exact: true }).click();
-    const toggle = page.getByRole('switch', { name: message('ja', 'aurora.label') });
-    await toggle.click();
-    await expect(glow).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: /オーロラ/ })).toHaveCount(0);
 });

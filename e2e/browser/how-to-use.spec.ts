@@ -80,12 +80,11 @@ for (const locale of ['ja', 'en'] as const) {
         await page.goto('/');
         const t = (key: MessageKey) => message(locale, key);
         await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
-        for (const [panel, label, name] of [
-            ['noise', 'info.noise', 'home.noise-reduction'],
-            ['builtin', 'settings.builtinHelp', 'home.voice-shaping'],
-            ['vst', 'chain.vstEmptyName', 'home.vst'],
+        for (const [label, name] of [
+            ['info.noise', 'home.noise-reduction'],
+            ['settings.builtinHelp', 'home.voice-shaping'],
+            ['chain.vstEmptyName', 'home.vst'],
         ] as const) {
-            await page.locator(`button[aria-controls$="-${panel}"]`).click();
             await page.getByRole('button', { name: t(label), exact: true }).click();
             await page.getByRole('button', { name: new RegExp(`^${t('help.learnMore')}`) }).click();
             await expect.poll(() => page.evaluate(() => (window as any).__e2eOpenedUrls.at(-1))).toBe(`https://www.kuro7983.com/${locale === 'en' ? 'en/' : ''}apps/auralyn/docs/${links[name]}`);

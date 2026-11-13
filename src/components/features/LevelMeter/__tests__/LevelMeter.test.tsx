@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { LevelMeter } from '../LevelMeter';
-import { LargeLevelMeter } from '../LargeLevelMeter';
 import { MeterProvider } from '../MeterContext';
 import { MeterVisual } from '../MeterVisual';
 import type { MeterReading } from '@/hooks/useMeterLevels';
@@ -72,19 +71,6 @@ it('小メーターは入力を選び、停止後は旧値を表示しない', (
     expect(screen.getByLabelText('入力レベル：音声停止中')).toBeInTheDocument();
     expect(screen.getByTitle('左').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
 });
-it('大メーターはtimeoutでもclipを保持し、手動で消せる', () => {
-    render(<LargeLevelMeter running onClose={() => {}} />);
-    emit('audio-level', { input: [0, 0], output: [1.2, 1.2] });
-    act(() => vi.advanceTimersByTime(16)); expect(screen.getByText('クリップ')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1100));
-    expect(screen.getByRole('status')).toHaveTextContent('受信待ち'); expect(screen.getByText('クリップ')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /クリップ表示を消す/ }));
-    expect(screen.queryByText('クリップ')).toBeNull();
-    emit('audio-level', { input: [0, 0], output: [0, 0] });
-    act(() => vi.advanceTimersByTime(3000)); expect(screen.getByText('無音')).toBeInTheDocument();
-    emit('audio-stream-error'); expect(screen.getByRole('status')).toHaveTextContent('停止中');
-});
-
 it('同じ出力の表示はクリップを共有し、1か所の解除が両方に反映される', () => {
     render(<MeterProvider running><LevelMeter running type="output" /><LevelMeter running type="output" /></MeterProvider>);
     expect(handlers.get('audio-level')?.size).toBe(2);

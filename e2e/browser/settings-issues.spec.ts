@@ -217,8 +217,6 @@ test.describe('ホームと設定の共通操作', () => {
         });
         const sizes: Awaited<ReturnType<typeof dimensions>>[] = [];
         for (let i = 0; i < home.length; i++) {
-            const trigger = page.locator('.sound-tool-list > li > div > button').nth(i < 2 ? 0 : 1);
-            if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click();
             await expect(home[i]).toBeVisible();
             sizes.push(await dimensions(home[i]));
         }
