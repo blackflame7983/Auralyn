@@ -73,7 +73,8 @@ export function VstPage({
         const frame = requestAnimationFrame(move);
         return () => cancelAnimationFrame(frame);
     }, [focusNonce, focusAdd, heading, addButton]);
-    const missing = unrestoredNamesText(t, unrestored);
+    // 空のときは空の状態の見出しが知らせるので、ここでは重ねない。
+    const missing = plugins.length > 0 ? unrestoredNamesText(t, unrestored) : null;
     return <PagePortal>
         <div data-vst-page className="flex h-full min-h-0 flex-col overflow-hidden">
             <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 pb-2">
@@ -101,6 +102,7 @@ export function VstPage({
                     onReorder={onReorder}
                     onOpenPresets={onOpenPresets}
                     onOpenTemplates={onOpenTemplates}
+                    unrestored={unrestored}
                 />
                 {tutorial}
             </div>

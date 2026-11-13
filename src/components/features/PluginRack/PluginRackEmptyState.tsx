@@ -3,6 +3,7 @@ import React from 'react';
 import { MdAdd, MdAutoFixHigh } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 interface PluginRackEmptyStateProps {
     audioReady?: boolean;
@@ -23,13 +24,15 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
 }) => {
     const t = useMessages();
     const names = unrestoredNamesText(t, unrestored);
+    // 音楽鑑賞のホームには声の調整がないので、VST の効き方だけを伝える。
+    const [purpose] = useDisplayPurpose();
     return (
         <div className="w-full rounded-card border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
             <div className="space-y-1">
                 <h3 className="text-ui-heading font-bold text-foreground">
                     {t(names ? 'rack.empty.unrestoredTitle' : 'rack.empty.title')}</h3>
                 <p className="text-muted-foreground leading-relaxed text-ui-support">
-                    {names ?? t('rack.empty.scope')}</p>
+                    {names ?? t(purpose === 'music' ? 'rack.empty.scopeMusic' : 'rack.empty.scope')}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">

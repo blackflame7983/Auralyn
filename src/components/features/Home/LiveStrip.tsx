@@ -6,10 +6,9 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { deviceDisplayName } from '@/lib/audioRouting';
 
 // ホーム先頭の「いまの状態」。入出力メーターとロックは右の列へ移し、ここには主ボタンを多くて1つ置く。
-export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices, controlsDisabled = false, outputName }: {
+export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices, outputName }: {
     onStartAudio?: () => void; /** 札は上の帯に移した。呼び出し側の引数は残す。 */ stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
-    controlsDisabled?: boolean;
     outputName?: string;
     /** 札は上の帯に移した。呼び出し側の引数は残す。 */
     engineProcessReady?: boolean | null;
@@ -28,8 +27,8 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         {/* 見出し・主ボタンの行・歌と雑談の設定で高さを揃える。実行中の空行は、停止中の「音声を開始」と同じ高さ（#298）。 */}
         <h2 className="truncate text-ui-heading font-medium">{heading}</h2>
         <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
-            {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting || controlsDisabled}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
-            {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination} disabled={controlsDisabled}>{t('home.chooseDestination')}</Button>}
+            {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
+            {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
             {startButton && !startError && <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>}
         </div>
         {!music && <div className="now-controls flex min-h-10 flex-col gap-2">
