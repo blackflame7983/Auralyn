@@ -76,11 +76,11 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
         action();
     };
     return (
-        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-card border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
+        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', embedded ? 'relative w-full' : 'mb-3 rounded-card border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
             {registered && !safetyOnly && !hideSwitch && <LiveModeSwitch model={model} embedded={embedded} />}
-            {/* 失敗文は説明の1行の上に重ね、区画の高さを変えない（#298）。 */}
-            {embedded && !safetyOnly && <div className="relative min-h-10 w-full">
-                <div className="flex min-h-10 w-full min-w-0 flex-wrap items-center gap-2">
+            {/* 切替の途中と失敗は設定ボタンの上に重ね、空の行を予約しない。区画の高さは変えない（#298）。 */}
+            {embedded && !safetyOnly && (value.transaction || registered && (pending || value.phase === 'partial') || error || value.error) && <div className="absolute inset-x-0 top-0 z-10">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 bg-card">
                     {value.transaction && <div id="live-mode-transaction" className="flex min-w-0 flex-wrap items-center gap-2" role="status">
                         <p>{t(value.transaction.phase === 'recovery_required' || value.transaction.phase === 'failed' ? 'liveTransaction.failed' : value.transaction.phase === 'restoring' ? 'liveTransaction.recovering' : 'liveTransaction.switching')}</p>
                         {value.transaction.error && <p className="min-w-0 break-words text-ui-support">{value.transaction.error}</p>}
@@ -90,7 +90,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                         {pending ? t('liveBar.switching', { mode: value.target ? name(value.target) : '' }) : t('liveOutput.partial')}
                     </span>}
                 </div>
-                {(error || value.error) && <div className="absolute inset-x-0 top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 bg-card">
+                {(error || value.error) && <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 bg-card">
                     <p role="alert" id="live-mode-error" className="text-ui-support text-destructive-text">{error || t('liveNotices.operationFailed')}</p>
                     <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} className="home-action">{t('settings.LiveModeControls.236')}</Button>
                 </div>}

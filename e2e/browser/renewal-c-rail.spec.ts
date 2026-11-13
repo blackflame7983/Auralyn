@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { settleLayoutMotion } from './layoutMotion';
 
 // 段階 C。レールと右の列は窓を変えても動かず、音調整は 960 と 1024 で3列、上の帯は1行。
 // 本番ビルドの確認でも通るよう、開発プレビューの ?mock= ではなく試験の模擬応答を使う。
@@ -189,7 +190,7 @@ test('900の音楽鑑賞でも上の帯は1行', async ({ page }) => {
 
 test.describe('停止から開始する', () => {
     test.use({ stoppedHome: true });
-    test('開始・停止・開始の失敗・モード切替でいまの状態の高さが変わらない', async ({ page }) => {
+    test('停止・開始中・実行中・モード切替の高さは同じで、開始の失敗だけ伸びる', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
     await ready(page);
@@ -197,19 +198,44 @@ test.describe('停止から開始する', () => {
     const stopped = await height();
     await page.evaluate(() => { (window as unknown as { __e2eStartFailure: boolean }).__e2eStartFailure = true; });
     await page.getByRole('button', { name: '音声を開始', exact: true }).click();
-    await expect(page.getByRole('alert')).toBeVisible();
+    const failure = page.locator('.now-status [role="alert"]');
+    await expect(failure).toBeVisible();
+    await settleLayoutMotion(page);
     const failed = await height();
-    await page.evaluate(() => { (window as unknown as { __e2eStartFailure: boolean }).__e2eStartFailure = false; });
+    const failureInside = await failure.evaluate(element => {
+        const alert = element.getBoundingClientRect();
+        const section = element.closest('.now-status')!.getBoundingClientRect();
+        return alert.bottom <= section.bottom + 1 && element.scrollHeight <= element.clientHeight + 1;
+    });
+    await page.evaluate(() => {
+        const holder = window as unknown as { __e2eStartFailure: boolean; __e2eReleaseStart?: () => void; __TAURI_INTERNALS__: { invoke: (command: string, args: unknown) => Promise<unknown> } };
+        holder.__e2eStartFailure = false;
+        const original = holder.__TAURI_INTERNALS__.invoke;
+        let release = () => {};
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        holder.__e2eReleaseStart = release;
+        holder.__TAURI_INTERNALS__.invoke = (command, args) => command === 'start_audio' ? gate.then(() => original(command, args)) : original(command, args);
+    });
     await page.getByRole('button', { name: '音声を開始', exact: true }).click();
+    await expect(page.getByRole('button', { name: '音声を開始中…', exact: true })).toBeVisible();
+    await settleLayoutMotion(page);
+    const starting = await height();
+    await page.evaluate(() => { (window as unknown as { __e2eReleaseStart: () => void }).__e2eReleaseStart(); });
     await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
+    await settleLayoutMotion(page);
     const running = await height();
     await page.getByRole('radio', { name: '歌', exact: true }).click();
     await expect(page.locator('#live-mode-error, #live-mode-transaction')).toBeVisible();
+    await settleLayoutMotion(page);
     const switched = await height();
-    console.log(JSON.stringify({ stopped, failed, running, switched }));
-    expect(failed).toBe(stopped);
+    console.log(JSON.stringify({ stopped, failed, starting, running, switched }));
+    // 失敗以外は同じ高さ。開始の失敗の文だけ、その行数の分だけ伸びてよい。
+    expect(stopped).toBeLessThan(180);
+    expect(starting).toBe(stopped);
     expect(running).toBe(stopped);
     expect(switched).toBe(stopped);
+    expect(failed).toBeGreaterThan(stopped);
+    expect(failureInside).toBe(true);
     // 切替の失敗は模擬応答が意図して拒む。成功した応答で隠してはいない。
     await page.evaluate(() => {
         const unexpected = (window as unknown as { __e2eUnexpected?: string[] }).__e2eUnexpected;

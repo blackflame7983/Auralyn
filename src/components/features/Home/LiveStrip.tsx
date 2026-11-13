@@ -25,18 +25,18 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const startButton = !running && Boolean(onStartAudio);
     const chooseButton = !music && running && !usage && Boolean(onChooseDestination);
     return <section aria-label={t('home.now')} className="now-status mb-3 rounded-card bg-card px-5 py-3 gaming:bg-card/70">
-        {/* 状態の札と送り先は上の帯へ移した。行の高さは状態で変えない（#298）。 */}
+        {/* 見出し・主ボタンの行・歌と雑談の設定で高さを揃える。実行中の空行は、停止中の「音声を開始」と同じ高さ（#298）。 */}
         <h2 className="truncate text-ui-heading font-medium">{heading}</h2>
-        {/* 主ボタンの行は開始の失敗でも同じ高さ。失敗文は下の操作の上に重ね、区画全体を押し下げない（#298）。 */}
         <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
             {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting || controlsDisabled}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination} disabled={controlsDisabled}>{t('home.chooseDestination')}</Button>}
             {startButton && !startError && <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>}
         </div>
-        {!music && <div className="now-controls relative min-h-10">
+        {!music && <div className="now-controls flex min-h-10 flex-col gap-2">
             {liveControls}
-            {startError && <div role="alert" className="absolute inset-0 z-10 flex flex-wrap items-center gap-2 overflow-auto bg-card text-ui-control text-destructive-text">
-                <p>{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
+            {/* 開始の失敗だけは、出た行数の分だけ区画を伸ばす。操作の結果なので、停止中の高さには含めない。 */}
+            {startError && <div role="alert" className="flex flex-wrap items-center gap-2 text-ui-control text-destructive-text">
+                <p className="min-w-0 basis-full">{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
                 <Button variant="outline" size="default" type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices}>{t('home.changeDevices')}</Button>
                 <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
             </div>}
