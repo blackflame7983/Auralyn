@@ -13,6 +13,7 @@ it('OBSと音づくりは対応するタブを開き、通常の設定へ戻る�
     act(() => result.current.openSoundSettings());
     expect(result.current.isSettingsOpen).toBe(true);
     expect(result.current.settingsTab).toBe('sound');
+    expect(result.current.soundPlace).toBe('basic');
     act(() => result.current.setIsSettingsOpen(true));
     expect(result.current.settingsTab).toBe('audio');
 });
@@ -23,8 +24,13 @@ it('歌・雑談の登録入口は音づくりの該当欄を指定し、通常�
     expect(result.current.isSettingsOpen).toBe(true);
     expect(result.current.settingsTab).toBe('sound');
     expect(result.current.settingsSection).toBe('liveModes');
+    expect(result.current.soundPlace).toBe('liveModes');
+    act(() => result.current.openSoundSettings('singing'));
+    expect(result.current.settingsSection).toBe('singing');
+    expect(result.current.soundPlace).toBe('singing');
     act(() => result.current.openSoundSettings());
     expect(result.current.settingsSection).toBeUndefined();
+    expect(result.current.soundPlace).toBe('basic');
     act(() => result.current.openLiveModeSettings());
     act(() => result.current.setIsSettingsOpen(false));
     act(() => result.current.setIsSettingsOpen(true));

@@ -40,6 +40,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         if (zoomed) await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
         await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.sound'), exact: true }).click();
         const dialog = page.locator('[data-settings-page]');
+        await dialog.getByRole('tab', { name: message(locale, 'sound.section.liveModes'), exact: true }).click();
         const section = dialog.locator('#live-mode-settings');
         await expect(section.getByText(message(locale, 'settings.LiveModeControls.232'), { exact: true })).toHaveCount(2);
         await aligned(section, locale);
@@ -71,7 +72,7 @@ test.describe('未登録の本番帯', () => {
             const dialog = page.locator('[data-settings-page]');
             const section = dialog.locator('#live-mode-settings');
             for (const modeKey of ['settings.LiveModeControls.212', 'settings.LiveModeControls.213'] as const) {
-                await expect(section.getByRole('heading')).toBeFocused();
+                await expect(dialog.locator('#sound-section-heading')).toBeFocused();
                 await section.getByRole('button', { name: message(locale, 'settings.mode.save', { mode: message(locale, modeKey) }), exact: true }).click();
                 await expect(section.getByText(message(locale, 'settings.LiveModeControls.232'), { exact: true })).toHaveCount(modeKey.endsWith('212') ? 1 : 2);
                 await aligned(section, locale);

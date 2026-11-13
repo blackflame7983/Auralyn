@@ -159,10 +159,11 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     await expect(modes).toContainText('歌唱と雑談に同じ設定');
     await expect(modes).toContainText('声 ON・残響 OFF');
     await modes.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
-    await expect(page.locator('#singing-settings')).toHaveAttribute('open', '');
-    await expect(page.locator('#singing-settings > summary')).toBeFocused();
-    await page.getByRole('button', { name: 'モード登録へ戻る', exact: true }).click();
-    await expect(page.locator('#live-mode-settings > h3')).toBeFocused();
+    await expect(page.locator('#sound-section-heading')).toHaveText('歌向け');
+    await expect(page.locator('#sound-section-heading')).toBeFocused();
+    await page.getByRole('button', { name: '歌・雑談へ戻る', exact: true }).click();
+    await expect(page.locator('#sound-section-heading')).toHaveText('歌・雑談');
+    await expect(page.locator('#sound-section-heading')).toBeFocused();
 });
 
 test('再評価用の正常ホームは警告状態と分け、縦長でも出力メーターを離さない', async ({ page }, testInfo) => {

@@ -25,6 +25,7 @@ it('操作ごとに割当と変更操作を並べ、一覧選択を開ける', a
     const row = change.closest('fieldset')!;
     expect(row.querySelector('legend')).toHaveTextContent('緊急ミュート（切替）');
     expect(row.querySelector('kbd')).toHaveTextContent('Alt + M');
+    expect(row.querySelector('kbd')).toHaveClass('border');
     expect(change).toHaveTextContent('キーを入力');
     const choose = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを一覧から選ぶ' });
     expect(choose).toHaveAttribute('aria-expanded', 'false');
@@ -34,6 +35,8 @@ it('操作ごとに割当と変更操作を並べ、一覧選択を開ける', a
     expect(choose).toHaveAttribute('aria-expanded', 'true');
     expect(list).toBeVisible();
     expect(row.querySelector('select')).toBeEnabled();
+    fireEvent.change(screen.getByRole('combobox', { name: '緊急ミュート（切替）の通常キー' }), { target: { value: 'KeyZ' } });
+    expect(row.querySelector('kbd')).toHaveTextContent('Alt + Z');
 });
 it('キー入力で既存形式を作り、重複と OS 予約を検出し保存しない', async () => {
     open();
@@ -354,6 +357,7 @@ it('未設定と編集状態を示し、入力待ち中は保存できず取り�
     const discard = screen.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(input.closest('fieldset')).toHaveTextContent('未設定');
+    expect(input.closest('fieldset')!.querySelector('kbd')).toBeNull();
     expect(save).toBeDisabled();
     expect(discard).toBeDisabled();
     const key = screen.getByLabelText('緊急ミュート（切替）の通常キー');
