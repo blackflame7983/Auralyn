@@ -7,7 +7,11 @@ import { listen } from '@tauri-apps/api/event';
 import { broadcastTruePeakApi, type BroadcastTruePeakStatus } from '@/api/broadcastTruePeak';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function BroadcastTruePeakPanel() {
+export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false, hideApplyNote = false }: {
+    onPendingChange?: (pending: boolean) => void;
+    applyInHeading?: boolean;
+    hideApplyNote?: boolean;
+} = {}) {
     const t = useMessages();
     const [status, setStatus] = useState<BroadcastTruePeakStatus | null>(null);
     const [ceiling, setCeiling] = useState(-1);
@@ -45,10 +49,20 @@ export function BroadcastTruePeakPanel() {
         } catch { if (alive.current && serial === version.current) { setStatus(null); setFailed(true); } }
         finally { writing.current = false; if (alive.current) setBusy(false); }
     };
+    const pending = status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
+    useEffect(() => {
+        onPendingChange?.(pending);
+        return () => onPendingChange?.(false);
+    }, [pending, onPendingChange]);
+    const applyDisabled = !status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
+    const applyButton = <Button type="button" variant="outline" className="h-auto min-h-10 shrink-0 whitespace-normal" disabled={applyDisabled} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'truePeak.apply' : 'truePeak.enable')}</Button>;
     return <section aria-label={t('truePeak.title')} className="p-4 rounded-card border space-y-3">
-        <h3 className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>
+            {applyInHeading && applyButton}
+        </div>
         <p className="text-ui-support text-muted-foreground">{t('truePeak.scope')}</p>
-        <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>
+        {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
         <div className="grid sm:grid-cols-2 gap-3 text-ui-support">
             <Field label={t('truePeak.ceiling')}><Input type="number" min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
             <Field label={t('truePeak.release')}><Input type="number" min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
@@ -61,7 +75,7 @@ export function BroadcastTruePeakPanel() {
         {status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         {status && <p className="text-ui-support">{t('truePeak.latency', { samples: String(status.addedLatencySamples) })}</p>}
         {status?.config.enabled && !status.applied && <p className="text-ui-support">{t('truePeak.notApplied')}</p>}
-        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'truePeak.apply' : 'truePeak.enable')}</Button>
+        {!applyInHeading && applyButton}
         <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status?.config.enabled || busy} onClick={() => void apply(false)}>{t('truePeak.disable')}</Button>
         <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('truePeak.limitsTitle')}</summary><p className="mt-2">{t('truePeak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('truePeak.failed')}</p>}
