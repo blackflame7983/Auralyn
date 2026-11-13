@@ -47,7 +47,7 @@ export function EmergencyMuteButton({ onOpenSettings }: EmergencyMuteButtonProps
                         onClick={handleToggleMute}
                         aria-label={t('header.emergency')}
                         aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                        className={`press-feedback flex w-full max-w-full items-center gap-2 px-3 py-1.5 rounded-full border font-medium text-ui-support shadow-sm text-foreground ${isGlobalMuted
+                        className={`press-feedback flex w-full max-w-full shrink-0 items-center gap-2 px-3 py-1.5 rounded-full border font-medium text-ui-support shadow-sm text-foreground ${isGlobalMuted
                             ? 'bg-destructive/10 border-destructive-text ring-2 ring-destructive-text'
                             : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
                             }`}

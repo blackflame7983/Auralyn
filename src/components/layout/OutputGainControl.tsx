@@ -146,7 +146,7 @@ export function OutputGainControl() {
 
   useEffect(() => () => { if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current); }, []);
 
-  return <div className="flex min-w-0 flex-col gap-1.5">
+  return <div className="flex min-w-0 shrink-0 flex-col gap-1.5">
     <div className="flex min-w-0 items-center gap-2">
       {outputGain === 0 ? <MdVolumeOff aria-hidden="true" className="w-4 h-4 text-warning flex-shrink-0" /> : <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
       <span aria-hidden="true" className="min-w-0 flex-1 text-ui-control font-medium text-muted-foreground">{t('master.outputGain')}</span>

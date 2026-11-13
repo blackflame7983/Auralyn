@@ -157,6 +157,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     // VST 構成は右パネルで編集する。開いたら見出しへ移り、キーボードでもそのまま続けられるようにする。
     const [vstPanelOpen, setVstPanelOpen] = useVstPanel();
     // ホームの操作幅を保てない間は重ね表示にする。メーター併用時はその幅も確保する。
+    // 境目は右の列（212px）を置く前のまま。1200〜1411px で横に並べると中央が以前より212px狭い（段階 A の既知の点）。
     const [panelBeside, setPanelBeside] = useState(false);
     useLayoutEffect(() => {
         const media = window.matchMedia?.('(min-width: 1200px)');
@@ -304,9 +305,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                     engineProcessReady={engineProcessReady}
                     stoppedInStrip={quietStopped}
                 />
+                {/* 通知の行は中央の列の中に置く。通知が出ても、右の列の操作は動かさない。 */}
+                <div className="flex min-h-0 flex-1">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <NoticeLane />
                 {/* 重ね表示と暗幕は中央の作業領域だけを覆う。右の列は操作できるままにする。 */}
-                <div className="flex min-h-0 flex-1">
                 <div className="workspace-body relative flex min-h-0 min-w-0 flex-1">
                 <main
                     data-density="home"
@@ -372,7 +375,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </VstPanelAside>}
                 </AnimatePresence>
                 </div>
-                <aside aria-label={t('shell.safetyColumn')} className="flex w-[var(--safety-column-width)] shrink-0 flex-col gap-3 overflow-hidden border-l border-border bg-card p-3">
+                </div>
+                {/* 上の3操作は縮めない。下の状態表示だけが、収まらないときに縦へ送る（MasterBar）。 */}
+                <aside data-density="home" aria-label={t('shell.safetyColumn')} className="flex w-[var(--safety-column-width)] shrink-0 flex-col gap-3 overflow-hidden border-l border-border bg-card p-3">
                     <EmergencyMuteButton onOpenSettings={onOpenSettings} />
                     <MasterBar
                         outputMeterInHome={!chrome.footer.outputMeter}
@@ -396,7 +401,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-checked={isABBypassed}
                                         aria-describedby={isABBypassed ? 'safety-compare-state' : undefined}
                                         className={cn(
-                                            "home-control flex w-full min-w-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control",
+                                            "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"

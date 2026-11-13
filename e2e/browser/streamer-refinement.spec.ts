@@ -99,7 +99,14 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
         await new Promise(requestAnimationFrame);
         await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
     });
-    expect((await failure.boundingBox())!.y + (await failure.boundingBox())!.height).toBeLessThanOrEqual((await page.getByRole('complementary', { name: '本番中の操作' }).boundingBox())!.y + 1);
+    // 通知は中央の列の中に出る。右の列には重ならず、列の位置も動かさない。
+    const column = (await page.getByRole('complementary', { name: '本番中の操作' }).boundingBox())!;
+    const header = (await page.locator('header').boundingBox())!;
+    const toast = (await failure.boundingBox())!;
+    expect(toast.x + toast.width).toBeLessThanOrEqual(column.x + 1);
+    expect(Math.abs(column.y - (header.y + header.height))).toBeLessThanOrEqual(1);
+    const mute = (await page.getByRole('button', { name: '緊急ミュート', exact: true }).boundingBox())!;
+    expect(mute.y - column.y).toBeLessThanOrEqual(16);
     await page.screenshot({ path: testInfo.outputPath('mute-failure.png') });
     await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toHaveAttribute('aria-pressed', 'false');
     // cold loadのモジュール取得と、取得後のdialog表示を別々に確認する。

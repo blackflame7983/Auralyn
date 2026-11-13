@@ -210,8 +210,9 @@ const shots: Record<string, Array<{ theme: 'dark' | 'light' | 'gaming'; width: n
 };
 
 // 画面の記録は docs/verification を書き換えるため、RENEWAL_SHOTS=1 を付けたときだけ撮る。通常の試験と CI では撮らない。
+const recordShots = process.env.RENEWAL_SHOTS === '1';
+const skipReason = '画面の記録は RENEWAL_SHOTS=1 のときだけ撮る';
 async function shoot(page: Page, state: string, theme: string, width: number, height: number, panel = false) {
-    test.skip(process.env.RENEWAL_SHOTS !== '1', '画面の記録は RENEWAL_SHOTS=1 のときだけ撮る');
     await page.setViewportSize({ width, height });
     await page.addInitScript(({ theme, configured }) => {
         localStorage.setItem('vst_host_theme', theme);
@@ -237,6 +238,7 @@ async function shoot(page: Page, state: string, theme: string, width: number, he
 }
 
 test.describe('段階 A の画面記録（稼働中）', () => {
+    test.skip(!recordShots, skipReason);
     test.use({ liveHome: true, registeredModes: true });
     for (const shot of shots.live) {
         test(`${shot.theme} ${shot.width}×${shot.height}${shot.panel ? ' パネル' : ''}`, async ({ page }) => {
@@ -246,6 +248,7 @@ test.describe('段階 A の画面記録（稼働中）', () => {
 });
 
 test.describe('段階 A の画面記録（停止）', () => {
+    test.skip(!recordShots, skipReason);
     test.use({ liveHome: true, stoppedHome: true, registeredModes: true });
     for (const shot of shots.stopped) {
         test(`${shot.theme} ${shot.width}×${shot.height}`, async ({ page }) => {
@@ -255,6 +258,7 @@ test.describe('段階 A の画面記録（停止）', () => {
 });
 
 test.describe('段階 A の画面記録（初回）', () => {
+    test.skip(!recordShots, skipReason);
     test.use({ liveHome: false, stoppedHome: false, registeredModes: false });
     for (const shot of shots.first) {
         test(`${shot.theme} ${shot.width}×${shot.height}`, async ({ page }) => {
