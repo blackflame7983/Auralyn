@@ -86,17 +86,19 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     }) => {
         const Icon = key === 'noise' ? MdFilterAlt : key === 'builtin' ? MdGraphicEq : MdExtension;
         const showBody = !unconfigured && !stopped ? body : key === 'vst' && stopped ? vst : null;
+        const showAction = !unconfigured && (!stopped || key === 'vst') && action;
         return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || stopped ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
-            <div className="flex items-start gap-2">
-                <Icon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1">
-                        <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={key === 'vst' ? -1 : undefined} className="home-card-name">{name}</h3>
-                        {!unconfigured && info}
-                    </div>
-                    {!unconfigured && <StatusDot tone={stopped ? 'off' : statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
+            {/* 見出しはアイコン・名前・説明だけ。スイッチと追加・編集は状態の行の右端（収まらなければその下）に置く。 */}
+            <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={key === 'vst' ? -1 : undefined} className="home-card-name min-w-0 whitespace-nowrap">{name}</h3>
+                    {!unconfigured && info}
                 </div>
-                {!unconfigured && (!stopped || key === 'vst') && action}
+                {!unconfigured && <div className="sound-card-status">
+                    <StatusDot tone={stopped ? 'off' : statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>
+                    {showAction && <div className="sound-card-action">{action}</div>}
+                </div>}
             </div>
             {showBody && <div className="flex min-w-0 flex-col gap-2">{showBody}</div>}
             {!unconfigured && !stopped && tier2 && <div data-home-tier="2" className="border-t border-border pt-3">{tier2}</div>}

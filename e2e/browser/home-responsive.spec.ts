@@ -137,7 +137,12 @@ for (const locale of ['ja', 'en']) {
                 })).toBe(true);
             }
             const tops = await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
-            expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            // 日本語は960でも3列。英語の声の種類は内側650px以下で1列にし、単語の途中では切らない。
+            if (locale === 'ja') expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            else {
+                expect(new Set(tops.map(top => Math.round(top))).size).toBe(3);
+                expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
+            }
             const nowHeight = (await live.boundingBox())!.height;
             const builtin = page.locator('#home-builtin');
             await expect(page.locator('#home-noise [data-home-tier="2"]')).toHaveCount(0);

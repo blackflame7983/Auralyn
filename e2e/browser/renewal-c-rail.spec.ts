@@ -87,6 +87,81 @@ test('960と1024で音調整は3列、帯は1行', async ({ page }) => {
     expect(at1024.bandOverflow).toBe(false);
 });
 
+// 見出しと状態の一言が1行に収まること。折り返しは高さ、はみ出しは scrollWidth で見る。
+test('960と1024の日本語で音調整の見出しと状態は1行', async ({ page }) => {
+    await page.goto('/');
+    await ready(page);
+    await expect(page.locator('.sound-module-card [role="switch"]')).toHaveCount(2);
+    await expect(page.locator('#vst-panel-toggle')).toBeVisible();
+    const measure = async (width: number, height: number) => {
+        await page.setViewportSize({ width, height });
+        return page.evaluate(() => {
+            const line = (element: HTMLElement) => {
+                const lineHeight = parseFloat(getComputedStyle(element).lineHeight);
+                return {
+                    text: (element.textContent ?? '').replace(/\s+/g, ' ').trim(),
+                    height: Math.round(element.getBoundingClientRect().height),
+                    lineHeight: Math.round(lineHeight),
+                    oneLine: element.getBoundingClientRect().height <= lineHeight + 1,
+                    fits: element.scrollWidth <= element.clientWidth,
+                };
+            };
+            const cards = [...document.querySelectorAll('.sound-module-card')] as HTMLElement[];
+            return {
+                rows: new Set(cards.map(card => Math.round(card.getBoundingClientRect().top))).size,
+                headings: cards.map(card => line(card.querySelector('h3') as HTMLElement)),
+                summaries: cards.map(card => line(card.querySelector('.sound-card-status [data-tone] > span:last-child') as HTMLElement)),
+                switches: [...document.querySelectorAll('.sound-module-card [role="switch"]')].map(element => {
+                    const box = element.getBoundingClientRect();
+                    const head = element.closest('.sound-module-card')?.querySelector('h3')?.parentElement;
+                    return { width: Math.round(box.width), height: Math.round(box.height), inHeading: Boolean(head?.contains(element)) };
+                }),
+                vstInHeading: Boolean(document.querySelector('.sound-module-card h3')?.parentElement?.querySelector('#vst-panel-toggle')),
+            };
+        });
+    };
+    const at960 = await measure(960, 640);
+    const at1024 = await measure(1024, 768);
+    console.log(JSON.stringify({ at960, at1024 }));
+    for (const measured of [at960, at1024]) {
+        expect(measured.rows).toBe(1);
+        expect(measured.headings).toHaveLength(3);
+        expect(measured.switches).toHaveLength(2);
+        expect(measured.headings.every(item => item.oneLine && item.fits)).toBe(true);
+        expect(measured.summaries.every(item => item.oneLine && item.fits && item.text.length > 0)).toBe(true);
+        expect(measured.switches.every(item => item.width >= 24 && item.height >= 24 && !item.inHeading)).toBe(true);
+        expect(measured.vstInHeading).toBe(false);
+    }
+});
+
+test('960の英語は音調整が1列で、見出しと状態が1行', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('vst_host_locale', 'en'));
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.goto('/');
+    await expect(page.getByText('Starting the audio engine…', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Destinations', exact: true })).toBeVisible();
+    await expect(page.locator('.sound-module-card [role="switch"]')).toHaveCount(2);
+    const measured = await page.evaluate(() => {
+        const line = (element: HTMLElement) => {
+            const lineHeight = parseFloat(getComputedStyle(element).lineHeight);
+            return element.getBoundingClientRect().height <= lineHeight + 1 && element.scrollWidth <= element.clientWidth;
+        };
+        const cards = [...document.querySelectorAll('.sound-module-card')] as HTMLElement[];
+        const tops = new Set(cards.map(card => Math.round(card.getBoundingClientRect().top)));
+        return {
+            rows: tops.size,
+            cards: cards.length,
+            lines: cards.every(card => line(card.querySelector('h3') as HTMLElement) && line(card.querySelector('.sound-card-status [data-tone] > span:last-child') as HTMLElement)),
+            overflow: cards.some(card => card.scrollWidth - card.clientWidth > 1),
+        };
+    });
+    console.log(JSON.stringify({ english960: measured }));
+    expect(measured.cards).toBe(3);
+    expect(measured.rows).toBe(3);
+    expect(measured.lines).toBe(true);
+    expect(measured.overflow).toBe(false);
+});
+
 test('900の音楽鑑賞でも上の帯は1行', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
     await page.setViewportSize({ width: 900, height: 600 });
