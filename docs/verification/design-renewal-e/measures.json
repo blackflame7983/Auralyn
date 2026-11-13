@@ -1,0 +1,33 @@
+{
+  "counts": {
+    "basic": 15,
+    "liveModes": 17,
+    "singing": 25,
+    "peak": 10
+  },
+  "peak": {
+    "buttons": [
+      {
+        "name": "ピーク保護をON",
+        "y": 274,
+        "bottom": 316,
+        "inView": true
+      },
+      {
+        "name": "配信用 true-peak 制限を ON",
+        "y": 632,
+        "bottom": 674,
+        "inView": false
+      }
+    ],
+    "scrollHeight": 950,
+    "clientHeight": 539
+  },
+  "hotkey": {
+    "nameY": 315,
+    "keyY": 317.25,
+    "enterY": 306,
+    "trioWidth": 464,
+    "pageWidth": 640
+  }
+}

@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "OBS", "Appearance", "Hotkeys", "System"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "OBS", "Appearance", "Hotkeys", "System"]
 ---
 
 ## Connection {#audio}
@@ -19,10 +19,10 @@ Split-output routing is saved and applied independently in its own section. Disc
 
 ## Sound {#sound}
 
-“Sound” contains noise reduction, voice shaping and singing/talking mode settings. Make small changes following [Adjusting sound](./sound.md#noise-reduction).
+“Sound” is split into “Basics”, “Singing and talking”, “Singing”, and “Loudness protection”. Make small changes following [Adjusting sound](./sound.md#noise-reduction).
 
-Noise reduction and basic voice adjustments apply as you change them. Singing adjustments remain a draft until you preview and apply them.
-Edited peak-protection values do not take effect until you apply them in their section. Moving to another page does not undo adjustments already applied.
+Noise reduction and voice adjustments in “Basics” apply as you change them. “Singing” stays a draft until you preview it and apply it with the button at the bottom of the page.
+Values in “Loudness protection” do not take effect until you apply them in that section. Leaving for another page or section while those values are unapplied asks you to confirm. Adjustments already applied stay in place when you leave.
 
 ## OBS {#obs}
 
