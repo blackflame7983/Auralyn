@@ -123,6 +123,23 @@ npm run test:e2e
 npm run test:user-docs
 ```
 
+次の3つは、CI（`.github/workflows/frontend-quality.yml` の `checks`）が行う確認。上の5つでは代わりにならないので、push の前に必ず実行する。段階 B 以降も同じ。
+
+```bash
+npx tsc --noEmit -p tsconfig.e2e.json
+```
+
+```bash
+npm run test:release
+```
+
+```bash
+npm run release:check
+```
+
+- `e2e/browser/` の試験の型は、1つ目でだけ検査される。段階 A では、これを手元で実行しておらず、足した試験の型の読み込み元の誤りを CI で初めて見つけた（PR #520）。
+- `npm run test:release` は PowerShell で実行する。Git Bash では `tar` が Windows のパスを扱えず、変更と関係なく2件失敗する。
+- CI の手順が変わっていないかは、段階ごとにワークフローのファイルで確かめる。
 - Rust は変えないので、`cargo` の確認は不要。変えた場合は `docs/BUILD_GUIDE.md` の手順を足す。
 - 画面は、開発プレビュー（`?mock=live-home`、`stopped-home`、`first-run`）のスクリーンショットを、完了の条件3の4サイズ × 3テーマのうち代表で撮る。保存先は `docs/verification/` の下に段階ごとのフォルダーを作る。
 - 実機（Tauri）の確認は Claude か利用者が行う。**起動すると保存済みの設定で音声処理が自動で始まる**（2026-11-12 に確認）ので、利用者の了解を取ってから、時間を短くして行う。
