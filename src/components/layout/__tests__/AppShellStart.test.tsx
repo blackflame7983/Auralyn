@@ -6,13 +6,14 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { AppShell } from '../AppShell';
+
+vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({ busy: false, label: '更新の確認', description: '', checkUpdates: vi.fn() }), UpdateGuide: () => null }));
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { FixedClientError } from '@/lib/clientError';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
-vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: ({ compare, input, lock }: { compare?: React.ReactNode; input?: React.ReactNode; lock?: React.ReactNode }) => <>{input}{lock}{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));

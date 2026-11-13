@@ -35,7 +35,7 @@ for (const mode of ['independent', 'insert'] as const) {
     test(`入力3/4と${mode}出力を一度の開始で反映し、再表示して復元する`, async ({ page }, info) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await expect(dialog.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('legacy');
         await dialog.getByRole('radio', { name: '入力チャンネル 3/4' }).check();
@@ -52,7 +52,7 @@ for (const mode of ['independent', 'insert'] as const) {
         const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('vst_host_audio_config')!));
         expect(saved.inputChannels).toEqual([2, 3]);
         expect(saved.outputRouting).toEqual(expectedOutput);
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         await expect(dialog.getByRole('radio', { name: '入力チャンネル 3/4' })).toBeChecked();
         await expect(dialog.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue(mode);
     });
@@ -62,7 +62,7 @@ for (const mode of ['independent', 'insert'] as const) {
 test('アプリの音声を選べない理由から接続方式の選択へ移る', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+    await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     await expect(dialog.getByRole('option', { name: 'アプリの音声（WASAPI）' })).toHaveJSProperty('disabled', true);
     await expect(dialog.getByRole('combobox', { name: '入力元' })).toHaveAccessibleDescription(/ASIO のため、アプリの音声は選べません/);

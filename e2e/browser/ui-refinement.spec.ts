@@ -54,7 +54,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
     test(`本番帯の優先順位と高さ配分 ${theme} ${size.width}x${size.height}`, async ({ page }, info) => {
         await page.setViewportSize(size); await prepare(page, theme);
         const live = page.getByRole('region', { name: message('ja', 'home.now'), exact: true });
-        const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
+        const modes = page.getByRole('region', { name: message('ja', 'band.label'), exact: true }).getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
         for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
         await expect(modes.locator('[aria-current=true]')).toHaveText(message('ja', 'liveBar.custom'));
         await expect(page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
@@ -121,8 +121,7 @@ for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字�
 for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示スタイルを150%で維持する ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
     await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-    const live = page.getByRole('region', { name: message('ja', 'home.now'), exact: true });
-    const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
+    const modes = page.getByRole('region', { name: message('ja', 'band.label'), exact: true }).getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
     const custom = modes.locator('[aria-current=true]');
     expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);
     await modes.getByRole('radio', { name: '歌', exact: true }).click();
@@ -130,7 +129,7 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
     const marker = modes.locator('[data-segment-indicator]');
     // 拡大時の境界線は物理ピクセルに丸められるため、CSS上の厳密な3px比較はしない。
     expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
-    await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+    await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     const input = dialog.getByRole('group', { name: '入力元と用途', exact: true });
     await expect(input).toBeVisible();

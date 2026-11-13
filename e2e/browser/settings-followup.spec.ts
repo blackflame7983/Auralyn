@@ -21,7 +21,7 @@ for (const locale of ['ja', 'en'] as const) {
         }, { locale, theme });
         await page.goto('/');
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
-        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
         const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
         const output = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true });
@@ -92,10 +92,10 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         }, { locale, theme });
         await page.goto('/');
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
-        const unconfigured = page.getByRole('banner').getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
+        const unconfigured = page.getByRole('region', { name: message(locale, 'band.label'), exact: true }).getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
         await expect(unconfigured).toBeVisible();
         await expect(unconfigured.locator('..').locator('[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
-        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
         const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
         const changes = dialog.locator('#settings-connection-changes');
@@ -118,7 +118,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.screenshot({ path: info.outputPath('asio-near-device.png'), animations: 'disabled' });
         await page.evaluate(() => { (window as any).__e2eSavedAudioAvailable = true; });
         await dialog.getByRole('button', { name: message(locale, 'settings.close'), exact: true }).click();
-        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         const restore = dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true });
         await expect(restore).toBeVisible();
         // 未保存のASIO選択は再表示で既定のWASAPIへ戻り、入力名も「マイク」へ戻る。

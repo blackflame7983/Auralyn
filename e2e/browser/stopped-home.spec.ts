@@ -15,7 +15,9 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
         const strip = page.getByRole('region', { name: 'いまの状態', exact: true });
-        await expect(strip.getByText('音声停止中', { exact: true })).toHaveCount(1);
+        const band = page.getByRole('region', { name: '状態の帯', exact: true });
+        await expect(band.getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(strip.getByText('音声停止中', { exact: true })).toHaveCount(0);
         const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
         await expect(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
         await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);

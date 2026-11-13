@@ -67,7 +67,7 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-// 段の見出し行の右端に置くスイッチ。
+// 段の状態の行（点と一言）の右端に置くスイッチ。見出しには置かない。
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     return <span className="flex items-center gap-1">
@@ -112,8 +112,10 @@ export function BuiltinAmount({ q }: { q: VoiceQuick }) {
 export function BuiltinPresets({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.preset === 'singing') return null;
-    return <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
-        value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />;
+    return <div className="min-w-0">
+        <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
+            value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
+    </div>;
 }
 
 export function BuiltinQuick({ q }: { q: VoiceQuick }) {

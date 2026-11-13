@@ -25,14 +25,10 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, sampleRate, is
     const observed = result.range ? result.range.upperMs === null ? `≥${result.range.lowerMs.toFixed(2)} ms` : `${result.range.lowerMs.toFixed(2)}–${result.range.upperMs.toFixed(2)} ms` : t('device.delayUnknown');
     const state = processReady === null ? t('device.audioUnknown') : running ? t('device.engine') : host ? t('shell.stopped') : t('shell.unconfigured');
     return (
-        <div className="flex flex-col items-start px-3 py-1 rounded-md bg-muted border border-border text-left">
-            <div className="flex items-center gap-2 min-w-0">
-                <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success gaming:shadow-[0_0_8px_hsl(var(--success)/0.5)]' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
-                <span role="status" className="text-xs text-foreground font-medium whitespace-nowrap">
-                    {state}
-                </span>
-            </div>
-            {showDetails && <span className="text-xs text-muted-foreground whitespace-nowrap" title={t('device.delayScope')}>
+        <div className="flex shrink-0 items-center gap-2 text-left">
+            <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success gaming:shadow-[0_0_8px_hsl(var(--success)/0.5)]' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
+            <span role="status" className="text-ui-support font-medium whitespace-nowrap text-foreground">{state}</span>
+            {showDetails && <span className="whitespace-nowrap text-ui-support text-muted-foreground" title={t('device.delayScope')}>
                 {running && host ? displayAudioHost(host) : '—'} · {running && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${(sampleRate / 1000).toFixed(1)} kHz` : '—'} · {t('device.internalDelay')} {observed}
             </span>}
         </div>

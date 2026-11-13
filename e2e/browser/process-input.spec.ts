@@ -25,7 +25,7 @@ for (const size of [{ width: 900, height: 600 }, { width: 640, height: 600 }]) {
         await page.setViewportSize(size);
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('combobox', { name: '入力元', exact: true }).selectOption('process');
         await dialog.getByRole('combobox', { name: '再生中のアプリ' }).selectOption('app-1');
@@ -47,7 +47,7 @@ for (const size of [{ width: 900, height: 600 }, { width: 640, height: 600 }]) {
         expect(saved.input).toBeUndefined();
         expect(saved.inputId).toBeUndefined();
         expect(saved.candidateId).toBeUndefined();
-        await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+        await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
         await expect(dialog.getByRole('combobox', { name: '再生中のアプリ' })).toHaveValue('');
         await dialog.getByRole('combobox', { name: '入力元', exact: true }).selectOption('device');
         await expect(dialog.getByRole('option', { name: 'Test microphone', exact: true })).toHaveCount(1);

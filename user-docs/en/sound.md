@@ -35,7 +35,7 @@ While the saved chain is protected, current VST changes are not saved automatica
 
 ## Voice Check {#voice-check}
 
-1. Open “Voice Check” and check recording readiness.
+1. Open “Voice Check” from the top band and check recording readiness.
 2. Record your voice and compare before and after processing.
 3. Check the full stream sound with an [OBS recording](./obs.md#verify) too.
 

@@ -84,7 +84,7 @@ test.describe('通常のホーム表示', () => {
         });
         await page.goto('/');
         await expect(page.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveCount(0);
-        await expect(page.locator('header').getByText('実行中', { exact: true })).toHaveCount(0);
+        await expect(page.locator('header')).toHaveCount(0);
         const column = page.getByRole('complementary', { name: '本番中の操作' });
         const routing = column.getByRole('heading', { name: '出力', exact: true }).locator('xpath=..');
         // 長い機器名は1行に収め、IPC側の保存値や音声処理には触れない。
@@ -137,7 +137,7 @@ test.describe('操作部品のサイズとテーマ', () => {
             }, theme);
             const button = page.getByRole('button', { name: 'ボイスチェック', exact: true });
             expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
-            await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+            await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
             await page.getByRole('tab', { name: 'システム', exact: true }).click();
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('radio', { name: '自分で聴く', exact: true }).click();
@@ -196,9 +196,9 @@ for (const theme of ['light', 'dark', 'gaming']) {
         const skip = page.getByRole('button', { name: 'セットアップをスキップ' });
         await reachable(skip, page);
         await skip.click();
-        // 未設定のホームは次の1歩を主ボタンにし、設定はヘッダーから開く（#297）。
+        // 未設定のホームは次の1歩を主ボタンにし、オーディオの設定はレールの接続から開く（#297）。
         await reachable(page.getByRole('button', { name: '送り先を決める', exact: true }), page);
-        const setup = page.getByRole('button', { name: '設定を開く', exact: true });
+        const setup = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
         await reachable(setup, page);
         await setup.click();
         await page.getByRole('tab', { name: '外観', exact: true }).click();
@@ -220,7 +220,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
-    const setup = page.getByRole('button', { name: '設定を開く', exact: true });
+    const setup = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
     await setup.click();
     const dialog = page.getByRole('dialog').last();
     const tab = dialog.getByRole('tab', { name: '外観', exact: true });
@@ -234,7 +234,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole('button', { name: 'Open Settings', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Connection (audio settings)', exact: true })).toBeFocused();
 });
 
 // 重ね表示では背後を操作させず、右の列の本番操作は使える。
@@ -258,7 +258,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         await expect(meter).toBeVisible();
         if (overlays) {
             await expect(main).toHaveAttribute('inert', '');
-            await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(width - 212 - 1);
+            await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(width - 76 - 212 - 1);
         } else {
             await expect(main).not.toHaveAttribute('inert', '');
             await expect.poll(async () => {
@@ -323,8 +323,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, theme);
             await page.goto('/');
-            const live = page.getByRole('region', { name: 'いまの状態', exact: true });
-            const modes = live.getByRole('radiogroup', { name: 'モード切替' });
+            const modes = page.getByRole('region', { name: '状態の帯', exact: true }).getByRole('radiogroup', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             const meter = page.getByRole('meter', { name: '出力', exact: true });
             await page.locator('#vst-panel-toggle').click();

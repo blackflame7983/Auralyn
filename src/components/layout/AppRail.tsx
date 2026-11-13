@@ -1,66 +1,63 @@
 import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import { HowToUseModal } from '../features/Guide/HowToUseModal';
-import React, { useState, useEffect, useRef } from 'react';
-import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
-import { useTheme } from '../../hooks/useTheme';
+import { useEffect, useRef, useState } from 'react';
 import { DiscordIcon } from '../ui/DiscordIcon';
 import {
-    MdSettings,
-    MdHelpOutline,
+    MdCable,
+    MdExtension,
     MdFavorite,
-    MdSystemUpdateAlt
+    MdGraphicEq,
+    MdHelpOutline,
+    MdHome,
+    MdSettings,
+    MdSystemUpdateAlt,
 } from 'react-icons/md';
-import { type EngineRuntimeStats } from '../../api/audio';
+import type { IconType } from 'react-icons';
 import { useAppUpdate, UpdateGuide } from './AppUpdate';
 import { AvailableUpdateDialog } from './AvailableUpdateDialog';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-    TooltipProvider
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
-    DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
+import type { MessageKey } from '@/i18n/messages';
 
-interface HeaderProps {
-    stoppedInStrip?: boolean;
-    onOpenSettings: () => void;
+export type RailDestination = 'home' | 'sound' | 'vst' | 'connect' | 'settings';
+
+interface AppRailProps {
+    current: RailDestination;
+    onHome: () => void;
+    onSound: () => void;
+    onVst: () => void;
+    onConnect: () => void;
+    onSettings: () => void;
     onOpenShortcuts?: () => void;
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
     onOpenWizard: () => void;
-    stats?: EngineRuntimeStats | null;
-    currentHost: string;
-    currentSampleRate?: number;
-    currentBufferSize?: number;
-    isEngineRunning: boolean;
-    engineProcessReady?: boolean | null;
 }
 
-export const Header: React.FC<HeaderProps> = ({
-    onOpenSettings,
-    onOpenShortcuts,
-    onOpenWizard,
-    onOpenOBSGuide,
-    onOpenDiscordGuide,
-    onOpenTroubleshoot,
-    stats,
-    stoppedInStrip = false,
-    currentHost,
-    currentSampleRate,
-    currentBufferSize,
-    isEngineRunning,
-    engineProcessReady
-}) => {
+const destinations: { id: RailDestination; icon: IconType; label: MessageKey; name?: MessageKey }[] = [
+    { id: 'home', icon: MdHome, label: 'rail.home' },
+    { id: 'sound', icon: MdGraphicEq, label: 'rail.sound' },
+    { id: 'vst', icon: MdExtension, label: 'rail.vst' },
+    { id: 'connect', icon: MdCable, label: 'rail.connect', name: 'rail.connectName' },
+    { id: 'settings', icon: MdSettings, label: 'rail.settings' },
+];
+
+// 左のレール。窓の高さいっぱいで、縦にはスクロールしない。ヘルプは下端。
+export function AppRail({
+    current, onHome, onSound, onVst, onConnect, onSettings,
+    onOpenShortcuts, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onOpenWizard,
+}: AppRailProps) {
+    const t = useMessages();
     const [helpOpen, setHelpOpen] = useState(false);
     // 開発プレビューの ?screen=help だけ、使い方を最初から開く。本番ビルドでは消える。
     useEffect(() => {
@@ -84,71 +81,48 @@ export const Header: React.FC<HeaderProps> = ({
         window.addEventListener('keydown', open);
         return () => window.removeEventListener('keydown', open);
     }, []);
-    const t = useMessages();
-    const { theme } = useTheme();
     const appUpdate = useAppUpdate();
-    const [isBeginnerMode] = useBeginnerMode();
+    const go: Record<RailDestination, () => void> = { home: onHome, sound: onSound, vst: onVst, connect: onConnect, settings: onSettings };
 
     return (
-        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-(--motion-panel) gaming:backdrop-blur-md ${theme === 'light'
-            ? 'bg-card border-border/20 shadow-sm'
-            : 'bg-background gaming:bg-background/80 border-border/40'
-            }`}>
+        <nav aria-label={t('rail.label')} className="flex h-full w-[76px] shrink-0 flex-col items-stretch overflow-hidden border-r border-border bg-card py-2">
+            <div className="flex h-12 shrink-0 items-center justify-center">
+                <img src="/auralyn_icon.png?v=17" alt="" className="h-7 w-7 object-contain" />
+                <h1 className="sr-only">Auralyn</h1>
+            </div>
             <TooltipProvider>
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {/* Logo Section */}
-                    <div className="flex items-center gap-2 select-none shrink-0">
-                        <img src="/auralyn_icon.png?v=17" alt="" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
-                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-[1.0625rem] font-medium leading-none tracking-tight text-foreground">
-                            Aura<span className="text-brand">lyn</span>
-                        </h1>
-                    </div>
-
-                    {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
-                    {(!stoppedInStrip && (!isEngineRunning || engineProcessReady === false || engineProcessReady === null)) && <DeviceStatus
-                        stats={stats}
-                        host={currentHost}
-                        sampleRate={currentSampleRate}
-                        bufferSize={currentBufferSize}
-                        isRunning={isEngineRunning}
-                        processReady={engineProcessReady}
-                        showDetails={!isBeginnerMode}
-                    />}
-                </div>
-
-                <div className="flex items-center gap-2 xl:gap-4 shrink-0 pl-2">
-                    {/* 緊急ミュートは右の列へ移した。大型メーターは本番帯のメーター横。VST 構成は右パネル、細かい数値は設定の外観で切り替える。 */}
-
-                    {/* Audio Settings */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm"
-                                onClick={onOpenSettings}
-                                aria-label={t('header.audioSettingsOpen')}
-                                className="gap-2"
-                            >
-                                <MdSettings className="w-5 h-5" />
-                                <span className="text-ui-support font-bold hidden lg:inline-block">{t('common.settings')}</span>
+                <div className="flex min-h-0 flex-1 flex-col">
+                    {destinations.map(item => {
+                        const active = item.id === current;
+                        const name = t(item.name ?? item.label);
+                        const button = (
+                            <Button key={item.id} type="button" variant="ghost" size="sm"
+                                aria-current={active ? 'page' : undefined}
+                                aria-label={item.name ? name : undefined}
+                                title={item.name ? name : undefined}
+                                onClick={go[item.id]}
+                                className={cn(
+                                    'h-14 w-full shrink-0 flex-col gap-0.5 rounded-control border-l-[3px] px-1 font-normal text-ui-support',
+                                    active ? 'border-l-brand bg-segment-accent/10 font-bold text-foreground' : 'border-l-transparent text-muted-foreground',
+                                )}>
+                                <item.icon aria-hidden="true" className="h-6 w-6" />
+                                <span>{t(item.label)}</span>
                             </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>{t('header.audioSettings')}</p>
-                        </TooltipContent>
-                    </Tooltip>
-
-                    {/* Help & Guide Dropdown */}
+                        );
+                        return item.name
+                            ? <Tooltip key={item.id}><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent side="right"><p>{name}</p></TooltipContent></Tooltip>
+                            : button;
+                    })}
                     <DropdownMenu open={helpMenuOpen} onOpenChange={setHelpMenuOpen}>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm"
-                                ref={helpTrigger}
+                            <Button type="button" variant="ghost" size="sm" ref={helpTrigger}
                                 aria-label={t('header.helpOpen')}
-                                className="gap-2"
-                            >
-                                <MdHelpOutline className="w-5 h-5" />
-                                <span className="text-ui-support font-bold hidden lg:inline-block">{t('header.help')}</span>
+                                className="mt-auto h-14 w-full shrink-0 flex-col gap-0.5 px-1 font-normal text-ui-support text-muted-foreground">
+                                <MdHelpOutline aria-hidden="true" className="h-6 w-6" />
+                                <span>{t('header.help')}</span>
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[200px]" onCloseAutoFocus={event => {
+                        <DropdownMenuContent side="right" align="end" className="min-w-[200px]" onCloseAutoFocus={event => {
                             if (menuHelp.current) {
                                 event.preventDefault();
                                 menuHelp.current = false;
@@ -156,9 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 setHelpOpen(true);
                             }
                         }}>
-                            <DropdownMenuItem onSelect={() => {
-                                menuHelp.current = true;
-                            }} className="gap-3 cursor-pointer p-3">
+                            <DropdownMenuItem onSelect={() => { menuHelp.current = true; }} className="gap-3 cursor-pointer p-3">
                                 <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
                                 <div className="flex flex-col"><span className="font-bold text-ui-support">{t('help.title')}</span>
                                     <span className="text-ui-support text-muted-foreground">{t('help.hint')}</span></div>
@@ -209,9 +181,9 @@ export const Header: React.FC<HeaderProps> = ({
             </TooltipProvider>
             {helpOpen && <HowToUseModal onClose={() => setHelpOpen(false)}
                 onSetup={onOpenWizard} onTroubleshoot={onOpenTroubleshoot}
-                onOBS={onOpenOBSGuide} onDiscord={onOpenDiscordGuide} onShortcuts={onOpenShortcuts ?? onOpenSettings} />}
+                onOBS={onOpenOBSGuide} onDiscord={onOpenDiscordGuide} onShortcuts={onOpenShortcuts ?? onSettings} />}
             {appUpdate.showGuide && <UpdateGuide onClose={appUpdate.closeGuide} />}
             {appUpdate.showAvailable && appUpdate.available && <AvailableUpdateDialog update={appUpdate.available} busy={appUpdate.busy} downloaded={appUpdate.downloaded} onClose={appUpdate.closeAvailable} onDownload={appUpdate.download} onInstall={appUpdate.install} />}
-        </header>
+        </nav>
     );
-};
+}

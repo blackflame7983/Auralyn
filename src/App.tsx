@@ -11,7 +11,7 @@ import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useVstPanel } from './hooks/useVstPanel';
 import { MdClose } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
-import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
+import { LiveModeBar, LiveModeSwitch } from './components/features/AudioSettings/LiveModeBar';
 import { LiveProtectButton } from './components/features/AudioSettings/LiveProtectButton';
 import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
@@ -171,6 +171,10 @@ function AppContent() {
         onOpenShortcuts={ui.openShortcuts}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
+        settingsOpen={ui.isSettingsOpen}
+        settingsTab={ui.settingsTab}
+        onOpenSettingsTab={tab => ui.setIsSettingsOpen(true, tab)}
+        onCloseSettings={() => ui.setIsSettingsOpen(false)}
         onOpenAudioSettingsRetry={ui.openAudioSettingsRetry}
         onOpenSoundSettings={ui.openSoundSettings}
         onOpenAudioTuning={ui.openAudioTuning}
@@ -187,7 +191,8 @@ function AppContent() {
         currentOutput={audioConfig.output}
         liveModeName={t(stageModeKey(liveModel.snapshot))}
         liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
-        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
+        liveModeSwitch={displayPurpose === 'voice' ? <LiveModeSwitch model={liveModel} embedded /> : undefined}
+        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded hideSwitch onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
         liveProtect={<LiveProtectButton model={liveModel} safetyOnly={displayPurpose === 'music'} />}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}

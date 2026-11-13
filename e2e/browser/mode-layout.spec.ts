@@ -38,7 +38,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.setViewportSize(zoomed ? { width: 900, height: 600 } : { width: 1280, height: 800 });
         await prepare(page, locale, theme);
         if (zoomed) await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
         await dialog.getByRole('tab', { name: message(locale, 'settings.sound'), exact: true }).click();
         const section = dialog.locator('#live-mode-settings');

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { UpdateGuide, useAppUpdate } from '../AppUpdate';
-import { Header } from '../Header';
+import { AppRail } from '../AppRail';
 import { AvailableUpdateDialog } from '../AvailableUpdateDialog';
 import { act } from '@testing-library/react';
 import { saveUpdatePolicy } from '@/hooks/useUpdates';
@@ -46,9 +46,8 @@ it('MSIXでは通常版の更新を問い合わせず、Storeと直接配布の�
 it('実際のヘルプメニューが閉じた後もMSIX更新案内を操作できる', async () => {
     vi.mocked(invoke).mockImplementation(async command => command === 'get_distribution' ? 'msix' : undefined);
     const noop = () => {};
-    render(<Header onOpenSettings={noop} onOpenOBSGuide={noop} onOpenDiscordGuide={noop}
-        onOpenTroubleshoot={noop} onOpenWizard={noop}
-        currentHost="Wasapi" isEngineRunning={false} />);
+    render(<AppRail current="home" onHome={noop} onSound={noop} onVst={noop} onConnect={noop} onSettings={noop}
+        onOpenOBSGuide={noop} onOpenDiscordGuide={noop} onOpenTroubleshoot={noop} onOpenWizard={noop} />);
     fireEvent.pointerDown(screen.getByRole('button', { name: 'ヘルプメニューを開く' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /更新方法を確認/ }));
     await screen.findByRole('dialog', { name: 'MSIX版の更新方法' });

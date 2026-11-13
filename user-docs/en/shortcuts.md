@@ -2,12 +2,12 @@
 title: "Hotkeys"
 description: "Learn the available keyboard actions and assignment precautions."
 order: 9
-uiLabels: ["How to use", "Keyboard shortcuts", "Emergency mute (toggle)", "Compare without VST (toggle)", "Switch to Sing mode", "Switch to Talk mode", "Emergency mute (on)", "Emergency mute (off)", "Compare without VST (start)", "Compare without VST (end)", "Increase output volume by 1%", "Decrease output volume by 1%", "Toggle noise reduction", "Settings", "Hotkeys", "Fill recommended keys", "Save key settings"]
+uiLabels: ["How to use", "Help", "Keyboard shortcuts", "Emergency mute (toggle)", "Compare without VST (toggle)", "Switch to Sing mode", "Switch to Talk mode", "Emergency mute (on)", "Emergency mute (off)", "Compare without VST (start)", "Compare without VST (end)", "Increase output volume by 1%", "Decrease output volume by 1%", "Toggle noise reduction", "Settings", "Hotkeys", "Fill recommended keys", "Save key settings"]
 ---
 
 ## Open help {#help}
 
-Press F1 to open “How to use”, including when an input field has focus. View current assignments in “Keyboard shortcuts”.
+Press F1, or use “Help” at the bottom of the left rail, to open “How to use”, including when an input field has focus. View current assignments in “Keyboard shortcuts”.
 
 ## Actions {#actions}
 
