@@ -683,10 +683,11 @@ html[data-app-hidden="true"] *::after {
 .sound-visual-badge { font-size: 0.8125rem; line-height: 1.2; font-weight: 600; color: hsl(var(--foreground)); flex-shrink: 0; }
 /* 1列にするのは内側の幅が520px未満のとき。レール後の960×640（内容幅およそ600px）と1024×768は3列。 */
 @container (max-width: 519px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } }
-/* 声の種類は等分し、チェック印を幅に数えない。文字は省略せず、狭いときは折り返す。 */
-/* 声の種類は3つ並ぶ。ノイズの2択と同じボタン幅にすると、960のカード（約164px）に収まる。
-   印は幅に含めず、日本語2文字は1行のまま。長い英語は折り返し、省略もしない。 */
-.sound-chain .segment-option {
+/* 英語の声の種類（Broadcast など）は約164pxのカードに3つ並ばない。単語の途中で切らないよう、英語は B と同じ650pxで1列にする。 */
+@container (max-width: 650px) { .sound-tool-list:lang(en) { grid-template-columns: minmax(0, 1fr); } }
+/* 日本語の声の種類（配信・低め・明瞭）は、ノイズの2択と同じボタン幅にすると960のカード（約164px）に3つ収まる。
+   印は幅に含めない。文字は省略も折り返しもしない。 */
+.sound-chain .segment-option:lang(ja) {
   width: 3.375rem;
   min-width: 3.375rem;
   max-width: 3.375rem;
@@ -694,10 +695,8 @@ html[data-app-hidden="true"] *::after {
   gap: 0;
   padding-left: 1.125rem;
   padding-right: 0.125rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
-.sound-chain .segment-option > svg { position: absolute; left: 0.125rem; }
+.sound-chain .segment-option:lang(ja) > svg { position: absolute; left: 0.125rem; }
 @media (max-height: 700px) { .sound-module-card { padding-block: 0.375rem; } .sound-module-visual { min-height: 2.5rem; padding: 0.25rem 0.5rem; } .sound-nr-gauge { width: 3.75rem; height: 2.25rem; } .sound-eq-graph, .sound-vst-bars { height: 2rem; } }
 
 /* 音調整を開いた舞台は、低い窓でだけ下限を外して開いた操作の場所を空ける。 */
