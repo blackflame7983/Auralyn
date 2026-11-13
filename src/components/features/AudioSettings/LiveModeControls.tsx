@@ -36,7 +36,6 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
         && JSON.stringify(value.definitions.singing) === JSON.stringify(value.definitions.talk);
     return <div className="space-y-3 p-3 text-ui-support">
         <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
-            <p>{t('settings.mode.registerHintNew')}</p>
             <SavePurposeHelp />
         </div>
         {profileError && <div className="space-y-2" role="alert"><p>{t('liveTransaction.profilesFailed')}</p><Button type="button" onClick={() => setProfileReload(n => n + 1)} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">{t('liveTransaction.retryProfiles')}</Button></div>}

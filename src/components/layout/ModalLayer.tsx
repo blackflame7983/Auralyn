@@ -9,6 +9,7 @@ import { registerSettingsCloser, useLeaveGeneration } from './pageLeave';
 import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
+import type { SoundPlace } from '@/hooks/useUIState';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -31,6 +32,9 @@ const markWizardDone = () => {
 
 interface UIState {
     settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+    soundPlace?: SoundPlace;
+    soundFocusNonce?: number;
+    moveSoundPlace?: (place: SoundPlace, focus?: boolean) => void;
     settingsTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
     settingsTabRequest?: number;
     settingsNeedsRetry?: boolean;
@@ -159,6 +163,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         initialTab={ui.settingsTab ?? 'audio'}
                 tabRequest={ui.settingsTabRequest ?? 0}
                         initialSection={ui.settingsSection}
+                        soundPlace={ui.soundPlace}
+                        soundFocusNonce={ui.soundFocusNonce}
+                        onSoundPlace={ui.moveSoundPlace}
                         isOpen={ui.isSettingsOpen}
                         onRequestTab={tab => ui.setIsSettingsOpen(true, tab)}
                         onClose={() => {

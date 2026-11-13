@@ -56,6 +56,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     const labels = {
         compare: t('header.compare'), gain: t('master.outputGain'), mute: t('header.emergency'),
         noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
+        basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
         details: t('prep.steps'), setup: t('header.setupOpen'), check: t('prep.title'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),

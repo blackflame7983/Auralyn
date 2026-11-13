@@ -7,8 +7,15 @@ export type AppPage = 'home' | 'sound' | 'connect' | 'settings';
 export type SettingsPane = 'appearance' | 'shortcuts' | 'obs' | 'system';
 export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
 export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+export type SoundPlace = 'basic' | 'liveModes' | 'singing' | 'peak';
 
-type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean };
+type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean };
+
+function soundPlaceFrom(section?: SettingsAnchor): SoundPlace {
+    if (section === 'liveModes') return 'liveModes';
+    if (section === 'singing') return 'singing';
+    return 'basic';
+}
 
 const settingsPanes: SettingsPane[] = ['appearance', 'shortcuts', 'obs', 'system'];
 
@@ -28,6 +35,9 @@ export const useUIState = () => {
     // 同じ場所への移動を続けて頼まれても切り替わるよう、頼むたびに番号を進める。
     const [settingsTabRequest, setSettingsTabRequest] = useState(0);
     const [settingsSection, setSettingsSection] = useState<SettingsAnchor>();
+    const [soundPlace, setSoundPlace] = useState<SoundPlace>('basic');
+    // 入口から小区分を指定して開いたときだけ、見出しへ焦点を移す。
+    const [soundFocusNonce, setSoundFocusNonce] = useState(0);
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     // ホームと接続は、以前の音声タブと同じ入口として扱う。
     const settingsTab: SettingsTab = page === 'sound' ? 'sound' : page === 'settings' ? settingsPane : 'audio';
@@ -36,6 +46,10 @@ export const useUIState = () => {
     const commit = useCallback((next: Navigation) => {
         if (next.pane) setSettingsPane(next.pane);
         setSettingsSection(next.section);
+        if (next.page === 'sound') {
+            setSoundPlace(next.soundPlace ?? soundPlaceFrom(next.section));
+            if (next.soundFocus) setSoundFocusNonce(n => n + 1);
+        }
         setSettingsNeedsRetry(next.retry ?? false);
         setSettingsTabRequest(n => n + 1);
         setPage(next.page);
@@ -46,8 +60,11 @@ export const useUIState = () => {
     const go = (next: Navigation) => {
         // システムの再起動は、接続ページの未保存の変更を適用する。ここで捨てると、再起動の条件が変わる（6.3）。
         const restartKeepsConnection = page === 'connect' && next.page === 'settings' && next.pane === 'system';
+        const nextSound = next.page === 'sound' ? (next.soundPlace ?? soundPlaceFrom(next.section)) : null;
+        // 同じ音づくりページでも、小区分が替わるときは未適用の保護値を確認する。
+        const soundMove = nextSound !== null && nextSound !== soundPlace;
         // 保存成功の一度だけは、同じ場所でも処理中の停止を消費する。
-        if (restartKeepsConnection || consumeLeaveSkip() || samePlace(next)) { commit(next); return; }
+        if (restartKeepsConnection || consumeLeaveSkip() || (samePlace(next) && !soundMove)) { commit(next); return; }
         requestLeave(() => commit(next));
     };
 
@@ -70,9 +87,16 @@ export const useUIState = () => {
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
         const anchor = section === 'liveModes' || section === 'singing' ? section : undefined;
-        go({ page: 'sound', section: anchor });
+        go({ page: 'sound', section: anchor, soundFocus: anchor !== undefined });
     };
-    const openLiveModeSettings = () => go({ page: 'sound', section: 'liveModes' });
+    const openLiveModeSettings = () => go({ page: 'sound', section: 'liveModes', soundFocus: true });
+    // ページ内の小区分。focus は入口のボタンだけ。タブのクリックでは見出しへ移さない。
+    const moveSoundPlace = (place: SoundPlace, focus = false) => go({
+        page: 'sound',
+        soundPlace: place,
+        section: place === 'liveModes' || place === 'singing' ? place : undefined,
+        soundFocus: focus,
+    });
     const openAudioSettingsRetry = () => go({ page: 'connect', retry: true });
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
     const [isOBSGuideOpen, setIsOBSGuideOpen] = useState(false);
@@ -95,6 +119,9 @@ export const useUIState = () => {
         settingsTab,
         settingsTabRequest,
         settingsSection,
+        soundPlace,
+        soundFocusNonce,
+        moveSoundPlace,
         settingsNeedsRetry,
         openAudioSettingsRetry,
         openLiveModeSettings,
