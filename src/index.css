@@ -240,7 +240,8 @@
   --destructive-foreground: 0 0% 98%;
 
   --brand: 300 100% 68%;
-  --brand-secondary: 185 100% 60%;
+  /* 差し色は同じマゼンタの明るい濃淡。青緑は足さない。応援の印の地になる。 */
+  --brand-secondary: 300 62% 76%;
   /* ゲーミングは差し色をマゼンタ1色にし、選択中も主色で示す。 */
   --selection: 300 100% 68%;
 
@@ -277,6 +278,10 @@
   --radius-xl: 0.75rem;
   corner-shape: round;
 }
+/* ゲーミングの見本は、色に加えて切り欠いた形で見比べる。未対応のときは小さい角丸。 */
+[data-theme-preview="gaming"] {
+  --radius-control: 2px;
+}
 @supports (corner-shape: bevel) {
   .gaming {
     /* 区画・ダイアログは 10px、操作は 6px。 */
@@ -292,6 +297,11 @@
   }
   .gaming .rounded-full {
     corner-shape: round;
+  }
+  /* ほかの見本と同じ大きさで、形だけ切り欠く。 */
+  [data-theme-preview="gaming"] {
+    --radius-control: 10px;
+    corner-shape: bevel;
   }
 }
 

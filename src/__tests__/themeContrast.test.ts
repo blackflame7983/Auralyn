@@ -60,6 +60,10 @@ it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・�
         }
         // 削除・停止・テスト音停止などの危険操作の塗りボタン
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);
+        // 応援の印は、地の色の文字を brand-secondary の塗りに載せる。
+        if (selector === '.gaming') {
+            expect(contrast(color('background'), color('brand-secondary')), `${selector} support mark`).toBeGreaterThanOrEqual(4.5);
+        }
         // 緊急ミュートの枠とリングは薄めず、通常・ホバー・ミュート中の両側の面から識別できる。
         for (const background of ['background', 'card']) {
             for (const alpha of [0, 0.1, 0.2, 0.3]) {
