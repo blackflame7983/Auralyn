@@ -97,7 +97,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         return () => observer.disconnect();
     }, []);
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
-        className="mb-3 rounded-card bg-card px-4 py-2 gaming:bg-card/70">
+        className="mb-3 rounded-card bg-card px-4 py-2">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
             {action}

@@ -138,7 +138,9 @@ test.describe('操作部品のサイズとテーマ', () => {
                 document.documentElement.classList.toggle('gaming', theme === 'gaming');
             }, theme);
             const button = page.getByRole('button', { name: 'ボイスチェック', exact: true });
-            expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
+            // ゲーミングの操作は切り欠きの 6px。オーロラとライトは 10px のまま（8px 未満にはしない）。
+            const radius = await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius));
+            expect(radius).toBe(theme === 'gaming' ? 6 : 10);
             await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
             await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
             await page.getByRole('tab', { name: 'システム', exact: true }).click();

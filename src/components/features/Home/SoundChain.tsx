@@ -138,7 +138,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     ];
 
     return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} inert={unconfigured} aria-disabled={unconfigured || undefined}
-        className={cn('sound-chain mb-4 rounded-card bg-card px-5 py-4 gaming:bg-card/70 min-[1100px]:px-6', unconfigured && 'text-muted-foreground')}>
+        className={cn('sound-chain mb-4 rounded-card bg-card px-5 py-4 min-[1100px]:px-6', unconfigured && 'text-muted-foreground')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
                 <h2 className="home-title">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>

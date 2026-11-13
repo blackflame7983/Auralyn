@@ -60,6 +60,10 @@ it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・�
         }
         // 削除・停止・テスト音停止などの危険操作の塗りボタン
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);
+        // 応援の印は、地の色の文字を brand-secondary の塗りに載せる。
+        if (selector === '.gaming') {
+            expect(contrast(color('background'), color('brand-secondary')), `${selector} support mark`).toBeGreaterThanOrEqual(4.5);
+        }
         // 緊急ミュートの枠とリングは薄めず、通常・ホバー・ミュート中の両側の面から識別できる。
         for (const background of ['background', 'card']) {
             for (const alpha of [0, 0.1, 0.2, 0.3]) {
@@ -141,7 +145,6 @@ it('読ませる文字の色・要素に不透明度を追加しない', () => {
         'features/AudioSettings/AudioSettingsModal.tsx': { 'opacity-30': '無効な機器選択', 'opacity-50': '変更不可のバッファ欄' },
         'features/Guide/DiscordGuideModal.tsx': { 'opacity-50': '変更不可の機器欄の見本' },
         'features/VoiceCheck/VoiceCheckModal.tsx': { 'opacity-50': '録音前の無効な再生操作' },
-        'layout/AppShell.tsx': { 'opacity-[0.02]': '背景グリッド' },
         'features/PluginRack/PluginList.tsx': { 'opacity-20': 'ラック間の装飾矢印' },
         'features/PluginBrowser/PluginBrowserModal.tsx': { 'opacity-30': '文字ではない区切り線' },
     };

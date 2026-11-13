@@ -999,6 +999,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <ThemeSwatch theme="gaming" />
                   </div>
                 </RadioGroup>
+                <p className="mt-3 text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.135')}</p>
               </div>
 
             </div>

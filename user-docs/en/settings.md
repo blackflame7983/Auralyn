@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "OBS", "Appearance", "Hotkeys", "System"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "OBS", "Appearance", "Gaming", "Hotkeys", "System"]
 ---
 
 ## Connection {#audio}
@@ -32,7 +32,7 @@ Save scene linking settings in their own section. Once enabled and saved, linkin
 
 ## Appearance {#appearance}
 
-Choose a theme in “Settings” → “Appearance”. You can also choose whether to show numerical details. Open details when needed.
+Choose a theme in “Settings” → “Appearance”. “Gaming” uses cut corners and italic headings. It glows only while a primary button is pressed, and while emergency mute is on. You can also choose whether to show numerical details. Open details when needed.
 
 Display changes take effect immediately without changing audio connections or mute.
 

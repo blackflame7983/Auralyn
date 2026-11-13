@@ -88,7 +88,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     <div className="px-6 pt-4 shrink-0">
                         <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                             <div
-                                className="h-full origin-left bg-primary transition-transform duration-(--motion-base) ease-out gaming:shadow-[0_0_10px_hsl(var(--brand)/0.5)]"
+                                className="h-full origin-left bg-primary transition-transform duration-(--motion-base) ease-out"
                                 style={{ transform: `scaleX(${step / (totalSteps - 1)})` }}
                             />
                         </div>

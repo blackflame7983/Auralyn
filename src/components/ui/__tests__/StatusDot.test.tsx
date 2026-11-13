@@ -10,7 +10,7 @@ it.each<StatusTone>(['ok', 'warn', 'error', 'off'])('状態の文言を残し、
     const dot = container.querySelector('[aria-hidden="true"]')!;
     expect(dot).toHaveClass('rounded-full');
     if (tone === 'ok') {
-        expect(dot).toHaveClass('bg-success', 'gaming:shadow-[0_0_6px_hsl(var(--success)/0.5)]');
-        expect([...dot.classList].some(token => token.startsWith('shadow-'))).toBe(false);
+        expect(dot).toHaveClass('bg-success');
+        expect([...dot.classList].some(token => token.startsWith('shadow-') || token.includes('shadow-['))).toBe(false);
     }
 });
