@@ -32,7 +32,7 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));
     expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
     view.rerender(<PluginBrowserModal {...props} error="scan error" />);
-    fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
 });
 
@@ -43,7 +43,7 @@ it('読み取れなかった候補がある空一覧は件数と再スキャン�
     expect(screen.getByRole('heading', { name: 'VSTを読み取れませんでした' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'まだVSTが登録されていません' })).not.toBeInTheDocument();
     expect(screen.getByText('読み取れなかったプラグイン：1 件')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
 });
 
@@ -73,7 +73,7 @@ it('欠損メタデータを含んでも検索不一致・名前・ベンダー�
     const search = screen.getByRole('textbox', { name: 'プラグイン検索' });
     fireEvent.change(search, { target: { value: 'no-such-plugin' } });
     expect(screen.getByRole('heading', { name: '「no-such-plugin」に一致する候補はありません。' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '検索・カテゴリを解除' }));
+    fireEvent.click(screen.getByRole('button', { name: '検索をやめる' }));
     expect(search).toHaveValue('');
     expect(search).toHaveFocus();
     expect(screen.getByRole('button', { name: 'Legacy EQ を追加' })).toBeInTheDocument();

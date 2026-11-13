@@ -37,8 +37,6 @@ async function openPreview(page: import('@playwright/test').Page, shot: { theme:
     if (shot.place === 'hotkeys') {
         await expect(surface.getByRole('tab', { name: shot.locale === 'ja' ? 'ホットキー' : 'Hotkeys', exact: true })).toHaveAttribute('aria-selected', 'true');
     } else if (shot.place === 'music') {
-        // 音楽鑑賞は起動時に VST パネルが開く。音づくりのページを撮るため、パネルだけ閉じる。
-        await page.getByRole('button', { name: shot.locale === 'ja' ? 'VST構成を閉じる' : 'Close VST setup', exact: true }).click();
         await expect(surface.getByRole('heading', { name: placeName[shot.locale].peak, exact: true })).toBeVisible();
     } else if (shot.place === 'liveModes' || shot.place === 'singing' || shot.place === 'peak') {
         await surface.getByRole('tab', { name: placeName[shot.locale][shot.place], exact: true }).click();

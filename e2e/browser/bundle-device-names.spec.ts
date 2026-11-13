@@ -27,7 +27,7 @@ for (const locale of ['ja', 'en'] as const) for (const missing of [false, true])
             };
         }, { locale, missing });
         await page.goto('/');
-                const rack = page.locator('#vst-panel-toggle');
+                const rack = page.locator('#home-vst-open');
         if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
         await page.getByRole('button', { name: message(locale, 'rack.manageProfiles'), exact: true }).click();
         await page.getByRole('tab', { name: message(locale, 'presets.tab.bundle'), exact: true }).click();

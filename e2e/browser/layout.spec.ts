@@ -4,26 +4,27 @@ import { settleLayoutMotion } from './layoutMotion';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
-    test('右の列のマイク音量は重ね表示の外に残り、パネルを閉じるとVST操作へ戻る', async ({ page }) => {
+    test('右の列のマイク音量はVSTのページでも残り、Escapeではページを閉じない', async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 768 });
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
-            localStorage.setItem('auralyn_vst_panel_open', 'true');
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
-        await page.locator('#vst-panel-toggle').click();
-        await expect(page.locator('#vst-panel')).toBeVisible();
+        await page.locator('#home-vst-open').click();
+        await expect(page.locator('[data-vst-page]')).toBeVisible();
         const slider = page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('slider', { name: /マイク音量/ });
         await expect(slider).toBeEnabled();
         await page.setViewportSize({ width: 960, height: 640 });
-        await expect(page.locator('main')).toHaveAttribute('inert', '');
+        await expect(page.locator('main')).not.toHaveAttribute('inert', '');
         await expect(slider).toBeEnabled();
         await expect(slider.locator('xpath=ancestor::*[@inert]')).toHaveCount(0);
-        await page.locator('#plugin-rack-heading').focus();
+        await page.getByRole('heading', { name: 'VST', level: 1 }).focus();
         await page.keyboard.press('Escape');
-        await expect(page.locator('#vst-panel')).toHaveCount(0);
-        await expect(page.locator('#vst-panel-toggle')).toBeFocused();
+        await expect(page.locator('[data-vst-page]')).toBeVisible();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+        await expect(page.locator('[data-vst-page]')).toHaveCount(0);
+        await expect(page.locator('#home-vst-open')).toBeVisible();
         expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
         await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     });
@@ -68,8 +69,9 @@ test.describe('通常のホーム表示', () => {
         await expect(slider).toHaveAttribute('aria-valuenow', '50');
         await page.setViewportSize({ width: 960, height: 640 });
         await expect(slider).toBeFocused();
-        await page.locator('#vst-panel-toggle').click();
-        await expect(page.locator('main')).toHaveAttribute('inert', '');
+        await page.locator('#home-vst-open').click();
+        await expect(page.locator('[data-vst-page]')).toBeVisible();
+        await expect(page.locator('main')).not.toHaveAttribute('inert', '');
         await slider.focus();
         await slider.press('Home');
         await expect(slider).toHaveAttribute('aria-valuenow', '0');
@@ -247,8 +249,8 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await expect(page.getByRole('button', { name: 'Connection (audio settings)', exact: true })).toBeVisible();
 });
 
-// 重ね表示では背後を操作させず、右の列の本番操作は使える。
-test('最小〜最大: VST は作業幅を保って重なり、広い窓ではメーターと並ぶ', async ({ page }, testInfo) => {
+// VST は中央のページ。右の列の本番操作は、狭い窓でも広い窓でもページの外で使える。
+test('最小〜最大: VSTのページは右の列と重ならず、Escapeでは閉じない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 768 });
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -262,31 +264,25 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
     for (const width of [900, 960, 1024, 1280, 1440, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 });
         const main = page.locator('main');
-        await page.locator('#vst-panel-toggle').click();
-        await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
-        const overlays = width < 1200;
+        await page.locator('#home-vst-open').click();
+        const vstPage = page.locator('[data-vst-page]');
+        await expect(vstPage).toBeVisible();
         await expect(meter).toBeVisible();
-        if (overlays) {
-            await expect(main).toHaveAttribute('inert', '');
-            await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(width - 76 - 212 - 1);
-        } else {
-            await expect(main).not.toHaveAttribute('inert', '');
-            await expect.poll(async () => {
-                const panel = (await page.locator('#vst-panel').boundingBox())!;
-                const meterBox = (await meter.boundingBox())!;
-                return meterBox.x >= panel.x + panel.width - 1 || panel.x >= meterBox.x + meterBox.width - 1;
-            }).toBe(true);
-        }
+        await expect(main).not.toHaveAttribute('inert', '');
+        await expect.poll(async () => {
+            const panel = (await vstPage.boundingBox())!;
+            const meterBox = (await meter.boundingBox())!;
+            return meterBox.x >= panel.x + panel.width - 1 || panel.x >= meterBox.x + meterBox.width - 1;
+        }).toBe(true);
         await reachable(page.getByRole('button', { name: '緊急ミュート', exact: true }), page);
         await reachable(page.getByRole('slider', { name: '出力音量', exact: true }), page);
         if (width === 960 || width === 1536) await page.screenshot({ path: testInfo.outputPath(`vst-responsive-${width}.png`) });
-        if (overlays) {
-            await page.locator('#plugin-rack-heading').focus();
-            await page.keyboard.press('Escape');
-        } else await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
-        await expect(page.locator('#vst-panel')).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(vstPage).toBeVisible();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+        await expect(vstPage).toHaveCount(0);
         await expect(main).not.toHaveAttribute('inert', '');
-        await expect(page.locator('#vst-panel-toggle')).toBeFocused();
+        await expect(page.locator('#home-vst-open')).toBeVisible();
         await expect(meter).toBeVisible();
     }
 });
@@ -319,10 +315,10 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
     }
 });
 
-test.describe('登録済みの歌・雑談と右パネル', () => {
+test.describe('登録済みの歌・雑談とVSTのページ', () => {
     test.use({ liveHome: true });
     for (const theme of ['light', 'dark', 'gaming']) {
-        test(`${theme}: 重ね表示の終了で本番モード・メーターへ戻れ、横並びでは同時操作できる`, async ({ page }, testInfo) => {
+        test(`${theme}: ページを開いても右の列は押せ、ホームへ戻るとモードを操作できる`, async ({ page }, testInfo) => {
             await page.setViewportSize({ width: 960, height: 640 });
             await page.addInitScript(theme => {
                 localStorage.setItem('vst_host_theme', theme);
@@ -336,177 +332,88 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             const modes = page.getByRole('region', { name: '状態の帯', exact: true }).getByRole('radiogroup', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             const meter = page.getByRole('meter', { name: '出力', exact: true });
-            await page.locator('#vst-panel-toggle').click();
-            await expect(page.locator('main')).toHaveAttribute('inert', '');
+            await page.locator('#home-vst-open').click();
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+            await expect(page.locator('main')).not.toHaveAttribute('inert', '');
+            await expect(page.locator('.vst-panel-scrim')).toHaveCount(0);
             await expect(meter).toBeVisible();
-            await page.locator('.vst-panel-scrim').click({ position: { x: 20, y: 20 } });
-            await expect(page.locator('#vst-panel')).toHaveCount(0);
+            await page.keyboard.press('Escape');
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+            await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+            await expect(page.locator('[data-vst-page]')).toHaveCount(0);
             for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
             await expect(meter).toBeVisible();
-            await page.locator('#vst-panel-toggle').click();
+            await page.locator('#home-vst-open').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
+            await expect(meter).toBeVisible();
             await reachable(page.getByRole('slider', { name: /100%/ }), page);
             await page.screenshot({ path: testInfo.outputPath(`registered-modes-${theme}.png`) });
         });
     }
 });
 
-// 開閉を連続しても古い終了処理で閉じず、閉じ始めた内容には触れない。
-// 右パネルの入口（VST の編集）は設定済みのホームにだけ出る（#297）。
-test.describe('右パネルの出入り', () => {
+// VST はページなので、開いても作業幅は変わらない。予約幅の補間はなくした。
+// 入口は設定済みのホームにだけ出る（#297）。
+test.describe('VSTのページの出入り', () => {
     test.use({ liveHome: true, registeredModes: false });
-for (const width of [960, 1280, 1600]) {
-test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 768 });
-    await page.addInitScript(() => {
-        localStorage.setItem('vst_host_wizard_done', 'true');
-        localStorage.setItem('auralyn_vst_panel_open', 'false');
-    });
-    await page.goto('/');
-        const toggle = page.locator('#vst-panel-toggle');
-    await expect(toggle).toBeVisible();
-    await settleLayoutMotion(page);
-    const closedMainWidth = (await page.locator('main').boundingBox())!.width;
-    await toggle.click();
-    const panel = page.locator('#vst-panel');
-    await expect(panel).toHaveAttribute('data-state', 'open');
-    await settleLayoutMotion(page);
-    // 閉じる→終了途中の状態確認→同じ実ボタンで再度開く、をページ内の1つの流れで行う。
-    // Playwright の往復を挟むと、遅いCIでは確認の途中で終了処理が終わり、要素が外れる。
-    const reopened = await panel.evaluate(async e => {
-        // 開いている間は切替ボタンが描き直されるため、閉じた後に取り直す。
-        const toggleButton = () => document.querySelector<HTMLButtonElement>('#vst-panel-toggle');
-        const committed = new Promise<void>(resolve => {
-            const observer = new MutationObserver(() => {
-                if (!e.hasAttribute('inert')) return;
-                observer.disconnect();
-                resolve();
+    for (const width of [960, 1280, 1600]) {
+        test(`VSTのページは作業幅を変えず、Escapeでは閉じない ${width}px`, async ({ page }) => {
+            await page.setViewportSize({ width, height: 768 });
+            await page.addInitScript(() => {
+                localStorage.setItem('vst_host_wizard_done', 'true');
             });
-            observer.observe(e, { attributes: true, attributeFilter: ['inert'] });
+            await page.goto('/');
+            const toggle = page.locator('#home-vst-open');
+            await expect(toggle).toBeVisible();
+            await settleLayoutMotion(page);
+            const closedMainWidth = (await page.locator('main').boundingBox())!.width;
+            await expect(toggle).toHaveText('追加');
+            await toggle.click();
+            const vstPage = page.locator('[data-vst-page]');
+            await expect(vstPage).toBeVisible();
+            await expect(page.locator('#vst-panel, .vst-panel-space, .vst-panel-scrim')).toHaveCount(0);
+            await settleLayoutMotion(page);
+            expect(Math.abs((await page.locator('main').boundingBox())!.width - closedMainWidth)).toBeLessThan(1);
+            await expect(page.locator('#add-effect-btn')).toBeFocused();
+            await page.keyboard.press('Escape');
+            await expect(vstPage).toBeVisible();
+            await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+            await expect(vstPage).toHaveCount(0);
+            await expect(toggle).toBeVisible();
         });
-        (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
-        await committed;
-        const closing = { inert: e.getAttribute('inert'), hidden: e.getAttribute('aria-hidden') };
-        // 焦点の移動は commit 後の effect で行われるため、終了途中のうちに数フレームだけ待つ。
-        for (let frame = 0; frame < 10 && document.activeElement !== toggleButton(); frame++) {
-            await new Promise(requestAnimationFrame);
-        }
-        const focused = toggleButton() !== null && document.activeElement === toggleButton();
-        const mounted = e.isConnected;
-        toggleButton()?.click();
-        return { ...closing, focused, mounted };
-    });
-    expect(reopened).toEqual({ inert: '', hidden: 'true', focused: true, mounted: true });
-    await expect(panel).toHaveAttribute('data-state', 'open');
-    await expect(panel).not.toHaveAttribute('inert', '');
-    await settleLayoutMotion(page);
-    await expect(page.getByRole('complementary', { name: 'VST構成' })).toBeVisible();
-    const closing = await panel.evaluate(async e => {
-        const main = document.querySelector('main')!;
-        const reserved = document.querySelector('.vst-panel-space')!;
-        const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
-        const start = performance.now();
-        // Reactのclick更新は同じタスク内では未反映。閉状態のcommitを待ってから
-        // styleを確定し、予約領域のCSS width遷移を描画前に取得する。
-        const closingTransitions = new Promise<{ frames: string[]; duration: number }[]>(resolve => {
-            const observer = new MutationObserver(() => {
-                if (reserved.getAttribute('data-state') !== 'closed') return;
-                observer.disconnect();
-                reserved.getBoundingClientRect();
-                resolve(reserved.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'width')
-                    .map(a => ({ frames: (a.effect as KeyframeEffect).getKeyframes().map(frame => String(frame.width)), duration: Number(a.effect!.getTiming().duration) })));
-            });
-            observer.observe(reserved, { attributes: true, attributeFilter: ['data-state'] });
-        });
-        (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
-        const transitions = await closingTransitions;
-        await new Promise<void>(resolve => {
-            const frame = () => {
-                samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
-                if (!document.getAnimations().some(animation => animation.playState === 'running' && Number.isFinite(Number(animation.effect?.getComputedTiming().endTime))) && !document.querySelector('#vst-panel')) resolve();
-                else requestAnimationFrame(frame);
-            };
-            requestAnimationFrame(frame);
-        });
-        return { samples, transitions };
-    });
-    const widths = closing.samples;
-    const first = widths[0].width, last = widths[widths.length - 1].width;
-    if (width <= 1020) expect(Math.abs(last - first)).toBeLessThan(1);
-    else {
-        // 広い窓ではホームの最大幅に達するため、固定200pxでなく開く前の作業幅へ戻ることを確認する。
-        expect(last - first).toBeGreaterThan(1);
-        expect(Math.abs(last - closedMainWidth)).toBeLessThan(1);
-    }
-    // 幅を0へ補間する定義と、終了時の予約領域の解放を確認する。
-    if (width > 1020) {
-        // main幅は最大幅で頭打ちになるため、予約領域自体の補間定義も確認する。
-        const reservedStart = widths[0].reserved;
-        expect(reservedStart).toBeGreaterThan(200);
-        expect(closing.transitions).toHaveLength(1);
-        expect(closing.transitions[0].duration).toBeGreaterThan(0);
-        expect(parseFloat(closing.transitions[0].frames[0])).toBeCloseTo(reservedStart, 0);
-        expect(parseFloat(closing.transitions[0].frames[closing.transitions[0].frames.length - 1])).toBe(0);
-        expect(widths[widths.length - 1].reserved).toBeLessThan(1);
-
     }
 
-    await expect(panel).toHaveCount(0);
-    await expect(toggle).toBeFocused();
-});
-}
-
-test('動きを減らす設定では右パネルを移動せず、キーボードでは即座に開閉する', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.addInitScript(() => {
-        localStorage.setItem('vst_host_wizard_done', 'true');
-        localStorage.setItem('auralyn_vst_panel_open', 'false');
-    });
-    await page.goto('/');
-        // Motion の WAAPI は CSSTransition ではないため、キーフレームに移動が含まれるかも見る。
-    // アニメーションは描画フレームで作られ、終わると片付くので、押す前から一定時間フレームごとに観測する。
-    const watchPanelMoves = () => page.evaluate(() => {
-        (window as unknown as { __panelMoves: Promise<boolean> }).__panelMoves = new Promise<boolean>(resolve => {
-            const start = performance.now();
-            const tick = () => {
-                const moving = document.getElementById('vst-panel')?.getAnimations().some(a => a instanceof CSSTransition ? a.transitionProperty !== 'opacity'
-                    : (a.effect as KeyframeEffect | null)?.getKeyframes().some(k => k.transform !== undefined && k.transform !== 'none'));
-                if (moving) resolve(true);
-                else if (performance.now() - start > 600) resolve(false);
-                else requestAnimationFrame(tick);
-            };
-            requestAnimationFrame(tick);
+    test('動きの設定にかかわらずVSTのページは移動せず、キーボードで開く', async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
         });
+        await page.goto('/');
+        const toggle = page.locator('#home-vst-open');
+        const moved = () => page.evaluate(() => {
+            const root = document.querySelector('[data-vst-page]');
+            return Boolean(root?.getAnimations().some(animation => {
+                const frames = (animation.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
+                return frames.some(frame => frame.transform !== undefined && frame.transform !== 'none');
+            }));
+        });
+        await toggle.click();
+        const vstPage = page.locator('[data-vst-page]');
+        await expect(vstPage).toBeVisible();
+        expect(await moved()).toBe(false);
+        await page.keyboard.press('Escape');
+        await expect(vstPage).toBeVisible();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+        await expect(vstPage).toHaveCount(0);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await expect(toggle).toHaveText('追加');
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await expect(vstPage).toBeVisible();
+        await expect(page.locator('#add-effect-btn')).toBeFocused();
+        expect(await moved()).toBe(false);
     });
-    const panelMoved = () => page.evaluate(() => (window as unknown as { __panelMoves: Promise<boolean> }).__panelMoves);
-    const toggle = page.locator('#vst-panel-toggle');
-    await watchPanelMoves();
-    await toggle.click();
-    const panel = page.locator('#vst-panel');
-    expect(await panel.evaluate(e => getComputedStyle(e).transform)).toBe('none');
-    expect(await panelMoved()).toBe(false);
-    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
-    await expect(panel).toHaveCount(0);
-    // 起動中に設定を戻したら、再読込なしで移動ありの出入りに戻る。
-    await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await watchPanelMoves();
-    await toggle.click();
-    await expect(panel).toHaveAttribute('data-state', 'open');
-    expect(await panelMoved()).toBe(true);
-    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
-    await expect(panel).toHaveCount(0);
-    await toggle.focus();
-    await page.keyboard.press('Enter');
-    await expect(panel).toHaveAttribute('data-state', 'open');
-    expect(await panel.evaluate(e => e.getAnimations().length)).toBe(0);
-    const close = page.getByRole('button', { name: 'VST構成を閉じる', exact: true });
-    await close.focus();
-    await page.keyboard.press('Enter');
-    await expect(panel).toHaveCount(0);
-    await expect(toggle).toBeFocused();
-});
 });
 
 test.describe('メーター数値の幅', () => {

@@ -21,22 +21,21 @@ test('通常の声ON・残響OFFは一部ONと表示せず、設定の内訳は�
     await expect(page.getByRole('dialog')).toContainText('残響：OFF');
 });
 
-test('マウスで開き直したパネルは見出し枠を出さず、キーボードでは枠を保つ', async ({ page }) => {
+test('VSTのページは見出しへ移り、Escapeでは閉じない', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
-        const toggle = page.locator('#vst-panel-toggle');
-    await toggle.click();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#vst-panel')).toHaveCount(0);
-    await toggle.click();
-    const heading = page.locator('#plugin-rack-heading');
+    const heading = page.getByRole('heading', { name: 'VST', level: 1 });
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'VST', exact: true }).click();
+    await expect(page.locator('[data-vst-page]')).toBeVisible();
     await expect(heading).toBeFocused();
-    expect(await heading.evaluate(e => getComputedStyle(e).outlineStyle)).toBe('none');
     await page.keyboard.press('Escape');
-    await expect(page.locator('#vst-panel')).toHaveCount(0);
+    await expect(page.locator('[data-vst-page]')).toBeVisible();
+    await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+    await expect(page.locator('[data-vst-page]')).toHaveCount(0);
+    const toggle = page.locator('#home-vst-open');
+    await expect(toggle).toHaveText('追加');
     await toggle.press('Enter');
-    await expect(heading).toBeFocused();
-    expect(await heading.evaluate(e => getComputedStyle(e).outlineStyle)).not.toBe('none');
+    await expect(page.locator('#add-effect-btn')).toBeFocused();
 });
 
 test('右の列のマイク音量は画面の高さを変えても残り、大型メーターは出さない', async ({ page }) => {
@@ -172,17 +171,18 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
         (window as any).__e2eSetOutputMuted(false);
         setInterval(() => (window as any).__e2eEmit('audio-level', { input: [0.32, 0.28], output: [0.25, 0.2] }), 100);
     });
-    await expect(page.locator('#vst-panel-toggle')).toHaveText('追加');
+    await expect(page.locator('#home-vst-open')).toHaveText('追加');
     await expect(page.getByRole('region', { name: 'VST保存済み構成の保護', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toHaveCount(0);
     for (const [width, height] of [[1024, 768], [1920, 1080], [1200, 1849]]) {
         await page.setViewportSize({ width, height });
         await page.screenshot({ path: testInfo.outputPath(`healthy-${width}x${height}.png`) });
     }
-    await page.locator('#vst-panel-toggle').click();
-    await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
-    await expect(page.locator('#vst-panel-toggle')).toHaveCount(0);
-    await expect(page.locator('#vst-panel').getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
+    await page.locator('#home-vst-open').click();
+    const vstPage = page.locator('[data-vst-page]');
+    await expect(vstPage).toBeVisible();
+    await expect(page.locator('#home-vst-open')).toHaveCount(0);
+    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
     const meter = page.getByRole('meter', { name: '出力', exact: true });
     await expect(meter).toBeVisible();
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
@@ -192,7 +192,7 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
             .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
             .map(animation => animation.finished.catch(() => {})));
     });
-    expect(await page.locator('.home-content').evaluate(e => e.getBoundingClientRect().right)).toBeLessThan((await page.locator('#vst-panel').boundingBox())!.x);
+    expect((await vstPage.boundingBox())!.x + (await vstPage.boundingBox())!.width).toBeLessThanOrEqual((await meter.boundingBox())!.x + 1);
     const column = (await page.getByRole('complementary', { name: '本番中の操作', exact: true }).boundingBox())!;
     const meterBox = (await meter.boundingBox())!;
     expect(meterBox.x).toBeGreaterThanOrEqual(column.x - 1);

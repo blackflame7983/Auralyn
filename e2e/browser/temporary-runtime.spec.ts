@@ -21,7 +21,7 @@ test('未保存設定の退避範囲を確認し、開始失敗後も同じ画�
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     // ラックの開閉ボタンは、VST の読み込みが済んで空と分かると「追加」に名前が変わる。名前ではなく id で掴む。
-        const rack = page.locator('#vst-panel-toggle');
+        const rack = page.locator('#home-vst-open');
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
     const panel = page.locator('details').filter({ has: page.locator('summary', { hasText: '共有PCで今回だけ使う' }) });
