@@ -16,7 +16,7 @@ test('未選択の主操作から送り先へキーボードで移動し、選�
     await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
     const choose = page.getByRole('button', { name: '送り先を選ぶ', exact: true });
     await expect(choose).toBeInViewport();
-    await expect(page.locator('.live-stage-copy').getByRole('button', { name: '送り先を選ぶ', exact: true })).toHaveCount(1);
+    await expect(page.locator('.now-action').getByRole('button', { name: '送り先を選ぶ', exact: true })).toHaveCount(1);
     await choose.focus();
     await page.keyboard.press('Enter');
     const radio = page.getByRole('radio', { name: 'OBSで配信', exact: true });
@@ -50,14 +50,12 @@ for (const theme of ['light', 'dark', 'gaming']) {
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         const low = page.locator('#home-noise').getByRole('radio', { name: '弱', exact: true });
         const broadcast = page.locator('#home-builtin').getByRole('radio', { name: '配信', exact: true });
-        await page.locator('.sound-tool-list > li > div > button').nth(0).click();
         await expect(low).toBeVisible();
         const a = (await low.boundingBox())!;
-        await page.locator('.sound-tool-list > li > div > button').nth(1).click();
         const b = (await broadcast.boundingBox())!;
         expect(a.width).toBe(b.width); expect(a.height).toBe(b.height);
         await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.71, 0.7], output: [0.71, 0.7] }));
-        await expect(page.locator('.live-strip .bg-meter-warning').first()).toBeVisible();
+        await expect(page.locator('aside .bg-meter-warning, aside .meter-fill-aurora').first()).toBeVisible();
         await page.screenshot({ path: info.outputPath(`${theme}.png`) });
     });
 }
@@ -107,7 +105,7 @@ test.describe('設定済みの停止中', () => {
         await expect(start).toHaveCount(1);
         await expect(start).toBeInViewport();
         await expect(page.getByRole('region', { name: '音声チェック', exact: true }).getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
-        await expect(page.locator('.live-stage').getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(1);
         await page.screenshot({ path: info.outputPath('stopped.png') });
         await start.click();
         await expect(start).toHaveCount(0);

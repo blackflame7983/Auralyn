@@ -14,8 +14,7 @@ for (const width of [1200, 1600, 1920, 2560]) {
     test(`ホームとVSTを隣接させ開閉後も主要操作を保つ ${width}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 768 });
         await page.goto('/');
-        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
-        const toggle = page.locator('#vst-panel-toggle');
+                const toggle = page.locator('#vst-panel-toggle');
         const panel = page.locator('#vst-panel');
         await toggle.click();
         await expect(panel).toHaveAttribute('data-state', 'open');
@@ -46,37 +45,29 @@ for (const width of [1200, 1600, 1920, 2560]) {
     });
 }
 
-test('最小画面の目盛りは重ならず、一時非表示の理由を伝えて復帰する', async ({ page }, testInfo) => {
+test('最小画面でパネルを重ねても右の列の出力メーターは残り、大型メーターの一時非表示は出さない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
-    const toggle = page.locator('#large-meter-toggle');
-    await toggle.click();
-    const meter = page.locator('.large-meter-motion');
+    const meter = page.getByRole('meter', { name: '出力', exact: true });
     await expect(meter).toBeVisible();
-    const marks = await meter.locator('.leading-4').evaluateAll(nodes => nodes.filter(node => node.parentElement?.classList.contains('font-mono')).map(node => ({ top: node.getBoundingClientRect().top, bottom: node.getBoundingClientRect().bottom })));
-    expect(marks.length).toBeGreaterThanOrEqual(3);
-    for (let i = 1; i < marks.length; i++) expect(marks[i].top - marks[i - 1].bottom).toBeGreaterThanOrEqual(3);
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
+    await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     await page.locator('#vst-panel-toggle').click();
-    await expect(meter).toBeHidden();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(toggle).toHaveAttribute('aria-describedby', 'large-meter-suspended');
-    await expect(page.locator('#large-meter-suspended')).toBeVisible();
-    await expect(page.locator('#large-meter-suspended')).toHaveText('VST構成を閉じると大型メーターが戻ります');
-    await page.screenshot({ path: testInfo.outputPath('suspended-meter.png') });
-    await page.keyboard.press('Escape');
+    await expect(page.locator('main')).toHaveAttribute('inert', '');
     await expect(meter).toBeVisible();
-    await expect(toggle).not.toHaveAttribute('aria-describedby');
+    await expect(page.locator('#large-meter-suspended')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('suspended-meter.png') });
+    await page.locator('#plugin-rack-heading').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#vst-panel')).toHaveCount(0);
+    await expect(meter).toBeVisible();
 });
 
 test('動きを減らす設定でも広い画面のホームとパネルが隣接する', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({ width: 2560, height: 1369 });
     await page.goto('/');
-    await page.locator('#large-meter-toggle').click();
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
-    await expect(page.locator('.large-meter-motion')).toHaveAttribute('data-horizontal', 'true');
+    await expect(page.getByRole('meter', { name: '出力', exact: true })).toBeVisible();
     const home = (await page.locator('.home-content').boundingBox())!, panel = (await page.locator('#vst-panel').boundingBox())!;
     expect(panel.x - home.x - home.width).toBeLessThanOrEqual(26);
     expect(await page.locator('.workspace-body').evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');

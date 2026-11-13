@@ -13,7 +13,6 @@ test.beforeEach(async ({ page }) => {
 
 test('通常の声ON・残響OFFは一部ONと表示せず、設定の内訳は情報ボタンで確認できる', async ({ page }) => {
     await page.goto('/');
-    await page.locator('.sound-tool-list > li > div > button').nth(1).click();
     const row = page.locator('#home-builtin');
     await expect(row).toHaveAttribute('data-on', 'true');
     await expect(row).not.toContainText('一部ON');
@@ -25,8 +24,7 @@ test('通常の声ON・残響OFFは一部ONと表示せず、設定の内訳は�
 test('マウスで開き直したパネルは見出し枠を出さず、キーボードでは枠を保つ', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
-    const toggle = page.locator('#vst-panel-toggle');
+        const toggle = page.locator('#vst-panel-toggle');
     await toggle.click();
     await page.keyboard.press('Escape');
     await expect(page.locator('#vst-panel')).toHaveCount(0);
@@ -41,22 +39,17 @@ test('マウスで開き直したパネルは見出し枠を出さず、キー�
     expect(await heading.evaluate(e => getComputedStyle(e).outlineStyle)).not.toBe('none');
 });
 
-test('音量小窓を開いたまま大型メーターが縦横を切り替えても入力調整とフォーカスを保つ', async ({ page }) => {
+test('右の列のマイク音量は画面の高さを変えても残り、大型メーターは出さない', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 1200 });
     await page.goto('/');
-    await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-    const meter = page.locator('.large-meter-motion');
-    await meter.getByRole('button', { name: '詳細表示', exact: true }).click();
-    await expect(meter.getByRole('button', { name: /マイク音量/ })).toHaveCount(0);
-    await page.locator('.live-strip').getByRole('button', { name: 'マイク音量 100%', exact: true }).click();
-    const popup = page.getByRole('dialog', { name: 'マイク音量', exact: true });
+    await expect(page.locator('.large-meter-motion')).toHaveCount(0);
+    const slider = page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('slider', { name: /マイク音量/ });
+    await slider.focus();
     for (const height of [1000, 1200]) {
         await page.setViewportSize({ width: 1200, height });
-        await expect(popup).toBeVisible();
-        await expect(popup.getByRole('slider')).toBeFocused();
+        await expect(slider).toBeVisible();
+        await expect(slider).toBeFocused();
     }
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.live-strip').getByRole('button', { name: 'マイク音量 100%', exact: true })).toBeFocused();
 });
 
 test('音量変更失敗は原因の原文を出さず、保存を保留して再試行できる', async ({ page }, testInfo) => {
@@ -72,16 +65,15 @@ test('音量変更失敗は原因の原文を出さず、保存を保留して�
         };
     });
     await page.goto('/');
-    await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).click();
-    const popup = page.getByRole('dialog', { name: 'マイク音量', exact: true });
-    await popup.getByRole('slider').press('ArrowRight');
-    await expect(popup.getByRole('alert')).toContainText('接続を確認して再試行');
-    await expect(popup).not.toContainText('IPC transport lost');
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    await column.getByRole('slider', { name: /マイク音量/ }).press('ArrowRight');
+    await expect(column.getByRole('alert')).toContainText('接続を確認して再試行');
+    await expect(column).not.toContainText('IPC transport lost');
     await page.screenshot({ path: testInfo.outputPath('input-volume-failure.png') });
     expect(await page.evaluate(() => localStorage.getItem('vst_host_input_gain'))).not.toBe('101');
-    await popup.getByRole('button', { name: '再試行', exact: true }).click();
+    await column.getByRole('button', { name: '再試行', exact: true }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('vst_host_input_gain'))).toBe('101');
-    await expect(popup.getByRole('alert')).toHaveCount(0);
+    await expect(column.getByRole('alert')).toHaveCount(0);
 });
 
 test('緊急ミュートの通信失敗では外部アプリでのミュートと設定への入口を示す', async ({ page }, testInfo) => {
@@ -134,7 +126,7 @@ test('出力音量の失敗は右の列で再試行でき、確認できるま�
     await expect(popup.getByRole('alert')).toContainText('音量を確認できません');
     expect(await page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).not.toBe('101');
     // 定期取得で表示が旧値へ戻っても、再試行は失敗した101%を送る。
-    await expect(popup.getByRole('slider')).toHaveAttribute('aria-valuenow', '100');
+    await expect(popup.getByRole('slider', { name: '出力音量', exact: true })).toHaveAttribute('aria-valuenow', '100');
     await page.screenshot({ path: testInfo.outputPath('output-volume-failure.png') });
     await popup.getByRole('button', { name: '再試行', exact: true }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).toBe('101');
@@ -186,14 +178,13 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
         await page.setViewportSize({ width, height });
         await page.screenshot({ path: testInfo.outputPath(`healthy-${width}x${height}.png`) });
     }
-    await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
     await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
     await expect(page.locator('#vst-panel-toggle')).toHaveCount(0);
     await expect(page.locator('#vst-panel').getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
-    const meter = page.locator('.large-meter-motion');
-    await expect(meter).toHaveAttribute('data-horizontal', 'true');
+    const meter = page.getByRole('meter', { name: '出力', exact: true });
+    await expect(meter).toBeVisible();
+    await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     await page.locator('.app-shell').evaluate(async element => {
         await new Promise(requestAnimationFrame);
         await Promise.all(element.getAnimations({ subtree: true })
@@ -201,7 +192,9 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
             .map(animation => animation.finished.catch(() => {})));
     });
     expect(await page.locator('.home-content').evaluate(e => e.getBoundingClientRect().right)).toBeLessThan((await page.locator('#vst-panel').boundingBox())!.x);
-    // 下部領域の中央へ押し下げず、直前の内容から通常の余白で続ける。
-    expect(await meter.evaluate(e => e.getBoundingClientRect().top - e.parentElement!.getBoundingClientRect().top)).toBeLessThanOrEqual(32);
+    const column = (await page.getByRole('complementary', { name: '本番中の操作', exact: true }).boundingBox())!;
+    const meterBox = (await meter.boundingBox())!;
+    expect(meterBox.x).toBeGreaterThanOrEqual(column.x - 1);
+    expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(column.x + column.width + 1);
     await page.screenshot({ path: testInfo.outputPath('healthy-portrait-panel.png') });
 });

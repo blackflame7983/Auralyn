@@ -55,19 +55,16 @@ test.describe('未登録の本番帯', () => {
     for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
         test(`送り先を優先し、舞台の入口から登録して同じメニューへ戻る ${locale} ${theme}`, async ({ page }, info) => {
             await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page, locale, theme, false);
-            const live = page.getByRole('region', { name: message(locale, 'live.strip'), exact: true });
+            const live = page.getByRole('region', { name: message(locale, 'home.now'), exact: true });
             const choose = live.getByRole('button', { name: message(locale, 'home.chooseDestination'), exact: true });
             const actions = live.getByRole('button', { name: message(locale, 'liveBar.actions'), exact: true });
             await expect(choose).toBeInViewport(); await expect(actions).toBeInViewport();
-            const routing = live.locator('[data-live-routing]'), controls = live.locator('.live-controls');
-            const [rowBox, controlsBox, chooseBox] = await Promise.all([routing.boundingBox(), controls.boundingBox(), choose.boundingBox()]);
-            const stageBox = (await live.locator('.live-stage').boundingBox())!;
-            expect(Math.abs(controlsBox!.x + controlsBox!.width / 2 - stageBox.x - stageBox.width / 2)).toBeLessThanOrEqual(1);
-            // 「送り先を選ぶ」は舞台の中央（状態の1行とモード名の近く）に置き、モード操作より先に目に入る（DESIGN.md 56 行）。
+            const controls = live.locator('.now-controls');
+            const [controlsBox, chooseBox] = await Promise.all([controls.boundingBox(), choose.boundingBox()]);
+            const stageBox = (await live.boundingBox())!;
+            // 「送り先を選ぶ」はいまの状態の中で、モード操作より上に置く。
             expect(chooseBox!.y).toBeGreaterThanOrEqual(stageBox.y);
             expect(chooseBox!.y + chooseBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
-            expect(Math.abs(chooseBox!.x + chooseBox!.width / 2 - stageBox.x - stageBox.width / 2)).toBeLessThanOrEqual(1);
-            expect(chooseBox!.x + chooseBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
             expect(await choose.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(await actions.evaluate(el => getComputedStyle(el).backgroundColor));
             await page.screenshot({ path: info.outputPath('unregistered.png'), animations: 'disabled' });
             await actions.click();
@@ -82,7 +79,7 @@ test.describe('未登録の本番帯', () => {
                 await page.keyboard.press('Escape');
                 await expect(actions).toBeFocused();
                 expect(await controls.evaluate(el => getComputedStyle(el).marginInlineStart)).toBe('0px');
-                await expect(live.getByRole('button', { name: message(locale, 'liveBar.protect'), exact: true })).toBeVisible();
+                await expect(page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message(locale, 'liveBar.protect'), exact: true })).toBeVisible();
                 await actions.click();
                 await live.getByRole('button', { name: message(locale, 'liveBar.editRegistration'), exact: true }).click();
             }

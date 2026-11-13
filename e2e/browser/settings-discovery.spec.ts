@@ -37,12 +37,10 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     // 背後のホームは初期化中も存在する。起動完了後の配置を待ってからhoverする。
     await expect(page.getByText(message('ja', 'app.initializing'), { exact: true })).toHaveCount(0);
     await settleLayoutMotion(page);
-    await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toHaveText('マイク音量');
+    await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('heading', { name: 'マイク', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '大型レベルメーターを開く', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
-    await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('出力レベルを大きく見る');
     await actions.click();
     await register.click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
@@ -63,7 +61,7 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await saveSinging.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
     await page.keyboard.press('Escape');
-    const live = page.getByRole('region', { name: '本番', exact: true });
+    const live = page.getByRole('region', { name: 'いまの状態', exact: true });
     const modes = live.getByRole('radiogroup', { name: 'モード切替', exact: true });
     await expect(modes.getByRole('radio', { name: '歌', exact: true })).toBeEnabled();
     await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeDisabled();

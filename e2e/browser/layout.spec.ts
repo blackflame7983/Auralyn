@@ -4,8 +4,7 @@ import { settleLayoutMotion } from './layoutMotion';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
-    for (const source of ['本番帯', '大型メーター併用']) {
-    test(`${source}のマイク音量を開いて横並びから重ね表示へ縮めると、閉じてVST操作へ移る`, async ({ page }) => {
+    test('右の列のマイク音量は重ね表示の外に残り、パネルを閉じるとVST操作へ戻る', async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 768 });
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
@@ -13,27 +12,21 @@ test.describe('通常のホーム表示', () => {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
-        await page.getByRole('button', { name: /^VST / }).click();
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toBeVisible();
-        if (source === '大型メーター併用') {
-            await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-            await page.locator('.large-meter-motion').getByRole('button', { name: '詳細表示', exact: true }).click();
-        }
-        const region = page.getByRole('region', { name: '本番', exact: true });
-        await region.getByRole('button', { name: 'マイク音量 100%', exact: true }).click();
-        const popup = page.getByRole('dialog', { name: 'マイク音量', exact: true });
-        await expect(popup.getByRole('slider')).toBeFocused();
+        const slider = page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('slider', { name: /マイク音量/ });
+        await expect(slider).toBeEnabled();
         await page.setViewportSize({ width: 960, height: 640 });
         await expect(page.locator('main')).toHaveAttribute('inert', '');
-        await expect(popup).not.toBeVisible();
-        await expect(page.locator('#plugin-rack-heading')).toBeFocused();
+        await expect(slider).toBeEnabled();
+        await expect(slider.locator('xpath=ancestor::*[@inert]')).toHaveCount(0);
+        await page.locator('#plugin-rack-heading').focus();
         await page.keyboard.press('Escape');
         await expect(page.locator('#vst-panel')).toHaveCount(0);
         await expect(page.locator('#vst-panel-toggle')).toBeFocused();
         expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
+        await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     });
-    }
     test('狭い画面でも入出力と出力音量を保つ', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
@@ -43,14 +36,13 @@ test.describe('通常のホーム表示', () => {
         await page.goto('/');
         for (const width of [960, 1280, 1920, 2560]) {
             await page.setViewportSize({ width, height: 768 });
-            const summary = page.locator('.live-output-summary');
-            await expect(summary).toBeVisible();
-            const input = (await page.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
-            const output = (await summary.getByRole('meter').boundingBox())!;
-            expect(output.y).toBe(input.y);
-            expect(input.width).toBeGreaterThan(120);
-            expect(output.width).toBeGreaterThan(120);
-            await expect(summary.getByRole('button', { name: '出力音量', exact: true })).toHaveCount(0);
+            const column = page.getByRole('complementary', { name: '本番中の操作' });
+            const input = (await column.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
+            const output = (await column.getByRole('meter', { name: '出力', exact: true }).boundingBox())!;
+            expect(output.y).toBeGreaterThan(input.y);
+            expect(input.width).toBeGreaterThan(40);
+            expect(output.width).toBeGreaterThan(40);
+            await expect(column.getByRole('button', { name: '出力音量', exact: true })).toHaveCount(0);
             const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
             await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toHaveCount(1);
             await expect(slider).toBeInViewport({ ratio: 1 });
@@ -76,7 +68,6 @@ test.describe('通常のホーム表示', () => {
         await expect(slider).toHaveAttribute('aria-valuenow', '50');
         await page.setViewportSize({ width: 960, height: 640 });
         await expect(slider).toBeFocused();
-        await page.getByRole('button', { name: /^VST / }).click();
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('main')).toHaveAttribute('inert', '');
         await slider.focus();
@@ -94,9 +85,10 @@ test.describe('通常のホーム表示', () => {
         await page.goto('/');
         await expect(page.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveCount(0);
         await expect(page.locator('header').getByText('実行中', { exact: true })).toHaveCount(0);
-        const routing = page.locator('[data-live-routing]');
-        // 長い機器名は実寸で検査し、IPC側の保存値や音声処理には触れない。
-        await page.locator('.live-input-summary .live-device').evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; });
+        const column = page.getByRole('complementary', { name: '本番中の操作' });
+        const routing = column.getByRole('heading', { name: '出力', exact: true }).locator('xpath=..');
+        // 長い機器名は1行に収め、IPC側の保存値や音声処理には触れない。
+        await column.locator('p.truncate').last().evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; element.setAttribute('title', 'Voicemeeter Insert Virtual ASIO'); });
         for (const width of [960, 1024]) {
             await page.setViewportSize({ width, height: 640 });
             const samples = [];
@@ -171,7 +163,6 @@ test.describe('操作部品のサイズとテーマ', () => {
         await page.goto('/');
         // 初期化中も背後にホームは存在するため、描画だけでなく実際に操作できるまで待つ。
         await page.getByRole('button', { name: 'ボイスチェック', exact: true }).click({ trial: true });
-        await page.locator('.sound-tool-list > li > div > button').nth(1).click();
         for (const width of [960, 1024, 1440, 1920]) {
             await page.setViewportSize({ width, height: 768 });
             const range = page.getByRole('slider', { name: '声の整え具合', exact: true });
@@ -255,86 +246,66 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', sampleRate: 48000, bufferSize: 512 }));
     });
     await page.goto('/');
-    await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-    const meter = page.locator('.large-meter-motion');
+    const meter = page.getByRole('meter', { name: '出力', exact: true });
     await expect(meter).toBeVisible();
-    expect((await meter.boundingBox())!.width).toBe(88);
+    await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     for (const width of [900, 960, 1024, 1280, 1440, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 });
         const main = page.locator('main');
-        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
         const overlays = width < 1200;
+        await expect(meter).toBeVisible();
         if (overlays) {
             await expect(main).toHaveAttribute('inert', '');
-            await expect(meter).toBeHidden();
             await expect.poll(async () => (await main.boundingBox())!.width).toBeGreaterThanOrEqual(width - 212 - 1);
         } else {
             await expect(main).not.toHaveAttribute('inert', '');
-            await expect(meter).toBeVisible();
-            // メーターはパネル端ではなく、ホームの右隣へ置く。
-            await expect.poll(() => page.evaluate(() => {
-                const meterBox = document.querySelector('.large-meter-motion')!.getBoundingClientRect();
-                const contentBox = document.querySelector('main > .mx-auto')!.getBoundingClientRect();
-                return meterBox.left - contentBox.right;
-            })).toBeLessThanOrEqual(24);
+            await expect.poll(async () => {
+                const panel = (await page.locator('#vst-panel').boundingBox())!;
+                const meterBox = (await meter.boundingBox())!;
+                return meterBox.x >= panel.x + panel.width - 1 || panel.x >= meterBox.x + meterBox.width - 1;
+            }).toBe(true);
         }
         await reachable(page.getByRole('button', { name: '緊急ミュート', exact: true }), page);
         await reachable(page.getByRole('slider', { name: '出力音量', exact: true }), page);
         if (width === 960 || width === 1536) await page.screenshot({ path: testInfo.outputPath(`vst-responsive-${width}.png`) });
-        if (overlays) await page.keyboard.press('Escape');
-        else await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
+        if (overlays) {
+            await page.locator('#plugin-rack-heading').focus();
+            await page.keyboard.press('Escape');
+        } else await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
         await expect(page.locator('#vst-panel')).toHaveCount(0);
         await expect(main).not.toHaveAttribute('inert', '');
         await expect(page.locator('#vst-panel-toggle')).toBeFocused();
         await expect(meter).toBeVisible();
-        await reachable(page.getByRole('region', { name: '本番', exact: true }).getByRole('button', { name: '大型レベルメーターを閉じる', exact: true }), page);
     }
 });
 
-test('細身・詳細メーターはホームの近くに並び、目盛りが状態表示やバーの外へはみ出さない', async ({ page }, testInfo) => {
+test('右の列の横メーターは列の中に収まり、状態文はバーの中に重なる', async ({ page }, testInfo) => {
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_wizard_done', 'true');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', sampleRate: 48000, bufferSize: 512 }));
     });
     await page.goto('/');
-    await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-    const meter = page.locator('.large-meter-motion');
-    await expect(meter).toBeVisible();
+    await expect(page.locator('.large-meter-motion')).toHaveCount(0);
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    const meter = column.getByRole('meter', { name: '出力', exact: true });
     for (const width of [960, 1024, 1920, 2560]) {
         await page.setViewportSize({ width, height: width <= 1024 ? 640 : 1080 });
-        for (const detailed of [false, true]) {
-            if (detailed) await meter.getByRole('button', { name: '詳細表示', exact: true }).click();
-            await meter.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))); });
-            await expect.poll(() => page.evaluate(() => {
-                const content = document.querySelector('main > .mx-auto')!.getBoundingClientRect();
-                const meter = document.querySelector('.large-meter-motion')!.getBoundingClientRect();
-                return meter.left - content.right;
-            })).toBeLessThanOrEqual(24);
-            const content = (await page.locator('main > .mx-auto').boundingBox())!;
-            const box = (await meter.boundingBox())!;
-            expect(box.width).toBe(detailed ? 96 : 88);
-            expect(box.x - content.x - content.width).toBeGreaterThanOrEqual(8);
-            const track = (await meter.getByRole('meter').boundingBox())!;
-            const status = (await meter.getByRole('status').boundingBox())!;
-            // 高さに応じて末尾の文字目盛りは間引かれる。表示された全ラベルの包含と間隔を検査する。
-            for (const mark of ['0', '-6', '-12']) await expect(meter.getByText(mark, { exact: true })).toBeVisible();
-            await expect(meter.getByText('0, −6, −12, −24, −48 dBFS', { exact: true })).toHaveCount(1);
-            const ticks = await meter.getByText(/^(0|-6|-12|-24|-48)$/).all();
-            let previousBottom = -Infinity;
-            for (const label of ticks) {
-                const tick = (await label.boundingBox())!;
-                expect(tick.y).toBeGreaterThanOrEqual(track.y - 1);
-                expect(tick.y).toBeGreaterThanOrEqual(status.y + status.height + 4);
-                expect(tick.y + tick.height).toBeLessThanOrEqual(track.y + track.height + 1);
-                expect(tick.y - previousBottom).toBeGreaterThanOrEqual(3);
-                previousBottom = tick.y + tick.height;
-            }
-            if (width === 960 || width === 2560) await page.screenshot({ path: testInfo.outputPath(`meter-spacing-${width}-${detailed ? 'detail' : 'slim'}.png`) });
-            if (detailed) await meter.getByRole('button', { name: 'ミニモード', exact: true }).click();
-        }
+        const columnBox = (await column.boundingBox())!;
+        const box = (await meter.boundingBox())!;
+        expect(box.height).toBe(16);
+        expect(box.x).toBeGreaterThanOrEqual(columnBox.x - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
+        const status = meter.locator('[data-meter-status]');
+        await expect(status).toBeVisible();
+        expect(await status.evaluate(el => {
+            const bar = el.closest('[role="meter"]')!.getBoundingClientRect();
+            const text = el.getBoundingClientRect();
+            return text.left >= bar.left - 1 && text.right <= bar.right + 1 && text.top >= bar.top - 1 && text.bottom <= bar.bottom + 1;
+        })).toBe(true);
+        if (width === 960 || width === 2560) await page.screenshot({ path: testInfo.outputPath(`meter-spacing-${width}.png`) });
     }
 });
 
@@ -352,24 +323,22 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, theme);
             await page.goto('/');
-            const live = page.getByRole('region', { name: '本番', exact: true });
+            const live = page.getByRole('region', { name: 'いまの状態', exact: true });
             const modes = live.getByRole('radiogroup', { name: 'モード切替' });
             await expect(modes).toBeVisible();
-            await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
+            const meter = page.getByRole('meter', { name: '出力', exact: true });
             await page.locator('#vst-panel-toggle').click();
             await expect(page.locator('main')).toHaveAttribute('inert', '');
-            await expect(page.locator('.large-meter-motion')).toBeHidden();
+            await expect(meter).toBeVisible();
             await page.locator('.vst-panel-scrim').click({ position: { x: 20, y: 20 } });
             await expect(page.locator('#vst-panel')).toHaveCount(0);
             for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
-            await expect(page.locator('.large-meter-motion')).toBeVisible();
-            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
+            await expect(meter).toBeVisible();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
             for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
-            await reachable(live.getByRole('button', { name: /100%/ }), page);
+            await reachable(page.getByRole('slider', { name: /100%/ }), page);
             await page.screenshot({ path: testInfo.outputPath(`registered-modes-${theme}.png`) });
         });
     }
@@ -387,8 +356,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
-    const toggle = page.locator('#vst-panel-toggle');
+        const toggle = page.locator('#vst-panel-toggle');
     await expect(toggle).toBeVisible();
     await settleLayoutMotion(page);
     const closedMainWidth = (await page.locator('main').boundingBox())!.width;
@@ -488,8 +456,7 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
-    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
-    // Motion の WAAPI は CSSTransition ではないため、キーフレームに移動が含まれるかも見る。
+        // Motion の WAAPI は CSSTransition ではないため、キーフレームに移動が含まれるかも見る。
     // アニメーションは描画フレームで作られ、終わると片付くので、押す前から一定時間フレームごとに観測する。
     const watchPanelMoves = () => page.evaluate(() => {
         (window as unknown as { __panelMoves: Promise<boolean> }).__panelMoves = new Promise<boolean>(resolve => {
@@ -543,8 +510,7 @@ test.describe('メーター数値の幅', () => {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
-        await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-        const large = page.locator('.large-meter-motion');
+        await expect(page.locator('.large-meter-motion')).toHaveCount(0);
         const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
         const output = page.getByRole('meter', { name: '出力', exact: true });
         // 実機と同様に通知を継続し、段階ごとに目標値を切り替える。
@@ -559,12 +525,7 @@ test.describe('メーター数値の幅', () => {
             (window as any).__layoutMeterState.value = value;
             (window as any).__e2eEmit('audio-level', value === null ? { input: [], output: [] } : { input: [value, value], output: [value, value] });
         }, value);
-        for (const detailed of [false, true]) {
-            if (detailed) await large.getByRole('button', { name: '詳細表示', exact: true }).click();
-            await expect(large).toBeVisible();
-            await expect(large.getByRole('button', { name: detailed ? 'ミニモード' : '詳細表示', exact: true })).toBeVisible();
-            await large.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))); });
-            // 本番帯に出力バーがある間はフッターの出力メーターを出さない（#340）ので、出力は大型メーターの1本だけ。
+        {
             await expect(output).toHaveCount(1);
             for (const locator of [input, output]) {
                 await expect(locator).toBeVisible();
@@ -586,21 +547,22 @@ test.describe('メーター数値の幅', () => {
                 const clipped = (await locator.boundingBox())!;
                 expect(clipped).toEqual(baseline[i]);
             }
-            await page.screenshot({ path: testInfo.outputPath(`clip-${detailed ? 'detail' : 'slim'}.png`) });
+            await page.screenshot({ path: testInfo.outputPath('clip.png') });
             // 出力のクリップは、入力の履歴とは独立して解除する。
             await emit(0.1);
-            await large.getByRole('button', { name: /クリップ表示を消す/ }).click();
+            await page.getByRole('button', { name: '出力のクリップ表示を消す', exact: true }).click();
             await expect(resets).toHaveCount(1);
             await resets.click();
             await emit(0);
-            await expect(large.getByRole('status')).toHaveText('無音');
+            await settleLayoutMotion(page);
+            await expect(output.locator('[data-meter-status]')).toHaveText('無音');
             for (const [i, locator] of [input, output].entries()) {
                 expect(await locator.boundingBox()).toEqual(baseline[i]);
             }
-            // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。
+            // 不正なレベル通知は更新待ちになり、バーの寸法は変えない。
             await emit(null);
-            await expect(large.getByRole('status')).toHaveText('受信待ち');
-            expect(await large.getByRole('meter').boundingBox()).toEqual(baseline[1]);
+            await expect(output.locator('[data-meter-status]')).toHaveText('受信待ち');
+            expect(await output.boundingBox()).toEqual(baseline[1]);
         }
     });
     test('数値の桁が変わっても入力メーターのバー幅と隣の操作位置は変わらない', async ({ page }) => {
@@ -611,11 +573,11 @@ test.describe('メーター数値の幅', () => {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
-        const live = page.getByRole('region', { name: '本番', exact: true });
-        const bar = live.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
+        const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+        const bar = column.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
         await expect(bar).toBeVisible();
         const value = bar.locator('..').locator(':scope > span').first();
-        const control = live.getByRole('button', { name: /マイク音量/ });
+        const control = column.getByRole('slider', { name: /マイク音量/ });
         const samples: { bar: number; value: number; control: number }[] = [];
         // 音声処理には触れず、実UIの値の欄に異なる桁数を入れてレイアウトだけを検査する。
         for (const text of ['-9.9 dBFS', '-10.0 dBFS', '-100.0 dBFS', '−∞ dBFS', '']) {
