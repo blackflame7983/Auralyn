@@ -26,7 +26,7 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, sampleRate, is
     const state = processReady === null ? t('device.audioUnknown') : running ? t('device.engine') : host ? t('shell.stopped') : t('shell.unconfigured');
     return (
         <div className="flex shrink-0 items-center gap-2 text-left">
-            <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success gaming:shadow-[0_0_8px_hsl(var(--success)/0.5)]' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
+            <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
             <span role="status" className="text-ui-support font-medium whitespace-nowrap text-foreground">{state}</span>
             {showDetails && <span className="whitespace-nowrap text-ui-support text-muted-foreground" title={t('device.delayScope')}>
                 {running && host ? displayAudioHost(host) : '—'} · {running && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${(sampleRate / 1000).toFixed(1)} kHz` : '—'} · {t('device.internalDelay')} {observed}

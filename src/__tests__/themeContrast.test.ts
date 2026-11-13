@@ -141,7 +141,6 @@ it('読ませる文字の色・要素に不透明度を追加しない', () => {
         'features/AudioSettings/AudioSettingsModal.tsx': { 'opacity-30': '無効な機器選択', 'opacity-50': '変更不可のバッファ欄' },
         'features/Guide/DiscordGuideModal.tsx': { 'opacity-50': '変更不可の機器欄の見本' },
         'features/VoiceCheck/VoiceCheckModal.tsx': { 'opacity-50': '録音前の無効な再生操作' },
-        'layout/AppShell.tsx': { 'opacity-[0.02]': '背景グリッド' },
         'features/PluginRack/PluginList.tsx': { 'opacity-20': 'ラック間の装飾矢印' },
         'features/PluginBrowser/PluginBrowserModal.tsx': { 'opacity-30': '文字ではない区切り線' },
     };

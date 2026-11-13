@@ -118,7 +118,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         </ChoiceCard>)}
     </div>;
     // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。
-    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card gaming:bg-card/70 p-4' : 'px-1 py-0.5')}>
+    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
                 <h2 className={cn("home-title shrink-0", !open && "sr-only")}>{t('prep.title')}</h2>

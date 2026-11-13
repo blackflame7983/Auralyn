@@ -2,7 +2,7 @@
 
 /* dark: はOSの配色ではなく、useTheme が html に付けるテーマのクラスに従う（ゲーミングも .dark を併用する）。 */
 @custom-variant dark (&:where(.dark, .dark *));
-/* gaming: ゲーミングだけに残す従来の装飾（半透明のカード、背景の光など）に使う。 */
+/* gaming: ゲーミングに限るユーティリティ。形と発光は .gaming の規則で付ける。 */
 @custom-variant gaming (&:where(.gaming, .gaming *));
 
 @theme {
@@ -330,7 +330,7 @@
 
 @layer components {
   .modal-overlay-base {
-    @apply fixed inset-0 z-[100] flex items-center justify-center bg-background/90 gaming:bg-background/80 gaming:backdrop-blur-sm p-4;
+    @apply fixed inset-0 z-[100] flex items-center justify-center bg-background/90 p-4;
   }
 
   .modal-surface-base {

@@ -15,7 +15,7 @@ export function UnsavedLeaveDialog() {
     if (!open) return null;
     // 初めの焦点は捨てない側に置き、Enter の押し間違いで変更を失わないようにする。
     return <Modal title={t('settings.leave.title')} titleInContent descriptionId={descriptionId} role="alertdialog" onClose={cancelLeave} initialFocusRef={stayRef}>
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 p-4 gaming:bg-background/60">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 p-4">
             <div className="modal-surface-base w-full max-w-md space-y-4 p-6">
                 <Dialog.Title asChild><h2 className="text-ui-heading font-semibold text-foreground">{t('settings.leave.title')}</h2></Dialog.Title>
                 <p id={descriptionId} className="text-ui-support text-muted-foreground">{t('settings.leave.description')}</p>

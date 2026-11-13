@@ -76,7 +76,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
         action();
     };
     return (
-        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', embedded ? 'relative w-full' : 'mb-3 rounded-card border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
+        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', embedded ? 'relative w-full' : 'mb-3 rounded-card border border-border bg-card px-3 py-2')}>
             {registered && !safetyOnly && !hideSwitch && <LiveModeSwitch model={model} embedded={embedded} />}
             {/* 切替の途中と失敗は設定ボタンの上に重ね、空の行を予約しない。区画の高さは変えない（#298）。 */}
             {embedded && !safetyOnly && (value.transaction || registered && (pending || value.phase === 'partial') || error || value.error) && <div className="absolute inset-x-0 top-0 z-10">

@@ -281,13 +281,10 @@ it('VSTの入口はホームを操作不能にせず、開閉の印を付けな�
     expect(column).not.toHaveAttribute('inert');
 });
 
-it.each([true, false])('背景の静止した光と格子はゲーミングだけに表示する（稼働=%s）', running => {
-    render(<AppShell {...commonProps} isEngineRunning={running}><p>rack</p></AppShell>);
-    const backdrop = document.querySelector('[data-gaming-backdrop]')!;
-    expect(backdrop).toHaveClass('hidden', 'gaming:block');
-    const glows = backdrop.querySelectorAll('.aurora-glow');
-    expect(glows).toHaveLength(2);
-    glows.forEach(glow => expect(glow.className).not.toContain('animate-'));
+it.each([true, false])('背景の光と格子はゲーミングでも置かない（稼働=%s）', running => {
+    const { container } = render(<AppShell {...commonProps} isEngineRunning={running}><p>rack</p></AppShell>);
+    expect(container.querySelector('[data-gaming-backdrop]')).toBeNull();
+    expect(container.querySelector('.aurora-glow')).toBeNull();
 });
 
 it('フッターはなく、右の列は大型メーター用のフッター高さを公開しない', () => {

@@ -27,7 +27,7 @@ export function UnsetFlow({ usage, input, output, music = false, onSetup }: {
     ];
     const action: MessageKey = next === 'destination' ? 'unsetFlow.chooseDestination' : next === 'input' ? music ? 'unsetFlow.chooseSource' : 'unsetFlow.chooseMic' : 'unsetFlow.chooseOutput';
     const stateLabel: Record<NodeState, MessageKey> = { set: 'unsetFlow.stateSet', next: 'unsetFlow.stateNext', empty: 'unsetFlow.stateEmpty' };
-    return <section aria-label={t('unsetFlow.label')} className="unset-flow mb-4 space-y-4 rounded-card bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
+    return <section aria-label={t('unsetFlow.label')} className="unset-flow mb-4 space-y-4 rounded-card bg-card px-5 py-5 min-[1100px]:px-6">
         <ol className="unset-flow-list">
             {nodes.map((node, index) => <li key={node.key} className="contents">
                 {/* どの区間を押してもセットアップを開く。決める順は案内に任せ、区間ごとの別画面を作らない。 */}

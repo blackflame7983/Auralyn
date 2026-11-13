@@ -23,7 +23,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         : (liveModeName ?? t('liveBar.custom'));
     const startButton = !running && Boolean(onStartAudio);
     const chooseButton = !music && running && !usage && Boolean(onChooseDestination);
-    return <section aria-label={t('home.now')} className="now-status mb-3 rounded-card bg-card px-5 py-3 gaming:bg-card/70">
+    return <section aria-label={t('home.now')} className="now-status mb-3 rounded-card bg-card px-5 py-3">
         {/* 見出し・主ボタンの行・歌と雑談の設定で高さを揃える。実行中の空行は、停止中の「音声を開始」と同じ高さ（#298）。 */}
         <h2 className="truncate text-ui-heading font-medium">{heading}</h2>
         <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
