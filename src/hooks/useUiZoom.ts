@@ -12,7 +12,6 @@ export function useUiZoom() {
             // vh / vw は zoom で一緒に伸びる。寸法を割り戻すために、同じ倍率を渡す。
             root.style.setProperty('--ui-zoom', String(scale));
         };
-        apply();
         const fixPopper = (wrapper: HTMLElement) => {
             const zoom = Number(root.style.getPropertyValue('--ui-zoom')) || 1;
             if (zoom === 1) return;
@@ -33,10 +32,19 @@ export function useUiZoom() {
                 if (target instanceof HTMLElement && target.hasAttribute('data-radix-popper-content-wrapper')) fixPopper(target);
             }
         });
-        observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['style'] });
-        window.addEventListener('resize', apply);
+        // メーターなどの style の書き換えは多い。拡大していないときは見張らない。
+        let observing = false;
+        const sync = () => {
+            apply();
+            const zoomed = root.style.zoom !== '';
+            if (zoomed && !observing) observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['style'] });
+            if (!zoomed && observing) observer.disconnect();
+            observing = zoomed;
+        };
+        sync();
+        window.addEventListener('resize', sync);
         return () => {
-            window.removeEventListener('resize', apply);
+            window.removeEventListener('resize', sync);
             observer.disconnect();
             root.style.zoom = '';
             root.style.removeProperty('--ui-zoom');
