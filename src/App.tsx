@@ -268,6 +268,7 @@ function AppContent() {
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.length}
         onOpenVst={ui.openVst}
+        onLoadPreset={pluginsApi.loadPreset}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
         notices={<>
