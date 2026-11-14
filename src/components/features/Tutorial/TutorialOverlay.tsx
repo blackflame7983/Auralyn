@@ -75,7 +75,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
 
             <Popover.Portal>
                 <Popover.Content
-                    className="z-[9999] bg-popover text-popover-foreground rounded-lg shadow-xl border border-border w-72 max-w-[calc(100vw-32px)] break-words focus:outline-hidden"
+                    className="z-[9999] bg-popover text-popover-foreground rounded-lg shadow-xl border border-border w-72 max-w-[calc(100vw/var(--ui-zoom)-32px)] break-words focus:outline-hidden"
                     side={side}
                     align={align}
                     sideOffset={16}

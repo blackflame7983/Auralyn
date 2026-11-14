@@ -137,7 +137,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
     return (
         <Modal title={t('autoGain.title')} titleInContent onClose={() => void close()} descriptionId="auto-gain-description">
             <div className="modal-overlay-base z-[150]" onClick={event => { if (event.target === event.currentTarget) void close(); }}>
-                <div className="modal-surface-base flex max-h-[90vh] w-[min(38rem,95vw)] flex-col">
+                <div className="modal-surface-base flex max-h-[calc(90vh/var(--ui-zoom))] w-[min(38rem,calc(95vw/var(--ui-zoom)))] flex-col">
                     <div className="flex items-center justify-between gap-3 border-b border-border p-4">
                         <Dialog.Title className="font-semibold">
                             {t('autoGain.title')}</Dialog.Title>

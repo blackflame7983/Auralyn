@@ -13,7 +13,7 @@ export function AvailableUpdateDialog({ update, downloaded, busy, onClose, onDow
     const t = useMessages();
     const [confirmed, setConfirmed] = useState(false);
     return <Modal title={t('updates.title')} onClose={() => { if (!busy) onClose(); }}>
-        <div className="modal-overlay-base"><div className="modal-surface-base flex max-h-[85vh] w-full max-w-lg flex-col">
+        <div className="modal-overlay-base"><div className="modal-surface-base flex max-h-[calc(85vh/var(--ui-zoom))] w-full max-w-lg flex-col">
             <h2 className="modal-header-base shrink-0 font-bold">{t('updates.versionTitle', { version: update.version })}</h2>
             <div className="modal-body-base space-y-4 text-ui-support">
                 {update.body && <p className="text-ui-support text-muted-foreground">{t('updates.releaseNotes')}</p>}

@@ -3,7 +3,8 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useState, type ReactNode } from 'react';
 import { Plugin, PluginCard } from './PluginCard';
 import { PluginRackEmptyState } from './PluginRackEmptyState';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, type Modifier } from '@dnd-kit/core';
+import { unzoomDrag } from '@/lib/largeWindow';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { MdFolderOpen, MdAdd, MdViewCompact, MdViewAgenda } from 'react-icons/md';
@@ -79,6 +80,12 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
             )}
         </div>
     );
+};
+
+// ポインタの移動量は見た目の座標。html の zoom が translate に重なるので、倍率で割って戻す。
+const zoomDrag: Modifier = ({ transform }) => {
+    const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
+    return { ...transform, ...unzoomDrag(transform, zoom) };
 };
 
 export const PluginList: React.FC<PluginListProps> = ({
@@ -175,6 +182,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                     }}
                     sensors={sensors}
                     collisionDetection={closestCenter}
+                    modifiers={[zoomDrag]}
                     onDragEnd={handleDragEnd}
                 >
                     <SortableContext

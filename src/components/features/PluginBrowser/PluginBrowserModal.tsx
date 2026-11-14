@@ -386,7 +386,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   return (
     <Modal title={t('pluginBrowser.title')} onClose={onClose}>
         <div className="modal-overlay-base z-[100]"><Tabs value={activeTab} onValueChange={value => setActiveTab(value as TabType)} className="contents">
-      <Panel className="modal-surface-base w-[calc(100vw-2rem)] max-w-[700px] h-[calc(100vh-3rem)] max-h-[550px] flex flex-col p-4 sm:p-6 relative overflow-hidden">
+      <Panel className="modal-surface-base w-[calc(100vw/var(--ui-zoom)-2rem)] max-w-[700px] h-[calc(100vh/var(--ui-zoom)-3rem)] max-h-[550px] flex flex-col p-4 sm:p-6 relative overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-ui-heading font-bold text-foreground tracking-tight">

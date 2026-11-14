@@ -38,7 +38,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
     return (
         <Modal title={t('guide.copy.081')} onClose={onClose}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
+            <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[calc(90vh/var(--ui-zoom))]">
 
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted shrink-0">
