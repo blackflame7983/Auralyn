@@ -433,7 +433,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             </>}
             {shown === 'peak' && <div className="flex flex-col gap-4">
               <PeakProtectionPanel applyInHeading hideApplyNote onPendingChange={onPeak} />
-              <BroadcastTruePeakPanel applyInHeading hideApplyNote onPendingChange={onBroadcast} />
+              <BroadcastTruePeakPanel music={music} applyInHeading hideApplyNote onPendingChange={onBroadcast} />
             </div>}
             </section>
           </div>
