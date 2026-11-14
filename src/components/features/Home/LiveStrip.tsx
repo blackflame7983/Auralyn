@@ -5,7 +5,7 @@ import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { deviceDisplayName } from '@/lib/audioRouting';
-import { outputVerdict } from '@/lib/outputVerdict';
+import { OUTPUT_LOUD_DB, OUTPUT_QUIET_DB, outputVerdict } from '@/lib/outputVerdict';
 import { useInputMeterState, useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 
@@ -32,7 +32,7 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
     const verdictText = verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : verdict === 'ok' ? t('home.levelOk') : null;
     return <div className="flex min-w-48 flex-1 items-center gap-2">
         <span className="shrink-0 text-ui-support text-muted-foreground">{label}</span>
-        <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} />
+        <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} />
         {verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium">{verdictText}</span>}
     </div>;
 }

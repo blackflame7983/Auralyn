@@ -1,9 +1,16 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
-import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
+import { CLIP_LEVEL, WARNING_LEVEL, meterPosition, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
-export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false, statusOverlay = false, fill = 'success' }: {
+const SCALE_MARKS_DB = [0, -6, -12, -24, -48] as const;
+
+/** 目盛りの dBFS を、共通の meterPosition（−60〜0 の等間隔）の割合にする。 */
+function markRatio(db: number): number {
+    return meterPosition(Math.pow(10, db / 20));
+}
+
+export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false, statusOverlay = false, fill = 'success', guides }: {
     reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean;
     /** false では dBFS 値を出さず、無音・停止などの状態だけを言葉で示す（数値の詳細 OFF）。 */
     numbers?: boolean; scale?: boolean; stackValues?: boolean;
@@ -11,6 +18,8 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
     fill?: 'success' | 'aurora';
     /** 本番帯は状態をバーの中に重ね、高さと位置を変えない。 */
     statusOverlay?: boolean;
+    /** 目安の線。dBFS を meterPosition で置く。読み上げには出さない。 */
+    guides?: number[];
 }) {
     const t = useMessages();
     const current = reading.state === 'live' || reading.state === 'silent';
@@ -40,8 +49,8 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
         return () => observer.disconnect();
     }, [scale, orientation, stackValues]);
     let previousMarkTop = -Infinity;
-    const visibleMarks = [0, -6, -12, -24, -48].filter(mark => {
-        const top = Math.max(0, Math.min(scaleHeight - 16, (1 - Math.pow(10, mark / 20)) * scaleHeight - 8));
+    const visibleMarks = SCALE_MARKS_DB.filter(mark => {
+        const top = Math.max(0, Math.min(scaleHeight - 16, (1 - markRatio(mark)) * scaleHeight - 8));
         if (scaleHeight > 0 && top - previousMarkTop < 20) return false;
         previousMarkTop = top;
         return true;
@@ -55,15 +64,17 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
             aria-valuetext={accessibleText} title={reading.state === 'waiting' || reading.state === 'stale' ? `${accessibleText} — ${t('meter.waitingHelp')}` : accessibleText}
             className={`meter-visual relative flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
             {bars.map((value, i) => {
-                const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
-                const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;
+                // 見た目の長さだけを dB 等間隔にする。色は振幅の境目のまま（#570）。
+                const position = current ? meterPosition(value) : 0;
+                const peak = current ? meterPosition(peaks[i]) : 0;
                 const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : fill === 'aurora' ? 'meter-fill-aurora' : 'bg-success';
                 return <div key={i} title={orientation === 'vertical' ? t(i === 0 ? 'meter.left' : 'meter.right') : undefined}
                     className={`relative overflow-hidden rounded ${empty ? 'bg-muted/40 ring-border/40' : 'bg-muted ring-border'} ring-1 ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
-                    <div className={`absolute inset-0 ${orientation === 'horizontal' ? 'origin-left' : 'origin-bottom'} ${color}`} style={{ transform: orientation === 'horizontal' ? `scaleX(${pct / 100})` : `scaleY(${pct / 100})` }} />
-                    {scale && [0, -6, -12, -24, -48].map(mark => <span key={mark} aria-hidden="true" className={`absolute ${empty ? 'bg-foreground/[0.12]' : 'bg-foreground/30'} ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${Math.pow(10, mark / 20) * 100}%` } : { bottom: `${Math.pow(10, mark / 20) * 100}%` }} />)}
+                    <div className={`absolute inset-0 ${orientation === 'horizontal' ? 'origin-left' : 'origin-bottom'} ${color}`} style={{ transform: orientation === 'horizontal' ? `scaleX(${position})` : `scaleY(${position})` }} />
+                    {scale && SCALE_MARKS_DB.map(mark => <span key={mark} aria-hidden="true" className={`absolute ${empty ? 'bg-foreground/[0.12]' : 'bg-foreground/30'} ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${markRatio(mark) * 100}%` } : { bottom: `${markRatio(mark) * 100}%` }} />)}
+                    {guides?.map(db => <span key={db} aria-hidden="true" data-meter-guide={db} className={`pointer-events-none absolute ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'} bg-foreground/70`} style={orientation === 'horizontal' ? { left: `${markRatio(db) * 100}%` } : { bottom: `${markRatio(db) * 100}%` }} />)}
                     {/* 親と同寸の層を動かし、ピーク線の太さと外枠の角丸は拡縮しない。 */}
-                    {current && <div aria-hidden="true" className="absolute inset-0" style={{ transform: orientation === 'horizontal' ? `translateX(${peak}%)` : `translateY(${-peak}%)` }}>
+                    {current && <div aria-hidden="true" className="absolute inset-0" style={{ transform: orientation === 'horizontal' ? `translateX(${peak * 100}%)` : `translateY(${-peak * 100}%)` }}>
                         <div className={`absolute bg-foreground/80 ${orientation === 'horizontal' ? 'left-0 top-0 bottom-0 w-0.5' : 'bottom-0 left-0 right-0 h-0.5'}`} />
                     </div>}
                 </div>;
@@ -74,7 +85,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
                 {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}
                 {visibleMarks.map(mark => <span key={mark} className="absolute left-1 leading-4"
-                    style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
+                    style={{ top: `clamp(0px, calc(${(1 - markRatio(mark)) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
         {/* 従来の横方向の値欄は保ち、状態文だけをバー内へ移す。行は追加しない。 */}

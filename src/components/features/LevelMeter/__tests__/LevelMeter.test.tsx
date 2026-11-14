@@ -6,7 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { LevelMeter } from '../LevelMeter';
 import { MeterProvider } from '../MeterContext';
 import { MeterVisual } from '../MeterVisual';
-import type { MeterReading } from '@/hooks/useMeterLevels';
+import { meterPosition, type MeterReading } from '@/hooks/useMeterLevels';
 import { message } from '@/i18n/messages';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
@@ -28,9 +28,9 @@ it.each(['ja', 'en'] as const)('#464: 異なる入力・出力の左右ピーク
         expect(meter).toHaveAttribute('aria-valuenow', String(20 * Math.log10(values[0] * .8)));
         for (const [index, side] of (locale === 'ja' ? ['左', '右'] : ['Left', 'Right']).entries()) {
             const track = meter.querySelector(`[title="${side}"]`)!;
-            // バーは最初の平滑化tickで80%、ピークは受信値そのもの。
-            expect(track.firstElementChild).toHaveStyle({ transform: `scaleY(${values[index] * .8})` });
-            expect(track.lastElementChild).toHaveStyle({ transform: `translateY(${-values[index] * 100}%)` });
+            // #570: バーは最初の平滑化（受信値の 0.8 倍）を −60〜0 dBFS の等間隔へ置いた位置。ピークは受信値そのもの。
+            expect(track.firstElementChild).toHaveStyle({ transform: `scaleY(${meterPosition(values[index] * .8)})` });
+            expect(track.lastElementChild).toHaveStyle({ transform: `translateY(${-meterPosition(values[index]) * 100}%)` });
         }
     }
 });
@@ -112,10 +112,12 @@ it('共有クリップは10秒後に弱い色へ変わり、秒数と解除操�
 it.each(['horizontal', 'vertical'] as const)('%s のバーとピークを親寸法に対する transform だけで更新する', orientation => {
     const reading: MeterReading = { levels: [0, 0], peak: [0, 0], clipped: false, state: 'live', resetClip: () => {} };
     const { rerender } = render(<MeterVisual label="出力" orientation={orientation} height={28} width={12} scale reading={reading} />);
-    for (const [value, pct] of [[0, 0], [.5, 50], [1, 100], [-.5, 0], [1.5, 100]]) {
+    for (const value of [0, .5, 1, -.5, 1.5]) {
         // ピークをバーと別の値にして、誤って同じ値を使う退行も検出する。
         const peak = 1 - value;
-        const peakPct = Math.min(100, Math.max(0, peak * 100));
+        // #570: 位置は振幅の割合ではなく meterPosition。0 以下は 0、1 を超える振幅は 1。
+        const position = meterPosition(value);
+        const peakPosition = meterPosition(peak);
         rerender(<MeterVisual label="出力" orientation={orientation} height={28} width={12} scale
             reading={{ ...reading, levels: [value, value], peak: [peak, peak] }} />);
         const meter = screen.getByRole('meter');
@@ -126,9 +128,9 @@ it.each(['horizontal', 'vertical'] as const)('%s のバーとピークを親寸�
             expect(track).toHaveClass('relative', 'overflow-hidden', 'rounded');
             if (orientation === 'vertical') expect(track).toHaveStyle({ width: '12px' });
             expect(bar).toHaveClass('absolute', 'inset-0', orientation === 'horizontal' ? 'origin-left' : 'origin-bottom');
-            expect(bar.style.transform).toBe(`${orientation === 'horizontal' ? 'scaleX' : 'scaleY'}(${pct / 100})`);
+            expect(bar.style.transform).toBe(`${orientation === 'horizontal' ? 'scaleX' : 'scaleY'}(${position})`);
             expect(peakLayer).toHaveClass('absolute', 'inset-0');
-            expect(peakLayer.style.transform).toBe(orientation === 'horizontal' ? `translateX(${peakPct}%)` : `translateY(${-peakPct}%)`);
+            expect(peakLayer.style.transform).toBe(orientation === 'horizontal' ? `translateX(${peakPosition * 100}%)` : `translateY(${-peakPosition * 100}%)`);
             expect(peakLayer.firstElementChild).toHaveClass(orientation === 'horizontal' ? 'w-0.5' : 'h-0.5');
             // 静的な目盛りの位置指定は除き、毎フレーム変わる2層を検査する。
             for (const layer of [bar, peakLayer]) {
@@ -138,6 +140,24 @@ it.each(['horizontal', 'vertical'] as const)('%s のバーとピークを親寸�
         }
         expect(meter).toHaveAttribute('aria-valuenow', String(value <= 0 ? -60 : Math.min(0, 20 * Math.log10(value))));
     }
+});
+
+it('−30 dBFS のバーは半分まで伸び、目盛りは dB の等間隔になる', () => {
+    // #570: 振幅の約 3% ではなく、−60〜0 dBFS の中央（0.5）に置く。目盛りは 0, −6, −12, −24, −48。
+    const level = Math.pow(10, -30 / 20);
+    const reading: MeterReading = { levels: [level, 0], peak: [level, 0], clipped: false, state: 'live', resetClip: () => {} };
+    const { rerender } = render(<MeterVisual label="出力" orientation="horizontal" scale reading={reading} />);
+    const expectScale = (axis: 'scaleX' | 'scaleY', side: 'left' | 'bottom') => {
+        const meter = screen.getByRole('meter');
+        const track = meter.firstElementChild as HTMLElement;
+        expect((track.firstElementChild as HTMLElement).style.transform).toBe(`${axis}(0.5)`);
+        expect(meter).toHaveAttribute('aria-valuenow', '-30');
+        const marks = [...track.querySelectorAll('span[aria-hidden="true"]')].map(node => (node as HTMLElement).style[side]);
+        expect(marks).toEqual(['100%', '90%', '80%', '60%', '20%']);
+    };
+    expectScale('scaleX', 'left');
+    rerender(<MeterVisual label="出力" orientation="vertical" scale reading={reading} />);
+    expectScale('scaleY', 'bottom');
 });
 
 it.each(['waiting', 'stale', 'stopped'] as const)('%s では旧値のバーとピークを表示しない', state => {

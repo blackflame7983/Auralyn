@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
+import { meterPosition, meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 
@@ -16,6 +16,11 @@ export function flowIdleState(running: boolean, input: MeterState, output: Meter
 interface Sample { inn: number; out: number }
 
 const HISTORY = 96;
+
+/** 波形の片側の高さ。目盛りはメーターと同じ −60〜0 dBFS の等間隔。 */
+export function flowHalfHeight(level: number, mid: number): number {
+    return meterPosition(level) * mid * 0.92;
+}
 
 /** 共有メーターの読み取りが変わったときだけ直近の値を足す。タイマーは作らない。 */
 export function pushFlowSample(history: Sample[], sample: Sample, flowing: boolean): Sample[] {
@@ -46,7 +51,7 @@ function paint(canvas: HTMLCanvasElement, samples: Sample[], flowing: boolean) {
         ctx.beginPath();
         const n = samples.length;
         const step = n <= 1 ? w : w / (n - 1);
-        const amp = (sample: Sample) => Math.pow(Math.min(1, Math.max(0, pick(sample))), 2.2) * mid * 0.92;
+        const amp = (sample: Sample) => flowHalfHeight(pick(sample), mid);
         ctx.moveTo(0, mid - amp(samples[0]));
         if (n === 1) ctx.lineTo(w, mid - amp(samples[0]));
         else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, mid - amp(samples[i]));

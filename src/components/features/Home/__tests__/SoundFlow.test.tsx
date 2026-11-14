@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { MeterReading } from '@/hooks/useMeterLevels';
-import { SoundFlow, flowIdleState } from '../SoundFlow';
+import { SoundFlow, flowHalfHeight, flowIdleState } from '../SoundFlow';
 
 const meter = vi.hoisted(() => ({
     state: 'stopped' as MeterReading['state'],
@@ -70,6 +70,16 @@ it('live のときだけ波形を描き、状態の文字は出さない', () =>
     render(<SoundFlow running music={false} />);
     expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
     expect(screen.getByRole('region', { name: '声の流れ' }).querySelector('[data-flow-status]')).toBeNull();
+});
+
+it('波形の高さはメーターと同じ −60〜0 dBFS の目盛りにする', () => {
+    // #570: pow(level, 2.2) をやめ、−30 dBFS は中央の 0.92 倍の半分。
+    const mid = 36;
+    expect(flowHalfHeight(1, mid)).toBe(mid * 0.92);
+    expect(flowHalfHeight(Math.pow(10, -30 / 20), mid)).toBe(mid * 0.46);
+    expect(flowHalfHeight(Math.pow(10, -6 / 20), mid)).toBeCloseTo(mid * 0.92 * 0.9);
+    expect(flowHalfHeight(0, mid)).toBe(0);
+    expect(flowHalfHeight(Number.NaN, mid)).toBe(0);
 });
 
 it('流れの状態は、動いているときの入力を優先し、停止中は停止にする', () => {
