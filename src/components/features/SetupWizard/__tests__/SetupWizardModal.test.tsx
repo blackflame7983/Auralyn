@@ -314,6 +314,97 @@ describe('セットアップの接続チェック', () => {
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
     });
 
+    const saveOutput = (output: string, host = 'WASAPI', outputId?: string) => {
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input: mic.name, output, outputId }));
+    };
+    const useEngineOutput = (output: string, host = 'WASAPI', outputId?: string) => {
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
+            ? Promise.resolve({ is_running: true, config: { host, input: mic.name, output, output_id: outputId, sample_rate: 48000, buffer_size: 512 } })
+            : base(command, args, options));
+    };
+    const openBroadcastOutput = async (waitForRunningInput = false) => {
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        if (waitForRunningInput) await screen.findByRole('meter', { name: 'マイクの入力レベル' });
+        const next = screen.getByRole('button', { name: /次へ/ });
+        await waitFor(() => expect(next).toBeEnabled());
+        fireEvent.click(next);
+        return screen.findByRole('combobox', { name: '仮想ケーブルの出力先' });
+    };
+    const voicemeeter = () => device('Voicemeeter In 2');
+    const multipleCables = (current = voicemeeter()) => {
+        outputs = [device('CABLE Input (VB-Audio)'), current, device('スピーカー')];
+        return current;
+    };
+
+    it.each(['保存値', 'エンジンの設定'] as const)('%sの仮想ケーブルが複数候補の1つなら、出力先を最初から選んで次へ進める', async source => {
+        const current = multipleCables();
+        if (source === '保存値') saveOutput(current.name, 'wasapi');
+        else useEngineOutput(current.name);
+        const output = await openBroadcastOutput(source === 'エンジンの設定');
+        expect(output).toHaveValue(current.name);
+        const next = screen.getByRole('button', { name: /次へ/ });
+        expect(next).toBeEnabled();
+        expect(next).not.toHaveAttribute('aria-describedby');
+        fireEvent.click(next);
+        expect(await screen.findByRole('heading', { name: '設定と接続の確認' })).toBeInTheDocument();
+    });
+
+    it('開いた時点のエンジン出力を、別の保存値より優先する', async () => {
+        const current = { ...voicemeeter(), id: 'vm-in-2' };
+        const other = { ...device('CABLE Input (VB-Audio)'), id: 'cable-a' };
+        outputs = [other, current, device('スピーカー')];
+        saveOutput(other.name, 'WASAPI', other.id);
+        useEngineOutput('別の表示名', 'WASAPI', current.id);
+        const output = await openBroadcastOutput(true);
+        expect(output).toHaveValue(current.name);
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
+    });
+
+    it('保存値の出力が候補に無いときは、空のまま次へ進めない', async () => {
+        multipleCables();
+        saveOutput('取り外した Voicemeeter');
+        const output = await openBroadcastOutput();
+        expect(output).toHaveValue('');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /次へ/ })).toHaveAccessibleDescription('出力先を選ぶと次へ進めます');
+    });
+
+    it('保存値の接続方式がいまの手順と違うときは使わない', async () => {
+        const current = multipleCables();
+        saveOutput(current.name, 'ASIO');
+        const output = await openBroadcastOutput();
+        expect(output).toHaveValue('');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+    });
+
+    it('開いた時点の接続方式が違うときは、同じ名前の保存値にも戻さない', async () => {
+        const current = multipleCables();
+        saveOutput(current.name);
+        useEngineOutput(current.name, 'ASIO');
+        const output = await openBroadcastOutput(true);
+        expect(output).toHaveValue('');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+    });
+
+    it('初回は保存値もエンジンの出力も無いので、複数の仮想ケーブルを自動で選ばない', async () => {
+        multipleCables();
+        const output = await openBroadcastOutput();
+        expect(output).toHaveValue('');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+        expect(localStorage.getItem('vst_host_audio_config')).toBeNull();
+    });
+
+    it('複数のヘッドホン・スピーカーでは、保存している出力を最初から選ぶ', async () => {
+        outputs = [device('CABLE Input (VB-Audio)'), device('ヘッドホン'), device('スピーカー USB')];
+        saveOutput('スピーカー USB');
+        await openBroadcastOutput();
+        fireEvent.click(screen.getByRole('radio', { name: 'ヘッドホン・スピーカー' }));
+        expect(screen.getByRole('combobox', { name: 'ヘッドホン・スピーカー' })).toHaveValue('スピーカー USB');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
+    });
+
     it('再生リダイレクトが先頭・既定でも、マイクを推奨する', async () => {
         inputs = [device('再生リダイレクト [44/48/96kHz]', true), device('ライン入力', true), { ...mic, is_default: false }];
         await quickStart();

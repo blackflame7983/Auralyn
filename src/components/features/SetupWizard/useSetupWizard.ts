@@ -312,13 +312,24 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
     const selectOutputMode = (mode: 'default' | 'monitor' | 'broadcast') => {
         let targetOutput: AudioDevice | null = null;
 
-        if (mode === 'broadcast') {
-            // Find Virtual Cable
-            const candidates = availableOutputs.filter(isVirtualOutput);
-            targetOutput = candidates.find(d => d.name === config.output?.name) || (candidates.length === 1 ? candidates[0] : null);
-        } else if (mode === 'monitor') {
-            const candidates = availableOutputs.filter(d => !isVirtualOutput(d));
-            targetOutput = candidates.find(d => d.name === config.output?.name) || (candidates.length === 1 ? candidates[0] : null);
+        if (mode === 'broadcast' || mode === 'monitor') {
+            // 仮想ケーブルは配信向け、それ以外はヘッドホン・スピーカー。Windows既定はこの分岐を通さない。
+            const candidates = availableOutputs.filter(device =>
+                mode === 'broadcast' ? isVirtualOutput(device) : !isVirtualOutput(device));
+            // 手順の中で選んだ出力を優先する。無ければ、開いた時点のエンジン出力（無ければ保存値）を、
+            // 接続方式が同じで、この種類の候補にあるときだけ使う。候補が1つならそれを選ぶ。
+            const chosen = candidates.find(device => device.name === config.output?.name);
+            let remembered: AudioDevice | undefined;
+            if (!chosen) {
+                const native = initialStateRef.current?.config;
+                const saved = native
+                    ? { host: native.host, output: native.output, outputId: native.output_id }
+                    : readAudioPreferences();
+                if (saved && saved.host.toLowerCase() === config.host.toLowerCase()) {
+                    remembered = resolveAudioDevice(candidates, config.host, saved.output, saved.outputId);
+                }
+            }
+            targetOutput = chosen ?? remembered ?? (candidates.length === 1 ? candidates[0] : null);
         } else {
             targetOutput = verifiedDefaultOutput(availableOutputs);
         }
