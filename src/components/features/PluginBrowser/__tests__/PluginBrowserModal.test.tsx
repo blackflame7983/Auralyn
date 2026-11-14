@@ -27,6 +27,10 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
     scan.mockClear();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
+    // 検索横の更新は一覧の読み直し、空のときの案内はすべて再スキャンのまま（#558）。
+    fireEvent.click(screen.getByRole('button', { name: '更新' }));
+    expect(scan).toHaveBeenCalledWith();
+    scan.mockClear();
     expect(screen.getAllByRole('button', { name: 'すべて再スキャン' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: '再スキャン' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));

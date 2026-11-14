@@ -30,7 +30,7 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(strip.locator('.now-action').getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
         await expect(page.getByText('音声を開始すると、ここで音を調整できます。')).toHaveCount(0);
         await expect(page.getByText('音声停止中（開始後に反映）')).toHaveCount(0);
-        const check = page.getByRole('region', { name: '音声チェック', exact: true });
+        const check = page.getByRole('region', { name: '接続の確認', exact: true });
         await expect(check.getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
         await expect(check.getByRole('button', { name: 'セットアップを開く', exact: true })).toHaveCount(0);
         await page.screenshot({ path: info.outputPath(`${theme}-stopped.png`) });

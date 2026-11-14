@@ -30,6 +30,8 @@ function renderBrowser(extra: Partial<ComponentProps<typeof PluginBrowserModal>>
 
 it('失敗一覧に理由と統計を出し、指定した1件だけを再試行する', () => {
     const { onRetry, onScan } = renderBrowser();
+    // 統計は閉じた「スキャンの詳細」へ移した。開いてから同じ文言を確かめる（#558）。
+    fireEvent.click(screen.getByText('スキャンの詳細'));
     expect(screen.getByText('再利用 4件、新たにスキャン 2件、削除 1件')).toBeInTheDocument();
     expect(screen.getByText('保存していたスキャン結果が壊れていたため、退避して最初からスキャンしました。')).toBeInTheDocument();
     expect(screen.getByText('スキャン結果を保存できませんでした。今回の一覧は表示します。次回は、最後に保存できた内容を使います。')).toBeInTheDocument();

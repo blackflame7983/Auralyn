@@ -299,12 +299,12 @@ export function LoudnessCheck({
 
     return (
         <section
-            aria-label={t('loudness.title')}
+            aria-label={t('shell.loudness')}
             className="mb-4 rounded-card border border-border bg-card p-4 space-y-2"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <div className="flex items-center gap-1"><h2 ref={heading} tabIndex={-1} className="text-ui-support font-semibold">{t('loudness.title')}</h2><InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover></div>
+                    <div className="flex items-center gap-1"><h2 ref={heading} tabIndex={-1} className="text-ui-support font-semibold">{t('shell.loudness')}</h2><InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover></div>
                     <p
                         role="status"
                         className={`text-lg font-bold ${good ? 'text-success' : active ? 'text-warning' : 'text-muted-foreground'}`}

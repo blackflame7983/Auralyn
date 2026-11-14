@@ -44,8 +44,8 @@ it('録音前は録音に絞り、完了後に再生と必要時に開く比較�
             if (event === 'voice-check-state') callback({ event, id: 1, payload: { state: 'ready', position_ms: 0, duration_ms: 1000 } });
         }
     });
-    const details = (await screen.findByText('試聴先と再生')).closest('details')!;
-    expect(details).toHaveAttribute('open');
+    // 試聴先と再生は折りたたまず、録音の次に出す（#559）。
+    expect(await screen.findByRole('region', { name: '試聴先と再生' })).toBeVisible();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeVisible();
     expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).toBeVisible();
     const comparison = screen.getByText('同じ録音でノイズ低減を比較').closest('details')!;
@@ -58,12 +58,13 @@ it('録音前は録音に絞り、完了後に再生と必要時に開く比較�
 it('試聴エラーは録音前でも開き、停止と再試行の操作を表示する', async () => {
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { error: '試聴の停止を確認できません' }));
     open();
-    const details = (await screen.findByText('試聴先と再生')).closest('details')!;
-    await waitFor(() => expect(details).toHaveAttribute('open'));
+    // 失敗したときだけ試聴先を開き、再生できない理由も出す（#559）。
+    expect(await screen.findByRole('region', { name: '試聴先と再生' })).toBeVisible();
     expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
     // 失敗・停止未確認では停止を再送できるようにする。
     expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
     expect(screen.getByText('再生できないとき')).toBeVisible();
+    expect(screen.getByText(/ほかのアプリが試聴先を占有していると再生できません/)).toHaveTextContent('Voicemeeter');
     const warning = screen.getByRole('alert');
     expect(warning).toHaveTextContent('試聴の停止を確認できません');
     expect(warning).toContainElement(screen.getByRole('button', { name: '試聴を再準備' }));
@@ -128,8 +129,12 @@ it('通常出力の切替を求めず独立した試聴先と取り込み確認�
     await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(screen.getByRole('button', { name: '試聴先を取得・更新' })).toBeEnabled());
     expect(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' })).toBeInTheDocument();
-    expect(screen.getByText(/ほかのアプリが試聴先を占有していると再生できません/)).toHaveTextContent('Voicemeeter');
+    // 再生できない理由は失敗時だけ。出力先の注意は閉じて置き、開くと読める（#559）。
+    expect(screen.queryByText(/ほかのアプリが試聴先を占有していると再生できません/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '試聴先を設定する' })).not.toBeInTheDocument();
+    const caution = screen.getByText('試聴先の注意').closest('details')!;
+    expect(caution).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('試聴先の注意'));
     expect(screen.getByText(/マイクの音・出力音量・ミュートは変わりません/)).toBeInTheDocument();
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
 });

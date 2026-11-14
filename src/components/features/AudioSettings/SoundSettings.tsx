@@ -17,7 +17,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { PeakProtectionPanel } from './PeakProtectionPanel';
 import { BroadcastTruePeakPanel } from './BroadcastTruePeakPanel';
-import { SingingControls, SingingGuideHelp } from './SingingControls';
+import { SingingControls } from './SingingControls';
 import { LiveModeControls } from './LiveModeControls';
 import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
 
@@ -249,11 +249,11 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               </TabsList>
             </Tabs>}
             <section id={sectionId} aria-labelledby="sound-section-heading" className="space-y-4">
-            <div className="flex items-center gap-1">
+            {/* タブがあるときはタブ名が区分を示す。音楽鑑賞にはタブがないので、区画の見出しを残す。 */}
+            {music && <>
               <h2 id="sound-section-heading" tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t(`sound.section.${shown}`)}</h2>
-              {shown === 'singing' && <SingingGuideHelp />}
-            </div>
-            <p className="text-ui-support text-muted-foreground">{lead}</p>
+              <p className="text-ui-support text-muted-foreground">{lead}</p>
+            </>}
             {shown === 'basic' && <>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">

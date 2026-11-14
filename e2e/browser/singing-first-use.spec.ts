@@ -40,7 +40,8 @@ test('初回は準備・試聴・適用を見せ、数値を開いた編集も�
     await expect(section.getByRole('button', { name: '試しに聴く', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'この音をマイクへ適用', exact: true })).toBeDisabled();
     await section.getByRole('button', { name: '歌向けの音から始める', exact: true }).click();
-    await expect(section).toContainText('適用するまで、配信・通話の音は変わりません。');
+    // タブ名と同じ見出しは重ねない。説明はページ見出しへ移した（#542）。
+    await expect(page.locator('#sound-section-heading')).toHaveText('適用するまで、配信・通話の音は変わりません。');
     await page.screenshot({ path: testInfo.outputPath('guided-960x640.png') });
     await fine.locator('summary').press('Enter');
     await fine.getByRole('spinbutton', { name: '低音の整理（Hz）', exact: true }).fill('130');

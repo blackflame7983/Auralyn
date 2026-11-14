@@ -191,7 +191,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     const chrome = deriveHomeChrome({ configured });
-    // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
+    // 音楽鑑賞の再生の確認は、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
     // 開いた後の測定・停止・閉じるはパネル側に集める。押せない理由は画面にも出し、押せるときの対象範囲は読み上げだけにする。
@@ -277,10 +277,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <StatusBand stats={runtimeStats} host={currentHost} sampleRate={currentSampleRate} bufferSize={currentBufferSize}
                     isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route}
                     modeSwitch={liveModeSwitch} showListen={configured}
-                    listenLabel={t(purpose === 'music' ? 'band.listenMusic' : 'home.voiceCheck')}
+                    listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
                     listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
                         input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
+                        vstBypassed={isABBypassed} onCompareVst={() => { void handleABToggle(); }}
                         onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
                 />
                 <NoticeLane />

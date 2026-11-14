@@ -48,8 +48,8 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
         onChange({ source: { kind: 'process_loopback', config: { appKey: app.appKey, appName: app.name,
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
-    return <fieldset disabled={disabled} className="space-y-3 rounded-card border border-border p-3">
-        <legend className="px-1 text-ui-heading font-semibold">{t('processInput.title')}</legend>
+    return <fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
+        <legend className="text-ui-heading font-semibold">{t('processInput.title')}</legend>
         <Field label={t('processInput.source')}><Select  aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }

@@ -4,6 +4,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react';
 import { MdAdd } from 'react-icons/md';
 import { PagePortal } from '@/components/layout/pageSlot';
+import { PageHeading } from '@/components/layout/PageHeading';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { PluginList } from './PluginList';
 import type { Plugin } from './PluginCard';
@@ -77,15 +78,11 @@ export function VstPage({
     const missing = plugins.length > 0 ? unrestoredNamesText(t, unrestored) : null;
     return <PagePortal>
         <div data-vst-page className="flex h-full min-h-0 flex-col overflow-hidden">
-            <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 pb-2">
-                <div className="min-w-0">
-                    <h1 ref={headingRef} tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('rail.vst')}</h1>
-                    <p className="mt-1 break-words text-ui-support text-muted-foreground">{t('vst.lead')}</p>
-                </div>
+            <PageHeading title={t('rail.vst')} lead={t('vst.lead')} headingRef={headingRef} actions={
                 <Button ref={addRef} id="add-effect-btn" type="button" variant="default" onClick={onAdd} className="h-auto min-h-10 shrink-0 gap-2 whitespace-normal">
                     <MdAdd aria-hidden="true" className="h-5 w-5" />{t('rack.addEffects')}
                 </Button>
-            </header>
+            } />
             {missing && <p role="status" className="mb-2 break-words text-ui-support">{missing}</p>}
             <div className="min-h-0 flex-1 overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
                 <SignalOrder music={purpose === 'music'} plugins={plugins} />

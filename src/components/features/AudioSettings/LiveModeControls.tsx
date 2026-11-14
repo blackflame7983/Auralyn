@@ -35,9 +35,6 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
     const sameSettings = value?.definitions.singing && value.definitions.talk
         && JSON.stringify(value.definitions.singing) === JSON.stringify(value.definitions.talk);
     return <div className="space-y-3 p-3 text-ui-support">
-        <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
-            <SavePurposeHelp />
-        </div>
         {profileError && <div className="space-y-2" role="alert"><p>{t('liveTransaction.profilesFailed')}</p><Button type="button" onClick={() => setProfileReload(n => n + 1)} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">{t('liveTransaction.retryProfiles')}</Button></div>}
         <div className="grid gap-3 sm:grid-cols-2">
             {(['singing', 'talk'] as const).map(mode => {
@@ -102,7 +99,10 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
 export function LiveModeControls({ model, onAdjust }: { model: LiveModesModel; initiallyOpen?: boolean; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
     return <section id="live-mode-settings" tabIndex={-1} className="mb-3 rounded-card border border-border">
-        <h3 tabIndex={-1} className="p-3 text-ui-heading font-semibold">{t('settings.mode.registration')}</h3>
+        <div className="flex items-center gap-1 p-3">
+            <h3 tabIndex={-1} className="text-ui-heading font-semibold">{t('settings.mode.registration')}</h3>
+            <SavePurposeHelp />
+        </div>
         <Content model={model} onAdjust={onAdjust} />
     </section>;
 }

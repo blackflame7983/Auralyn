@@ -155,41 +155,9 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     </div>
                     </section>
                     </>}
-                    {/* 状態が未確定・失敗した際は停止と再試行を隠さない。 */}
-                    {(hasRecording || previewNeedsAttention) && <details open={hasRecording || previewNeedsAttention || undefined}>
-                    <summary className="cursor-pointer text-ui-support font-semibold">{t('voice.playbackSection')}</summary>
-                    {/* 録音 → 波形 → 聴き比べの順に置き、試聴先は再生操作の直前で選ぶ。 */}
-                    <section aria-label={t('voice.copy.036')} className="rounded-card border border-border p-3 space-y-3">
-                        <h3 className="text-ui-control font-semibold">{t('voice.copy.037')}</h3>
-                        {(previewError || preview?.error) && <div role="alert" className="flex min-w-0 flex-wrap items-center gap-3 rounded-control border border-warning bg-warning/10 p-3 text-ui-support">
-                            <p className="min-w-0 flex-1 basis-64 wrap-anywhere">{previewError || preview?.error}</p>
-                            <Button variant="default" size="sm" type="button" disabled={previewBusy} onClick={() => void preparePreview()}>{t('voice.copy.039')}</Button>
-                        </div>}
-                        {!preview && previewBusy && <p role="status" className="text-ui-support">{t('voice.previewPreparing')}</p>}
-                        {preview && !previewBusy && !previewError && !preview.error && (preview.state === 'idle' || preview.state === 'stopped') && <p role="status" className="text-ui-support">{t('voice.previewReady')}</p>}
-                        <div className="flex flex-wrap items-end gap-2">
-                            <label className="min-w-0 flex-1 text-ui-support">{t('voice.copy.041')}<Field label={null}><Select value={previewDeviceId} disabled={previewBusy || isPlaying || preview?.state === 'stopping'} onChange={event => setPreviewDeviceId(event.target.value)} className="mt-1 w-full">
-                                    <option value="">{t(previewDevicesStatus === 'loading' ? 'voice.devicesLoading' : previewDevicesStatus === 'error' ? 'voice.devicesError' : previewDevicesStatus === 'pending' ? 'voice.devicesPending' : previewDevices.length === 0 ? 'voice.devicesEmpty' : 'voice.copy.042')}</option>
-                                    {previewDeviceId && !previewDevices.some(device => device.id === previewDeviceId) && <option value={previewDeviceId}>{t('voice.copy.043')}</option>}
-                                    {previewDevices.map(device => <option key={device.id} value={device.id}>{device.name}</option>)}
-                                </Select></Field>
-                            </label>
-                            <Button variant="outline" size="sm" type="button" disabled={previewBusy || !preview || preview.state === 'closed' || isPlaying} onClick={() => void refreshPreviewDevices()} >{t('voice.copy.040')}</Button>
-                        </div>
-                                {previewDevicesStatus !== 'error' && (previewDevicesStatus !== 'ready' || previewDevices.length === 0) ? <span role="status" className="mt-1 block text-ui-support text-muted-foreground">{t(previewDevicesStatus === 'loading' ? 'voice.devicesLoading' : previewDevicesStatus === 'pending' ? 'voice.devicesPendingHint' : 'voice.devicesEmpty')}</span> : null}
-                        <label className="flex items-start gap-2 text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={safeOutput} disabled={!previewDevices.some(device => device.id === previewDeviceId) || previewBusy || isPlaying} onChange={event => setSafeOutput(event.target.checked)} className="mt-0.5" /></Field><span>{t('voice.copy.045')}</span></label>
-                        <p className="text-ui-support text-muted-foreground">{t('voice.copy.038')}</p>
-                        {selectedOutputIsVirtual && <p role="status" className="rounded-control border border-warning bg-warning/10 px-3 py-2 text-ui-support text-warning">{t('voice.virtualOutputWarning')}</p>}
-                        {preview?.conflict && <p className="text-ui-support">{preview.conflict}{t('voice.copy.046')}</p>}
-                        {preview?.owner === 'auto_gain' && <p className="text-ui-support">{t('voice.copy.047')}</p>}
-                        <p className="text-ui-support text-muted-foreground">{preview?.state === 'stopping' ? t('voice.copy.048') : preview?.state === 'playing' ? t('voice.copy.049') : preview?.state === 'closed' ? t('voice.copy.050') : t('voice.copy.051')}{stopUnconfirmed && t('voice.copy.052')}</p>
-                        <details open={Boolean(previewError || preview?.error || stopUnconfirmed) || undefined} className="text-ui-support text-muted-foreground">
-                            <summary className="cursor-pointer">{t('voice.previewTrouble')}</summary>
-                            <div className="mt-2 space-y-2">
-                                <p>{t('voice.copy.044')}</p>
-                                {!(previewError || preview?.error) && <Button variant="outline" size="sm" type="button" disabled={previewBusy} onClick={() => void preparePreview()} >{t('voice.copy.039')}</Button>}
-                            </div>
-                        </details>
+                    {/* 録音の次に再生を置く。失敗したときだけ、準備の失敗と再生できない理由を出す。 */}
+                    {(hasRecording || previewNeedsAttention) && <section aria-label={t('voice.playbackSection')} className="space-y-3 rounded-card border border-border p-3">
+                    <h3 className="text-ui-control font-semibold">{t('voice.playbackSection')}</h3>
                     <div className="flex flex-wrap items-center gap-3">
                         <Button variant="secondary"
                             onClick={handleTogglePlayback}
@@ -215,6 +183,39 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             /></Field>
                             {t('voice.copy.061')}</label>
                     </div>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <label className="min-w-0 flex-1 text-ui-support">{t('voice.copy.041')}<Field label={null}><Select value={previewDeviceId} disabled={previewBusy || isPlaying || preview?.state === 'stopping'} onChange={event => setPreviewDeviceId(event.target.value)} className="mt-1 w-full">
+                                <option value="">{t(previewDevicesStatus === 'loading' ? 'voice.devicesLoading' : previewDevicesStatus === 'error' ? 'voice.devicesError' : previewDevicesStatus === 'pending' ? 'voice.devicesPending' : previewDevices.length === 0 ? 'voice.devicesEmpty' : 'voice.copy.042')}</option>
+                                {previewDeviceId && !previewDevices.some(device => device.id === previewDeviceId) && <option value={previewDeviceId}>{t('voice.copy.043')}</option>}
+                                {previewDevices.map(device => <option key={device.id} value={device.id}>{device.name}</option>)}
+                            </Select></Field>
+                        </label>
+                        <Button variant="outline" size="sm" type="button" disabled={previewBusy || !preview || preview.state === 'closed' || isPlaying} onClick={() => void refreshPreviewDevices()} >{t('voice.copy.040')}</Button>
+                    </div>
+                    {previewDevicesStatus !== 'error' && (previewDevicesStatus !== 'ready' || previewDevices.length === 0) ? <span role="status" className="mt-1 block text-ui-support text-muted-foreground">{t(previewDevicesStatus === 'loading' ? 'voice.devicesLoading' : previewDevicesStatus === 'pending' ? 'voice.devicesPendingHint' : 'voice.devicesEmpty')}</span> : null}
+                    <label className="flex items-start gap-2 text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={safeOutput} disabled={!previewDevices.some(device => device.id === previewDeviceId) || previewBusy || isPlaying} onChange={event => setSafeOutput(event.target.checked)} className="mt-0.5" /></Field><span>{t('voice.copy.045')}</span></label>
+                    {(previewError || preview?.error) && <div role="alert" className="flex min-w-0 flex-wrap items-center gap-3 rounded-control border border-warning bg-warning/10 p-3 text-ui-support">
+                        <p className="min-w-0 flex-1 basis-64 wrap-anywhere">{previewError || preview?.error}</p>
+                        <Button variant="default" size="sm" type="button" disabled={previewBusy} onClick={() => void preparePreview()}>{t('voice.copy.039')}</Button>
+                    </div>}
+                    {!preview && previewBusy && <p role="status" className="text-ui-support">{t('voice.previewPreparing')}</p>}
+                    {preview && !previewBusy && !previewError && !preview.error && (preview.state === 'idle' || preview.state === 'stopped') && <p role="status" className="text-ui-support">{t('voice.previewReady')}</p>}
+                    {selectedOutputIsVirtual && <p role="status" className="rounded-control border border-warning bg-warning/10 px-3 py-2 text-ui-support text-warning">{t('voice.virtualOutputWarning')}</p>}
+                    {preview?.conflict && <p className="text-ui-support">{preview.conflict}{t('voice.copy.046')}</p>}
+                    {preview?.owner === 'auto_gain' && <p className="text-ui-support">{t('voice.copy.047')}</p>}
+                    {(preview?.state === 'stopping' || preview?.state === 'playing' || preview?.state === 'closed' || stopUnconfirmed) && <p className="text-ui-support text-muted-foreground">{preview?.state === 'stopping' ? t('voice.copy.048') : preview?.state === 'playing' ? t('voice.copy.049') : preview?.state === 'closed' ? t('voice.copy.050') : t('voice.copy.051')}{stopUnconfirmed && t('voice.copy.052')}</p>}
+                    <details className="text-ui-support text-muted-foreground">
+                        <summary className="cursor-pointer">{t('voice.outputCaution')}</summary>
+                        <p className="mt-2">{t('voice.copy.038')}</p>
+                    </details>
+                    {(previewError || preview?.error || stopUnconfirmed) && <details open className="text-ui-support text-muted-foreground">
+                        <summary className="cursor-pointer">{t('voice.previewTrouble')}</summary>
+                        <div className="mt-2 space-y-2">
+                            <p>{t('voice.copy.044')}</p>
+                            {!(previewError || preview?.error) && <Button variant="outline" size="sm" type="button" disabled={previewBusy} onClick={() => void preparePreview()} >{t('voice.copy.039')}</Button>}
+                        </div>
+                    </details>}
+                    {hasRecording && (!outputConfirmed || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId)) && <p className="text-ui-support text-muted-foreground">{t('voice.playbackRequirements')}</p>}
                     <div className="border-t border-border pt-3">
                         <Button variant="outline"
                             onClick={handleExport}
@@ -224,12 +225,10 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <MdSave className="w-4 h-4" />
                             {t('voice.copy.062')}</Button>
                     </div>
-                    {hasRecording && (!outputConfirmed || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId)) && <p className="text-ui-support text-muted-foreground">{t('voice.playbackRequirements')}</p>}
-                    </section>
                     <label className="flex items-start gap-2 text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={levelMatch} disabled={previewBusy || isRecording || !preview?.levelMatchAvailable || preview?.state === 'stopping'} onChange={event => setLevelMatch(event.target.checked)} className="mt-1" /></Field><span>{t('voice.copy.063')}</span></label>
                     <p className="text-ui-support text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>
                     {preview && <p className="text-ui-support text-muted-foreground">{t('voice.copy.067')}{preview.levelMatchAttenuationDb[0].toFixed(1)} {t('voice.copy.068')}{preview.levelMatchAttenuationDb[1].toFixed(1)} {t('voice.copy.069')}{preview.safetyAttenuationDb.toFixed(1)} dB</p>}
-                    </details>}
+                    </section>}
                     {/* 基本の録音・聴き比べの後に、ノイズ低減だけの比較を置く。 */}
                     {(hasRecording || hasNoiseHistory) && !isRecording && <details open={candidateMode === 'noise' || hasNoiseHistory || undefined} className="rounded-card border border-border p-3">
                     <summary className="text-ui-support font-semibold">{t('noiseCompare.title')}</summary>

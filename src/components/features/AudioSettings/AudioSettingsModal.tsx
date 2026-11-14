@@ -9,7 +9,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
 import { connectionDeviceKey, resolveAudioDevice } from '@/lib/audioDevices';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
-import { singingDraftIsDirty } from './SingingControls';
+import { singingDraftIsDirty, SingingGuideHelp } from './SingingControls';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDraft';
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { PagePortal } from '@/components/layout/pageSlot';
+import { PageHeading } from '@/components/layout/PageHeading';
 import { allowNextLeave, registerLeaveGuard, requestLeave, setPageLocked } from '@/components/layout/pageLeave';
 import { requestOpenRack } from '@/components/layout/openRackBridge';
 import type { SoundPlace } from '@/hooks/useUIState';
@@ -345,7 +346,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   useEffect(() => {
     if (!isOpen || activeTab !== 'sound' || !focusNonce) return;
     const frame = requestAnimationFrame(() => {
-      settingsBody.current?.querySelector<HTMLElement>('#sound-section-heading')?.focus({ preventScroll: true });
+      // タブ名と同じ見出しはページの外へ出したので、説明の一文は本文の外にある。
+      document.getElementById('sound-section-heading')?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
     // 番号が進んだときだけ移す。小区分の変更を依存に入れると、タブに残すべき焦点が見出しへ移る。
@@ -557,8 +559,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const musicSound = activeTab === 'sound' && displayPurpose === 'music';
   const singingDirty = singingDraftIsDirty(singingModel.snapshot, singingModel.draft);
   const showSingingBar = activeTab === 'sound' && soundPlace === 'singing' && !musicSound;
+  const soundLead = musicSound ? t('sound.musicLead')
+    : soundPlace === 'liveModes' ? t('sound.lead.liveModes')
+    : soundPlace === 'singing' ? t('sound.lead.singing')
+    : soundPlace === 'peak' ? t('settings.apply.protectionDraft')
+    : t('settings.apply.soundImmediate');
   const pageLead = activeTab === 'audio' ? t('settings.page.connectLead')
-    : activeTab === 'sound' ? (musicSound ? t('sound.musicLead') : '')
+    : activeTab === 'sound' ? soundLead
     : activeTab === 'appearance' ? t('settings.apply.appearanceImmediate')
     : activeTab === 'shortcuts' ? t('settings.apply.shortcutsDraft')
     : activeTab === 'obs' ? t('settings.page.obsLead')
@@ -578,11 +585,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   return (
     <PagePortal>
       <div data-settings-page={pageKind} className="settings-page flex h-full min-h-0 flex-col overflow-hidden">
-        <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
-          <h1 ref={headingRef} tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{pageTitle}</h1>
-          {pageLead && <p className="min-w-0 flex-1 break-words text-ui-support text-muted-foreground">{pageLead}</p>}
+        <PageHeading title={pageTitle} lead={pageLead} headingRef={headingRef} leadId={activeTab === 'sound' && !musicSound ? 'sound-section-heading' : undefined} actions={<>
+          {activeTab === 'sound' && soundPlace === 'singing' && !musicSound && <SingingGuideHelp />}
           {musicSound && <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => requestOpenRack()}>{t('sound.openVst')}</Button>}
-        </header>
+        </>} />
         <Tabs value={activeTab} onValueChange={value => chooseTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col">
           {/* レールが移動を持つときは、設定のページでだけ4区分を出す。単体で開いたときは、この画面の中で切り替える。 */}
           <TabsList hidden={!!onRequestTab && pageKind !== 'settings'} aria-label={t('rail.settings')} className="h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto">
@@ -634,8 +640,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* 入力と出力は、ページの幅に余裕があるときだけ横に並べる。間の項目は1行のまま。DOM の順は変えない。 */}
                 <div className="page-pair">
                 {/* Input Device */}
-                {!processInput && <fieldset className="page-pair-input space-y-3 rounded-card border border-border p-3">
-                  <legend className="px-1 text-ui-heading font-semibold">
+                {!processInput && <fieldset className="page-pair-input page-section rounded-card border border-border p-3">
+                  <legend className="text-ui-heading font-semibold">
                     <label htmlFor={inputId}>{t(isAsio ? 'settings.AudioSettingsModal.037' : pcInput ? 'wizard.pcAudio' : 'settings.AudioSettingsModal.038')}</label>
                   </legend>
                   <Field id={inputId} label={null} description={isAsio ? t('settings.AudioSettingsModal.044') : undefined}><Select
@@ -673,8 +679,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Output Device - Hide for ASIO */}
                 {!isAsio && (
-                  <fieldset className="page-pair-output space-y-3 rounded-card border border-border p-3">
-                    <legend className="px-1 text-ui-heading font-semibold">{t('settings.AudioSettingsModal.041')}</legend>
+                  <fieldset className="page-pair-output page-section rounded-card border border-border p-3">
+                    <legend className="text-ui-heading font-semibold">{t('settings.AudioSettingsModal.041')}</legend>
                     <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.042')}</span>}><Select
                     aria-label={t('settings.AudioSettingsModal.042')}
                       className="max-w-full"

@@ -27,7 +27,7 @@ interface HomePanelsProps {
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
-    /** 聴いて確認する入口。音楽鑑賞では聴き比べ、配信・通話では声の確認を開く。 */
+    /** 聴いて確認する入口。音楽鑑賞では再生の確認、配信・通話では声の確認を開く。 */
     onListen: () => void;
     onSetup?: () => void;
     onExpandedChange?: (open: boolean) => void;

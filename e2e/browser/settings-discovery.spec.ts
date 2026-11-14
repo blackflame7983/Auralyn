@@ -39,14 +39,16 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await settleLayoutMotion(page);
     await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('heading', { name: 'マイク', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '大型レベルメーターを開く', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
+    await page.getByRole('button', { name: '音量を測る', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('音量を測る');
     await actions.click();
     await register.click();
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog).toHaveAttribute('data-settings-page', 'sound');
     const section = dialog.locator('#live-mode-settings');
-    await expect(dialog.locator('#sound-section-heading')).toHaveText('歌・雑談');
+    // タブが区分の名前を持つので、見出しの繰り返しは説明の一文に変えた（#542）。
+    await expect(dialog.getByRole('tab', { name: '歌・雑談', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.locator('#sound-section-heading')).toHaveText('いま適用している音を、歌と雑談の切り替え先として登録します。');
     await expect(dialog.locator('#sound-section-heading')).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });
