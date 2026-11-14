@@ -35,6 +35,8 @@ interface Props {
     devices?: ReactNode;
     onSetup?: () => void;
     onExpandedChange?: (open: boolean) => void;
+    /** 広い窓の接続の列では、詳細を開いたままにする。狭い窓の開閉は変えない。 */
+    pinnedOpen?: boolean;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
@@ -51,7 +53,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
+export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange, pinnedOpen = false }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -84,7 +86,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     // 閉じた後でも、別の問題が起きたら開き直す。
     useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
     // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
-    const open = userOpen ?? (problem !== null && observation.availability !== 'muted');
+    const open = pinnedOpen || (userOpen ?? (problem !== null && observation.availability !== 'muted'));
     useEffect(() => { onExpandedChange?.(open); }, [open, onExpandedChange]);
     const usageRef = useRef<HTMLDivElement>(null);
     const focusedRequest = useRef(0);
@@ -141,7 +143,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 }}>{t(routeNeedsTarget ? 'prep.targetAction' : 'prep.checkReceiver')}</Button>}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
                 <span role="status" className="text-ui-support text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
-                <Button variant="outline" size="sm" ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
+                <Button variant="outline" size="sm" ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => { if (!pinnedOpen) setUserOpen(!open); }}
                     className="gap-1">
                     {t('prep.steps')}<MdExpandMore aria-hidden="true" className={`h-4 w-4 ${open ? 'rotate-180' : ''}`} />
                 </Button>

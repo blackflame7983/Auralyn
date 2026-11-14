@@ -31,12 +31,14 @@ interface HomePanelsProps {
     onListen: () => void;
     onSetup?: () => void;
     onExpandedChange?: (open: boolean) => void;
+    /** 広い窓の接続の列では、詳細を開いたままにする。 */
+    pinnedOpen?: boolean;
 }
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
 export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange, pinnedOpen = false }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -54,7 +56,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const broadcastName = useOutputDeviceName(broadcastId);
     return <div className="mb-4 space-y-4">
         <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
-            onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
+            onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText} pinnedOpen={pinnedOpen}
             devices={<RouteLine output={actualOutput} broadcastName={broadcastName} split={Boolean(broadcastId || model.observation.routing?.splitProcessing)} local={music || model.context.usage === 'listening'} receiver={model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : t('flow.receiverUnknown')} />}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
             <div className="basis-full"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
