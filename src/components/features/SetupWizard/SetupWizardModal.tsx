@@ -17,7 +17,7 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'reac
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdCheckCircle, MdVolumeUp, MdCast, MdHearing, MdHeadphones, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdVolumeUp, MdCast, MdHearing, MdHeadphones, MdLibraryMusic, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
@@ -185,13 +185,24 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div role="radiogroup" aria-label={t('wizard.chooseGoal')} className="grid grid-cols-2 gap-3 p-1">
                                 {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard name="wizard-goal" compact
                                     key={value}
-                                    onChange={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value, false)}
-                                    onActivate={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
+                                    onChange={() => selectGoal(value, false)}
+                                    onActivate={() => selectGoal(value)}
                                     icon={<Icon aria-hidden="true" className="w-6 h-6" />}
                                     title={t(label)}
                                     description={t(hint)}
-                                    active={(config.goal ?? savedGoal) === value || (value === 'listening' && (config.goal ?? savedGoal) === 'music')}
+                                    active={(config.goal ?? savedGoal) === value}
                                 />)}
+                                {/* 音楽鑑賞は送り先の4枚とは別の目的。保存済みの music は、このカードだけを選ぶ。 */}
+                                <div className="col-span-2">
+                                    <SelectionCard name="wizard-goal" compact
+                                        onChange={() => selectGoal('music', false)}
+                                        onActivate={() => selectGoal('music')}
+                                        icon={<MdLibraryMusic aria-hidden="true" className="w-6 h-6" />}
+                                        title={t('wizard.musicGoal')}
+                                        description={t('wizard.musicGoalHint')}
+                                        active={(config.goal ?? savedGoal) === 'music'}
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
@@ -416,7 +427,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         <div className="space-y-3">
                             <div className="mb-3">
                                 <h2 className="setup-heading">{t('wizard.confirm')}</h2>
-                                <p className="text-ui-support text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : 'guide.copy.221')}</p>
+                                <p className="text-ui-support text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : config.goal === 'listening' ? 'wizard.listeningConfirm' : 'guide.copy.221')}</p>
                             </div>
 
                             {config.goal !== 'music' && /アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError) && <MicrophonePermissionGuide expanded />}
@@ -482,7 +493,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         name="display-choice"
                                         checked={!panelChoice}
                                         onChange={() => setPanelChoice(false)}
-                                    >{t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
+                                    >{t(config.goal === 'music' ? 'wizard.musicSimple' : config.goal === 'listening' ? 'wizard.listeningSimple' : 'wizard.simple')}
                                 </ChoiceCard>
                                 <ChoiceCard
 
@@ -513,7 +524,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     <div className="space-y-2">
                                         <h2 className="text-ui-heading font-bold text-foreground">{t('wizard.saved')}</h2>
                                         <p className="text-muted-foreground text-ui-support leading-relaxed">
-                                            {config.goal === 'music' ? t('wizard.musicComplete') : <>{t('guide.copy.237')}<strong className="text-foreground"> {t('guide.copy.238')}</strong>
+                                            {config.goal === 'music' ? t('wizard.musicComplete') : config.goal === 'listening' ? t('wizard.listeningComplete') : <>{t('guide.copy.237')}<strong className="text-foreground"> {t('guide.copy.238')}</strong>
                                             {t('guide.copy.239')}{t('wizard.diagnostics')}{t('guide.copy.240')}</>}</p>
                                     </div>
                                     <div className="flex flex-wrap justify-center gap-3">
@@ -556,7 +567,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         </div>
                     )}
                     {state === 'confirmation' && (<>
-                            <p id="wizard-save-scope" className="mb-2 text-right text-ui-support text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
+                            <p id="wizard-save-scope" className="mb-2 text-right text-ui-support text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : config.goal === 'listening' ? t('wizard.listeningApply') : t('guide.copy.235')}</p>
                             <div className="flex flex-wrap items-center gap-3">
                                 <Button variant="ghost" disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')}>{t('common.back')}</Button>
                                 <p id={nextReasonId} className="text-ui-support text-muted-foreground">{finalReason}</p>

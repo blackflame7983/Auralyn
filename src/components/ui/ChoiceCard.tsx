@@ -36,7 +36,7 @@ export const ChoiceCard = forwardRef<HTMLInputElement, ChoiceCardProps>(({ child
         <input {...props} {...activationHandlers} id={controlId} ref={ref} type="radio" className="absolute inset-0 z-10 m-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default" aria-describedby={[props['aria-describedby'], description ? `${controlId}-description` : undefined].filter(Boolean).join(' ') || undefined} />
         <span className={compact ? 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3' : 'flex flex-col items-center text-center'}>
             <span className={`setup-choice-icon grid shrink-0 place-items-center rounded-card ${compact ? 'row-span-2 h-11 w-11' : 'mb-2 h-12 w-12'}`}>{icon}</span>
-            <span role="heading" aria-level={3} className="text-ui-control font-semibold">{children}</span>
+            <span role="heading" aria-level={3} className="min-w-0 wrap-break-word text-ui-control font-semibold">{children}</span>
             {description && <span id={`${controlId}-description`} className="text-ui-support text-muted-foreground">{description}</span>}
         </span>
         <span aria-hidden="true" className="setup-choice-check absolute right-3 top-3 text-primary">✓</span>
