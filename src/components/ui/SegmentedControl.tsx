@@ -40,7 +40,8 @@ export function SegmentedControl<T extends string>({ label, options, value, onVa
             style={{ width: `${100 / Math.max(1, choices.length)}%`, transform: `translateX(${lastPosition.current * 100}%)`, opacity: selected >= 0 ? 1 : 0 }} />
         {choices.map((option, index) => {
             const active = option.value === value;
-            const style = cn('segment-option relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control py-2 text-ui-control transition-colors min-w-16 px-2',
+            // 押している間だけ 1px 沈む。選択の印の移動では、この文字を運ばない。
+            const style = cn('segment-option control-press relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control py-2 text-ui-control min-w-16 px-2',
                 active ? 'text-foreground' : 'text-muted-foreground',
                 'hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50');
             const control = <button type="button" className={style} ref={element => { buttons.current[index] = element; }} disabled={option.disabled} role="radio" aria-checked={active} tabIndex={index === (tabStop >= 0 ? tabStop : enabled[0]) ? 0 : -1}
