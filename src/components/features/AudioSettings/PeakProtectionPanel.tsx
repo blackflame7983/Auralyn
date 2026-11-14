@@ -8,14 +8,17 @@ import { listen } from '@tauri-apps/api/event';
 import { peakProtectionApi, type PeakConfig, type PeakStatus } from '@/api/peakProtection';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, numericDetails = false }: {
+export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, numericDetails = false, locked = false }: {
     onPendingChange?: (pending: boolean) => void;
     hideApplyNote?: boolean;
     /** 「数値の詳細を表示」が ON のときは、詳しい設定を開く。 */
     numericDetails?: boolean;
+    /** 本番保護（操作ロック）の間は、スイッチと数値と適用を止める。 */
+    locked?: boolean;
 } = {}) {
     const t = useMessages();
     const headingId = useId();
+    const lockReasonId = useId();
     const [status, setStatus] = useState<PeakStatus | null>(null);
     const [ceiling, setCeiling] = useState(-1);
     const [release, setRelease] = useState(100);
@@ -55,14 +58,14 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
         } catch { if (alive.current && serial === version.current) { setStatus(null); setFailed(true); } }
         finally { writing.current = false; if (alive.current) setBusy(false); }
     };
-    // ON はいまの天井と復帰時間で適用する。OFF は保存済みの数値のまま止める。
+    // ON はいまの天井と復帰時間で適用する。OFF は保存済みの数値のまま止める。本番保護中は書かない。
     const setEnabled = (enabled: boolean) => {
-        if (!status) return;
+        if (!status || locked) return;
         void write(enabled ? { enabled, ceilingDb: ceiling, releaseMs: release } : { ...status.config, enabled });
     };
-    // 数値の適用は ON と OFF を変えない。
+    // 数値の適用は ON と OFF を変えない。本番保護中は書かない。
     const applyValues = () => {
-        if (!status) return;
+        if (!status || locked) return;
         void write({ enabled: status.config.enabled, ceilingDb: ceiling, releaseMs: release });
     };
     const pending = status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
@@ -72,14 +75,15 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
     }, [pending, onPendingChange]);
     const valuesInvalid = !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
     const enabled = status?.config.enabled ?? false;
-    const applyDisabled = !status || busy || valuesInvalid;
-    // 無効な数値のまま ON にはしない。OFF は保存済みの数値で止められる。
-    const switchDisabled = !status || busy || (!enabled && valuesInvalid);
+    const applyDisabled = !status || busy || locked || valuesInvalid;
+    // 無効な数値のまま ON にはしない。OFF は保存済みの数値で止められる。本番保護中はどちらも止める。
+    const switchDisabled = !status || busy || locked || (!enabled && valuesInvalid);
     return <section aria-label={t('peak.title')} className="p-4 rounded-card border space-y-3">
         <div className="flex items-center justify-between gap-3">
             <h3 id={headingId} className="text-ui-heading font-semibold">{t('peak.title')}</h3>
-            <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={setEnabled} aria-labelledby={headingId} />
+            <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={setEnabled} aria-labelledby={headingId} aria-describedby={locked ? lockReasonId : undefined} />
         </div>
+        {locked && <p id={lockReasonId} className="text-ui-support text-muted-foreground">{t('peak.liveLocked')}</p>}
         <p className="text-ui-support text-muted-foreground">{t('peak.lead')}</p>
         <p className="text-ui-support text-muted-foreground">{t('peak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
@@ -93,8 +97,8 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
             <summary className="cursor-pointer text-ui-control font-semibold">{t('peak.details')}</summary>
             <div className="mt-3 space-y-3">
                 <div className="grid sm:grid-cols-2 gap-3">
-                    <Field label={t('peak.ceiling')}><Input type="number"  min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
-                    <Field label={t('peak.release')}><Input type="number"  min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
+                    <Field label={t('peak.ceiling')}><Input type="number" disabled={locked} min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
+                    <Field label={t('peak.release')}><Input type="number" disabled={locked} min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
                 </div>
                 <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('peak.apply')}</Button>
             </div>

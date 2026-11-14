@@ -547,6 +547,7 @@ const ja = {
     "peak.limitsTitle": "保護の範囲と設定の寿命",
     "peak.limits": "サンプルピーク用です。True Peak、入力やVST内で既に起きた音割れ、OBS・通話側の増幅は防げません。過大ピークの抑制は即時、切替・天井変更には5 msの平滑化、復帰には指定時間を使います。大きいピークでは音が変わるため録音と最終送出を再確認してください。設定は現在のアプリ内で保持し、Engineの再生成にも引き継ぎます。アプリ再起動時はOFFです。固定ゲイン提案の測定は保護OFFで行い、最終送出を保護ONで再確認してください。プロファイル・歌/雑談には保存せず、独立した録音試聴は対象外です。操作ロック中は変更できません。",
     "peak.failed": "状態または反映結果を確認できませんでした。設定を確認してから音声を開始し、再度お試しください。",
+    "peak.liveLocked": "本番保護（操作ロック）の間は変更できません。解除すると変えられます。",
 
     "truePeak.title": "配信用 true-peak 制限",
     "truePeak.lead": "配信へ送る音の突然の大きな山だけを小さくして、強い音を和らげます。",
@@ -4048,6 +4049,7 @@ const en: Record<MessageKey, string> = {
     "peak.limitsTitle": "Scope and setting lifetime",
     "peak.limits": "Sample peaks only. Does not prevent true peaks, clipping already present at input or inside VSTs, or gain added in OBS or calls. Over-limit peaks are attenuated immediately; switching and ceiling changes use 5 ms smoothing and recovery uses the selected release. Recheck recorded sound and the final receiver. Settings stay within the current app and are reapplied when the engine is recreated; app restart resets them to off. Measure fixed-gain proposals with protection off, then recheck the protected final output. Not included in profiles or live modes. Independent recording preview is outside this scope. Changes are blocked by control lock.",
     "peak.failed": "Could not confirm the status or application. Review settings, start audio and try again.",
+    "peak.liveLocked": "Can't be changed while control lock is on. Unlock to change it.",
 
     "truePeak.title": "Broadcast true-peak limit",
     "truePeak.lead": "Turns down only sudden loud peaks in the sound sent to the stream, so those peaks are softer.",
