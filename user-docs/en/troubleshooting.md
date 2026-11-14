@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 description: "Find checks and a next action for each symptom."
 order: 7
-uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Preparation", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Rescan all", "Try again"]
+uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Refresh", "Rescan all", "Try again"]
 ---
 
 ## No sound {#no-sound}
@@ -14,7 +14,7 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Prepar
 ## Others cannot hear you {#not-received}
 
 1. Check first: the receiving app's input must connect to Auralyn's output device.
-2. One action in Auralyn: open “Preparation” and check the chosen destination and output device.
+2. One action in Auralyn: open “Check the connection” and check the chosen destination and output device.
 3. If it persists: follow the [OBS](./obs.md#connect) or [call](./discord.md#connect) steps to check receiving-app mute and meters, then listen.
 
 ## Sound cuts out {#dropouts}
@@ -32,7 +32,7 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Prepar
 ## VST will not load {#vst-load}
 
 1. Check first: read the loading error and confirm the VST is installed.
-2. One action in Auralyn: open “Add VST”. If the list is empty, select “Rescan all”. If the list could not be read, select “Try again”.
+2. One action in Auralyn: open “Add VST”. When the list is present, use “Refresh” to reload it. Use “Rescan all” to search the folders again, and when the list is empty. If the list could not be read, select “Try again”.
 3. If it persists: review the original error detail and the VST installation location. While the saved chain is protected, current changes are not saved automatically.
 
 Use test tones only when they cannot reach streams, recordings or calls. A diagnosis without problems applies only to the items it could check.
