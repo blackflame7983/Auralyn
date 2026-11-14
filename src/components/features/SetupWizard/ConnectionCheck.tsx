@@ -262,7 +262,8 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         role="status"
                         className={`text-ui-support ${result?.reached === true ? 'text-success' : 'text-muted-foreground'}`}
                     >
-                        {audioRunning ? t('guide.copy.293') : t('guide.copy.294')}{' '}
+                        {/* エンジンの稼働ではなく、このセットアップの試し再生が流れているかを示す。 */}
+                        {audioRunning ? t('guide.copy.293') : t('guide.copy.294', { test: t('guide.copy.229') })}{' '}
                         {busy ? t('guide.copy.295') : renderNotice(t, message)}
                     </p>) : <p role="status" className="text-ui-support text-muted-foreground">{t('structure.receiverUnverified')}</p>}
         </section>
