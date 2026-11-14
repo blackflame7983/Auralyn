@@ -48,3 +48,11 @@ it('切り替え中は操作を止め、失敗したら理由を出す', async (
     expect(screen.getByRole('alert')).toHaveTextContent('プリセットの読み込みに失敗しました');
     expect(select).toBeEnabled();
 });
+
+it('切替前の自動退避は、保存した構成の一覧に出さない', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue(['__backup_previous']);
+    renderDesk({ onOpenVst: vi.fn() });
+    // 退避だけのときは、保存した構成がないときと同じ案内になる。
+    expect(await screen.findByText(/設定の保存・復帰/)).toBeVisible();
+    expect(screen.queryByRole('option', { name: '__backup_previous' })).not.toBeInTheDocument();
+});

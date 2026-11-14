@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
 import { Switch } from '@/components/ui/switch';
-import { presetApi } from '@/api/presets';
+import { presetApi, PROFILE_BACKUP_NAME } from '@/api/presets';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
@@ -29,7 +29,8 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
         void presetApi.list().then(list => {
             if (!active) return;
             if (!Array.isArray(list)) { setListFailed(true); return; }
-            setNames(list);
+            // 切替前の自動退避は、利用者が保存した構成ではないので出さない。
+            setNames(list.filter(name => name !== PROFILE_BACKUP_NAME));
         }).catch(() => { if (active) setListFailed(true); });
         return () => { active = false; };
     }, []);

@@ -21,6 +21,7 @@ import {
 } from 'react-icons/md';
 import {
     presetApi,
+    PROFILE_BACKUP_NAME,
     ProfileMeta,
     ProfileSaveCategories,
     ApplyProfileSummary,
@@ -33,7 +34,7 @@ import { audioApi, AudioDeviceList } from '../../../api/audio';
 import { BroadcastBundlePanel } from './BroadcastBundlePanel';
 import type { BundleOperation, BundleResult } from '../../../api/bundles';
 
-const BACKUP_NAME = '__backup_previous';
+const BACKUP_NAME = PROFILE_BACKUP_NAME;
 
 function NoticeText({ value }: { value: SettingsNotice }) { const t = useMessages(); return <>{renderNotice(t, value)}</>; }
 
