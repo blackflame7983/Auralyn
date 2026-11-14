@@ -14,15 +14,17 @@ it('読取りでは有効化せず、自分用の遅延が0である説明と保
     render(<BroadcastTruePeakPanel />); await act(async () => {});
     expect(request).toHaveBeenCalledWith();
     expect(request.mock.calls.every(args => args.length === 0)).toBe(true);
+    expect(screen.getByText(message('ja', 'peak.details')).closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('spinbutton', { name: message('ja', 'truePeak.ceiling') })).toHaveValue(-3);
+    expect(screen.getByText(message('ja', 'truePeak.lead'))).toBeInTheDocument();
     expect(screen.getByText(/自分用は 0 sample/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(message('ja', 'truePeak.limitsTitle')));
     expect(screen.getByText(/OBS 内部の処理/)).toBeInTheDocument();
     expect(screen.getByText(/デバイス側のサンプルレート変換は範囲外/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'truePeak.enable') })); await act(async () => {});
+    fireEvent.click(screen.getByRole('switch', { name: message('ja', 'truePeak.title') })); await act(async () => {});
     expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
     expect(screen.getByText(/48 sample/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'truePeak.disable') })); await act(async () => {});
+    fireEvent.click(screen.getByRole('switch', { name: message('ja', 'truePeak.title') })); await act(async () => {});
     expect(request).toHaveBeenLastCalledWith({ enabled: false, ceilingDb: -3, releaseMs: 150 });
     expect(screen.queryByText(message('ja', 'truePeak.notApplied'))).not.toBeInTheDocument();
 });
@@ -34,7 +36,7 @@ it('音楽鑑賞ではOFFと未取得を出さず、ONのときはOFFへ戻せ�
     request.mockResolvedValue(fixture(true));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(screen.getByRole('region', { name: message('ja', 'truePeak.title') })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'truePeak.disable') }));
+    fireEvent.click(screen.getByRole('switch', { name: message('ja', 'truePeak.title') }));
     await act(async () => {});
     expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
 });

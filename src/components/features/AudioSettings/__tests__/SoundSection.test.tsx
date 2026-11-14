@@ -68,6 +68,8 @@ it('音量の保護に未適用の数値があるまま小区分を移ると確�
     render(<><UnsavedLeaveDialog /><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></>);
     fireEvent.keyDown(await screen.findByRole('tab', { name: '音量の保護' }), { key: 'Enter' });
     const panel = await screen.findByRole('region', { name: '大きな音を抑える' });
+    // 天井と復帰時間は詳しい設定へ移した。未適用の確認は、開いた数値で行う。
+    fireEvent.click(within(panel).getByText('詳しい設定'));
     const ceiling = within(panel).getByRole('spinbutton', { name: '天井（dBFS）' });
     await waitFor(() => expect(ceiling).toHaveValue(-3));
     fireEvent.change(ceiling, { target: { value: '-6' } });
@@ -124,6 +126,6 @@ it('音楽鑑賞で配信用true-peakがONのときは出し、OFFに戻せる',
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(stats());
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const region = await screen.findByRole('region', { name: message('ja', 'truePeak.title') });
-    fireEvent.click(within(region).getByRole('button', { name: message('ja', 'truePeak.disable') }));
+    fireEvent.click(within(region).getByRole('switch', { name: message('ja', 'truePeak.title') }));
     await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ enabled: false })));
 });
