@@ -3,7 +3,7 @@ import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { audioApi, VstPlugin, type LoadedPlugin, type PluginCatalog, type PluginScanRequest, type RackPlugin, type ScanFailure, type ScanStats } from '../api/audio';
+import { audioApi, VstPlugin, type LoadedPlugin, type PluginCatalog, type PluginScanRequest, type RackPlugin, type ScanFailure, type ScanStats, type SkippedScanRoot } from '../api/audio';
 import { claimLegacyClassWarning, pendingStorageValue, reportedChannelLayout, samePlugin } from '../lib/pluginIdentity';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
@@ -57,6 +57,7 @@ export const usePlugins = () => {
     const [scanStats, setScanStats] = useState<ScanStats | null>(null);
     const [catalogRecovered, setCatalogRecovered] = useState(false);
     const [catalogSaveError, setCatalogSaveError] = useState<string | null>(null);
+    const [skippedRoots, setSkippedRoots] = useState<SkippedScanRoot[]>([]);
     const [retryingPath, setRetryingPath] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
@@ -588,6 +589,7 @@ export const usePlugins = () => {
         setScanStats(result.stats);
         setCatalogRecovered(result.recoveredFromCorrupt);
         setCatalogSaveError(result.saveError);
+        setSkippedRoots(result.skippedRoots ?? []);
     }, []);
 
     const scanPlugins = useCallback(async (request?: PluginScanRequest) => {
@@ -1004,6 +1006,7 @@ export const usePlugins = () => {
         scanStats,
         catalogRecovered,
         catalogSaveError,
+        skippedRoots,
         retryingPath,
         scanPlugins,
         retryPluginScan,

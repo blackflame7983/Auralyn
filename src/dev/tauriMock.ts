@@ -119,10 +119,17 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'get_obs_credentials': return null;
             // 履歴がない状態。null のままだと設定の OBS タブが件数参照で画面全体を落とす。
             case 'obs_setup_history': return [];
-            case 'scan_plugin_catalog':
+            case 'scan_plugin_catalog': {
                 if (new URLSearchParams(location.search).get('previewScanError') === '1') throw new Error('一覧を取れませんでした');
-                return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null };
-            case 'retry_plugin_scan': return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null };
+                const extra = Array.isArray(args.extraRoots) ? args.extraRoots.filter((path: unknown): path is string => typeof path === 'string') : [];
+                const showExtra = new URLSearchParams(location.search).get('previewScanFolders') === '1';
+                const plugins = showExtra ? extra.filter(path => !/missing/i.test(path)).map((path, index) => ({
+                    name: 'Room', path: `${path.replace(/[\\/]+$/, '')}\\Room.vst3`, vendor: 'Example', category: 'Fx|Delay', version: '1', id: `extra-${index}`,
+                })) : [];
+                const skippedRoots = showExtra ? extra.filter(path => /missing/i.test(path)).map(path => ({ path, reason: 'missing' })) : [];
+                return { plugins, failures: [], stats: { reused: 0, scanned: plugins.length, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null, skippedRoots };
+            }
+            case 'retry_plugin_scan': return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null, skippedRoots: [] };
             case 'get_window_activity': return true;
             case 'obs_live_scene_status': return { connected: false, connectionGeneration: 0, sequence: 0 };
             case 'set_loudness_measurement':

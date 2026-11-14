@@ -1,4 +1,5 @@
 import type { InputSource, InputSourceRequest, ProcessInputCandidate } from '@/lib/inputSource';
+import { readExtraScanFolders } from '@/lib/vstScanFolders';
 import { invoke } from "@tauri-apps/api/core";
 import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
 
@@ -58,6 +59,13 @@ export interface ScanStats {
     removed: number;
 }
 
+export type SkippedScanRootReason = 'missing' | 'not_directory' | 'invalid';
+
+export interface SkippedScanRoot {
+    path: string;
+    reason: SkippedScanRootReason;
+}
+
 export interface PluginCatalog {
     plugins: VstPlugin[];
     failures: ScanFailure[];
@@ -65,11 +73,18 @@ export interface PluginCatalog {
     generation: number;
     recoveredFromCorrupt: boolean;
     saveError: string | null;
+    skippedRoots?: SkippedScanRoot[];
 }
 
 export interface PluginScanRequest {
     mode?: 'incremental' | 'full';
     retryFailed?: boolean;
+    extraRoots?: string[];
+}
+
+function withExtraRoots(extraRoots: string[] | undefined): { extraRoots?: string[] } {
+    const roots = extraRoots ?? readExtraScanFolders();
+    return roots.length > 0 ? { extraRoots: roots } : {};
 }
 
 export interface AudioConfig {
@@ -136,17 +151,18 @@ export const audioApi = {
     stop: async () => {
         return await invoke("stop_audio");
     },
-    scanPlugins: async (): Promise<VstPlugin[]> => {
-        return await invoke("scan_plugins");
+    scanPlugins: async (extraRoots?: string[]): Promise<VstPlugin[]> => {
+        return await invoke("scan_plugins", withExtraRoots(extraRoots));
     },
     scanPluginCatalog: async (request?: PluginScanRequest): Promise<PluginCatalog> => {
         return await invoke("scan_plugin_catalog", {
             mode: request?.mode,
             retryFailed: request?.retryFailed ?? false,
+            ...withExtraRoots(request?.extraRoots),
         });
     },
-    retryPluginScan: async (path: string): Promise<PluginCatalog> => {
-        return await invoke("retry_plugin_scan", { path });
+    retryPluginScan: async (path: string, extraRoots?: string[]): Promise<PluginCatalog> => {
+        return await invoke("retry_plugin_scan", { path, ...withExtraRoots(extraRoots) });
     },
     clearBlacklist: async (): Promise<void> => {
         return await invoke("clear_blacklist");
