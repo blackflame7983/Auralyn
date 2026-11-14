@@ -17,7 +17,7 @@ When music listening is already set up, “Playback” follows Current status. I
 
 In the right column, “Microphone” (“Playback source” while listening to music) shows incoming sound, and “Output” shows the level after processing. Current status shows the same output on a wider bar as “Level being sent” (“Output level” while listening to music). The bar follows the current level. The output number in the right column holds a recent peak. The output may also say “A bit low”, “In range”, or “Too loud”. Moving meters do not confirm that a stream or call is receiving you.
 
-While waiting, silent, or stopped, the bars keep their size and position.
+While waiting, silent, or stopped, the bars keep their size and position. Incoming sound stays on this bar and the sound-flow band at the current level. The value is not delayed to look smoother.
 
 ## Sound flow {#flow}
 

@@ -36,6 +36,8 @@ Save scene linking settings in their own section. Once enabled and saved, linkin
 
 Choose a theme in “Settings” → “Appearance”. “Gaming” uses cut corners and italic headings. It glows only while a primary button is pressed, and while emergency mute is on. You can also choose whether to show numerical details. Open details when needed.
 
+Buttons sink slightly only while pressed. A switch thumb, and the mark when choosing one of several options, slide into place. Whether a save worked is shown by the result on screen. Incoming sound stays on the meters and the sound-flow band at the current level. The value is not delayed to look smoother. Turning off animation effects in Windows stops the sink and the slide, and leaves the color change. The motion is the same in every theme.
+
 Display changes take effect immediately without changing audio connections or mute.
 
 ## Hotkeys {#shortcuts}
