@@ -465,7 +465,9 @@ test.describe('メーター数値の幅', () => {
             await settleLayoutMotion(page);
             const baseline = await Promise.all([input, output].map(locator => locator.boundingBox()));
             await emit(1.2);
-            const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
+            // 段階4の「送る音」も同じ部品でクリップを出せる。寸法を見るのは右の列の2本。
+            const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+            const resets = column.getByRole('button', { name: /クリップ表示を消す/ });
             await expect(resets).toHaveCount(2);
             await settleLayoutMotion(page);
             for (const [i, locator] of [input, output].entries()) {
@@ -475,7 +477,7 @@ test.describe('メーター数値の幅', () => {
             await page.screenshot({ path: testInfo.outputPath('clip.png') });
             // 出力のクリップは、入力の履歴とは独立して解除する。
             await emit(0.1);
-            await page.getByRole('button', { name: '出力のクリップ表示を消す', exact: true }).click();
+            await column.getByRole('button', { name: '出力のクリップ表示を消す', exact: true }).click();
             await expect(resets).toHaveCount(1);
             await resets.click();
             await emit(0);

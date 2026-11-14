@@ -1,6 +1,17 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
+
+/**
+ * 波形を描かないときの状態。
+ * live のときだけ波形を描く。止まっているときは停止、動いているときは入力の状態を文字にする。
+ * stale と waiting は、meterStatusLabel がどちらも「レベル未受信」にする。
+ */
+export function flowIdleState(running: boolean, input: MeterState, output: MeterState): MeterState | null {
+    if (running && (input === 'live' || output === 'live')) return null;
+    return running ? input : 'stopped';
+}
 
 interface Sample { inn: number; out: number }
 
@@ -67,7 +78,8 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const history = useRef<Sample[]>([]);
     const lastPaint = useRef<{ samples: Sample[]; flowing: boolean }>({ samples: [], flowing: false });
-    const live = running && (input.state === 'live' || output.state === 'live');
+    const idle = flowIdleState(running, input.state, output.state);
+    const live = idle === null;
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -104,6 +116,8 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         </div>
         <div className="relative h-[72px]">
             <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
+            {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
+            {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 top-1 bottom-6 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
             <div className="pointer-events-none absolute inset-x-0 bottom-1 flex gap-3 text-ui-support text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-2 w-4 rounded-full bg-muted-foreground/50" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
