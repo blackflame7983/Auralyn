@@ -26,6 +26,18 @@ it('読取りでは有効化せず、自分用の遅延が0である説明と保
     expect(request).toHaveBeenLastCalledWith({ enabled: false, ceilingDb: -3, releaseMs: 150 });
     expect(screen.queryByText(message('ja', 'truePeak.notApplied'))).not.toBeInTheDocument();
 });
+it('音楽鑑賞ではOFFと未取得を出さず、ONのときはOFFへ戻せる', async () => {
+    const request = vi.spyOn(broadcastTruePeakApi, 'request').mockResolvedValue(fixture(false));
+    render(<BroadcastTruePeakPanel music />);
+    await act(async () => {});
+    expect(screen.queryByRole('region', { name: message('ja', 'truePeak.title') })).not.toBeInTheDocument();
+    request.mockResolvedValue(fixture(true));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(screen.getByRole('region', { name: message('ja', 'truePeak.title') })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'truePeak.disable') }));
+    await act(async () => {});
+    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
+});
 it('有効でも分離出力でないときは未適用と遅延 0 を出す', async () => {
     vi.spyOn(broadcastTruePeakApi, 'request').mockResolvedValue(fixture(true, 0, false));
     render(<BroadcastTruePeakPanel />); await act(async () => {});

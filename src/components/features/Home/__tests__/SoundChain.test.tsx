@@ -48,15 +48,16 @@ const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
 beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
-it('外部 VST を使っていないと確認できたら薄い1行と追加の入口だけにし、未確認なら編集の入口を残す', () => {
+it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
     const p = props();
     const vst = <VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} />;
-    const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
+    // ボタン名は統計の段ではなく、画面側の件数で決まる。
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} vstCount={0} /></RuntimeStatsContext.Provider>);
     const row = screen.getAllByRole('listitem')[2];
     expect(row).toHaveTextContent('外部VST'); expect(row).toHaveTextContent('使っていません');
     expect(row).toHaveAttribute('data-on', 'false');
-    expect(screen.queryByRole('button', { name: 'VSTを編集' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'VSTを開く' })).not.toBeInTheDocument();
     const hint = message('ja', 'chain.vstEmptyHint');
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '外部VST' }));
@@ -64,9 +65,11 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     expect(p.onOpenVst).toHaveBeenCalledWith(true);
-    view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
-    expect(screen.getByRole('button', { name: 'VSTを編集' })).toBeInTheDocument();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} vstCount={0} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
     expect(screen.queryByText('使っていません')).not.toBeInTheDocument();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} vstCount={null} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByRole('button', { name: 'VSTを開く' })).toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カードで並べ、操作できない間は各段の設定状態を表示する (%s)', locale => {
@@ -173,7 +176,7 @@ it('VST の行から VST のページを開き、ボイスチェックは音調�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを開く' })); expect(p.onOpenVst).toHaveBeenCalledWith(false);
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
     // ボイスチェックは上の帯へ移した。音調整の見出しには残さない。
     expect(screen.queryByRole('button', { name: 'ボイスチェック' })).not.toBeInTheDocument();
@@ -255,7 +258,7 @@ it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示に�
 it('空のVSTの追加は常にページを開き、追加ボタンへ焦点を頼む', () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
     const p = props();
-    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} /></RuntimeStatsContext.Provider>);
+    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstCount={0} /></RuntimeStatsContext.Provider>);
     const add = screen.getByRole('button', { name: '追加' });
     expect(add).not.toHaveAttribute('aria-expanded');
     fireEvent.click(add);
@@ -276,7 +279,7 @@ it.each(['voice', 'music'] as const)('起動時の音調整カードは開閉せ
     localStorage.setItem('auralyn_display_purpose', purpose);
     render(<SoundChain {...props()} />);
     expect(within(screen.getByRole('list')).queryAllByRole('button', { expanded: true })).toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'VSTを編集' })).not.toHaveAttribute('aria-expanded');
+    expect(screen.getByRole('button', { name: 'VSTを開く' })).not.toHaveAttribute('aria-expanded');
 });
 
 
@@ -334,4 +337,33 @@ it.each(['ja', 'en'] as const)('ノイズ低減の図は実測にないdB値を�
     view.rerender(content());
     expect(graphic()).toHaveTextContent(message(locale, 'flow.disabled'));
     expect(graphic()).not.toHaveTextContent(/dB/);
+    quick.noiseOn = true;
+    quick.noiseMode = 'unknown';
+    view.rerender(content());
+    expect(graphic()).toHaveTextContent(message(locale, 'flow.unknown'));
+    expect(graphic()).not.toHaveTextContent(message(locale, 'master.nrLow'));
+});
+
+it.each([
+    ['voice', false],
+    ['music', false],
+    ['voice', true],
+] as const)('VSTが0個なら用途と停止にかかわらず追加になり、追加へ焦点を頼む（%s, 停止=%s）', (purpose, stopped) => {
+    localStorage.setItem('auralyn_display_purpose', purpose);
+    const p = props();
+    render(<SoundChain {...p} stopped={stopped} isEngineRunning={!stopped} vstCount={0} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.vstAdd') }));
+    expect(p.onOpenVst).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('button', { name: message('ja', 'sound.openVst') })).not.toBeInTheDocument();
+});
+
+it('VSTの個数が分からないときと1個以上のときはVSTを開き、追加へ焦点を移さない', () => {
+    const p = props();
+    const view = render(<SoundChain {...p} vstCount={null} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'sound.openVst') }));
+    expect(p.onOpenVst).toHaveBeenCalledWith(false);
+    p.onOpenVst.mockClear();
+    view.rerender(<SoundChain {...p} vstCount={2} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'sound.openVst') }));
+    expect(p.onOpenVst).toHaveBeenCalledWith(false);
 });

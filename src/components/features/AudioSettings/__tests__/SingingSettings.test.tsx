@@ -112,7 +112,8 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     } }));
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
     const legacy = screen.getByRole('radio', { name: message(locale, 'settings.AudioSettingsModal.098') });
-    await waitFor(() => expect(legacy).toBeDisabled());
+    // OFFでも種類は選べる。ONにしたあとの即時反映は、この下の確認のまま。
+    await waitFor(() => expect(legacy).toBeEnabled());
     expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
     fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
@@ -242,6 +243,33 @@ it.each(['low', 'high', 'smart', 'venue'] as const)('ノイズ低減OFFでも保
         expect(await screen.findByRole('radio', { name })).toHaveAttribute('aria-checked', 'true');
     } else expect(screen.queryByText(/詳細で調整中/)).not.toBeInTheDocument();
     expect(setNoise).not.toHaveBeenCalled();
+});
+
+it('声を整えるがOFFでも種類を保存し、ONにはしない', async () => {
+    current.config = { active: false, preset: 'warm', amount: 0.4, singing: null };
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+        builtInEffectsEnabled: false, builtInEffectsPreset: 'warm', builtInEffectsAmount: 0.4,
+        noiseReductionEnabled: true, noiseReductionMode: 'low',
+    } as EngineRuntimeStats);
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const bright = await screen.findByRole('radio', { name: message('ja', 'settings.AudioSettingsModal.100') });
+    await waitFor(() => expect(bright).toBeEnabled());
+    fireEvent.click(bright);
+    await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'apply',
+        config: expect.objectContaining({ active: false, preset: 'bright', amount: 0.4 }),
+    })));
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
+});
+
+it('統計のモードが分からないときは弱も強も選ばず、詳細で調整中とも出さない', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: false, noiseReductionMode: 'later', noiseControlStrength: 0.8, noiseVoiceGuard: true } as EngineRuntimeStats);
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const low = await screen.findByRole('radio', { name: message('ja', 'master.nrLow') });
+    await waitFor(() => expect(low).toBeEnabled());
+    expect(low).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('radio', { name: message('ja', 'master.nrHigh') })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText(/詳細で調整中/)).not.toBeInTheDocument();
 });
 
 it('英語でも詳細モードを表示し、弱を選ぶ明示操作でだけ設定を反映する', async () => {
