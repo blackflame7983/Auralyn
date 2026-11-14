@@ -462,10 +462,31 @@ body:has(.app-shell) {
 .notice-lane [data-sonner-toaster] { position: absolute; top: 0; height: var(--front-toast-height); }
 .home-action-icon { width: 2rem; padding-inline: 0; }
 .live-controls > div, .live-controls section { justify-content: center; }
+/* 共通の押下（#541）。押している間だけ 1px 沈む。filter は含めず、ゲーミングの発光は遅らせない。 */
+/* press-feedback とセットアップの主ボタンより前に書き、そちらの transform を優先する。 */
+.control-press {
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+}
+.control-press:active:not(:disabled) { transform: translateY(1px); }
+/* つまみは Tailwind の translate でも transform でも滑る。動きを減らすときは色だけ。 */
+.switch-thumb {
+  transition-property: translate, transform, background-color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .control-press { transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow; }
+  .control-press:active:not(:disabled) { transform: none; }
+  .switch-thumb { transition-property: background-color; }
+  /* 全体の軽減より優先し、選択印の位置は瞬時に切り替える。不透明度は残す。 */
+  [data-segment-indicator] { transition-property: opacity, background-color, border-color; }
+}
 .press-feedback {
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
 }
-/* 選択の移動は共通セグメントの背景で伝え、文字自体は上下させない。 */
+/* 選択の移動は共通セグメントの印で伝え、文字は印と一緒に運ばない。 */
 .press-feedback:active:not(:disabled) { transform: translateY(2px) scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
   .press-feedback, .press-feedback:active:not(:disabled) { transform: none; transition: none; }
