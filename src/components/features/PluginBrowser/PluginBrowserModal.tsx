@@ -433,11 +433,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           <Button variant="outline"
             onClick={() => onScan()}
             disabled={isLoading || Boolean(retryingPath)}
-            aria-label={t('pluginBrowser.rescanAccessible')}
-
-            title={t('pluginBrowser.rescan')}
+            title={t('pluginBrowser.refreshHint')}
+            className="h-auto min-h-10 gap-2 whitespace-normal"
           >
-            <MdRefresh className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <MdRefresh aria-hidden="true" className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            {t('pluginBrowser.refresh')}
           </Button>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -589,7 +589,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             </div>
           )}
           {!isLoading && (stats || recoveredFromCorrupt || saveError || failures.length > 0) && <section className="space-y-2 border-t border-border pt-3" aria-label={t('pluginBrowser.failuresTitle')}>
-            {stats && <p role="status">{t('pluginBrowser.scanStats', { reused: stats.reused, scanned: stats.scanned, removed: stats.removed })}</p>}
+            {stats && <details>
+              <summary className="cursor-pointer text-ui-support">{t('pluginBrowser.scanDetails')}</summary>
+              <p role="status" className="mt-2">{t('pluginBrowser.scanStats', { reused: stats.reused, scanned: stats.scanned, removed: stats.removed })}</p>
+            </details>}
             {recoveredFromCorrupt && <p role="status">{t('pluginBrowser.catalogRecovered')}</p>}
             {saveError && <p role="alert">{t('pluginBrowser.catalogSaveFailed')}</p>}
             {failures.length > 0 && <>
