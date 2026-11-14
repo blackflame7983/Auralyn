@@ -466,8 +466,9 @@ describe('セットアップの接続チェック', () => {
         const base = vi.mocked(invoke).getMockImplementation()!;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'stop_audio'
             ? Promise.reject(new Error('停止失敗')) : base(command, args, options));
-        fireEvent.click(screen.getByRole('button', { name: '入力を選び直す' }));
-        await waitFor(() => expect(screen.getByRole('button', { name: '入力を選び直す' })).toBeEnabled());
+        // 確認から入力へ戻る操作は、左の手順になった（#543）。
+        fireEvent.click(screen.getByRole('button', { name: 'マイクへ戻る' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'マイクへ戻る' })).toBeEnabled());
         expect(screen.getByRole('heading', { name: '設定と接続の確認' })).toBeInTheDocument();
     });
 
@@ -508,19 +509,22 @@ describe('セットアップの接続チェック', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'テスト音で OBS への到達を確認' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: 'テスト音で OBS への到達を確認' }));
         await waitFor(() => expect(finish).toBeDefined());
-        expect(screen.getByRole('button', { name: '出力先を選び直す' })).toBeDisabled();
+        // 「出力先を選び直す」は外し、確認中は「戻る」と左の手順を止める（#543）。
+        expect(screen.getByRole('button', { name: '戻る', exact: true })).toBeDisabled();
+        expect(screen.getByRole('button', { name: '出力先へ戻る' })).toBeDisabled();
         expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'セットアップを閉じる' })).toBeDisabled();
         const errorListener = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-stream-error')![1];
         await act(async () => { errorListener({ event: 'audio-stream-error', id: 1, payload: 'device removed' }); });
         await act(async () => { finish({ reached: true }); });
         expect(screen.getByRole('status')).toHaveTextContent('音声が中断されました。');
-        expect(screen.getByRole('button', { name: '出力先を選び直す' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: '戻る', exact: true })).toBeEnabled();
     });
 
     it('入力の再検出で消えたデバイスを保持せず、接続し直せる', async () => {
         await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: '入力を選び直す' }));
+        // 確認から入力へ戻る操作は、左の手順になった（#543）。
+        fireEvent.click(screen.getByRole('button', { name: 'マイクへ戻る' }));
         await screen.findByRole('combobox', { name: '機器' });
         inputs = [];
         fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
@@ -536,7 +540,8 @@ describe('セットアップの接続チェック', () => {
         const { onApplyConfig, onClose } = await quickStart();
         fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
         await screen.findByRole('button', { name: 'マイクの確認を停止' });
-        fireEvent.click(screen.getByRole('button', { name: '出力先を選び直す' }));
+        // 確認の「戻る」は出力先の手順へ戻し、テスト音を止めてから移る（#543）。
+        fireEvent.click(screen.getByRole('button', { name: '戻る', exact: true }));
         await screen.findByRole('heading', { name: '音の出力先を選んでください' });
         expect(invoke).toHaveBeenCalledWith('stop_audio');
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
@@ -739,8 +744,9 @@ describe('PC audio purpose', () => {
     it('OBS の仮想出力から music に切り替えると物理出力を選び直す', async () => {
         inputs = [mic, device('CABLE Output', true)]; outputs = [cable, device('Headphones')];
         await openWizard(); await chooseObsRoute();
-        fireEvent.click(screen.getByRole('button', { name: '入力を選び直す' }));
-        fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+        // 確認から入力へ戻る操作は、左の手順になった（#543）。
+        fireEvent.click(screen.getByRole('button', { name: 'マイクへ戻る' }));
+        fireEvent.click(screen.getByRole('button', { name: '戻る', exact: true }));
         await toConfirm();
         expect(screen.getByText('Headphones')).toBeInTheDocument();
         expect(screen.queryByText('CABLE Input (VB-Audio)')).not.toBeInTheDocument();
@@ -933,7 +939,8 @@ describe('セットアップの見た目と動き（#294）', () => {
         });
         expect(rows[3]).toHaveAttribute('aria-current', 'step');
         expect(within(rows[3]).queryByText(completed)).not.toBeInTheDocument();
-        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: message(locale, 'wizard.outputAgain') }));
+        // 確認から出力先へ戻る操作は「戻る」になった（#543）。
+        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: message(locale, 'common.back'), exact: true }));
         await waitFor(() => expect(rows[2]).toHaveAttribute('aria-current', 'step'));
         expect(within(rows[2]).queryByText(completed)).not.toBeInTheDocument();
         expect(rows[3]).not.toHaveAttribute('aria-current');
