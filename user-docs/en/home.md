@@ -2,24 +2,24 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "Compare with VST off", "VST", "Measure level", "Measure surrounding sound", "Basics"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Not muted", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "Compare with VST off", "VST", "Measure level", "Measure surrounding sound", "Basics"]
 ---
 
 ## Current status {#stage}
 
-Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. “Sing” and “Talk” switch there too. An unsaved adjustment is shown as “Custom sound”. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. While listening to music, the label is “Check playback”. “Compare with VST off” inside it uses the same state as “Compare without VST” in the right column.
+Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. “Sing” and “Talk” switch there too. The card shows “Mode” beside the name. An unsaved adjustment is shown as “Custom sound”. Incoming sound, “Level being sent”, and whether the output is muted are on this card. When it is not muted, the card says “Not muted”. When the output is muted or the volume is zero, it says “Output muted / volume zero”. While listening to music, the card shows the path from the playback source to the output, and “Output level”. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. While listening to music, the label is “Check playback”. “Compare with VST off” inside it uses the same state as “Compare without VST” in the right column.
 
 “Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
 ## Meters {#meters}
 
-In the right column, “Microphone” (“Playback source” while listening to music) shows incoming sound, and “Output” shows the level after processing. The bar follows the current level. The output number holds a recent peak. The output may also say “A bit low”, “In range”, or “Too loud”. Moving meters do not confirm that a stream or call is receiving you.
+In the right column, “Microphone” (“Playback source” while listening to music) shows incoming sound, and “Output” shows the level after processing. Current status shows the same output on a wider bar as “Level being sent” (“Output level” while listening to music). The bar follows the current level. The output number in the right column holds a recent peak. The output may also say “A bit low”, “In range”, or “Too loud”. Moving meters do not confirm that a stream or call is receiving you.
 
 While waiting, silent, or stopped, the bars keep their size and position.
 
 ## Sound flow {#flow}
 
-One band stacks the level before processing and the level after. “Measure level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The waveform is drawn only while sound is coming in. While silent, waiting, or stopped, the band shows that state in words where the waveform would be. “Measure level” starts from the heading of this band.
 
 ## Sound adjustments {#sound}
 
