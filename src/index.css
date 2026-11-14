@@ -782,23 +782,25 @@ html[data-app-hidden="true"] *::after {
   .disclosure-panel, .disclosure-content { transition: none; }
 }
 
-/* 段階 H の仮の寸法。数値の正本は src/lib/largeWindow.ts。変えるときは両方を一緒に直す。
+/* 段階 H の寸法（実機で測って決めた）。数値の正本は src/lib/largeWindow.ts。変えるときは両方を一緒に直す。
    メディアクエリはカスタムプロパティを読めないので、同じ数値をここに書く。 */
 .home-content { width: 100%; max-width: 1180px; }
 [data-home-tier="2"] { display: none; }
-@media (min-height: 860px) {
+@media (min-height: 800px) {
   [data-home-tier="2"] { display: block; }
 }
 @media (min-width: 1400px) {
   .home-content:has(> .home-connect-column) {
     max-width: 1480px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
     column-gap: 1rem;
     align-items: start;
   }
   .home-content:has(> .home-connect-column) > * { grid-column: 1; min-width: 0; }
-  .home-content:has(> .home-connect-column) > .home-connect-column { grid-column: 2; grid-row: 1 / -1; }
+  /* 接続の列の高さで左の行が伸びて空きができないよう、列は行の高さに数えない（高さ 0 で中身を下へはみ出させる）。
+     はみ出した分も .home-main のスクロールの範囲に入る。 */
+  .home-content:has(> .home-connect-column) > .home-connect-column { grid-column: 2; grid-row: 1 / span 20; height: 0; overflow: visible; }
 }
 .settings-page { container-type: inline-size; container-name: settings-page; }
 /* 拡大で列が狭いとき、説明が折り返せないボタンの横で1文字幅まで潰れないようにする。

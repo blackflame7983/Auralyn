@@ -37,12 +37,20 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
     for (const size of sizes) {
         await page.setViewportSize(size);
         const tier = page.locator('#home-noise [data-home-tier="2"]');
-        if (size.height >= 860) await expect(tier).toBeVisible();
+        if (size.height >= 800) await expect(tier).toBeVisible();
         else await expect(tier).toBeHidden();
         const home = page.locator('.home-content');
         const display = await home.evaluate(element => getComputedStyle(element).display);
         expect(display).toBe(size.width >= 1400 ? 'grid' : 'block');
         if (size.width >= 1400) await expect(page.getByRole('button', { name: '接続の詳細', exact: true })).toHaveAttribute('aria-expanded', 'true');
+        // 接続の列の高さで左の行が伸びないこと（2026-11-14 の実機で、音調整のカードが窓の下へ押し出された）。
+        // 左の列の隣り合う区画の間は、1列のときと同じく狭いままにする。
+        const gaps = await home.evaluate(element => {
+            const left = [...element.children].filter(child => !child.classList.contains('home-connect-column') && child.getBoundingClientRect().height > 0);
+            const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
+            return left.slice(1).map((child, index) => (child.getBoundingClientRect().top - left[index].getBoundingClientRect().bottom) / zoom);
+        });
+        for (const gap of gaps) expect(gap).toBeLessThanOrEqual(32);
         const fit = await page.evaluate(() => {
             const shell = document.querySelector('.app-shell')!.getBoundingClientRect();
             const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
@@ -59,7 +67,7 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         expect(fit.shellHeight).toBeLessThanOrEqual(size.height + 1);
         expect(fit.overflowX).toBeLessThanOrEqual(1);
         expect(fit.overflowY).toBeLessThanOrEqual(1);
-        readings.push(`${size.width}x${size.height} tier=${size.height >= 860} column=${size.width >= 1400} zoom=${fit.zoom} shell=${Math.round(fit.shellWidth)}x${Math.round(fit.shellHeight)}`);
+        readings.push(`${size.width}x${size.height} tier=${size.height >= 800} column=${size.width >= 1400} zoom=${fit.zoom} shell=${Math.round(fit.shellWidth)}x${Math.round(fit.shellHeight)}`);
     }
     console.log(readings.join('\n'));
 });

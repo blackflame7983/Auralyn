@@ -19,7 +19,7 @@ it('拡大中のポップアップとドラッグは、見た目の移動量を�
     expect(unzoomDrag({ x: 113, y: 56 }, 1.13)).toEqual({ x: 113 / 1.13, y: 56 / 1.13 });
 });
 
-it('仮の寸法は CSS のメディアクエリと同じ数値を使う', () => {
+it('寸法は CSS のメディアクエリと同じ数値を使う', () => {
     const css = readFileSync(resolve(import.meta.dirname, '../../index.css'), 'utf8');
     expect(css).toContain(`min-height: ${largeWindow.tier2MinHeight}px`);
     expect(css).toContain(`min-width: ${largeWindow.connectColumnMinWidth}px`);

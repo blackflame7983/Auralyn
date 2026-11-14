@@ -1,7 +1,7 @@
-/** 段階 H の仮の寸法。実機（WebView2）で測ってから、この定数と `src/index.css` の同じ数値、`docs/DESIGN.md` 10.8 を一緒に変える。 */
+/** 段階 H の寸法。2026-11-14 に実機（WebView2）で測って決めた。変えるときは `src/index.css` の同じ数値と `docs/DESIGN.md` 10.8 を一緒に直す。 */
 export const largeWindow = {
     /** ホームの2段目を出す窓の高さ（px）。`@media (min-height)` と一致させる。 */
-    tier2MinHeight: 860,
+    tier2MinHeight: 800,
     /** ホームの接続の列を出す窓の幅（px）。`@media (min-width)` と一致させる。 */
     connectColumnMinWidth: 1400,
     /** ページを2列にする、ページの幅（px）。コンテナクエリと一致させる。 */
