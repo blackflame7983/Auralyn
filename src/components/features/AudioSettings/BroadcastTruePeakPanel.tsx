@@ -8,11 +8,13 @@ import { listen } from '@tauri-apps/api/event';
 import { broadcastTruePeakApi, type BroadcastTruePeakConfig, type BroadcastTruePeakStatus } from '@/api/broadcastTruePeak';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false, music = false }: {
+export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false, music = false, numericDetails = false }: {
     onPendingChange?: (pending: boolean) => void;
     hideApplyNote?: boolean;
     /** 音楽鑑賞では、配信用の制限がONのときだけ出す。 */
     music?: boolean;
+    /** 「数値の詳細を表示」が ON のときは、詳しい設定を開く。 */
+    numericDetails?: boolean;
 } = {}) {
     const t = useMessages();
     const headingId = useId();
@@ -21,6 +23,7 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
     const [release, setRelease] = useState(100);
     const [busy, setBusy] = useState(false);
     const [failed, setFailed] = useState(false);
+    const [detailsOpen, setDetailsOpen] = useState(numericDetails);
     const alive = useRef(false);
     const version = useRef(0);
     const writing = useRef(false);
@@ -43,6 +46,8 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
         void read(); const timer = setInterval(() => { void read(); }, 500);
         return () => { active = false; alive.current = false; version.current++; clearInterval(timer); removeAppVisibilityListener(visible); subscriptions.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
     }, []);
+    // 数値の詳細を出したときは、天井と復帰時間を開く。利用者が閉じても、設定が ON のあいだは開き直さない。
+    useEffect(() => { if (numericDetails) setDetailsOpen(true); }, [numericDetails]);
     const write = async (config: BroadcastTruePeakConfig) => {
         if (!status || writing.current || isAppHidden()) return;
         writing.current = true; setBusy(true); setFailed(false); const serial = ++version.current;
@@ -80,12 +85,9 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
             <h3 id={headingId} className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>
             <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={setEnabled} aria-labelledby={headingId} />
         </div>
+        <p className="text-ui-support text-muted-foreground">{t('truePeak.lead')}</p>
         <p className="text-ui-support text-muted-foreground">{t('truePeak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
-        <div className="grid sm:grid-cols-2 gap-3 text-ui-support">
-            <Field label={t('truePeak.ceiling')}><Input type="number" min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
-            <Field label={t('truePeak.release')}><Input type="number" min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
-        </div>
         <p role="status" className="text-ui-support">{!status ? t('truePeak.unknown') : t(status.config.enabled ? 'truePeak.on' : 'truePeak.off')}
             {status?.config.enabled && ` · ${status.config.ceilingDb.toFixed(1)} dBFS / ${status.config.releaseMs} ms`}
             {status?.pending && ` · ${t('truePeak.pending')}`}
@@ -94,7 +96,16 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
         {status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         {status && <p className="text-ui-support">{t('truePeak.latency', { samples: String(status.addedLatencySamples) })}</p>}
         {status?.config.enabled && !status.applied && <p className="text-ui-support">{t('truePeak.notApplied')}</p>}
-        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('truePeak.apply')}</Button>
+        <details open={detailsOpen} onToggle={event => setDetailsOpen(event.currentTarget.open)} className="text-ui-support">
+            <summary className="cursor-pointer text-ui-control font-semibold">{t('peak.details')}</summary>
+            <div className="mt-3 space-y-3">
+                <div className="grid sm:grid-cols-2 gap-3">
+                    <Field label={t('truePeak.ceiling')}><Input type="number" min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
+                    <Field label={t('truePeak.release')}><Input type="number" min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>
+                </div>
+                <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('truePeak.apply')}</Button>
+            </div>
+        </details>
         <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('truePeak.limitsTitle')}</summary><p className="mt-2">{t('truePeak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('truePeak.failed')}</p>}
     </section>;

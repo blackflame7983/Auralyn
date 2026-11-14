@@ -515,9 +515,11 @@ const ja = {
     "recovery.openSettings": "音声設定で機器と再開方法を確認",
 
     "peak.title": "大きな音を抑える",
+    "peak.lead": "突然の大きな音だけを小さくして、耳や配信への強い音を和らげます。",
     "peak.scope": "既定はOFF。出力音量の後で、配信用と自分用をそれぞれ制限します。",
     "peak.ceiling": "天井（dBFS）",
     "peak.release": "復帰時間（ms）",
+    "peak.details": "詳しい設定",
     "peak.unknown": "状態を確認できていません",
     "peak.on": "ON",
     "peak.off": "OFF",
@@ -532,6 +534,7 @@ const ja = {
     "peak.failed": "状態または反映結果を確認できませんでした。設定を確認してから音声を開始し、再度お試しください。",
 
     "truePeak.title": "配信用 true-peak 制限",
+    "truePeak.lead": "配信へ送る音の突然の大きな山だけを小さくして、強い音を和らげます。",
     "truePeak.scope": "既定は OFF です。動くのは、音声を分離した配信用出力の最終段だけです。自分用と単一出力の遅延は変わりません。保証するのは、配信用デバイスへ渡すサンプル列の推定 true-peak です。OBS 内部の処理と、デバイス側のサンプルレート変換は範囲外です。",
     "truePeak.ceiling": "天井（dBFS）",
     "truePeak.release": "復帰時間（ms）",
@@ -3976,9 +3979,11 @@ const en: Record<MessageKey, string> = {
     "recovery.openSettings": "Review devices and restarting in audio settings",
 
     "peak.title": "Reduce loud peaks",
+    "peak.lead": "Turns down only sudden loud sound, so strong peaks are softer for your ears and the stream.",
     "peak.scope": "Off by default. Limits broadcast and monitor outputs separately after output volume.",
     "peak.ceiling": "Ceiling (dBFS)",
     "peak.release": "Release (ms)",
+    "peak.details": "Detailed settings",
     "peak.unknown": "Status not confirmed",
     "peak.on": "On",
     "peak.off": "Off",
@@ -3993,6 +3998,7 @@ const en: Record<MessageKey, string> = {
     "peak.failed": "Could not confirm the status or application. Review settings, start audio and try again.",
 
     "truePeak.title": "Broadcast true-peak limit",
+    "truePeak.lead": "Turns down only sudden loud peaks in the sound sent to the stream, so those peaks are softer.",
     "truePeak.scope": "Off by default. It runs only as the last stage of a split broadcast output. Monitor and single-output delay stay unchanged. The guarantee is the estimated true peak of the samples delivered to the broadcast device. Processing inside OBS and sample-rate conversion in the device are outside this scope.",
     "truePeak.ceiling": "Ceiling (dBFS)",
     "truePeak.release": "Release (ms)",
