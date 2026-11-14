@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "OBS", "Appearance", "Gaming", "Hotkeys", "System"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Broadcast true-peak limit", "OBS", "Appearance", "Gaming", "Hotkeys", "System"]
 ---
 
 ## Connection {#audio}
@@ -21,8 +21,8 @@ Split-output routing is saved and applied independently in its own section. Disc
 
 “Sound” is split into “Basics”, “Singing and talking”, “Singing”, and “Loudness protection”. Make small changes following [Adjusting sound](./sound.md#noise-reduction).
 
-Noise reduction and voice adjustments in “Basics” apply as you change them. “Singing” stays a draft until you preview it and apply it with the button at the bottom of the page.
-Values in “Loudness protection” do not take effect until you apply them in that section. Leaving for another page or section while those values are unapplied asks you to confirm. Adjustments already applied stay in place when you leave.
+Noise reduction and voice adjustments in “Basics” apply as you change them. You can choose the strength, type, and amount while off. Choosing does not turn it on, and the sound does not change. “Singing” stays a draft until you preview it and apply it with the button at the bottom of the page.
+Values in “Loudness protection” do not take effect until you apply them in that section. Leaving for another page or section while those values are unapplied asks you to confirm. Adjustments already applied stay in place when you leave. While listening to music, “Broadcast true-peak limit” stays hidden while off. It appears only while on, and you can turn it off.
 
 ## OBS {#obs}
 

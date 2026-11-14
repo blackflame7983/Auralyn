@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Edit VST", "Add", "Voice Check", "Listen and compare", "VST", "Measure surrounding sound", "Basics"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Preparation", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Listen and compare", "VST", "Measure surrounding sound", "Basics"]
 ---
 
 ## Current status {#stage}
@@ -23,7 +23,7 @@ One band stacks the level before processing and the level after. The loudness ch
 
 ## Sound adjustments {#sound}
 
-Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. On a tall window, the second row shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the same controls from “Basics” on the Sound page and from the VST page. Open the “VST” page from the rail, or use “Edit VST” or “Add”. Change one thing at a time and [listen](./sound.md#voice-check).
+Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. You can choose the strength, type, and amount while off. Choosing does not turn it on, and the sound does not change. On a tall window, the second row shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the same controls from “Basics” on the Sound page and from the VST page. Open the “VST” page from the rail. When none are loaded, use “Add”. When the count is unknown, or at least one is loaded, use “Open VST”. Change one thing at a time and [listen](./sound.md#voice-check).
 
 ## Audio check {#audio-check}
 
