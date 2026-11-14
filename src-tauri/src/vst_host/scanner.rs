@@ -328,6 +328,22 @@ pub struct PluginScanFailure {
     pub attempts: u32,
 }
 
+/// 追加フォルダーをスキャンに使わなかった理由。スキャン全体は止めない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkippedScanRootReason {
+    Missing,
+    NotDirectory,
+    Invalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedScanRoot {
+    pub path: String,
+    pub reason: SkippedScanRootReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginCatalogView {
@@ -337,6 +353,8 @@ pub struct PluginCatalogView {
     pub generation: u64,
     pub recovered_from_corrupt: bool,
     pub save_error: Option<String>,
+    /// 追加フォルダーのうち、今回の探索に入れなかったもの。標準の2つは含めない。
+    pub skipped_roots: Vec<SkippedScanRoot>,
 }
 
 struct ScanGuard(u64);
@@ -347,19 +365,36 @@ impl Drop for ScanGuard {
     }
 }
 
-pub fn scan_system_vst3(config_dir: &Path) -> Result<Vec<VstPlugin>, String> {
-    Ok(scan_plugin_catalog(config_dir, ScanMode::Incremental)?.plugins)
+pub fn scan_system_vst3(
+    config_dir: &Path,
+    extra_roots: &[String],
+) -> Result<Vec<VstPlugin>, String> {
+    Ok(scan_plugin_catalog(config_dir, ScanMode::Incremental, extra_roots)?.plugins)
 }
 
-pub fn scan_plugin_catalog(config_dir: &Path, mode: ScanMode) -> Result<PluginCatalogView, String> {
-    run_catalog_scan(config_dir, mode, None, SCAN_TIMEOUT)
+pub fn scan_plugin_catalog(
+    config_dir: &Path,
+    mode: ScanMode,
+    extra_roots: &[String],
+) -> Result<PluginCatalogView, String> {
+    run_catalog_scan(config_dir, mode, None, SCAN_TIMEOUT, extra_roots)
 }
 
-pub fn retry_plugin_scan(config_dir: &Path, path: &str) -> Result<PluginCatalogView, String> {
+pub fn retry_plugin_scan(
+    config_dir: &Path,
+    path: &str,
+    extra_roots: &[String],
+) -> Result<PluginCatalogView, String> {
     if path.is_empty() || path.contains('\0') {
         return Err("再試行するファイルが指定されていません".into());
     }
-    run_catalog_scan(config_dir, ScanMode::Incremental, Some(path), RETRY_TIMEOUT)
+    run_catalog_scan(
+        config_dir,
+        ScanMode::Incremental,
+        Some(path),
+        RETRY_TIMEOUT,
+        extra_roots,
+    )
 }
 
 pub fn clear_scan_exclusions(config_dir: &Path) -> Result<(), String> {
@@ -381,8 +416,11 @@ fn run_catalog_scan(
     mode: ScanMode,
     retry_path: Option<&str>,
     timeout: Duration,
+    extra_roots: &[String],
 ) -> Result<PluginCatalogView, String> {
     let guard = begin_scan()?;
+    // 不正な追加フォルダーで探索を落とさない。使えないものは除き、標準のフォルダーは残す。
+    let (roots, skipped_roots) = resolve_scan_roots(extra_roots);
     let scanner = get_scanner_path().ok_or_else(|| {
         log::error!("Could not find plugin_scanner.exe");
         "スキャン用のプログラムが見つかりません".to_string()
@@ -391,7 +429,7 @@ fn run_catalog_scan(
     let now = catalog::utc_timestamp();
     let prepared = catalog::prepare_catalog(config_dir, &now, SCAN_FORMAT_VERSION)?;
     let mut save_error = prepared.save_error;
-    let candidates = candidates_under(&default_roots());
+    let candidates = candidates_under(&roots);
     let plan = if let Some(path) = retry_path {
         let candidate = find_candidate(&candidates, path)
             .ok_or_else(|| "再試行するファイルが見つかりません".to_string())?;
@@ -434,6 +472,7 @@ fn run_catalog_scan(
         generation,
         prepared.recovered_from_corrupt,
         save_error,
+        skipped_roots,
     );
     drop(guard);
     Ok(view)
@@ -457,6 +496,74 @@ fn default_roots() -> Vec<PathBuf> {
         PathBuf::from(r"C:\Program Files\Common Files\VST3"),
         PathBuf::from(r"C:\Program Files\Steinberg\VST3"),
     ]
+}
+
+const MAX_SCAN_ROOT_CHARS: usize = 32_767;
+
+/// 標準の2フォルダーに、使える追加フォルダーだけを足す。
+/// 見つからない・ディレクトリーでない・不正なパスは `skipped` に残し、探索は続ける。
+pub(crate) fn resolve_scan_roots(extra_roots: &[String]) -> (Vec<PathBuf>, Vec<SkippedScanRoot>) {
+    let mut accepted = default_roots();
+    let mut seen = HashSet::new();
+    for root in &accepted {
+        seen.insert(path_key(root));
+    }
+    let mut skipped = Vec::new();
+    for raw in extra_roots {
+        let trimmed = raw.trim();
+        if trimmed.is_empty()
+            || trimmed.contains('\0')
+            || trimmed.chars().count() > MAX_SCAN_ROOT_CHARS
+        {
+            skipped.push(SkippedScanRoot {
+                path: raw.clone(),
+                reason: SkippedScanRootReason::Invalid,
+            });
+            continue;
+        }
+        let path = PathBuf::from(trimmed);
+        let key = path_key(&path);
+        if seen.contains(&key) {
+            continue;
+        }
+        match std::fs::metadata(&path) {
+            Ok(meta) if meta.is_dir() => {
+                let normalized = PathBuf::from(catalog::normalize_path(&path));
+                let normalized_key = path_key(&normalized);
+                if seen.insert(normalized_key) {
+                    seen.insert(key);
+                    accepted.push(normalized);
+                }
+            }
+            Ok(_) => skipped.push(SkippedScanRoot {
+                path: trimmed.to_string(),
+                reason: SkippedScanRootReason::NotDirectory,
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                skipped.push(SkippedScanRoot {
+                    path: trimmed.to_string(),
+                    reason: SkippedScanRootReason::Missing,
+                });
+            }
+            Err(_) => skipped.push(SkippedScanRoot {
+                path: trimmed.to_string(),
+                reason: SkippedScanRootReason::Invalid,
+            }),
+        }
+    }
+    (accepted, skipped)
+}
+
+/// 存在するパスは正規化して比べ、無いパスは区切りと末尾の区切りだけをそろえる。
+fn path_key(path: &Path) -> String {
+    let text = if path.exists() {
+        catalog::normalize_path(path)
+    } else {
+        path.to_string_lossy().into_owned()
+    };
+    text.replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
 }
 
 pub(crate) fn candidates_under(roots: &[PathBuf]) -> Vec<Candidate> {
@@ -537,6 +644,7 @@ fn view_from(
     generation: u64,
     recovered_from_corrupt: bool,
     save_error: Option<String>,
+    skipped_roots: Vec<SkippedScanRoot>,
 ) -> PluginCatalogView {
     let mut plugins = Vec::new();
     let mut failures = Vec::new();
@@ -589,6 +697,7 @@ fn view_from(
         generation,
         recovered_from_corrupt,
         save_error,
+        skipped_roots,
     }
 }
 
@@ -841,6 +950,66 @@ mod tests {
         assert!(found
             .iter()
             .all(|candidate| !candidate.path.contains("Other.vst3")));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extra_folder_vst3_is_scanned_and_bad_paths_do_not_stop_the_walk() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-scan-roots-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let extra = root.join("extra");
+        std::fs::create_dir_all(&extra).unwrap();
+        std::fs::write(extra.join("Room.vst3"), b"room-vst3").unwrap();
+        let file = root.join("not-a-folder.txt");
+        std::fs::write(&file, b"file").unwrap();
+        let missing = root.join("missing");
+        let extra_text = extra.to_string_lossy().into_owned();
+        let slash_text = extra_text.replace('\\', "/") + "/";
+        let inputs = vec![
+            extra_text.clone(),
+            slash_text,
+            missing.to_string_lossy().into_owned(),
+            file.to_string_lossy().into_owned(),
+            String::new(),
+            " \t".to_string(),
+            "\0".to_string(),
+            "a".repeat(40_000),
+            r"C:\Program Files\Common Files\VST3".to_string(),
+            "C:/Program Files/Common Files/VST3/".to_string(),
+        ];
+        let (roots, skipped) = resolve_scan_roots(&inputs);
+        assert_eq!(roots.len(), default_roots().len() + 1, "{roots:?}");
+        let added: Vec<_> = roots
+            .iter()
+            .filter(|path| {
+                !default_roots()
+                    .iter()
+                    .any(|default| path_key(path) == path_key(default))
+            })
+            .cloned()
+            .collect();
+        assert_eq!(added.len(), 1);
+        let found = candidates_under(&added);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].path.to_ascii_lowercase().ends_with("room.vst3"));
+        assert_eq!(found[0].file_id.size, 9);
+        let reasons: Vec<_> = skipped.iter().map(|item| item.reason).collect();
+        assert!(reasons.contains(&SkippedScanRootReason::Missing));
+        assert!(reasons.contains(&SkippedScanRootReason::NotDirectory));
+        assert!(reasons.contains(&SkippedScanRootReason::Invalid));
+        assert!(skipped
+            .iter()
+            .all(|item| item.reason != SkippedScanRootReason::Missing
+                || item.path.contains("missing")));
+        // 使えないパスが混ざっても、存在する追加フォルダーの探索は残る。
+        let continued = candidates_under(&[added[0].clone(), missing.clone(), file.clone()]);
+        assert_eq!(continued.len(), 1);
         let _ = std::fs::remove_dir_all(root);
     }
 }

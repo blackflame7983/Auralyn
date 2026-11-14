@@ -685,13 +685,16 @@ pub(crate) async fn restart_audio_engine(
 #[tauri::command]
 pub(crate) async fn scan_plugins(
     app: tauri::AppHandle,
+    extra_roots: Option<Vec<String>>,
 ) -> Result<Vec<vst_host::VstPlugin>, String> {
+    // 省略時は標準の2フォルダーだけ。追加分は画面が保存したパスを渡す。
+    let extra_roots = extra_roots.unwrap_or_default();
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
         }
-        vst_host::scan_system_vst3(&config_dir)
+        vst_host::scan_system_vst3(&config_dir, &extra_roots)
     })
     .await
 }
@@ -701,6 +704,7 @@ pub(crate) async fn scan_plugin_catalog(
     app: tauri::AppHandle,
     mode: Option<String>,
     retry_failed: Option<bool>,
+    extra_roots: Option<Vec<String>>,
 ) -> Result<vst_host::PluginCatalogView, String> {
     let mode = match mode.as_deref() {
         None | Some("incremental") => vst_host::catalog::ScanMode::Incremental,
@@ -709,12 +713,13 @@ pub(crate) async fn scan_plugin_catalog(
         },
         Some(_) => return Err("スキャンの種類が不正です".into()),
     };
+    let extra_roots = extra_roots.unwrap_or_default();
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
         }
-        vst_host::scan_plugin_catalog(&config_dir, mode)
+        vst_host::scan_plugin_catalog(&config_dir, mode, &extra_roots)
     })
     .await
 }
@@ -723,13 +728,15 @@ pub(crate) async fn scan_plugin_catalog(
 pub(crate) async fn retry_plugin_scan(
     app: tauri::AppHandle,
     path: String,
+    extra_roots: Option<Vec<String>>,
 ) -> Result<vst_host::PluginCatalogView, String> {
+    let extra_roots = extra_roots.unwrap_or_default();
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
         }
-        vst_host::scanner::retry_plugin_scan(&config_dir, &path)
+        vst_host::scanner::retry_plugin_scan(&config_dir, &path, &extra_roots)
     })
     .await
 }
