@@ -2,13 +2,15 @@
 title: "First setup"
 description: "Choose your purpose and devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup"]
+uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Listen locally", "How you will use it", "I want to listen here"]
 ---
 
 ## Choose a purpose {#purpose}
 
 1. Open “Connection details” and select “Open Setup”.
-2. Choose OBS, calls, local listening or other apps.
+2. Choose OBS, calls, “Listen locally”, other apps, or “Listen to music (apply VST to PC audio)”.
+
+With “Listen locally”, the choice under “How you will use it” is “I want to listen here”. Listening locally and listening to music do not show streaming or listener wording on the review or the finished screen.
 
 ## Choose a microphone {#microphone}
 

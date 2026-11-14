@@ -58,11 +58,12 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
         basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
         peakDetails: t('peak.details'),
-        details: t('prep.steps'), setup: t('header.setupOpen'), check: t('prep.title'), measure: t('home.measureNoise'),
+        details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
         add: t('chain.vstAdd'), openVst: t('sound.openVst'),
         settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
         mode: t('home.modeMark'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
+        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('music.compareVst'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
     };
     return <Modal title={t('help.title')} onClose={onClose}>

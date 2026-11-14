@@ -2,12 +2,14 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Reduce loud peaks", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "OBS", "Appearance", "Gaming", "Hotkeys", "System"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Reduce loud peaks", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection"]
 ---
 
 ## Connection {#audio}
 
 In “Connection” on the left rail, choose microphone, output, connection method, sample rate and dropout settings. Split listening and broadcast outputs, whether to show stream mixing on Home, saved connections, singing and monitoring settings are also here.
+
+“How you use it” at the top of the page switches “Home layout” between voice streaming or calls and listening to music. Choosing music while the input is an app’s audio asks whether to set that input’s purpose to music as well. It does not change by itself. “Appearance” keeps only a note about the move and “Open Connection”.
 
 1. Check the devices and route you will change.
 2. Open “Connection and dropout settings” to adjust the connection or dropouts.
