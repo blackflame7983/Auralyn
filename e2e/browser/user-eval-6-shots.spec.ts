@@ -39,12 +39,16 @@ test.describe('段階6の画面記録', () => {
     });
 
     test('folders-en-1024x768', async ({ page }) => {
-        await openApp(page, 'en', 1024, 768, null, false);
+        const dialog = await openApp(page, 'en', 1024, 768, null, false);
+        // 閉じた区画を開いた状態も撮る。
+        await dialog.getByRole('region', { name: 'Folders to search' }).locator('summary').click();
         await page.screenshot({ path: `${dir}/folders-en-1024x768.png`, animations: 'disabled' });
     });
 
     test('folders-ja-960x640', async ({ page }) => {
-        await openApp(page, 'ja', 960, 640, null, false);
+        const dialog = await openApp(page, 'ja', 960, 640, null, false);
+        // 閉じた区画を開いた状態も撮る。
+        await dialog.getByRole('region', { name: '探すフォルダー' }).locator('summary').click();
         await page.screenshot({ path: `${dir}/folders-ja-960x640.png`, animations: 'disabled' });
     });
 

@@ -55,3 +55,17 @@ it('壊れた保存でも探すフォルダーの区画を出す', () => {
     expect(screen.getByRole('region', { name: '探すフォルダー' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
 });
+
+it('探すフォルダーはふだん閉じ、追加したフォルダーが見つからないときだけ開く', () => {
+    localStorage.setItem(VST_SCAN_FOLDERS_KEY, JSON.stringify(['D:\Custom\VST3']));
+    const view = render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[room]} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} />);
+    // VST の一覧を先に見せる。区画は数だけを出して閉じておく。
+    const closed = screen.getByRole('region', { name: '探すフォルダー' }).querySelector('details')!;
+    expect(closed).not.toHaveAttribute('open');
+    expect(screen.getByText('3か所')).toBeInTheDocument();
+    view.unmount();
+    render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[room]} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()}
+        skippedRoots={[{ path: 'D:\Custom\VST3', reason: 'missing' }]} />);
+    expect(screen.getByRole('region', { name: '探すフォルダー' }).querySelector('details')).toHaveAttribute('open');
+    expect(screen.getByText('見つかりません')).toBeVisible();
+});

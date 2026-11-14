@@ -21,6 +21,9 @@ test('標準のフォルダーは外せない。足したフォルダーは再�
     await page.goto('/');
     const dialog = await openBrowser(page);
     const folders = dialog.getByRole('region', { name: '探すフォルダー' });
+    // ふだんは閉じている。VST の一覧を先に見せるため。
+    await expect(folders.locator('details')).not.toHaveAttribute('open', '');
+    await folders.locator('summary').click();
     await expect(folders).toContainText('対応しているのはVST3だけです。標準の2つのフォルダーは外せません。');
     await expect(folders).toContainText('C:\\Program Files\\Common Files\\VST3');
     await expect(folders).toContainText('C:\\Program Files\\Steinberg\\VST3');
@@ -30,6 +33,7 @@ test('標準のフォルダーは外せない。足したフォルダーは再�
     await expect(folders.getByRole('button', { name: 'D:\\Custom\\VST3 を外す' })).toBeVisible();
     await page.reload();
     const again = await openBrowser(page);
+    await again.getByRole('region', { name: '探すフォルダー' }).locator('summary').click();
     await expect(again.getByRole('button', { name: 'D:\\Custom\\VST3 を外す' })).toBeVisible();
     await expect(again.getByRole('button', { name: /Program Files\\Common Files\\VST3 を外す/ })).toHaveCount(0);
 });
@@ -43,6 +47,8 @@ test('見つからないフォルダーを知らせ、足したフォルダー�
     await dialog.getByRole('button', { name: '更新', exact: true }).click();
     await expect(dialog.getByRole('button', { name: 'Room を追加', exact: true })).toBeVisible();
     const folders = dialog.getByRole('region', { name: '探すフォルダー' });
+    // 見つからないフォルダーがあるときは、開いて理由を見せる。
+    await expect(folders.locator('details')).toHaveAttribute('open', '');
     await expect(folders.getByText('見つかりません', { exact: true })).toBeVisible();
     await expect(folders.getByRole('button', { name: 'D:\\Custom\\VST3 を外す' })).toBeVisible();
     await expect(folders.getByRole('button', { name: 'D:\\Missing\\VST3 を外す' })).toBeVisible();

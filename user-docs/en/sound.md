@@ -20,7 +20,7 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Com
 ## VST {#vst}
 
 1. Open the VST page from the rail, or from “Open VST” or “Add” on Home, and choose an effect to add. When none are loaded, the home control is “Add”.
-2. In “Add VST”, use “Folders to search” to include places other than the standard folders. The two standard folders cannot be removed. Only VST3 plugins are supported. Added folders remain the next time you open the app. A folder that cannot be found is listed without stopping the scan.
+2. In “Add VST”, open “Folders to search” to include places other than the standard folders. The two standard folders cannot be removed. Only VST3 plugins are supported. Added folders remain the next time you open the app. A folder that cannot be found is listed without stopping the scan.
 3. Adjust values in each VST's editor.
 4. Use “Compare without VST” to listen with and without external VST effects.
 

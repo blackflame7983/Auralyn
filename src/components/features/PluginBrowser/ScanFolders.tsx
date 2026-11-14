@@ -66,8 +66,15 @@ export function ScanFolders({ disabled, skippedRoots = [], onChanged }: {
         commit(removeExtraScanFolder(folders, path));
     };
 
-    return <section aria-labelledby={headingId} className="mb-3 space-y-2 border-t border-border pt-3">
-        <h3 id={headingId} className="text-ui-heading font-semibold">{t('pluginBrowser.scanFolders')}</h3>
+    // 一覧から VST を選ぶ場所なので、ふだんは閉じておく。追加したフォルダーが見つからないときだけ開いて理由を見せる。
+    const hasIssue = folders.some(path => skippedRoots.some(item => scanFolderKey(item.path) === scanFolderKey(path)));
+    return <section aria-labelledby={headingId} className="mb-3 border-t border-border pt-3">
+        <details open={hasIssue || undefined} className="group">
+        <summary className="cursor-pointer">
+            <h3 id={headingId} className="inline text-ui-control font-semibold">{t('pluginBrowser.scanFolders')}</h3>
+            <span className="ml-2 text-ui-support text-muted-foreground">{t('pluginBrowser.scanFolderCount', { count: STANDARD_VST_SCAN_FOLDERS.length + folders.length })}</span>
+        </summary>
+        <div className="mt-2 space-y-2">
         <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.scanFoldersHint')}</p>
         <ul className="max-h-28 space-y-1 overflow-y-auto">
             {STANDARD_VST_SCAN_FOLDERS.map(path => <li key={path} className="flex items-center justify-between gap-2 text-ui-support">
@@ -98,5 +105,7 @@ export function ScanFolders({ disabled, skippedRoots = [], onChanged }: {
             </div>
             <Button type="submit" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={disabled}>{t('pluginBrowser.scanFolderAdd')}</Button>
         </form>
+        </div>
+        </details>
     </section>;
 }
