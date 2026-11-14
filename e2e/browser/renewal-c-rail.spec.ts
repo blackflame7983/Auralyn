@@ -32,17 +32,21 @@ test('窓を変えてもレールと右の列の位置は動かない', async ({
     const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
     for (const size of sizes) {
         await page.setViewportSize(size);
-        const railBox = (await rail.boundingBox())!;
-        const columnBox = (await column.boundingBox())!;
-        expect(Math.round(railBox.x)).toBe(0);
-        expect(Math.round(railBox.y)).toBe(0);
         const scale = uiScale(size.width, size.height);
-        expect(Math.round(railBox.width)).toBe(Math.round(76 * scale));
-        expect(Math.round(railBox.height)).toBe(size.height);
-        expect(Math.round(columnBox.y)).toBe(0);
-        expect(Math.round(columnBox.width)).toBe(Math.round(212 * scale));
-        expect(Math.round(columnBox.x + columnBox.width)).toBe(size.width);
-        expect(Math.round(columnBox.height)).toBe(size.height);
+        // 窓の大きさを変えた直後は、拡大率が落ち着くまで幅が動く。レールと右の列を同じ時点で測り、収まるまで待つ。
+        await expect.poll(async () => {
+            const railBox = (await rail.boundingBox())!;
+            const columnBox = (await column.boundingBox())!;
+            return {
+                railX: Math.round(railBox.x), railY: Math.round(railBox.y),
+                railWidth: Math.round(railBox.width), railHeight: Math.round(railBox.height),
+                columnY: Math.round(columnBox.y), columnWidth: Math.round(columnBox.width),
+                columnRight: Math.round(columnBox.x + columnBox.width), columnHeight: Math.round(columnBox.height),
+            };
+        }).toEqual({
+            railX: 0, railY: 0, railWidth: Math.round(76 * scale), railHeight: size.height,
+            columnY: 0, columnWidth: Math.round(212 * scale), columnRight: size.width, columnHeight: size.height,
+        });
     }
 });
 

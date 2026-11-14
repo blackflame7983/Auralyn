@@ -10,6 +10,19 @@ export const METER_TIMEOUT_MS = 1000;
 export const CLIP_LEVEL = 1;
 export const WARNING_LEVEL = Math.pow(10, -6 / 20);
 export const toDbfs = (level: number) => level > 0 && Number.isFinite(level) ? 20 * Math.log10(level) : -Infinity;
+/** 画面の目盛りの下限。−60 dBFS を位置 0、0 dBFS を位置 1 とする。 */
+export const METER_FLOOR_DB = -60;
+/**
+ * 振幅を、−60〜0 dBFS の等間隔の位置（0〜1）へ変える。
+ * バー・目盛り・波形の高さだけに使う。色の境目や dBFS の数値は変えない。
+ * −60 未満、無音、不正な値は 0。0 dBFS 以上は 1。
+ */
+export function meterPosition(level: number): number {
+    const db = toDbfs(level);
+    if (!Number.isFinite(db) || db <= METER_FLOOR_DB) return 0;
+    if (db >= 0) return 1;
+    return (db - METER_FLOOR_DB) / -METER_FLOOR_DB;
+}
 export const meterStatusLabel = (state: MeterState): MessageKey => state === 'stopped' ? 'meter.state.stopped' : state === 'waiting' || state === 'stale' ? 'meter.state.waiting' : state === 'silent' ? 'meter.state.silent' : 'meter.state.active';
 const empty = (state: MeterState, clipped = false) => ({ levels: [0, 0] as Pair, peak: [0, 0] as Pair, clipped, state });
 

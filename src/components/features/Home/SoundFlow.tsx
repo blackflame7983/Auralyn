@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
+import { meterPosition, meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 
@@ -16,6 +16,11 @@ export function flowIdleState(running: boolean, input: MeterState, output: Meter
 interface Sample { inn: number; out: number }
 
 const HISTORY = 96;
+
+/** 波形の片側の高さ。目盛りはメーターと同じ −60〜0 dBFS の等間隔。 */
+export function flowHalfHeight(level: number, mid: number): number {
+    return meterPosition(level) * mid * 0.92;
+}
 
 /** 共有メーターの読み取りが変わったときだけ直近の値を足す。タイマーは作らない。 */
 export function pushFlowSample(history: Sample[], sample: Sample, flowing: boolean): Sample[] {
@@ -46,7 +51,7 @@ function paint(canvas: HTMLCanvasElement, samples: Sample[], flowing: boolean) {
         ctx.beginPath();
         const n = samples.length;
         const step = n <= 1 ? w : w / (n - 1);
-        const amp = (sample: Sample) => Math.pow(Math.min(1, Math.max(0, pick(sample))), 2.2) * mid * 0.92;
+        const amp = (sample: Sample) => flowHalfHeight(pick(sample), mid);
         ctx.moveTo(0, mid - amp(samples[0]));
         if (n === 1) ctx.lineTo(w, mid - amp(samples[0]));
         else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, mid - amp(samples[i]));
@@ -114,11 +119,14 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
             <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
             {action}
         </div>
-        <div className="relative h-[72px]">
-            <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
-            {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
-            {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 top-1 bottom-6 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
-            <div className="pointer-events-none absolute inset-x-0 bottom-1 flex gap-3 text-ui-support text-muted-foreground">
+        {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。 */}
+        <div className="flex h-[72px] flex-col">
+            <div className="relative min-h-0 flex-1">
+                <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
+                {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
+                {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
+            </div>
+            <div className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-2 w-4 rounded-full bg-muted-foreground/50" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
             </div>

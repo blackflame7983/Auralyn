@@ -6,7 +6,7 @@ import { act, cleanup, render, renderHook, screen } from '@testing-library/react
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { METER_TIMEOUT_MS, useMeterLevels } from '../useMeterLevels';
+import { METER_TIMEOUT_MS, meterPosition, useMeterLevels } from '../useMeterLevels';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 const emit = (name: string, payload?: unknown) => act(() => handlers.get(name)?.forEach(fn => fn({ payload })));
@@ -148,6 +148,18 @@ it('非表示中の停止と再開も復帰時に反映する', () => {
     act(() => document.dispatchEvent(new Event('visibilitychange')));
     expect(result.current).toMatchObject({ state: 'waiting', clipped: false });
     hidden.mockRestore();
+});
+
+it('meterPosition は −60〜0 dBFS を等間隔の 0〜1 にする', () => {
+    // #570: 画面の位置だけ。0 dBFS が 1、−60 が 0、−30 が半分、−6 が 0.9。
+    const linear = (db: number) => Math.pow(10, db / 20);
+    expect(meterPosition(linear(0))).toBe(1);
+    expect(meterPosition(1)).toBe(1);
+    expect(meterPosition(linear(-60))).toBe(0);
+    expect(meterPosition(linear(-30))).toBe(0.5);
+    expect(meterPosition(linear(-6))).toBe(0.9);
+    for (const value of [0, -1, -0.2, NaN, Infinity, -Infinity]) expect(meterPosition(value)).toBe(0);
+    expect(meterPosition(1.2)).toBe(1);
 });
 
 it('状態だけの購読ではレベル値とピークの更新だけで再描画しない', () => {

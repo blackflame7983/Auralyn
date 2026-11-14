@@ -142,6 +142,16 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(now).toHaveTextContent(message(locale, 'home.notMuted'));
 });
 
+it('送る音の目安は、小さめと大きすぎの境目に置く', () => {
+    // #570: −30 dBFS は 50%、−6 dBFS は 90%。線は読み上げに出さない。
+    render(<LiveStrip model={fixture()} running />);
+    const meter = screen.getByRole('meter', { name: '送る音' });
+    const guides = [...meter.querySelectorAll('[data-meter-guide]')];
+    expect(guides.map(node => (node as HTMLElement).style.left)).toEqual(['50%', '90%']);
+    expect(guides.every(node => node.getAttribute('aria-hidden') === 'true')).toBe(true);
+    expect(meter.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
+});
+
 it('出力がミュートか音量ゼロのときは、その状態をカードに出す', () => {
     const model = fixture();
     model.observation = { ...model.observation, availability: 'muted' };
