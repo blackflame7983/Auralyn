@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import { largeWindow } from '@/lib/largeWindow';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
+import { noiseModeLabelKey } from '@/lib/noiseMode';
 import { BuiltinAmount, BuiltinPresets, BuiltinSwitch, NoiseQuick, NoiseSwitch, ToneGuide, useVoiceQuick } from './VoiceQuickControls';
 
 interface Props {
@@ -103,7 +104,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     </Button>;
 
     const noiseSummary = stopped ? '—' : live
-        ? noiseOn ? t(q.noiseMode === 'high' ? 'master.nrHigh' : q.noiseMode === 'smart' ? 'master.nrLearn' : q.noiseMode === 'venue' ? 'master.nrVenue' : 'master.nrLow') : t('flow.disabled')
+        ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
     const builtinSummary = stopped ? '—' : deesserOnly ? t('flow.deesserOnly')
         : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')

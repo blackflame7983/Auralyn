@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
 import { builtinApi } from '@/api/builtinEffects';
+import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
 
 const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 
@@ -39,14 +40,21 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
         }
     };
 
-    const noiseMode = (stats?.noiseReductionMode?.toLowerCase() ?? 'low') as NoiseControlMode;
+    const noiseMode: NoiseModeReading = readNoiseMode(stats?.noiseReductionMode);
     const noiseOn = !!stats?.noiseReductionEnabled;
-    const applyNoise = (next: { active?: boolean; mode?: NoiseControlMode }) => stats && run(() => audioApi.setNoiseControlConfig({
-        active: next.active ?? noiseOn,
-        mode: next.mode ?? noiseMode,
-        strength: stats.noiseControlStrength > 0 ? stats.noiseControlStrength : 0.8,
-        voiceGuard: stats.noiseVoiceGuard ?? true,
-    }), (next.active ?? noiseOn) ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
+    const applyNoise = (next: { active?: boolean; mode?: NoiseControlMode }) => {
+        if (!stats) return;
+        // 不明のときは弱と決め打ちしない。利用者が弱・強を選んだときだけモードを送る。
+        const mode = next.mode ?? (noiseMode === 'unknown' ? null : noiseMode);
+        if (!mode) return;
+        const active = next.active ?? noiseOn;
+        return run(() => audioApi.setNoiseControlConfig({
+            active,
+            mode,
+            strength: stats.noiseControlStrength > 0 ? stats.noiseControlStrength : 0.8,
+            voiceGuard: stats.noiseVoiceGuard ?? true,
+        }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
+    };
 
     const chainOn = !!stats?.builtInEffectsEnabled;
     const preset = (stats?.builtInEffectsPreset ?? 'broadcast') as BuiltInEffectsPreset;
@@ -82,7 +90,7 @@ export function NoiseQuick({ q }: { q: VoiceQuick }) {
     }
     return <SegmentedControl label={t('structure.noise.standard')}
         options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
-        value={q.noiseMode} onValueChange={mode => void q.applyNoise({ mode })} />;
+        value={q.noiseMode === 'low' || q.noiseMode === 'high' ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />;
 }
 
 export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
