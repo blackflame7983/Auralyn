@@ -55,7 +55,7 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
     const recoveryNames = names?.filter(name => isRecoveryProfileName(name)) ?? [];
     const hasChoices = savedNames.length > 0 || recoveryNames.length > 0;
     return <section aria-label={t('music.playback')} aria-busy={switching} className="mb-4 space-y-3 rounded-card border border-border bg-card p-4">
-        <h2 className="text-ui-heading font-semibold">{t('music.playback')}</h2>
+        <h2 className="home-title">{t('music.playback')}</h2>
         <p className="break-words text-ui-support">{t('music.playbackValues', { host: host ? displayAudioHost(host) : t('master.unset'), rate })}</p>
         {listFailed && <p role="alert" className="text-ui-support text-destructive-text">{t('music.presetListFailed')}</p>}
         {names && !hasChoices && <div className="space-y-2">

@@ -69,7 +69,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <div>
                         <h2 className="text-ui-heading font-semibold text-foreground">{t('voice.copy.001')}</h2>
                         <details className="text-ui-support text-muted-foreground mt-1">
-                            <summary className="cursor-pointer">{t('voice.recordingScopeDetails')}</summary>
+                            {/* 焦点の枠を文字の幅に合わせ、狭い窓では枠の中で折り返す。ほかの details は変えない。 */}
+                            <summary className="w-fit max-w-full cursor-pointer outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('voice.recordingScopeDetails')}</summary>
                             <p className="mt-1">{t('voice.copy.003')}</p>
                             <p className="mt-1">{t('voice.recordingScopeExplanation')}</p>
                         </details>

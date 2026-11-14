@@ -14,6 +14,14 @@ const renderDesk = (props: Partial<ComponentProps<typeof MusicHomeDesk>> = {}) =
     </LocaleProvider>,
 );
 
+it('再生の状態の見出しは、ほかのホームのカードと同じ home-title にする', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
+    renderDesk();
+    const heading = await screen.findByRole('heading', { name: '再生の状態' });
+    expect(heading).toHaveClass('home-title');
+    expect(heading).not.toHaveClass('text-ui-heading');
+});
+
 it('構成がなければ、VSTのページの保存へ案内する', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     const open = vi.fn();
