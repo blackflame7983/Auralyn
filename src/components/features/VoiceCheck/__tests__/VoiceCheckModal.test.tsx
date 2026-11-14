@@ -32,6 +32,13 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'stopVoiceCheckPlayback').mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
+it('録音範囲の折りたたみは、文字の幅に合う枠を持つ', async () => {
+    open();
+    const summary = await screen.findByText('録音範囲と「音のトラブルを診断」について');
+    expect(summary.tagName).toBe('SUMMARY');
+    expect(summary).toHaveClass('w-fit', 'max-w-full', 'focus-visible:ring-2');
+});
+
 it('録音前は録音に絞り、完了後に再生と必要時に開く比較を表示する', async () => {
     open();
     await waitFor(() => expect(record()).toBeEnabled());

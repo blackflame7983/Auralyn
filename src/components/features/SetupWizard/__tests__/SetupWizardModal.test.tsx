@@ -436,15 +436,20 @@ describe('セットアップの接続チェック', () => {
         expect(select).toHaveValue(mic.name);
     });
 
-    it('サウンドテストの開始・停止に音声状態を追従させ、未確認の到達と区別する', async () => {
+    it('試し再生の前と最中と停止で、選んだ設定の文言が変わり、未確認の到達と区別する', async () => {
+        // 確認の一文はエンジンの稼働ではなく、試し再生が流れているかを書く。文中の名前はボタンと同じ。
         await quickStart();
-        expect(screen.getByRole('status')).toHaveTextContent('音声は停止中です。');
-        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
-        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は稼働中です。'));
-        expect(screen.getByRole('status')).not.toHaveTextContent('音声は停止中です。');
+        const button = 'マイクの音を流して確認';
+        const stopped = `選んだ設定では、まだ音を流していません。「${button}」を押すと確かめられます。`;
+        const flowing = '選んだ設定で音を流しています。';
+        expect(screen.getByRole('status')).toHaveTextContent(stopped);
+        expect(screen.getByRole('button', { name: button })).toHaveTextContent(button);
+        fireEvent.click(screen.getByRole('button', { name: button }));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(flowing));
+        expect(screen.getByRole('status')).not.toHaveTextContent('まだ音を流していません');
         expect(screen.getByRole('status')).toHaveTextContent('OBS への音の到達は未確認です。');
         fireEvent.click(screen.getByRole('button', { name: 'マイクの確認を停止' }));
-        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は停止中です。'));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(stopped));
     });
 
     it('テストを開始しても、OBS の接続失敗の案内は残す', async () => {
@@ -453,7 +458,7 @@ describe('セットアップの接続チェック', () => {
         fireEvent.click(screen.getByRole('button', { name: 'OBS に接続する' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('OBS に接続できませんでした。'));
         fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
-        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は稼働中です。'));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('選んだ設定で音を流しています。'));
         expect(screen.getByRole('status')).toHaveTextContent('OBS に接続できませんでした。');
     });
 

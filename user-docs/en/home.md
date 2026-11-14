@@ -2,14 +2,14 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Not muted", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "Compare with VST off", "VST", "Measure level", "Measure surrounding sound", "Basics", "Playback", "Saved VST setup", "Save and restore settings", "Open the VST page"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Not muted", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Compare without VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "Compare with VST off", "VST", "Measure level", "Measure surrounding sound", "Basics", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page"]
 ---
 
 ## Current status {#stage}
 
 Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. “Sing” and “Talk” switch there too. The card shows “Mode” beside the name. An unsaved adjustment is shown as “Custom sound”. Incoming sound, “Level being sent”, and whether the output is muted are on this card. When it is not muted, the card says “Not muted”. When the output is muted or the volume is zero, it says “Output muted / volume zero”. While listening to music, the card shows the path from the playback source to the output, and “Output level”. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. While listening to music, the label is “Check playback”. “Compare with VST off” inside it uses the same state as “Compare without VST” in the right column.
 
-When music listening is already set up, “Playback” follows Current status. It shows the connection method and sample rate, a switch for the “Saved VST setup”, and “Compare with VST off”. If nothing is saved, it points to “Save and restore settings” and offers “Open the VST page”. While a setup is switching, the choice and the comparison stay unavailable.
+When music listening is already set up, “Playback” follows Current status. It shows the connection method and sample rate, a switch for the “Saved VST setup”, and “Compare with VST off”. Setups you saved come first. A backup made while recovering a VST layout is grouped afterward under “Automatic backups”. If you have neither a saved setup nor a backup, it points to “Save and restore settings” and offers “Open the VST page”. When only a backup is present, that list is shown instead of the empty guidance. While a setup is switching, the choice and the comparison stay unavailable.
 
 “Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 

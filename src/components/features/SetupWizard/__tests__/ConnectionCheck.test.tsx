@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -106,6 +107,26 @@ it('音声開始を待つ間に非表示になった場合は到達確認のテ�
     });
     expect(invoke).not.toHaveBeenCalledWith('obs_check_audio_reach', expect.anything());
     expect(screen.getByRole('status')).toHaveTextContent('OBS への接続は終了しました。');
+});
+
+it.each(['ja', 'en'] as const)('試し再生の前はまだ流していないと出し、最中は選んだ設定で流れていると出す（%s）', (locale) => {
+    const store = createLocaleStore(() => locale, () => true);
+    const button = message(locale, 'guide.copy.229');
+    const view = render(
+        <LocaleProvider store={store}>
+            <ConnectionCheck goal="obs" outputName="CABLE Input" isBroadcast disabled={false} audioRunning={false} onStartAudio={async () => true} onBusyChange={() => {}} />
+        </LocaleProvider>,
+    );
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(message(locale, 'guide.copy.294', { test: button }));
+    expect(status.textContent).toContain(button);
+    view.rerender(
+        <LocaleProvider store={store}>
+            <ConnectionCheck goal="obs" outputName="CABLE Input" isBroadcast disabled={false} audioRunning onStartAudio={async () => true} onBusyChange={() => {}} />
+        </LocaleProvider>,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(message(locale, 'guide.copy.293'));
+    expect(screen.getByRole('status').textContent).not.toContain(message(locale, 'guide.copy.294', { test: button }));
 });
 
 it('接続待ちのlocale切替で接続要求を再送せず、未保存endpoint/passwordと到達未確認を保持する', async () => {
