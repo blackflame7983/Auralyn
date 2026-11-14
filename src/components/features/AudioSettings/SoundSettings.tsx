@@ -129,14 +129,25 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
       await singingModel.setAppliedActive(next?.active ?? singingModel.snapshot.config.active);
       return;
     }
-    const active = next?.active ?? singingModel.snapshot?.config.active ?? builtInEffectsEnabled;
-    const preset = next?.preset ?? singingModel.snapshot?.config.preset ?? builtInEffectsPreset;
-    const amount = next?.amount ?? (singingModel.snapshot ? singingModel.snapshot.config.amount * 100 : builtInEffectsAmount);
+    const snapshot = singingModel.snapshot;
+    const active = next?.active ?? snapshot?.config.active ?? builtInEffectsEnabled;
+    const preset = next?.preset ?? snapshot?.config.preset ?? builtInEffectsPreset;
+    const amount = next?.amount ?? (snapshot ? snapshot.config.amount * 100 : builtInEffectsAmount);
+    const normalized = Math.max(0, Math.min(100, amount)) / 100;
+    // OFF のまま種類と整え具合を保存する。builtin の apply は active を維持し、処理は ON のときだけ音に乗る。
+    if (snapshot && !active) {
+      const accepted = await singingModel.patchApplied({ preset, amount: normalized });
+      if (accepted) {
+        await refreshRuntimeStatsChecked();
+        toast.success(t('settings.AudioSettingsModal.008'));
+      } else toast.error(t('settings.AudioSettingsModal.010'));
+      return;
+    }
     try {
       await audioApi.setBuiltInEffects({
         active,
         preset,
-        amount: Math.max(0, Math.min(100, amount)) / 100,
+        amount: normalized,
       });
       await refreshRuntimeStatsChecked();
       await singingModel.refresh();
@@ -365,13 +376,13 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   </div>
 
                   {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-ui-support text-muted-foreground">{t('settings.fxOffHint')}</p>}
-                  <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
+                  <fieldset disabled={!singingModel.snapshot || singingModel.busy} className="space-y-4 disabled:opacity-50">
                   <SegmentedControl label={t('home.chainPreset')}
                     options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },
                       { value: 'warm', label: t('settings.AudioSettingsModal.099') },
                       { value: 'bright', label: t('settings.AudioSettingsModal.100') }] as Array<{ value: BuiltInEffectsPreset; label: string }>).map(option => ({ ...option, disabled: !singingModel.snapshot || singingModel.busy }))}
                     value={singingModel.snapshot?.config.preset ?? builtInEffectsPreset}
-                    onValueChange={preset => void applyBuiltInEffects({ active: true, preset })} />
+                    onValueChange={preset => void applyBuiltInEffects({ preset })} />
 
                   <div className="w-full space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-ui-support">{t('settings.AudioSettingsModal.102')}</p>}

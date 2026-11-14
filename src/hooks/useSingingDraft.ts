@@ -123,6 +123,17 @@ export function useSingingDraft() {
         apply: () => transact('apply'), undo: () => transact('undo'), redo: () => transact('redo'),
         applyProposal: (proposal: VoiceProposal) => transact('proposal', undefined, proposal),
         setAppliedActive: (active: boolean) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, active }) : Promise.resolve(false),
+        // OFF のまま種類と整え具合だけを保存する。active は動かさないので、音の処理は掛からない。
+        patchApplied: (patch: { preset?: BuiltinConfig['preset']; amount?: number }) => {
+            const current = state.current.snapshot;
+            if (!current) return Promise.resolve(false);
+            return transact('apply', {
+                ...current.config,
+                active: current.config.active,
+                preset: patch.preset ?? current.config.preset,
+                amount: patch.amount ?? current.config.amount,
+            });
+        },
         setDeesser: async (deesser: DeEsserParams | null) => {
             if (!state.current.snapshot) return false;
             const accepted = await transact('apply', { ...state.current.snapshot.config, deesser });

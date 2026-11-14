@@ -64,11 +64,21 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
         const current = await builtinApi.request({ action: 'snapshot' });
         await builtinApi.request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
     }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
-    const applyChain = (next: { preset?: BuiltInEffectsPreset; amount?: number }) => run(() => audioApi.setBuiltInEffects({
-        active: true,
-        preset: next.preset ?? preset,
-        amount: Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100,
-    }), t('settings.AudioSettingsModal.008'));
+    const applyChain = (next: { preset?: BuiltInEffectsPreset; amount?: number }) => run(async () => {
+        const amount = Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100;
+        // OFF のときは builtin の適用で種類と整え具合だけを残す。ON にはせず、歌向けや残響も消さない。
+        if (!chainOn) {
+            const current = await builtinApi.request({ action: 'snapshot' });
+            await builtinApi.request({
+                action: 'apply',
+                epoch: current.epoch,
+                expectedRevision: current.revision,
+                config: { ...current.config, active: false, preset: next.preset ?? current.config.preset, amount },
+            });
+            return;
+        }
+        await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount });
+    }, t('settings.AudioSettingsModal.008'));
     const commitAmount = (value: number) => { setAmount(null); void applyChain({ amount: value }); };
 
     return { stats, disabled: !stats || busy, noiseOn, noiseMode, applyNoise, chainOn, preset, shownAmount, setAmount, commitAmount, toggleChain, applyChain };
@@ -111,7 +121,7 @@ export function BuiltinAmount({ q }: { q: VoiceQuick }) {
     if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
     return <div className="min-w-0 w-full max-w-[15rem]">
         <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
-            disabled={q.disabled || !q.chainOn} formatValue={value => `${value}%`}
+            disabled={q.disabled} formatValue={value => `${value}%`}
             onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
     </div>;
 }
@@ -122,7 +132,7 @@ export function BuiltinPresets({ q }: { q: VoiceQuick }) {
     if (q.preset === 'singing') return null;
     return <div className="min-w-0">
         <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
-            value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
+            value={q.preset} onValueChange={preset => void q.applyChain({ preset })} />
     </div>;
 }
 
