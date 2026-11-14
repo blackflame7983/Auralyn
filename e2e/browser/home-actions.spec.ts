@@ -107,7 +107,8 @@ test.describe('設定済みの停止中', () => {
         await expect(start).toBeInViewport();
         await expect(page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
         await expect(page.getByRole('region', { name: '状態の帯', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(1);
-        await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(0);
+        // 段階4で、停止中の入力状態をカードに同じ言葉で出す。上の帯の札は1つのまま。
+        await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).locator('[data-now-incoming="stopped"]')).toHaveText('音声停止中');
         await page.screenshot({ path: info.outputPath('stopped.png') });
         await start.click();
         await expect(start).toHaveCount(0);

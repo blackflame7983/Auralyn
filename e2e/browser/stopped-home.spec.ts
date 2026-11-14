@@ -17,7 +17,9 @@ for (const theme of ['dark', 'light', 'gaming']) {
         const strip = page.getByRole('region', { name: 'いまの状態', exact: true });
         const band = page.getByRole('region', { name: '状態の帯', exact: true });
         await expect(band.getByText('音声停止中', { exact: true })).toHaveCount(1);
-        await expect(strip.getByText('音声停止中', { exact: true })).toHaveCount(0);
+        // 段階4で、停止中の入力状態と送る音をカードに同じ言葉で出す。帯の札は1つのまま。
+        await expect(strip.locator('[data-now-incoming="stopped"]')).toHaveText('音声停止中');
+        await expect(strip.getByRole('meter', { name: '送る音', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
         const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
         await expect(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
         await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
