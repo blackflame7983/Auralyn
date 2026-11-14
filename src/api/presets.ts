@@ -154,6 +154,9 @@ export const DEFAULT_EXPORT_CATEGORIES: ProfileSaveCategories = {
     includeBuiltinFx: true,
 };
 
+/** 切替前に自動で退避した構成。プロファイルと同じ場所に保存されるが、利用者の一覧には出さない。 */
+export const PROFILE_BACKUP_NAME = '__backup_previous';
+
 export const presetApi = {
     list: async (): Promise<string[]> => {
         return await invoke("list_presets");

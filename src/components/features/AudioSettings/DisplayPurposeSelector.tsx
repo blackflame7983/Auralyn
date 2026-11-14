@@ -7,14 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 
-// 毎日切り替えるものではないので、ホームの本文ではなく設定の「表示」に置く。
-// 表示だけを切り替え、音声設定・準備の送り先・送出には触れない。
-export function DisplayPurposeSelector() {
+// 接続のページの先頭に置く。表示だけを保存し、入力の用途は自動では変えない。
+export function DisplayPurposeSelector({ onChanged }: { onChanged?: (purpose: DisplayPurpose) => void }) {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
     return <div className="mb-3 flex flex-wrap items-center gap-2 text-ui-support">
         <Field label={t('purpose.label')} description={t('purpose.hint')}>
-            <Select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)}>
+            <Select value={purpose} onChange={event => {
+                const next = event.target.value as DisplayPurpose;
+                setPurpose(next);
+                onChanged?.(next);
+            }}>
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
             </Select>
         </Field>

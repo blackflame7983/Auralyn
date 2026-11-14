@@ -26,6 +26,7 @@ import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
 import { formatAudioRoute } from '@/lib/audioRouteLine';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
+import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
 import type { MessageKey } from '@/i18n/messages';
 import type { PreparationUse } from '@/lib/preparation';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
@@ -92,6 +93,8 @@ interface AppShellProps {
     vstUnrestored?: string[];
     /** VST のページを開く。追加から開くときは true。 */
     onOpenVst?: (focusAdd?: boolean) => void;
+    /** 保存した VST の構成を読み込む。呼び方は既存の pluginsApi.loadPreset のまま。 */
+    onLoadPreset?: (name: string) => Promise<boolean>;
     /** 画面側の VST 一覧の件数。未取得は null。 */
     vstCount?: number | null;
     /** 表示を選んだ配信ミックス。本番帯の直下へ置く。 */
@@ -141,6 +144,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstUnrestored,
     vstCount = null,
     onOpenVst,
+    onLoadPreset,
     streamMixPanel
 }) => {
     const t = useMessages();
@@ -302,6 +306,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured
                             ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} outputName={currentOutput} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
+                        {configured && purpose === 'music' && <MusicHomeDesk host={currentHost} sampleRate={currentSampleRate}
+                            vstBypassed={isABBypassed} onCompare={() => { void handleABToggle(); }} onLoadPreset={onLoadPreset}
+                            onOpenVst={onOpenVst ? () => onOpenVst(false) : undefined} />}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
                         {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}

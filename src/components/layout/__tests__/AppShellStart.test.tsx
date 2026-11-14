@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi } from '@/api/audio';
+import { presetApi } from '@/api/presets';
 import { listen } from '@tauri-apps/api/event';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -217,6 +218,20 @@ it('音量チェックは本番帯のメーター横に置き、明示要求だ�
     act(() => { measurementProps.current.onStateChange({active: false, busy: false, stopUnconfirmed: false}); measurementProps.current.onClose(); });
     expect(screen.getByRole('button', {name: '音量を測る'})).toBeInTheDocument();
     expect(measurementProps.current.request).toBe(start);
+});
+
+it('音楽鑑賞のホームから、構成の切り替えと聴き比べに1回で届く', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue(['夜']);
+    const load = vi.fn().mockResolvedValue(true);
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    saveDisplayPurpose('music');
+    render(<AppShell {...commonProps} currentSampleRate={48000} onLoadPreset={load}><p>rack</p></AppShell>);
+    const desk = await screen.findByRole('region', { name: '再生の状態' });
+    expect(desk).toHaveTextContent('WASAPI · 48 kHz');
+    fireEvent.change(within(desk).getByRole('combobox', { name: '保存したVSTの構成' }), { target: { value: '夜' } });
+    await waitFor(() => expect(load).toHaveBeenCalledWith('夜'));
+    await act(async () => { fireEvent.click(within(desk).getByRole('switch', { name: 'VSTを外して聴き比べる' })); });
+    expect(bypass).toHaveBeenCalledWith(true);
 });
 
 it('表示用途はホームの本文に置かず、設定から切り替えると保存済みの音声用途と準備設定を保持する', () => {

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
@@ -157,14 +157,44 @@ it('移行の動的件数を英語で表示し、実ファイル名・VST名は�
     expect(screen.getByText('実名VST')).toBeVisible();
 });
 
-it('外観タブで表示用途を切り替えられ、言語の下に置く', async () => {
+it('使い方は接続の先頭にあり、外観には移った先の案内だけを残す', async () => {
+    // ホームの表示は外観から接続の先頭へ移した（#554）。言語との上下関係は、もう外観では見ない。
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     const purpose = await screen.findByRole('combobox', { name: 'ホームの表示' });
-    const language = screen.getByRole('combobox', { name: /言語/ });
-    expect(language.compareDocumentPosition(purpose) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const summary = screen.getByRole('heading', { name: '選択中の入出力' });
+    expect(purpose.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
+    expect(screen.queryByRole('combobox', { name: 'ホームの表示' })).not.toBeInTheDocument();
+    expect(screen.getByText('使い方の切り替えは、接続のページの先頭に移しました。')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '接続を開く' }));
+    expect(await screen.findByRole('combobox', { name: 'ホームの表示' })).toBeVisible();
 });
 
+
+it('音楽鑑賞を選んでも、プロセス入力の用途は同意するまで変えない', async () => {
+    const appKey = 'a'.repeat(64);
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({
+        host: 'Wasapi', input: '実名のマイク', output: '実名の出力', sampleRate: 48000, bufferSize: 512,
+        inputSource: { kind: 'process_loopback', config: { appKey, appName: '再生アプリ', rawEndpointId: 'endpoint-1', purpose: 'voice' } },
+    }));
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const purpose = await screen.findByRole('combobox', { name: 'ホームの表示' });
+    const inputPurpose = screen.getByRole('combobox', { name: '入力の用途' });
+    expect(inputPurpose).toHaveValue('voice');
+    fireEvent.change(purpose, { target: { value: 'music' } });
+    const dialog = await screen.findByRole('alertdialog', { name: '入力の用途も音楽にしますか？' });
+    expect(inputPurpose).toHaveValue('voice');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(inputPurpose).toHaveValue('voice');
+    expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
+    fireEvent.change(purpose, { target: { value: 'voice' } });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    fireEvent.change(purpose, { target: { value: 'music' } });
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の用途も音楽にしますか？' })).getByRole('button', { name: '音楽にする' }));
+    expect(inputPurpose).toHaveValue('music');
+    expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'start_audio')).toBe(false);
+});
 
 it('ホットキーの内容を高さで制限せず、設定本文だけにスクロールを集約する', async () => {
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
