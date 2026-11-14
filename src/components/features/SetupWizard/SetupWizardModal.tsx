@@ -139,7 +139,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             const name = <span className="min-w-0 wrap-break-word">{label}{isPast && <span className="sr-only">{t('wizard.stepCompleted')}</span>}</span>;
                             return <li key={step} aria-current={isCurrent ? 'step' : undefined}
                                 className={`relative flex min-h-11 items-center gap-3 rounded-card px-3 py-2 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                {isPast ? <button type="button" disabled={isBusy || isCheckingConnection} aria-label={t('wizard.backToStep', { step: label })} onClick={() => { void reselectDevices(step); }} className="flex min-h-11 w-full items-center gap-3 rounded-card text-left outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{marker}{name}</button> : <>{marker}{name}</>}
+                                {isPast && <button type="button" disabled={isBusy || isCheckingConnection} aria-label={t('wizard.backToStep', { step: label })} onClick={() => { void reselectDevices(step); }} className="absolute inset-0 rounded-card outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" />}
+                                {marker}{name}
                             </li>;
                         })}
                     </ol>
