@@ -119,11 +119,14 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
             <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
             {action}
         </div>
-        <div className="relative h-[72px]">
-            <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
-            {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
-            {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 top-1 bottom-6 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
-            <div className="pointer-events-none absolute inset-x-0 bottom-1 flex gap-3 text-ui-support text-muted-foreground">
+        {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。 */}
+        <div className="flex h-[72px] flex-col">
+            <div className="relative min-h-0 flex-1">
+                <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
+                {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
+                {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
+            </div>
+            <div className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-2 w-4 rounded-full bg-muted-foreground/50" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
             </div>
