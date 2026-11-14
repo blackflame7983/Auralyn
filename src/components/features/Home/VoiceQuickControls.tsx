@@ -132,7 +132,7 @@ export function BuiltinPresets({ q }: { q: VoiceQuick }) {
     if (q.preset === 'singing') return null;
     return <div className="min-w-0">
         <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
-            value={q.preset} onValueChange={preset => void q.applyChain({ preset })} />
+            value={q.stats ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
     </div>;
 }
 

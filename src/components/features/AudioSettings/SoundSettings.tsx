@@ -381,7 +381,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },
                       { value: 'warm', label: t('settings.AudioSettingsModal.099') },
                       { value: 'bright', label: t('settings.AudioSettingsModal.100') }] as Array<{ value: BuiltInEffectsPreset; label: string }>).map(option => ({ ...option, disabled: !singingModel.snapshot || singingModel.busy }))}
-                    value={singingModel.snapshot?.config.preset ?? builtInEffectsPreset}
+                    value={singingModel.snapshot?.config.preset ?? (engineStats ? builtInEffectsPreset : null)}
                     onValueChange={preset => void applyBuiltInEffects({ preset })} />
 
                   <div className="w-full space-y-2">
