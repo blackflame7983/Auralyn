@@ -46,8 +46,8 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
     const verdict = outputVerdict({ state: reading.state, smoothed: Math.max(...reading.levels), peakHold });
     const verdictText = verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : verdict === 'ok' ? t('home.levelOk') : null;
     return <div className="flex shrink-0 flex-col gap-1.5">
-        {/* 一言とミュートの印は同じ高さに収める。出し入れでメーターの位置を動かさない。 */}
-        <div className="flex h-6 min-w-0 items-center gap-2 overflow-hidden">
+        {/* 札は列の幅で折り返す。非表示のときも同じ高さを取り、メーターの位置を動かさない。 */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="shrink-0 text-ui-control font-medium">{t('meter.output')}</h3>
             <span className="inline-flex h-5 min-w-0 flex-1 items-center justify-end">
                 {verdictText && <span data-output-verdict={verdict} className="inline-flex min-w-0 items-center gap-1 text-ui-support font-medium">
@@ -55,10 +55,10 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
                     <span className="truncate">{verdictText}</span>
                 </span>}
             </span>
-            <span role="status" aria-hidden={!muted} className={cn('inline-flex h-5 shrink-0 items-center', muted ? '' : 'invisible')}>
+            <span role="status" aria-hidden={!muted} className={cn('inline-flex w-full items-center', muted ? '' : 'invisible')}>
                 <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)} tabIndex={muted ? 0 : -1}
-                    title={t('prep.checkOutput')} className="inline-flex max-w-28 items-center gap-1 rounded-full border border-warning/50 bg-warning/10 px-2 text-ui-support font-bold text-warning">
-                    <MdVolumeOff aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="truncate">{t('prep.muted')}</span>
+                    title={t('prep.checkOutput')} className="inline-flex max-w-full items-start gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-left text-ui-support font-bold text-warning">
+                    <MdVolumeOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /><span className="[overflow-wrap:anywhere]">{t('prep.muted')}</span>
                 </button>
             </span>
         </div>
