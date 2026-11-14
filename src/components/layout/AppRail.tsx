@@ -133,13 +133,13 @@ export function AppRail({
                                 setHelpOpen(true);
                             }
                         }}>
+                            <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => { menuHelp.current = true; }} className="gap-3 cursor-pointer p-3">
                                 <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
                                 <div className="flex flex-col"><span className="font-bold text-ui-support">{t('help.title')}</span>
                                     <span className="text-ui-support text-muted-foreground">{t('help.hint')}</span></div>
                             </DropdownMenuItem>
-                            <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-overlay text-discord-foreground rounded-full text-ui-support font-bold shadow-sm">OBS</span>
                                 <div className="flex flex-col">

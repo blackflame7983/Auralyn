@@ -46,7 +46,9 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog).toHaveAttribute('data-settings-page', 'sound');
     const section = dialog.locator('#live-mode-settings');
-    await expect(dialog.locator('#sound-section-heading')).toHaveText('歌・雑談');
+    // タブが区分の名前を持つので、見出しの繰り返しは説明の一文に変えた（#542）。
+    await expect(dialog.getByRole('tab', { name: '歌・雑談', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.locator('#sound-section-heading')).toHaveText('いま適用している音を、歌と雑談の切り替え先として登録します。');
     await expect(dialog.locator('#sound-section-heading')).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });

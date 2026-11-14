@@ -29,6 +29,9 @@ it.each(['ja', 'en'] as const)('メニュー先頭から開き、節を保存し
     await screen.findAllByRole('menuitem');
     const items = screen.getAllByRole('menuitem');
     expect(items[0]).toHaveTextContent(message(locale, 'help.title'));
+    // 「使い方」は「ガイド & ヘルプ」の見出しより下に置く（#542）。
+    const guides = screen.getByText(message(locale, 'header.guides'));
+    expect(guides.compareDocumentPosition(items[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(items[0]);
     const dialog = await screen.findByRole('dialog', { name: message(locale, 'help.title') });
     const terms = within(dialog).getByRole('button', { name: message(locale, 'help.section.terms') });

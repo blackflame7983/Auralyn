@@ -14,8 +14,8 @@ export function OutputChannelSelector({ value, maxChannels, disabled, onChange }
     const channels = value.mode === 'independent' ? value.channels : [0, 1];
     // 能力が未取得でも保存済みの出力番号を画面から消さない。
     if (!pairs.some(pair => pair[0] === channels[0] && pair[1] === channels[1])) pairs.push([channels[0], channels[1]]);
-    return <fieldset disabled={disabled} className="space-y-2 rounded-card border border-border bg-muted/30 p-4">
-        <legend className="px-1 text-ui-heading font-semibold">{t('settings.routing.title')}</legend>
+    return <fieldset disabled={disabled} className="page-section rounded-card border border-border bg-muted/30 p-4">
+        <legend className="text-ui-heading font-semibold">{t('settings.routing.title')}</legend>
         <Field id={`${id}-mode`} label={t('settings.routing.mode')}>
         <Select id={`${id}-mode`} value={value.mode} aria-describedby={`${id}-hint`}
             onChange={event => onChange(event.target.value === 'independent'
