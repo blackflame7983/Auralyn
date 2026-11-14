@@ -39,8 +39,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await settleLayoutMotion(page);
     await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('heading', { name: 'マイク', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '大型レベルメーターを開く', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
+    await page.getByRole('button', { name: '音量を測る', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('音量を測る');
     await actions.click();
     await register.click();
     const dialog = page.locator('[data-settings-page]');

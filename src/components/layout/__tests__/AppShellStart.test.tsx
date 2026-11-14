@@ -42,8 +42,8 @@ it('音声停止中の音量チェックは本番帯で無効表示にし、押�
 currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
         <p>rack</p>
     </AppShell>);
-    const button = screen.getByRole('button', { name: '音量チェックを開始' });
-    expect(button).toHaveTextContent('音量チェック');
+    const button = screen.getByRole('button', { name: '音量を測る' });
+    expect(button).toHaveTextContent('音量を測る');
     expect(screen.queryByRole('button', { name: '大型レベルメーターを開く' })).not.toBeInTheDocument();
     expect(button).toBeDisabled();
     expect(button.className).toContain('disabled:opacity-50');
@@ -63,10 +63,10 @@ currentHost="" isEngineRunning={false}>
         <p>エフェクト設定</p>
     </AppShell>);
     // 未設定の間は音量チェックも本番帯ごと出さない（押しても使えないため）。
-    expect(screen.queryByRole('button', { name: '音量チェックを開始' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '音量を測る' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'いまの状態' })).not.toBeInTheDocument();
     // 準備の確認と同じ意味のボタン・警告を重ねない。
-    expect(screen.queryByRole('region', { name: '音声チェック' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '接続の確認' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'セットアップを開く' })).not.toBeInTheDocument();
     const flow = screen.getByRole('region', { name: '音の流れ' });
@@ -202,7 +202,7 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
 
 it('音量チェックは本番帯のメーター横に置き、明示要求だけを送り、再描画で再要求しない', () => {
     const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);
-    const button = screen.getByRole('button', {name: '音量チェックを開始'});
+    const button = screen.getByRole('button', {name: '音量を測る'});
     expect(button.closest('section[aria-label="声の流れ"]')).not.toBeNull();
     expect(measurementProps.current.request).toBeUndefined();
     fireEvent.click(button);
@@ -215,7 +215,7 @@ it('音量チェックは本番帯のメーター横に置き、明示要求だ�
     // 開いた後の測定・停止はパネル側だけに置き、同じ操作を上部と重ねない。
     expect(screen.queryByRole('button', {name: '測定を止める'})).not.toBeInTheDocument();
     act(() => { measurementProps.current.onStateChange({active: false, busy: false, stopUnconfirmed: false}); measurementProps.current.onClose(); });
-    expect(screen.getByRole('button', {name: '音量チェックを開始'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: '音量を測る'})).toBeInTheDocument();
     expect(measurementProps.current.request).toBe(start);
 });
 
@@ -327,7 +327,7 @@ it('チェーン列は本番操作の後で音声チェックより前に置き�
     const chain = screen.getByRole('region', { name: '音調整' });
     expect(chain).toHaveTextContent('vst-items');
     expect(follows(screen.getByRole('region', { name: 'いまの状態' }), chain)).toBe(true);
-    expect(follows(chain, screen.getByRole('region', { name: '音声チェック' }))).toBe(true);
+    expect(follows(chain, screen.getByRole('region', { name: '接続の確認' }))).toBe(true);
     expect(follows(chain, screen.getByText('rack'))).toBe(true);
     view.rerender(<AppShell {...commonProps} currentHost="" isEngineRunning={false} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
     expect(follows(screen.getByRole('region', { name: '音の流れ' }), screen.getByRole('region', { name: '音調整' }))).toBe(true);

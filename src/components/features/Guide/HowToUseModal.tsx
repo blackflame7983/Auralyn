@@ -81,7 +81,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                         <section aria-labelledby={heading} className="min-w-0 space-y-4 text-ui-support leading-relaxed [overflow-wrap:anywhere]">
                             <h2 id={heading} className="text-ui-heading font-semibold">{t(`help.section.${section}`)}</h2>
                             {section === 'home' && (['stage', 'meters', 'sound', 'check', 'footer'] as const).map(item => <div key={item}>
-                                <h3 className="font-semibold">{t(`help.home.${item}.title`)}</h3>
+                                <h3 className="font-semibold">{item === 'check' ? t('prep.title') : t(`help.home.${item}.title`)}</h3>
                                 <p className="mt-1 text-muted-foreground">{t(`help.home.${item}.body`, labels)}</p>
                             </div>)}
                             {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}

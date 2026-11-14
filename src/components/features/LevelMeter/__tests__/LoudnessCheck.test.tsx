@@ -66,7 +66,7 @@ describe('音量判定の境界', () => {
     });
 });
 
-describe('出力の音量チェック', () => {
+describe('音量を測る', () => {
     it('未測定でも障害・停止通知と破棄は停止だけを要求し、測定を開始しない', async () => {
         const view = render(<LoudnessCheck running={false} onVoiceCheck={() => {}} />);
         await act(async () => {});
@@ -375,7 +375,7 @@ describe('未使用時の音量測定', () => {
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: '停止を再試行' }));
         });
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
     });
     it('開始応答中に稼働状態を失っても、遅い開始の後に停止する', async () => {
         const view = render(<LoudnessCheck running onVoiceCheck={() => {}} />);
@@ -387,11 +387,11 @@ describe('未使用時の音量測定', () => {
         view.rerender(<LoudnessCheck running={false} enabled={false} onVoiceCheck={() => {}} />);
         await act(async () => { finish(); });
         expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
     });
     it('未使用の表示を畳み、再表示だけでは測定を開始しない', () => {
         const view = render(<LoudnessCheck running enabled={false} onVoiceCheck={() => {}} />);
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
         view.rerender(<LoudnessCheck running onVoiceCheck={() => {}} />);
         expect(screen.getByRole('button', { name: '測定する' })).toBeEnabled();
         expect(audioApi.setLoudnessMeasurement).not.toHaveBeenCalled();
@@ -405,7 +405,7 @@ describe('未使用時の音量測定', () => {
             view.rerender(<LoudnessCheck running enabled={false} onVoiceCheck={() => {}} />);
         });
         expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
         const calls = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.length;
         view.rerender(<LoudnessCheck running onVoiceCheck={() => {}} />);
         expect(screen.getByRole('status')).toHaveTextContent('測定は停止中');
@@ -425,7 +425,7 @@ describe('未使用時の音量測定', () => {
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: '停止を再試行' }));
         });
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
     });
     it('開始応答待機中に利用OFFでも、遅い開始の後へ停止を適用する', async () => {
         const view = render(<LoudnessCheck running onVoiceCheck={() => {}} />);
@@ -444,7 +444,7 @@ describe('未使用時の音量測定', () => {
             finish();
         });
         expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
-        expect(screen.queryByRole('region', { name: '出力の音量チェック' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: '音量を測る' })).not.toBeInTheDocument();
     });
     it('画面が非表示になると停止し、戻っても測定を再開しない', async () => {
         render(<LoudnessCheck running onVoiceCheck={() => {}} />);
