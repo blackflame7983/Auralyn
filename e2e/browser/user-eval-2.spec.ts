@@ -32,13 +32,16 @@ test('接続・音づくり・VST・設定の見出しは同じ要素と同じ�
             const titleBox = h1.getBoundingClientRect();
             const leadBox = lead?.getBoundingClientRect();
             const headerBox = header?.getBoundingClientRect();
+            if (!header || !lead || !leadBox || !headerBox) {
+                return { tag: h1.tagName, headerClass: header?.className ?? '', leadTag: lead?.tagName ?? '', sameRow: false, leadAfter: false, headerLeft: -1 };
+            }
             return {
                 tag: h1.tagName,
-                headerClass: header?.className ?? '',
-                leadTag: lead?.tagName ?? '',
-                sameRow: Boolean(leadBox) && Math.abs(titleBox.top - leadBox.top) < 16,
-                leadAfter: Boolean(leadBox) && leadBox.left >= titleBox.right - 8,
-                headerLeft: headerBox ? Math.round(headerBox.left) : -1,
+                headerClass: header.className,
+                leadTag: lead.tagName,
+                sameRow: Math.abs(titleBox.top - leadBox.top) < 16,
+                leadAfter: leadBox.left >= titleBox.right - 8,
+                headerLeft: Math.round(headerBox.left),
             };
         }));
     }
