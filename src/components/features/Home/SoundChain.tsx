@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension, MdChevronRight } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InfoPopover } from '@/components/ui/InfoPopover';
@@ -9,6 +9,7 @@ import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
+import { largeWindow } from '@/lib/largeWindow';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { BuiltinAmount, BuiltinPresets, BuiltinSwitch, NoiseQuick, NoiseSwitch, ToneGuide, useVoiceQuick } from './VoiceQuickControls';
 
@@ -30,13 +31,43 @@ interface Props {
     onOpenSoundSettings?: () => void;
     /** 追加から開くときは true。ページの「VSTを追加」へ焦点を移す。 */
     onOpenVst?: (focusAdd: boolean) => void;
+    /** 周囲の音を測る。音づくりの基本を開き、測定の欄へ焦点を移す。状態は読まない。 */
+    onMeasureNoise?: () => void;
     unconfigured?: boolean;
 }
 
-// 音調整は開閉しない3枚のカード。2段目は data-home-tier で分け、窓が低いときに隠すのは後の段階。
+// 音調整は開閉しない3枚のカード。2段目は data-home-tier で分け、窓の高さで CSS が出す。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstUnrestored = [], unconfigured = false }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false }: Props) {
     const t = useMessages();
+    // 2段目の出し分けは CSS の min-height。隠れた操作に焦点があるときだけ、カードの見出しへ移す。
+    useEffect(() => {
+        if (typeof window.matchMedia !== 'function') return;
+        const media = window.matchMedia(`(min-height: ${largeWindow.tier2MinHeight}px)`);
+        let tierHost: HTMLElement | null = null;
+        const onFocusIn = (event: FocusEvent) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            const tier = target.closest<HTMLElement>('[data-home-tier="2"]');
+            if (tier) tierHost = tier;
+            else if (target !== document.body) tierHost = null;
+        };
+        const onChange = () => {
+            if (media.matches) return;
+            const active = document.activeElement;
+            const current = active instanceof HTMLElement ? active.closest<HTMLElement>('[data-home-tier="2"]') : null;
+            // display:none で焦点が body に落ちたときは、隠れる直前の2段目を見出しへ戻す。
+            const tier = current ?? (active === document.body && tierHost && tierHost.getClientRects().length === 0 ? tierHost : null);
+            tier?.closest('li')?.querySelector<HTMLElement>('h3')?.focus();
+            tierHost = null;
+        };
+        document.addEventListener('focusin', onFocusIn);
+        media.addEventListener('change', onChange);
+        return () => {
+            document.removeEventListener('focusin', onFocusIn);
+            media.removeEventListener('change', onChange);
+        };
+    }, []);
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { stats, running } = useRuntimeStats();
@@ -92,7 +123,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             <div className="flex min-w-0 flex-col gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                     <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={key === 'vst' ? -1 : undefined} className="home-card-name min-w-0 whitespace-nowrap">{name}</h3>
+                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className="home-card-name min-w-0 whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{name}</h3>
                     {!unconfigured && info}
                 </div>
                 {!unconfigured && <div className="sound-card-status">
@@ -116,7 +147,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             card({ key: 'noise', on: noiseOn, name: t('settings.AudioSettingsModal.105'), summary: noiseSummary,
                 statusTone: tone(live ? noiseOn : stage?.nr.enabled), info: noiseInfo,
                 action: live ? <NoiseSwitch q={q} /> : undefined,
-                body: live ? <NoiseQuick q={q} /> : undefined }),
+                body: live ? <NoiseQuick q={q} /> : undefined,
+                tier2: onMeasureNoise ? <Button variant="outline" size="default" type="button" onClick={onMeasureNoise} className="home-action">{t('home.measureNoise')}</Button> : undefined }),
             card({ key: 'builtin', on: builtinOn, name: t('settings.AudioSettingsModal.095'), summary: builtinSummary,
                 statusTone: live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone,
                 info: builtinInfo, action: live ? <BuiltinSwitch q={q} /> : undefined,

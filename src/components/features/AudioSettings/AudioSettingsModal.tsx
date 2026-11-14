@@ -64,6 +64,8 @@ interface AudioSettingsModalProps {
   /** 音づくりの小区分。親が持つとき、ページを離れても下書きの確認を同じ規則で出す。 */
   soundPlace?: SoundPlace;
   soundFocusNonce?: number;
+  /** ホームの「周囲の音を測る」から開くたびに増える。 */
+  measurementNonce?: number;
   onSoundPlace?: (place: SoundPlace, focus?: boolean) => void;
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
@@ -85,7 +87,7 @@ interface AudioSettingsModalProps {
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   liveModel: providedLive,
   singingModel: providedSinging, onPreviewSinging, onSaveSingingProfile,
-  initialTab = 'audio', tabRequest = 0, onRequestTab, initialSection, soundPlace: soundPlaceProp, soundFocusNonce = 0, onSoundPlace,
+  initialTab = 'audio', tabRequest = 0, onRequestTab, initialSection, soundPlace: soundPlaceProp, soundFocusNonce = 0, measurementNonce = 0, onSoundPlace,
   isOpen,
   onClose,
   onConfigChange,
@@ -629,8 +631,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
                 }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} onChooseConnection={chooseConnection} /></div>
+                {/* 入力と出力は、ページの幅に余裕があるときだけ横に並べる。間の項目は1行のまま。DOM の順は変えない。 */}
+                <div className="page-pair">
                 {/* Input Device */}
-                {!processInput && <fieldset className="space-y-3 rounded-card border border-border p-3">
+                {!processInput && <fieldset className="page-pair-input space-y-3 rounded-card border border-border p-3">
                   <legend className="px-1 text-ui-heading font-semibold">
                     <label htmlFor={inputId}>{t(isAsio ? 'settings.AudioSettingsModal.037' : pcInput ? 'wizard.pcAudio' : 'settings.AudioSettingsModal.038')}</label>
                   </legend>
@@ -656,7 +660,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 }
                 {/* Smart Input Channel Selector (ASIO Only) */}
                 {isAsio && (
-                  <div>
+                  <div className="page-pair-span">
                     <InputChannelSelector
                       key={connection.deviceKey}
                       initialChannels={connection.channels}
@@ -669,7 +673,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Output Device - Hide for ASIO */}
                 {!isAsio && (
-                  <fieldset className="space-y-3 rounded-card border border-border p-3">
+                  <fieldset className="page-pair-output space-y-3 rounded-card border border-border p-3">
                     <legend className="px-1 text-ui-heading font-semibold">{t('settings.AudioSettingsModal.041')}</legend>
                     <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.042')}</span>}><Select
                     aria-label={t('settings.AudioSettingsModal.042')}
@@ -689,8 +693,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     </Select></Field>
                   </fieldset>
                 )}
-                {isAsio && <OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
-                  disabled={isApplying} onChange={routing => { editConnection('routing'); connection.setOutputRouting(routing); }} />}
+                {isAsio && <div className="page-pair-output"><OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
+                  disabled={isApplying} onChange={routing => { editConnection('routing'); connection.setOutputRouting(routing); }} /></div>}
+                </div>
 
                 {processInput && <p className="break-words text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
 
@@ -954,7 +959,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
             isBeginnerMode={isBeginnerMode} place={soundPlace} onPlace={chooseSoundPlace} onPeakPending={onPeakPending}
             music={displayPurpose === 'music'} singingDirty={singingDirty}
-            onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) requestLeave(() => { openStreamMixPanel(); onClose(); }); }} />
+            onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} measurementNonce={measurementNonce} onOpenMixing={() => { if (streamMixAvailable) requestLeave(() => { openStreamMixPanel(); onClose(); }); }} />
           </TabsContent>
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
@@ -1016,15 +1021,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
         {showSingingBar && (
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/20 px-4 py-2">
-            <p className="min-w-0 flex-1 text-ui-support text-muted-foreground">{singingDirty ? t('sound.unapplied') : t('sound.noChanges')}</p>
+          <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
+            <p className="settings-action-note text-ui-support text-muted-foreground">{singingDirty ? t('sound.unapplied') : t('sound.noChanges')}</p>
             <Button type="button" className="shrink-0" disabled={singingModel.busy || !singingDirty || Boolean(singingModel.snapshot?.pending) || singingModel.conflict} onClick={() => void singingModel.apply()}>{t('settings.SingingControls.427')}</Button>
           </div>
         )}
         {activeTab === 'audio' && !loading && (
-          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
-            <div className="min-w-0 flex-1 space-y-1 text-left text-ui-support text-muted-foreground" id="settings-connection-changes">
+            <div className="settings-action-note space-y-1 text-left text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
                 ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: displayAudioHost(selectedHost), input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>

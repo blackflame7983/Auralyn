@@ -134,7 +134,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
         <div className="modal-overlay-base bg-overlay/50" onClick={onClose}><Tabs value={activeTab} onValueChange={value => setActiveTab(value as 'product' | 'npm' | 'cargo')} className="contents">
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
-                className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground"
+                className="modal-surface-base max-w-4xl w-full h-[calc(80vh/var(--ui-zoom))] flex flex-col text-foreground"
                 onClick={e => e.stopPropagation()}
             >
 

@@ -34,6 +34,7 @@ interface UIState {
     settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
     soundPlace?: SoundPlace;
     soundFocusNonce?: number;
+    measurementNonce?: number;
     moveSoundPlace?: (place: SoundPlace, focus?: boolean) => void;
     settingsTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
     settingsTabRequest?: number;
@@ -166,6 +167,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         initialSection={ui.settingsSection}
                         soundPlace={ui.soundPlace}
                         soundFocusNonce={ui.soundFocusNonce}
+                        measurementNonce={ui.measurementNonce}
                         onSoundPlace={ui.moveSoundPlace}
                         isOpen={ui.isSettingsOpen}
                         onRequestTab={tab => ui.setIsSettingsOpen(true, tab)}

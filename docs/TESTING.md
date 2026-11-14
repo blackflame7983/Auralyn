@@ -127,6 +127,7 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 - 未定義のIPCはプレビューでは失敗させず `window.__e2eUnexpected` に記録する。試験（`strict: true`）では従来どおり失敗させる。
 - 読込は `vite.config.ts` の serve 専用プラグインで行い、本番ビルドには含まれない。Tauri上（`__TAURI_INTERNALS__` がある場合）では何もしない。
 - Pencil へは、内蔵ブラウザで上記URLを開いて `#root` を取り込む。取り込み幅はブラウザの表示幅に従うため、幅を揃えたいときは CDP の `Emulation.setDeviceMetricsOverride` で指定してから取り込む。取り込んだものは静的な写しで、コードとは同期しない。
+- 段階 H（広い窓）の出し分けと拡大は `e2e/browser/large-window.spec.ts` で確かめる。寸法の正本は `src/lib/largeWindow.ts`。画面記録は `RENEWAL_H_SHOTS=1` のときだけ `e2e/browser/design-renewal-h-shots.spec.ts` が `docs/verification/design-renewal-h/` を上書きする。通常の `npm run test:e2e` では撮らない。`RENEWAL_SHOTS` とは別の変数にする。
 
 ### 変更中の確認と全体確認
 

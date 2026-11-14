@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { settleLayoutMotion } from './layoutMotion';
+import { uiScale } from '../../src/lib/largeWindow';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -21,7 +22,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
             const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
             await expect(input).toBeVisible();
             await expect(page.locator('#home-builtin')).toHaveAttribute('data-on', 'true');
-            if (height >= 900) expect((await input.boundingBox())!.height).toBe(16);
+            if (height >= 900) expect((await input.boundingBox())!.height).toBeCloseTo(16 * uiScale(width, height), 1);
             await expect(page.locator('.large-meter-motion')).toHaveCount(0);
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.35, 0.3], output: [0.3, 0.25] }));
@@ -86,7 +87,7 @@ test('縦横を切り替えても右の列の出力メーターが残り、大�
     for (const size of [{ width: 1200, height: 1600 }, { width: 1920, height: 1080 }, { width: 1200, height: 1600 }]) {
         await page.setViewportSize(size);
         await expect(meter).toBeVisible();
-        expect((await meter.boundingBox())!.height).toBe(16);
+        expect((await meter.boundingBox())!.height).toBeCloseTo(16 * uiScale(size.width, size.height), 1);
     }
 });
 
@@ -147,8 +148,9 @@ for (const locale of ['ja', 'en']) {
             }
             const nowHeight = (await live.boundingBox())!.height;
             const builtin = page.locator('#home-builtin');
-            await expect(page.locator('#home-noise [data-home-tier="2"]')).toHaveCount(0);
-            await expect(builtin.locator('[data-home-tier="2"]')).toBeVisible();
+            // 高さ 640 は仮の境目 860 より低いので、2段目は残すが隠す。
+            await expect(page.locator('#home-noise [data-home-tier="2"]')).toBeHidden();
+            await expect(builtin.locator('[data-home-tier="2"]')).toBeHidden();
             await builtin.scrollIntoViewIfNeeded();
             expect((await live.boundingBox())!.height).toBeCloseTo(nowHeight, 1);
             expect(await column.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBeCloseTo(16, 1);

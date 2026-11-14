@@ -96,7 +96,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(unconfigured).toBeVisible();
         await expect(unconfigured.locator('..').locator('[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
-        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         const dialog = page.locator('[data-settings-page]');
         const changes = dialog.locator('#settings-connection-changes');
         await expect(changes).toContainText(message(locale, 'settings.connection.firstStart', { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones' }));
@@ -151,7 +151,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.goto('/');
         const wizard = page.getByRole('dialog', { name: message(locale, 'wizard.title'), exact: true });
         await expect(wizard).toBeVisible();
-        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         const labels = ['prep.obs', 'prep.call', 'prep.local', 'prep.other'] as const;
         for (const label of labels) await expect(wizard.getByRole('radio', { name: message(locale, label), exact: true })).toBeVisible();
         // 送り先は OBS・通話・自分で聴く・その他の順に並べる（#304）。

@@ -290,7 +290,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpenSections(prev => ({ ...prev, diagnostics: true }))}>{t('settings.diagnosticsOpen')}</Button>
             {openSections.diagnostics && <Modal title={t('structure.diagnostics')} onClose={() => setOpenSections(prev => ({ ...prev, diagnostics: false }))}>
             <div className="fixed inset-0 z-[120] flex items-center justify-center bg-background/90 p-4">
-              <div className="modal-surface-base max-h-[80vh] w-full max-w-lg space-y-3 overflow-y-auto p-6">
+              <div className="modal-surface-base max-h-[calc(80vh/var(--ui-zoom))] w-full max-w-lg space-y-3 overflow-y-auto p-6">
               <h2 className="text-ui-heading font-semibold text-foreground">{t('structure.diagnostics')}</h2>
               <Button
                     onClick={refreshEngineRuntimeStats}

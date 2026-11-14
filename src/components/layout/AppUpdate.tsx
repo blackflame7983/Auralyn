@@ -24,7 +24,7 @@ export function UpdateGuide({ onClose }: { onClose: () => void }) {
     return (
         <Modal title={t('updates.msixTitle')} onClose={onClose}>
             <div className="modal-overlay-base">
-                <div className="modal-surface-base w-full max-w-md max-h-[85vh] flex flex-col">
+                <div className="modal-surface-base w-full max-w-md max-h-[calc(85vh/var(--ui-zoom))] flex flex-col">
                     <div className="modal-header-base shrink-0 font-bold">{t('updates.msixTitle')}</div>
                     <div className="modal-body-base space-y-4 text-ui-support">
                         <p>{t('updates.storeInstructions')}</p>

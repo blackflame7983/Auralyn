@@ -56,7 +56,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
     return (
         <Modal title={t('recovery.title')} onClose={onClose} dismissible={false}>
         <div className="modal-overlay-base z-[9999] bg-overlay/80">
-            <div className="modal-surface-base w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
+            <div className="modal-surface-base w-full max-w-lg max-h-[calc(100dvh/var(--ui-zoom)-2rem)] overflow-y-auto">
 
                 <div className="p-6 text-center space-y-4">
                     <div className="inline-flex justify-center items-center w-16 h-16 rounded-full bg-destructive/20 text-destructive-text mb-2">

@@ -31,7 +31,8 @@ test('未選択の主操作から送り先へキーボードで移動し、選�
 
 for (const theme of ['light', 'dark', 'gaming']) {
     test(`音調整の寸法とメーター注意域 ${theme}`, async ({ page }, info) => {
-        await page.setViewportSize({ width: 1024, height: 768 });
+        // 声の種類は2段目。1024×768 は仮の境目 860 より低いので、同じ寸法比較は高さ 900 で続ける。
+        await page.setViewportSize({ width: 1024, height: 900 });
         await page.addInitScript(theme => {
             localStorage.setItem('vst_host_theme', theme);
             // 音声は使わず、両セグメントが有効な条件の表示を比較する。

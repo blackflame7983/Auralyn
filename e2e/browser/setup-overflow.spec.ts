@@ -12,7 +12,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['dark', 'light'
         }, { theme, locale });
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(zoom => { document.documentElement.style.zoom = String(zoom); }, zoom);
+        await page.evaluate(zoom => { document.documentElement.style.zoom = String(zoom); document.documentElement.style.setProperty('--ui-zoom', String(zoom)); }, zoom);
         const wizard = page.getByRole('dialog');
         await wizard.getByRole('radio', { name: t('wizard.obs'), exact: true }).click();
         await wizard.getByRole('button', { name: t('common.next'), exact: true }).click();

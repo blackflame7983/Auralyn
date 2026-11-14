@@ -163,7 +163,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             )}
             {detailsOpen && <Modal title={t('master.detailsTitle')} onClose={() => setDetailsOpen(false)}>
                 <div className="modal-overlay-base">
-                    <div className="modal-surface-base w-full max-w-md max-h-[90vh] flex flex-col whitespace-normal">
+                    <div className="modal-surface-base w-full max-w-md max-h-[calc(90vh/var(--ui-zoom))] flex flex-col whitespace-normal">
                         <div className="modal-header-base gap-3">
                             <h2 className="text-ui-heading font-bold">{t('master.detailsTitle')}</h2>
                             <Button variant="ghost" size="icon" aria-label={t('common.close')} onClick={() => setDetailsOpen(false)} className="shrink-0"><MdClose /></Button>

@@ -37,7 +37,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
     test(`登録カードの行と操作を揃える ${locale} ${theme} ${zoomed ? '900x600-150%' : '1280x800'}`, async ({ page }, info) => {
         await page.setViewportSize(zoomed ? { width: 900, height: 600 } : { width: 1280, height: 800 });
         await prepare(page, locale, theme);
-        if (zoomed) await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        if (zoomed) await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.sound'), exact: true }).click();
         const dialog = page.locator('[data-settings-page]');
         await dialog.getByRole('tab', { name: message(locale, 'sound.section.liveModes'), exact: true }).click();
@@ -85,7 +85,7 @@ test.describe('未登録の本番帯', () => {
             }
             await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
             await page.setViewportSize({ width: 900, height: 600 });
-            await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+            await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
             await expect(actions).toBeVisible();
             expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
             await page.screenshot({ path: info.outputPath('registered-zoom.png'), animations: 'disabled' });

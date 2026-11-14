@@ -85,6 +85,16 @@ it('使い方からホットキー設定へ進み、通常の設定入口で移�
     expect(result.current.settingsTab).toBe('audio');
 });
 
+it('周囲の音を測るは音づくりの基本を開き、同じ場所でも測定の依頼を進める', () => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openNoiseMeasurement());
+    expect(result.current.page).toBe('sound');
+    expect(result.current.soundPlace).toBe('basic');
+    expect(result.current.measurementNonce).toBe(1);
+    act(() => result.current.openNoiseMeasurement());
+    expect(result.current.measurementNonce).toBe(2);
+});
+
 it('同じタブへの移動を続けて頼んでも、依頼の番号が進んで設定が切り替えられる', () => {
     const { result } = renderHook(() => useUIState());
     act(() => result.current.openShortcuts());

@@ -64,7 +64,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
     return (
         <Modal title={t('voice.copy.000')} onClose={onClose}>
         <div className="modal-overlay-base bg-overlay/60">
-            <div className="modal-surface-base w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="modal-surface-base w-full max-w-2xl max-h-[calc(90vh/var(--ui-zoom))] overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80 shrink-0">
                     <div>
                         <h2 className="text-ui-heading font-semibold text-foreground">{t('voice.copy.001')}</h2>

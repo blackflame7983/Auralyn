@@ -138,7 +138,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     return (
         <Modal title={t('presets.copy.087')} onClose={onClose} dismissible={!loading}>
         <div className="modal-overlay-base">
-            <div aria-busy={loading} className="modal-surface-base w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div aria-busy={loading} className="modal-surface-base w-full max-w-4xl max-h-[calc(90vh/var(--ui-zoom))] flex flex-col">
 
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted">

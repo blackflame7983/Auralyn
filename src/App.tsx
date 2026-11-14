@@ -23,6 +23,7 @@ import { usePluginHealthNotices } from './hooks/usePluginHealthNotices';
 import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
 import { useUIState } from './hooks/useUIState';
+import { useUiZoom } from './hooks/useUiZoom';
 import { audioApi } from './api/audio';
 import { toast } from 'sonner';
 
@@ -33,6 +34,7 @@ import { crashedPluginMarker } from './lib/audioEngineExit';
 
 function AppContent() {
     const t = useMessages();
+    useUiZoom();
   const { currentStep, completeStep } = useTutorial();
 
   // Custom Hooks
@@ -241,6 +243,7 @@ function AppContent() {
         />}
         onOpenAudioSettingsRetry={ui.openAudioSettingsRetry}
         onOpenSoundSettings={ui.openSoundSettings}
+        onMeasureNoise={ui.openNoiseMeasurement}
         onOpenAudioTuning={ui.openAudioTuning}
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}

@@ -179,7 +179,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
             await page.addInitScript(value => localStorage.setItem('vst_host_theme', value), theme);
             await page.goto('/');
             // CSS拡大で狭い表示を検査する。Windows実DPIやブラウザ本来のズームではない。
-            await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+            await page.evaluate(value => { document.documentElement.style.zoom = String(value); document.documentElement.style.setProperty('--ui-zoom', String(value)); }, zoom);
             const rail = page.getByRole('navigation', { name: '行き先' });
             await rail.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
             const dialog = page.locator('[data-settings-page]');
@@ -220,6 +220,8 @@ test.describe('ホームと設定の共通操作', () => {
                 return result;
             };
         });
+        // 声の種類は2段目。仮の境目は高さ 860 なので、同じ寸法の比較はそこ以上で続ける。
+        await page.setViewportSize({ width: 1280, height: 900 });
         await page.goto('/');
         const names = ['弱', '強', '配信', '低め', '明瞭'];
         const home = [...names.slice(0, 2).map(name => page.locator('#home-noise').getByRole('radio', { name, exact: true })),

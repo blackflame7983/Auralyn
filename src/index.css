@@ -83,6 +83,8 @@
 [data-theme-preview="light"],
 :root {
   color-scheme: light;
+  /* 全体の拡大の倍率。useUiZoom が resize のときだけ上書きする。1 のときは vh を割り戻さない。 */
+  --ui-zoom: 1;
   --background: 220 14% 97%;
   --foreground: 222 25% 10%;
 
@@ -471,7 +473,7 @@ body:has(.app-shell) {
 
 /* セットアップ（DESIGN.md 5.7、#294）。高さを固定し、手順の印はレールの上を滑り、中身は進む向きから入る。 */
 /* 低い画面向けの共通モーダル設定でも、セットアップは本文だけをスクロールして操作欄を保つ。 */
-.setup-surface.modal-surface-base { height: min(600px, calc(100dvh - 2rem)); overflow-y: hidden; }
+.setup-surface.modal-surface-base { height: min(600px, calc(100dvh / var(--ui-zoom) - 2rem)); overflow-y: hidden; }
 .setup-surface .modal-body-base { flex: 1 1 0%; overflow-y: auto; scroll-padding-block: 4px; }
 .setup-rail { width: 200px; }
 .setup-rail-thumb {
@@ -548,7 +550,7 @@ body:has(.app-shell) {
     height: 18rem;
   }
   .modal-surface-base {
-    max-height: calc(100dvh - 2rem) !important;
+    max-height: calc(100dvh / var(--ui-zoom) - 2rem) !important;
     overflow-y: auto;
   }
   .modal-body-base {
@@ -566,7 +568,13 @@ body:has(.app-shell) {
 .app-shell {
   --rail-width: 76px;
   --safety-column-width: 212px;
+  /* html の zoom は 100vh / 100vw も拡大する。割り戻して、窓の中に収める。 */
+  width: calc(100vw / var(--ui-zoom));
+  max-width: calc(100vw / var(--ui-zoom));
+  height: calc(100vh / var(--ui-zoom));
+  max-height: calc(100vh / var(--ui-zoom));
 }
+.app-frame { height: 100%; min-height: 0; min-width: 0; }
 /* 右の列は窓の右端に付く。中央は残りの幅を使う。 */
 .workspace-body {
   width: 100%;
@@ -772,4 +780,47 @@ html[data-app-hidden="true"] *::after {
 .disclosure-panel[data-open="true"] .disclosure-content { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .disclosure-panel, .disclosure-content { transition: none; }
+}
+
+/* 段階 H の寸法（実機で測って決めた）。数値の正本は src/lib/largeWindow.ts。変えるときは両方を一緒に直す。
+   メディアクエリはカスタムプロパティを読めないので、同じ数値をここに書く。 */
+.home-content { width: 100%; max-width: 1180px; }
+[data-home-tier="2"] { display: none; }
+@media (min-height: 800px) {
+  [data-home-tier="2"] { display: block; }
+}
+@media (min-width: 1400px) {
+  .home-content:has(> .home-connect-column) {
+    max-width: 1480px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+    column-gap: 1rem;
+    align-items: start;
+  }
+  .home-content:has(> .home-connect-column) > * { grid-column: 1; min-width: 0; }
+  /* 接続の列の高さで左の行が伸びて空きができないよう、列は行の高さに数えない（高さ 0 で中身を下へはみ出させる）。
+     はみ出した分も .home-main のスクロールの範囲に入る。 */
+  .home-content:has(> .home-connect-column) > .home-connect-column { grid-column: 2; grid-row: 1 / span 20; height: 0; overflow: visible; }
+}
+.settings-page { container-type: inline-size; container-name: settings-page; }
+/* 拡大で列が狭いとき、説明が折り返せないボタンの横で1文字幅まで潰れないようにする。
+   説明は読み幅を確保し、入りきらなければボタンを次の行へ送る。横にはみ出さない。 */
+.settings-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.settings-action-note {
+  flex: 1 1 12rem;
+  min-width: min(100%, 12rem);
+}
+.page-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+@container settings-page (min-width: 1100px) {
+  .page-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .page-pair > .page-pair-input { grid-column: 1; grid-row: 1; }
+  .page-pair > .page-pair-output { grid-column: 2; grid-row: 1; }
+  .page-pair > .page-pair-output:first-child { grid-column: 1; }
+  .page-pair > .page-pair-span { grid-column: 1 / -1; grid-row: 2; }
 }

@@ -97,7 +97,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
 
 for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字と操作が切れない ${locale}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, 'light', locale);
-    await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+    await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
     const live = page.getByRole('region', { name: message(locale, 'home.now'), exact: true });
     const statuses = page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true }).locator('[role="meter"] [data-meter-status]');
     await expect(statuses.first()).toHaveText(message(locale, 'meter.waitingShort'));
@@ -120,7 +120,7 @@ for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字�
 
 for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示スタイルを150%で維持する ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
-    await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+    await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
     const modes = page.getByRole('region', { name: message('ja', 'band.label'), exact: true }).getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
     const custom = modes.locator('[aria-current=true]');
     expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);

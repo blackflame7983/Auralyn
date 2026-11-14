@@ -1,4 +1,6 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useMatchMedia } from '@/hooks/useMatchMedia';
+import { largeWindow } from '@/lib/largeWindow';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { renderClientError } from '@/lib/clientError';
 import { useUsageWindow } from '@/hooks/useUsageWindow';
@@ -60,6 +62,8 @@ interface AppShellProps {
     onOpenShortcuts?: () => void;
     onOpenAudioSettingsRetry?: () => void;
     onOpenSoundSettings?: () => void;
+    /** 周囲の音を測る。音づくりの基本の測定欄を開く。 */
+    onMeasureNoise?: () => void;
     onOpenAudioTuning?: () => void;
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
@@ -112,6 +116,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     onOpenShortcuts,
     onOpenAudioSettingsRetry,
     onOpenSoundSettings,
+    onMeasureNoise,
     onOpenAudioTuning,
     onOpenOBSGuide,
     onOpenDiscordGuide,
@@ -208,9 +213,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         target.dataset.attention = '';
         window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
+    const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} unconfigured={!configured} />;
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onMeasureNoise={onMeasureNoise} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} unconfigured={!configured} />;
     const railCurrent: RailDestination = page;
     const openSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => {
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
@@ -249,8 +255,8 @@ export const AppShell: React.FC<AppShellProps> = ({
 
     return (
         <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef}
-            className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-(--motion-panel)">
-            <div className="relative z-10 flex h-screen">
+            className="app-shell bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-(--motion-panel)">
+            <div className="app-frame relative z-10 flex min-h-0 min-w-0">
                 <AppRail current={railCurrent}
                     onHome={() => requestLeave(() => { onCloseSettings?.(); mainRef.current?.scrollTo({ top: 0 }); })}
                     onSound={() => openSettingsTab('sound')}
@@ -284,8 +290,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                         : 'home-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 pt-2 lg:px-6'}
                 >
                     {page !== 'home' ? <PageSlot className="flex min-h-0 flex-1 flex-col" /> : <>
-                    {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]">
+                    {/* 狭い窓は1列。窓が広いときだけ、右に接続の列を出す。 */}
+                    <div ref={homeContentRef} className="home-content mx-auto">
                         {notices}
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
@@ -309,7 +315,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
-                        {configured && <div className="min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped}
+                        {configured && <div className="home-connect-column min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped} pinnedOpen={wideHome}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}

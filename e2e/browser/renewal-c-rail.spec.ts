@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { settleLayoutMotion } from './layoutMotion';
+import { uiScale } from '../../src/lib/largeWindow';
 
 // 段階 C。レールと右の列は窓を変えても動かず、音調整は 960 と 1024 で3列、上の帯は1行。
 // 本番ビルドの確認でも通るよう、開発プレビューの ?mock= ではなく試験の模擬応答を使う。
@@ -35,10 +36,11 @@ test('窓を変えてもレールと右の列の位置は動かない', async ({
         const columnBox = (await column.boundingBox())!;
         expect(Math.round(railBox.x)).toBe(0);
         expect(Math.round(railBox.y)).toBe(0);
-        expect(Math.round(railBox.width)).toBe(76);
+        const scale = uiScale(size.width, size.height);
+        expect(Math.round(railBox.width)).toBe(Math.round(76 * scale));
         expect(Math.round(railBox.height)).toBe(size.height);
         expect(Math.round(columnBox.y)).toBe(0);
-        expect(Math.round(columnBox.width)).toBe(212);
+        expect(Math.round(columnBox.width)).toBe(Math.round(212 * scale));
         expect(Math.round(columnBox.x + columnBox.width)).toBe(size.width);
         expect(Math.round(columnBox.height)).toBe(size.height);
     }

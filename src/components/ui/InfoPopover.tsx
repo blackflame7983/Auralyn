@@ -13,7 +13,7 @@ export function InfoPopover({ label, children, docName }: { label: string; child
             </button>
         </Popover.Trigger>
         <Popover.Portal>
-            <Popover.Content aria-label={label} sideOffset={5} collisionPadding={12} className="z-[200] max-h-[min(60vh,24rem)] w-72 max-w-[calc(100vw-2rem)] overflow-auto rounded-md border border-border bg-popover p-3 text-ui-support text-popover-foreground shadow-lg">
+            <Popover.Content aria-label={label} sideOffset={5} collisionPadding={12} className="z-[200] max-h-[min(calc(60vh/var(--ui-zoom)),24rem)] w-72 max-w-[calc(100vw/var(--ui-zoom)-2rem)] overflow-auto rounded-md border border-border bg-popover p-3 text-ui-support text-popover-foreground shadow-lg">
                 {children}
                 {docName && <div><UserDocLink name={docName} compact /></div>}
             </Popover.Content>

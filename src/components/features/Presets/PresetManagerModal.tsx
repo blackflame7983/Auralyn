@@ -408,7 +408,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         <Modal title={t('presets.copy.049')} onClose={onClose}>
         <div className="modal-overlay-base">
             <div
-                className="modal-surface-base w-full max-w-lg flex flex-col max-h-[85vh]"
+                className="modal-surface-base w-full max-w-lg flex flex-col max-h-[calc(85vh/var(--ui-zoom))]"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header-base shrink-0">
