@@ -432,8 +432,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => onPlace('liveModes', true)}>{t('settings.mode.return')}</Button>
             </>}
             {shown === 'peak' && <div className="flex flex-col gap-4">
-              <PeakProtectionPanel applyInHeading hideApplyNote onPendingChange={onPeak} />
-              <BroadcastTruePeakPanel music={music} applyInHeading hideApplyNote onPendingChange={onBroadcast} />
+              <PeakProtectionPanel hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onPeak} />
+              <BroadcastTruePeakPanel music={music} hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onBroadcast} />
             </div>}
             </section>
           </div>

@@ -98,9 +98,13 @@ test.describe('段階 E の画面記録', () => {
         }
         await surface.getByRole('tab', { name: '音量の保護', exact: true }).click();
         const peak = await surface.evaluate(() => {
-            const names = ['ピーク保護をON', '配信用 true-peak 制限を ON'];
+            // ON と OFF は見出し横のスイッチにまとめた。画面内かを見る対象を、そのスイッチへ替える。
+            const names = ['大きな音を抑える', '配信用 true-peak 制限'];
             const buttons = names.map(name => {
-                const button = [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === name);
+                const button = [...document.querySelectorAll('[role="switch"]')].find(item => {
+                    const labelled = item.getAttribute('aria-labelledby');
+                    return (labelled ? document.getElementById(labelled)?.textContent : item.textContent)?.trim() === name;
+                });
                 const rect = button?.getBoundingClientRect();
                 return rect ? { name, y: Math.round(rect.y), bottom: Math.round(rect.bottom), inView: rect.top >= 0 && rect.bottom <= window.innerHeight } : null;
             });

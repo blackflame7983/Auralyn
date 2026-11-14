@@ -302,11 +302,17 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
     const meter = column.getByRole('meter', { name: '出力', exact: true });
     for (const width of [960, 1024, 1920, 2560]) {
         await page.setViewportSize({ width, height: width <= 1024 ? 640 : 1080 });
-        const columnBox = (await column.boundingBox())!;
-        const box = (await meter.boundingBox())!;
-        expect(box.height).toBeCloseTo(16 * uiScale(width, width <= 1024 ? 640 : 1080), 1);
-        expect(box.x).toBeGreaterThanOrEqual(columnBox.x - 1);
-        expect(box.x + box.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
+        // 窓の大きさを変えた直後は、拡大率と列の幅が落ち着くまで位置が動く。列とメーターを同じ時点で測り、収まるまで待つ。
+        const expectedHeight = 16 * uiScale(width, width <= 1024 ? 640 : 1080);
+        await expect.poll(async () => {
+            const columnBox = (await column.boundingBox())!;
+            const box = (await meter.boundingBox())!;
+            return {
+                height: Math.abs(box.height - expectedHeight) < 0.05,
+                left: box.x >= columnBox.x - 1,
+                right: box.x + box.width <= columnBox.x + columnBox.width + 1,
+            };
+        }).toEqual({ height: true, left: true, right: true });
         const status = meter.locator('[data-meter-status]');
         await expect(status).toBeVisible();
         expect(await status.evaluate(el => {
