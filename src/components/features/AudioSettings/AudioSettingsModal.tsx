@@ -14,7 +14,7 @@ import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { Button } from '@/components/ui/button';
 import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
-import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
@@ -390,6 +390,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const showConfirm = (opts: Omit<typeof confirmDialog, 'isOpen'>) => {
     setConfirmDialog({ ...opts, isOpen: true });
   };
+  // 音楽鑑賞の表示を選んだときだけ聞く。入力の用途は、同意したとき下書きへ入れる。
+  const askMusicInput = (next: DisplayPurpose) => {
+    if (next !== 'music' || inputSource.source.kind !== 'process_loopback' || inputSource.source.config.purpose === 'music') return;
+    showConfirm({
+      title: notice('purpose.askMusicTitle'),
+      description: notice('purpose.askMusicBody'),
+      confirmLabel: notice('purpose.askMusicYes'),
+      onConfirm: () => {
+        setInputSource(current => current.source.kind === 'process_loopback'
+          ? { ...current, source: { kind: 'process_loopback', config: { ...current.source.config, purpose: 'music' } } }
+          : current);
+        editConnection('source');
+      },
+    });
+  };
 
   const sound = useSoundSettings(engineStats, singingModel);
   const system = useSystemSettings({ isOpen, currentSampleRate, currentBufferSize, isBeginnerMode, showConfirm });
@@ -615,6 +630,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : (
               <div className="space-y-6">
+              <section aria-labelledby="usage-heading" className="space-y-2 border-b border-border pb-4">
+                <h3 id="usage-heading" className="text-ui-heading font-semibold">{t('purpose.section')}</h3>
+                <DisplayPurposeSelector onChanged={askMusicInput} />
+              </section>
               {error && <div className="space-y-4">
                 <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
@@ -978,7 +997,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
           <TabsContent value="appearance" className="space-y-6">
             <LanguageSelector />
-            <DisplayPurposeSelector />
+            <p className="text-ui-support text-muted-foreground">
+              {t('purpose.moved')}{' '}
+              <Button type="button" variant="link" className="h-auto px-0" onClick={() => chooseTab('audio')}>{t('purpose.openConnect')}</Button>
+            </p>
             <NumericDetailsSwitch />
             <div className="space-y-4">
               <div>
