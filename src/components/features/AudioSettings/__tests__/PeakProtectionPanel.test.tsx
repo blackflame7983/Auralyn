@@ -43,3 +43,33 @@ it('失敗や停止通知より古い適用応答で確認済みに戻さない'
     // 状態を確認できないときは、スイッチで ON にできない。
     expect(screen.getByRole('switch', { name: message('ja', 'peak.title') })).toBeDisabled();
 });
+it('本番保護の間はスイッチ・数値・適用を止めて理由を示し、解除すると書き込める', async () => {
+    const request = vi.spyOn(peakProtectionApi, 'request').mockImplementation(async config => ({ ...fixture(), config: config ?? fixture().config }));
+    const view = render(<PeakProtectionPanel locked />); await act(async () => {});
+    const reason = screen.getByText(message('ja', 'peak.liveLocked'));
+    const toggle = screen.getByRole('switch', { name: message('ja', 'peak.title') });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('aria-describedby', reason.id);
+    expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.ceiling') })).toBeDisabled();
+    expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.release') })).toBeDisabled();
+    const apply = screen.getByRole('button', { name: message('ja', 'peak.apply') });
+    expect(apply).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'peak.off'));
+    fireEvent.click(toggle);
+    fireEvent.click(apply);
+    await act(async () => {});
+    expect(request.mock.calls.every(args => args.length === 0)).toBe(true);
+    await act(async () => { view.rerender(<PeakProtectionPanel locked={false} />); });
+    expect(screen.queryByText(message('ja', 'peak.liveLocked'))).not.toBeInTheDocument();
+    const unlocked = screen.getByRole('switch', { name: message('ja', 'peak.title') });
+    expect(unlocked).toBeEnabled();
+    expect(unlocked).not.toHaveAttribute('aria-describedby');
+    expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.ceiling') })).toBeEnabled();
+    expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.release') })).toBeEnabled();
+    const applyAgain = screen.getByRole('button', { name: message('ja', 'peak.apply') });
+    expect(applyAgain).toBeEnabled();
+    fireEvent.click(unlocked); await act(async () => {});
+    expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
+    fireEvent.click(applyAgain); await act(async () => {});
+    expect(request.mock.calls.filter(args => args.length > 0)).toHaveLength(2);
+});

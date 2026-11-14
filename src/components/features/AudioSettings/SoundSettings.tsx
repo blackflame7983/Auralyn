@@ -213,6 +213,11 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
     void singingModel.refresh();
     return release;
   }, [music, singingModel.activate, singingModel.refresh]);
+  // 音量の保護を開いている間だけ、本番保護の状態を読む。購読は既存の activate に任せる。
+  useEffect(() => {
+    if (shown !== 'peak') return;
+    return liveModel.activate();
+  }, [shown, liveModel.activate]);
   // 測定の欄は詳細の中にある。入口から開くときは、親の詳細と測定の両方を開いてから焦点を移す。
   useEffect(() => {
     if (!measurementNonce) return;
@@ -432,8 +437,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => onPlace('liveModes', true)}>{t('settings.mode.return')}</Button>
             </>}
             {shown === 'peak' && <div className="flex flex-col gap-4">
-              <PeakProtectionPanel hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onPeak} />
-              <BroadcastTruePeakPanel music={music} hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onBroadcast} />
+              <PeakProtectionPanel hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onPeak} locked={liveModel.snapshot?.armed === true} />
+              <BroadcastTruePeakPanel music={music} hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onBroadcast} locked={liveModel.snapshot?.armed === true} />
             </div>}
             </section>
           </div>
