@@ -72,13 +72,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
-    it('送り先は共通の順序で表示し、保存済み music は自分で聴くとして扱う', async () => {
+    it('送り先は共通の順序で表示し、保存済み music は音楽鑑賞のカードを選ぶ', async () => {
         localStorage.setItem('vst_host_setup_goal', 'music');
         await openWizard();
         const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('radio', { name }));
         expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-        expect(choices[2]).toBeChecked();
-        fireEvent.click(choices[2]);
+        // 音楽鑑賞は最初の画面の独立したカードになった。自分で聴くへはまとめない（#553）。
+        const music = screen.getByRole('radio', { name: '音楽を聴く（PCの音にVSTをかける）' });
+        expect(music.compareDocumentPosition(choices[3]) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+        expect(music).toBeChecked();
+        expect(choices[2]).not.toBeChecked();
+        fireEvent.click(music);
         expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
@@ -607,7 +611,7 @@ describe('初回選択と表示設定', () => {
             expect(notified).not.toHaveBeenCalled();
         } finally { window.removeEventListener('preparation-purpose-changed', notified); }
     });
-    it.each([['listening', '自分で聴く'], ['local', '自分で聴く'], ['discord', '通話（Discordなど）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
+    it.each([['listening', '自分で聴く'], ['local', '自分で聴く'], ['discord', '通話（Discordなど）'], ['music', '音楽を聴く（PCの音にVSTをかける）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
         localStorage.setItem('vst_host_setup_goal', saved);
         await openWizard();
         expect(screen.getByRole('radio', { name })).toBeChecked();
@@ -691,6 +695,36 @@ describe('入力ステップのレベル表示', () => {
     });
 });
 
+
+describe('自分で聴くと音楽鑑賞の確認', () => {
+    const toConfirm = async (name: string) => {
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled());
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        await screen.findByRole('heading', { name: '設定と接続の確認' });
+    };
+    it('自分で聴くでは、セットアップ後の使い方と完了に配信や受け側の文を出さない', async () => {
+        await toConfirm('自分で聴く');
+        expect(screen.getByRole('radio', { name: '手元で聴きたい' })).toBeChecked();
+        expect(screen.queryByRole('radio', { name: '配信をはじめたい' })).not.toBeInTheDocument();
+        expect(screen.queryByText('受け側に届いたかは、次の手順で確認します。')).not.toBeInTheDocument();
+        expect(screen.getByText('保存して開始すると、選んだ入力と出力で音声を始めます。')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(screen.getByText('ヘッドホンやスピーカーで聞こえ方を確認してください。')).toBeInTheDocument();
+        expect(screen.queryByText(/OBS・Discord/)).not.toBeInTheDocument();
+    });
+    it('最初の画面の音楽鑑賞でも、受け側の文を出さない', async () => {
+        inputs = [device('CABLE Output', true)];
+        outputs = [device('Headphones')];
+        await toConfirm('音楽を聴く（PCの音にVSTをかける）');
+        expect(screen.getByRole('radio', { name: '音を手軽に調整したい' })).toBeChecked();
+        expect(screen.queryByText('受け側に届いたかは、次の手順で確認します。')).not.toBeInTheDocument();
+        expect(screen.queryByRole('radio', { name: '配信をはじめたい' })).not.toBeInTheDocument();
+    });
+});
 
 describe('PC audio purpose', () => {
     const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };

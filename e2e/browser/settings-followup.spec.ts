@@ -152,17 +152,18 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         const wizard = page.getByRole('dialog', { name: message(locale, 'wizard.title'), exact: true });
         await expect(wizard).toBeVisible();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
-        const labels = ['prep.obs', 'prep.call', 'prep.local', 'prep.other'] as const;
+        const labels = ['prep.obs', 'prep.call', 'prep.local', 'prep.other', 'wizard.musicGoal'] as const;
         for (const label of labels) await expect(wizard.getByRole('radio', { name: message(locale, label), exact: true })).toBeVisible();
-        // 送り先は OBS・通話・自分で聴く・その他の順に並べる（#304）。
+        // 送り先の4枚は OBS・通話・自分で聴く・その他の順のまま。音楽鑑賞は5枚目（#553）。
         const order = await wizard.locator('.setup-choice').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label') ?? card.querySelector('.font-semibold, h3, strong')?.textContent ?? card.textContent));
-        expect(order.map(text => labels.findIndex(label => text?.startsWith(message(locale, label))))).toEqual([0, 1, 2, 3]);
+        expect(order.map(text => labels.findIndex(label => text?.startsWith(message(locale, label))))).toEqual([0, 1, 2, 3, 4]);
         const cards = wizard.locator('.setup-choice');
         const rects = await cards.evaluateAll(nodes => nodes.map(node => {
             const rect = node.getBoundingClientRect();
             return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, fits: node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight };
         }));
-        expect(rects).toHaveLength(4);
+        expect(rects).toHaveLength(5);
+        expect(rects[4].y).toBeGreaterThanOrEqual(rects[2].bottom - 1);
         expect(rects[0].y).toBeCloseTo(rects[1].y, 0);
         expect(rects[2].y).toBeCloseTo(rects[3].y, 0);
         expect(rects[0].right).toBeLessThanOrEqual(rects[1].x);
