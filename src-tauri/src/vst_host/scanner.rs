@@ -499,6 +499,8 @@ fn default_roots() -> Vec<PathBuf> {
 }
 
 const MAX_SCAN_ROOT_CHARS: usize = 32_767;
+/// 画面は32件までにしている。IPC から多く渡されても、歩く木の数を抑える。
+const MAX_EXTRA_SCAN_ROOTS: usize = 64;
 
 /// 標準の2フォルダーに、使える追加フォルダーだけを足す。
 /// 見つからない・ディレクトリーでない・不正なパスは `skipped` に残し、探索は続ける。
@@ -509,11 +511,14 @@ pub(crate) fn resolve_scan_roots(extra_roots: &[String]) -> (Vec<PathBuf>, Vec<S
         seen.insert(path_key(root));
     }
     let mut skipped = Vec::new();
-    for raw in extra_roots {
+    for (index, raw) in extra_roots.iter().enumerate() {
         let trimmed = raw.trim();
-        if trimmed.is_empty()
+        // 相対パスは作業フォルダーで意味が変わるので使わない。
+        if index >= MAX_EXTRA_SCAN_ROOTS
+            || trimmed.is_empty()
             || trimmed.contains('\0')
             || trimmed.chars().count() > MAX_SCAN_ROOT_CHARS
+            || !Path::new(trimmed).is_absolute()
         {
             skipped.push(SkippedScanRoot {
                 path: raw.clone(),
@@ -954,6 +959,27 @@ mod tests {
     }
 
     #[test]
+    fn extra_roots_beyond_the_limit_are_skipped() {
+        let missing = std::env::temp_dir().join("auralyn-scan-roots-limit-missing");
+        let inputs: Vec<String> = (0..MAX_EXTRA_SCAN_ROOTS + 2)
+            .map(|index| {
+                missing
+                    .join(index.to_string())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let (roots, skipped) = resolve_scan_roots(&inputs);
+        assert_eq!(roots.len(), default_roots().len());
+        assert_eq!(skipped.len(), inputs.len());
+        let invalid = skipped
+            .iter()
+            .filter(|item| item.reason == SkippedScanRootReason::Invalid)
+            .count();
+        assert_eq!(invalid, 2);
+    }
+
+    #[test]
     fn extra_folder_vst3_is_scanned_and_bad_paths_do_not_stop_the_walk() {
         let root = std::env::temp_dir().join(format!(
             "auralyn-scan-roots-{}-{}",
@@ -980,6 +1006,7 @@ mod tests {
             " \t".to_string(),
             "\0".to_string(),
             "a".repeat(40_000),
+            r"relative\VST3".to_string(),
             r"C:\Program Files\Common Files\VST3".to_string(),
             "C:/Program Files/Common Files/VST3/".to_string(),
         ];
