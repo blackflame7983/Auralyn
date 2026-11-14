@@ -61,6 +61,8 @@ cargo clippy --locked --all-targets
 
 上記は音声入力を開始しない対象のテスト。実機録音・OTT GUI・実OTTの寿命試験は理由付きignoreとし、`--ignored` で対象を明示したときだけ実行する。範囲別の前提・手動確認は `docs/TESTING.md` を参照する。
 
+`vst_host/scanner.rs` の探索先だけを変えたときは、ホストの `cargo test --locked --lib` で確かめる。`plugin_scanner` のバイナリを変えていないので、`rebuild-engine` は不要。
+
 ## 配布ビルド
 
 ```powershell

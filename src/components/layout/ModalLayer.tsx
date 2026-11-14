@@ -80,6 +80,7 @@ interface PluginsApi {
     scanStats?: import('@/api/audio').ScanStats | null;
     catalogRecovered?: boolean;
     catalogSaveError?: string | null;
+    skippedRoots?: import('@/api/audio').SkippedScanRoot[];
     retryingPath?: string | null;
     isScanning: boolean;
     error: string | null;
@@ -208,6 +209,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         protectionNotice={pluginsApi.sessionProtectionReason}
                         onScan={pluginsApi.scanPlugins}
                         onRetry={pluginsApi.retryPluginScan}
+                        skippedRoots={pluginsApi.skippedRoots}
                     />
                 </Suspense>
             )}

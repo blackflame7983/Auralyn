@@ -6,7 +6,8 @@ import type { MessageKey } from '@/i18n/messages';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { VstPlugin, type PluginScanRequest, type ScanFailure, type ScanFailureKind, type ScanStats } from '../../../api/audio';
+import { VstPlugin, type PluginScanRequest, type ScanFailure, type ScanFailureKind, type ScanStats, type SkippedScanRoot } from '../../../api/audio';
+import { ScanFolders } from './ScanFolders';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { fileLabel, pluginKey } from '@/lib/pluginIdentity';
 import { Panel } from '../../ui/Panel/Panel';
@@ -28,6 +29,7 @@ interface PluginBrowserModalProps {
   protectionNotice?: string | null;
   onScan: (request?: PluginScanRequest) => void;
   onRetry?: (path: string) => void;
+  skippedRoots?: SkippedScanRoot[];
   /** VST 構成に入っているプラグインのパス。追加済みであることを一覧に示す。 */
   addedPaths?: string[];
 }
@@ -226,6 +228,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   addedPaths = [],
   onScan,
   onRetry,
+  skippedRoots = [],
 }) => {
     const t = useMessages();
   // スキャナーや旧キャッシュで省略されたメタデータを、すべてのタブで安全に扱う。
@@ -453,6 +456,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           </label>
           <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
         </div>
+        <ScanFolders disabled={isLoading || Boolean(retryingPath)} skippedRoots={skippedRoots} onChanged={() => onScan()} />
 
         {/* Category Filter Chips */}
         {activeTab === 'all' && categories.length > 1 && !isLoading && (

@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 description: "Find checks and a next action for each symptom."
 order: 7
-uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Refresh", "Rescan all", "Try again"]
+uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Refresh", "Rescan all", "Try again", "Folders to search"]
 ---
 
 ## No sound {#no-sound}
@@ -32,7 +32,7 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check 
 ## VST will not load {#vst-load}
 
 1. Check first: read the loading error and confirm the VST is installed.
-2. One action in Auralyn: open “Add VST”. When the list is present, use “Refresh” to reload it. Use “Rescan all” to search the folders again, and when the list is empty. If the list could not be read, select “Try again”.
+2. One action in Auralyn: open “Add VST”. When the list is present, use “Refresh” to reload it. Use “Rescan all” to search the folders again, and when the list is empty. If the list could not be read, select “Try again”. If a VST3 plugin is outside the standard folders, add that folder in “Folders to search”, then use “Rescan all”. A missing folder stays in the list with the reason, and the scan continues.
 3. If it persists: review the original error detail and the VST installation location. While the saved chain is protected, current changes are not saved automatically.
 
 Use test tones only when they cannot reach streams, recordings or calls. A diagnosis without problems applies only to the items it could check.

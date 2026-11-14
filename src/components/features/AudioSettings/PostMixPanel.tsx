@@ -1,6 +1,6 @@
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useEffect, useRef, useState } from 'react';
-import { audioApi, type PluginCatalog, type ScanFailure, type ScanStats, type VstPlugin } from '@/api/audio';
+import { audioApi, type PluginCatalog, type ScanFailure, type ScanStats, type SkippedScanRoot, type VstPlugin } from '@/api/audio';
 import { mixingApi } from '@/api/mixing';
 import { postMixApi, type PostMixRequest } from '@/api/postMix';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -28,6 +28,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     const [failures, setFailures] = useState<ScanFailure[]>([]), [stats, setStats] = useState<ScanStats | null>(null);
     const [retryingPath, setRetryingPath] = useState<string | null>(null);
     const [catalogNotice, setCatalogNotice] = useState({ recovered: false, saveError: null as string | null });
+    const [skippedRoots, setSkippedRoots] = useState<SkippedScanRoot[]>([]);
     const [gains, setGains] = useState<Record<string, number>>({});
     useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void resource.run('mixingUi.read'); } return () => { attempted.current = false; }; }, [open, disabled]);
     async function run(action: Action) {
@@ -52,6 +53,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     function applyCatalog(catalog: PluginCatalog) {
         setAvailable(catalog.plugins); setFailures(catalog.failures); setStats(catalog.stats);
         setCatalogNotice({ recovered: catalog.recoveredFromCorrupt, saveError: catalog.saveError });
+        setSkippedRoots(catalog.skippedRoots ?? []);
     }
     async function scan(request?: { mode?: 'incremental' | 'full'; retryFailed?: boolean }) {
         if (scanning || disabled || isMainRunning || retryingPath) return;
@@ -92,6 +94,6 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
             <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('postMix.recovery')}</summary><p>{t('postMix.recoveryHelp')}</p><label className="flex gap-2 text-ui-control"><Checkbox disabled={!stopped} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('postMix.recoveryConfirm')}</label><Button variant="destructive" className="h-auto whitespace-normal" disabled={!stopped || !resetConfirmed} onClick={() => { gainQueue.cancel(); void run({ action: 'reset' }); }}>{t('postMix.reset')}</Button>{resetDone && <p role="status">{t('postMix.resetDone')}</p>}</details>
         </div>}
         <MixingError error={error} />
-        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} failures={failures} stats={stats} recoveredFromCorrupt={catalogNotice.recovered} saveError={catalogNotice.saveError} retryingPath={retryingPath} isLoading={scanning} onScan={request => void scan(request)} onRetry={path => void retry(path)} addedPaths={snapshot?.plugins.map(p => p.classId ? `${p.path}::${p.classId.toUpperCase()}` : p.path)} onPluginSelect={p => { setBrowser(false); void run(p.classId ? { action: 'add', path: p.path, classId: p.classId } : { action: 'add', path: p.path }); }} />
+        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} failures={failures} stats={stats} recoveredFromCorrupt={catalogNotice.recovered} saveError={catalogNotice.saveError} retryingPath={retryingPath} skippedRoots={skippedRoots} isLoading={scanning} onScan={request => void scan(request)} onRetry={path => void retry(path)} addedPaths={snapshot?.plugins.map(p => p.classId ? `${p.path}::${p.classId.toUpperCase()}` : p.path)} onPluginSelect={p => { setBrowser(false); void run(p.classId ? { action: 'add', path: p.path, classId: p.classId } : { action: 'add', path: p.path }); }} />
     </details>;
 }

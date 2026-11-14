@@ -37,6 +37,8 @@ An external plug-in that processes audio.
 
 Manage the order in the VST area on Home and adjust values in each editor.
 
+Search includes the two standard folders and any folders you add. Only VST3 plugins are supported.
+
 ### Current adjustments {#term-current}
 
 The state when no saved singing or talking mode is in use.
