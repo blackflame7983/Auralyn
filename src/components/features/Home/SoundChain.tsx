@@ -32,6 +32,8 @@ interface Props {
     onOpenSoundSettings?: () => void;
     /** 追加から開くときは true。ページの「VSTを追加」へ焦点を移す。 */
     onOpenVst?: (focusAdd: boolean) => void;
+    /** 画面側の VST 一覧の件数。未取得は null。 */
+    vstCount?: number | null;
     /** 周囲の音を測る。音づくりの基本を開き、測定の欄へ焦点を移す。状態は読まない。 */
     onMeasureNoise?: () => void;
     unconfigured?: boolean;
@@ -39,7 +41,7 @@ interface Props {
 
 // 音調整は開閉しない3枚のカード。2段目は data-home-tier で分け、窓の高さで CSS が出す。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false, vstCount = null }: Props) {
     const t = useMessages();
     // 2段目の出し分けは CSS の min-height。隠れた操作に焦点があるときだけ、カードの見出しへ移す。
     useEffect(() => {
@@ -94,13 +96,15 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const checkUnavailable = audioReady && !stopped && (!stage || !validVst || stage.vst.some(item => item.state === 'unavailable') || !music && !live);
     const voiceUnavailable = audioReady && !stopped && !music && !live;
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
+    // 0個と分かっているときだけ「追加」。個数が分からない、または1個以上のときは「VSTを開く」。
+    const vstKnownEmpty = vstCount === 0;
     const noiseOn = live ? q.noiseOn : stage?.nr.enabled === true;
     const builtinOn = (live ? q.chainOn || partial : voiceEnabled || partial) || deesserOnly;
     const vstOn = vstTone === 'ok';
     const builtinBreakdown = builtinDetails && <span className={music && partial ? 'text-ui-support text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
-    const vstEdit = onOpenVst && <Button variant="outline" size="default" type="button" id="home-vst-open" onClick={() => onOpenVst(emptyVst)}
+    const vstEdit = onOpenVst && <Button variant="outline" size="default" type="button" id="home-vst-open" onClick={() => onOpenVst(vstKnownEmpty)}
         className="home-action gap-1">
-        {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
+        {t(vstKnownEmpty ? 'chain.vstAdd' : 'sound.openVst')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </Button>;
 
     const noiseSummary = stopped ? '—' : live

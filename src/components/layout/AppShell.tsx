@@ -92,6 +92,8 @@ interface AppShellProps {
     vstUnrestored?: string[];
     /** VST のページを開く。追加から開くときは true。 */
     onOpenVst?: (focusAdd?: boolean) => void;
+    /** 画面側の VST 一覧の件数。未取得は null。 */
+    vstCount?: number | null;
     /** 表示を選んだ配信ミックス。本番帯の直下へ置く。 */
     streamMixPanel?: ReactNode;
 }
@@ -137,6 +139,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstChain,
     vstEditors,
     vstUnrestored,
+    vstCount = null,
     onOpenVst,
     streamMixPanel
 }) => {
@@ -216,7 +219,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onMeasureNoise={onMeasureNoise} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} unconfigured={!configured} />;
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onMeasureNoise={onMeasureNoise} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} vstCount={vstCount} unconfigured={!configured} />;
     const railCurrent: RailDestination = page;
     const openSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => {
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
