@@ -19,10 +19,21 @@ import { PeakProtectionPanel } from './PeakProtectionPanel';
 import { BroadcastTruePeakPanel } from './BroadcastTruePeakPanel';
 import { SingingControls, SingingGuideHelp } from './SingingControls';
 import { LiveModeControls } from './LiveModeControls';
+import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
 
 export function useSoundSettings(engineStats: EngineRuntimeStats | null, singingModel: SingingDraft) {
   const t = useMessages();
-  const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
+  // 利用者が選んだ直後は、次の統計が届くまでその選択を見せる。初期値や欠測を弱・強・詳細にしない。
+  const [chosenMode, setChosenMode] = useState<NoiseControlMode | null>(null);
+  const chosenOn = useRef<EngineRuntimeStats | null>(null);
+  const statsRef = useRef(engineStats);
+  statsRef.current = engineStats;
+  const fromStats = readNoiseMode(engineStats?.noiseReductionMode);
+  const noiseMode: NoiseModeReading = chosenMode !== null && engineStats === chosenOn.current ? chosenMode : fromStats;
+  const showChosenMode = (mode: NoiseControlMode) => {
+    chosenOn.current = statsRef.current;
+    setChosenMode(mode);
+  };
   const [noiseMeasurementOpen, setNoiseMeasurementOpen] = useState(false);
   const [noiseAdvancedOpen, setNoiseAdvancedOpen] = useState(false);
   const [noiseStrength, setNoiseStrength] = useState(80);
@@ -38,10 +49,6 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
 
   useEffect(() => {
     if (!engineStats) return;
-    const mode = engineStats.noiseReductionMode as NoiseControlMode;
-    if (['low', 'high', 'smart', 'venue'].includes(mode)) {
-      setNoiseMode(mode);
-    }
     setNoiseVoiceGuard(engineStats.noiseVoiceGuard ?? true);
     setBuiltInEffectsEnabled(!!engineStats.builtInEffectsEnabled);
     if (!builtInEffectsAmountEditing.current && Number.isFinite(engineStats.builtInEffectsAmount)) {
@@ -72,7 +79,7 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
       if (!detail) return;
       if (detail.noiseControl) {
         const nc = detail.noiseControl;
-        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) setNoiseMode(nc.mode as NoiseControlMode);
+        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) showChosenMode(nc.mode as NoiseControlMode);
         setNoiseStrength(Math.round(nc.strength * 100));
         setNoiseVoiceGuard(nc.voiceGuard);
       }
@@ -89,7 +96,8 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
 
   const applyNoiseControlConfig = async (next?: Partial<{ active: boolean; mode: NoiseControlMode; strength: number; voiceGuard: boolean }>) => {
     const active = next?.active ?? !!engineStats?.noiseReductionEnabled;
-    const mode = next?.mode ?? noiseMode;
+    const mode = next?.mode ?? (noiseMode === 'unknown' ? null : noiseMode);
+    if (!mode) return;
     const strength = next?.strength ?? noiseStrength;
     const voiceGuard = next?.voiceGuard ?? noiseVoiceGuard;
     setNoiseActionBusy(true);
@@ -121,14 +129,25 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
       await singingModel.setAppliedActive(next?.active ?? singingModel.snapshot.config.active);
       return;
     }
-    const active = next?.active ?? singingModel.snapshot?.config.active ?? builtInEffectsEnabled;
-    const preset = next?.preset ?? singingModel.snapshot?.config.preset ?? builtInEffectsPreset;
-    const amount = next?.amount ?? (singingModel.snapshot ? singingModel.snapshot.config.amount * 100 : builtInEffectsAmount);
+    const snapshot = singingModel.snapshot;
+    const active = next?.active ?? snapshot?.config.active ?? builtInEffectsEnabled;
+    const preset = next?.preset ?? snapshot?.config.preset ?? builtInEffectsPreset;
+    const amount = next?.amount ?? (snapshot ? snapshot.config.amount * 100 : builtInEffectsAmount);
+    const normalized = Math.max(0, Math.min(100, amount)) / 100;
+    // OFF のまま種類と整え具合を保存する。builtin の apply は active を維持し、処理は ON のときだけ音に乗る。
+    if (snapshot && !active) {
+      const accepted = await singingModel.patchApplied({ preset, amount: normalized });
+      if (accepted) {
+        await refreshRuntimeStatsChecked();
+        toast.success(t('settings.AudioSettingsModal.008'));
+      } else toast.error(t('settings.AudioSettingsModal.010'));
+      return;
+    }
     try {
       await audioApi.setBuiltInEffects({
         active,
         preset,
-        amount: Math.max(0, Math.min(100, amount)) / 100,
+        amount: normalized,
       });
       await refreshRuntimeStatsChecked();
       await singingModel.refresh();
@@ -157,7 +176,7 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
     void applyDeesser(true, value);
   };
 
-  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount };
+  return { noiseMode, showChosenMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount };
 }
 
 interface SoundSettingsProps {
@@ -186,7 +205,7 @@ const places = ['basic', 'liveModes', 'singing', 'peak'] as const satisfies read
 export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, place, onPlace, onPeakPending, music = false, singingDirty = false, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true, measurementNonce = 0 }: SoundSettingsProps) {
   const t = useMessages();
   const shown = music ? 'peak' : place;
-  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount } = model;
+  const { noiseMode, showChosenMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount } = model;
   // 基本の声の値も歌向けの下書きと同じ取得を使う。小区分を開くまで待たない。
   useEffect(() => {
     if (music) return;
@@ -281,8 +300,9 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   <fieldset className="space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
                     <SegmentedControl label={t('structure.noise.standard')}
                       options={([{ value: 'low', label: t('master.nrLow') }, { value: 'high', label: t('master.nrHigh') }] as Array<{ value: NoiseControlMode; label: string }>)}
-                      value={noiseMode} onValueChange={mode => {
+                      value={noiseMode === 'low' || noiseMode === 'high' ? noiseMode : null} onValueChange={mode => {
                         setNoiseMeasurementOpen(false);
+                        showChosenMode(mode);
                         void applyNoiseControlConfig({ mode });
                       }} />
                   </fieldset>
@@ -294,10 +314,11 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     </summary>
                     {noiseAdvancedOpen && <div className="space-y-4 pt-4">
                   <fieldset className="space-y-2"><legend className="text-ui-control font-semibold">{t('structure.noise.adaptive')}</legend>
-                    <SegmentedControl<NoiseControlMode> label={t('structure.noise.adaptive')} value={noiseMode}
+                    <SegmentedControl<NoiseControlMode> label={t('structure.noise.adaptive')} value={noiseMode === 'smart' || noiseMode === 'venue' ? noiseMode : null}
                       options={[{ value: 'smart', label: t('master.nrLearn') }, { value: 'venue', label: t('master.nrVenue') }]}
                       onValueChange={mode => {
                         setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
+                        showChosenMode(mode);
                         void applyNoiseControlConfig({ mode });
                       }} />
                   </fieldset>
@@ -355,13 +376,13 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   </div>
 
                   {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-ui-support text-muted-foreground">{t('settings.fxOffHint')}</p>}
-                  <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
+                  <fieldset disabled={!singingModel.snapshot || singingModel.busy} className="space-y-4 disabled:opacity-50">
                   <SegmentedControl label={t('home.chainPreset')}
                     options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },
                       { value: 'warm', label: t('settings.AudioSettingsModal.099') },
                       { value: 'bright', label: t('settings.AudioSettingsModal.100') }] as Array<{ value: BuiltInEffectsPreset; label: string }>).map(option => ({ ...option, disabled: !singingModel.snapshot || singingModel.busy }))}
-                    value={singingModel.snapshot?.config.preset ?? builtInEffectsPreset}
-                    onValueChange={preset => void applyBuiltInEffects({ active: true, preset })} />
+                    value={singingModel.snapshot?.config.preset ?? (engineStats ? builtInEffectsPreset : null)}
+                    onValueChange={preset => void applyBuiltInEffects({ preset })} />
 
                   <div className="w-full space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-ui-support">{t('settings.AudioSettingsModal.102')}</p>}
@@ -412,7 +433,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             </>}
             {shown === 'peak' && <div className="flex flex-col gap-4">
               <PeakProtectionPanel applyInHeading hideApplyNote onPendingChange={onPeak} />
-              <BroadcastTruePeakPanel applyInHeading hideApplyNote onPendingChange={onBroadcast} />
+              <BroadcastTruePeakPanel music={music} applyInHeading hideApplyNote onPendingChange={onBroadcast} />
             </div>}
             </section>
           </div>

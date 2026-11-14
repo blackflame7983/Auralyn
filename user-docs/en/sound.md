@@ -2,7 +2,7 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Compare without VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Edit VST", "Add"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Compare without VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add"]
 ---
 
 ## Noise reduction {#noise-reduction}
@@ -13,13 +13,13 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Com
 
 ## Voice shaping {#voice-shaping}
 
-1. Adjust “Shape voice” in “Sound”.
+1. Adjust “Shape voice” in “Sound”. You can choose the type and amount while off. Choosing does not turn it on, and the sound does not change.
 2. Check changes to bass, volume differences and tone one at a time.
 3. Record and listen after each small change. If the voice becomes thin or sharp, reduce the adjustment and compare.
 
 ## VST {#vst}
 
-1. Open the VST page from the rail, or from “Edit VST” or “Add” on Home, and choose an effect to add.
+1. Open the VST page from the rail, or from “Open VST” or “Add” on Home, and choose an effect to add. When none are loaded, the home control is “Add”.
 2. Adjust values in each VST's editor.
 3. Use “Compare without VST” to listen with and without external VST effects.
 

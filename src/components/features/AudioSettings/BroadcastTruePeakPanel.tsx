@@ -7,10 +7,12 @@ import { listen } from '@tauri-apps/api/event';
 import { broadcastTruePeakApi, type BroadcastTruePeakStatus } from '@/api/broadcastTruePeak';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false, hideApplyNote = false }: {
+export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false, hideApplyNote = false, music = false }: {
     onPendingChange?: (pending: boolean) => void;
     applyInHeading?: boolean;
     hideApplyNote?: boolean;
+    /** 音楽鑑賞では、配信用の制限がONのときだけ出す。 */
+    music?: boolean;
 } = {}) {
     const t = useMessages();
     const [status, setStatus] = useState<BroadcastTruePeakStatus | null>(null);
@@ -49,13 +51,16 @@ export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false
         } catch { if (alive.current && serial === version.current) { setStatus(null); setFailed(true); } }
         finally { writing.current = false; if (alive.current) setBusy(false); }
     };
-    const pending = status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
+    // 読み込み中・失敗・OFFは出さない。ONのときだけ残し、OFFへ戻せる。保存値は変えない。
+    const hidden = music && !status?.config.enabled;
+    const pending = !hidden && status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
     useEffect(() => {
         onPendingChange?.(pending);
         return () => onPendingChange?.(false);
     }, [pending, onPendingChange]);
     const applyDisabled = !status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
     const applyButton = <Button type="button" variant="outline" className="h-auto min-h-10 shrink-0 whitespace-normal" disabled={applyDisabled} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'truePeak.apply' : 'truePeak.enable')}</Button>;
+    if (hidden) return null;
     return <section aria-label={t('truePeak.title')} className="p-4 rounded-card border space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>

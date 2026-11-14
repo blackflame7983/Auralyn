@@ -123,6 +123,21 @@ it('操作中に無効になったら、終わった操作の再取得で古い�
     expect(audioApi.getEngineRuntimeStats).toHaveBeenCalledTimes(calls);
     expect(view.result.current.stats).toBeNull();
 });
+it('声を整えるがOFFでも種類を保存し、ONにはしない', async () => {
+    const saved: BuiltinConfig = { active: false, preset: 'warm', amount: 0.4, singing: { lowCutHz: 80, dynamics: 0.2, brightnessDb: 0 }, reverb: { enabled: true, mix: 0.1, decaySeconds: 1, damping: 0.5 } };
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ builtInEffectsEnabled: false, builtInEffectsPreset: 'warm', builtInEffectsAmount: 0.4 }));
+    const request = vi.spyOn(builtinApi, 'request').mockImplementation(async req => ({
+        epoch: 'e1', revision: '3', appliedRevision: '3', config: req.action === 'apply' ? req.config : saved, pending: false, undoToken: null, error: null,
+    }));
+    render(<VoiceQuickControls running />);
+    const bright = await screen.findByRole('radio', { name: '明瞭' });
+    await waitFor(() => expect(bright).toBeEnabled());
+    expect(screen.getByRole('radio', { name: '低め' })).toHaveAttribute('aria-checked', 'true');
+    await act(async () => fireEvent.click(bright));
+    expect(request).toHaveBeenCalledWith({ action: 'apply', epoch: 'e1', expectedRevision: '3', config: { ...saved, active: false, preset: 'bright', amount: 0.4 } });
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
+});
+
 it('プリセットはかかり具合を保って反映する', async () => {
     render(<VoiceQuickControls running />);
     const bright = await screen.findByRole('radio', { name: '明瞭' });

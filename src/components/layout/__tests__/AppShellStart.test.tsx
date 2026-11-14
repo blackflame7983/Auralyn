@@ -259,7 +259,7 @@ it('ホームとレールのVST入口はページを開き、大型メーター�
     expect(screen.queryByRole('button', { name: /大型レベルメーター/ })).not.toBeInTheDocument();
     expect(document.getElementById('vst-panel')).toBeNull();
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
-    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを開く' }));
     expect(onOpenVst).toHaveBeenCalledWith(false);
     onOpenVst.mockClear();
     fireEvent.click(within(screen.getByRole('navigation', { name: '行き先' })).getByRole('button', { name: 'VST' }));
@@ -269,7 +269,7 @@ it('ホームとレールのVST入口はページを開き、大型メーター�
 it('VSTの入口はホームを操作不能にせず、開閉の印を付けない', () => {
     const onOpenVst = vi.fn();
     const { container } = render(<AppShell {...commonProps} onOpenVst={onOpenVst}><p>rack</p></AppShell>);
-    const toggle = screen.getByRole('button', { name: 'VSTを編集' });
+    const toggle = screen.getByRole('button', { name: 'VSTを開く' });
     expect(toggle).not.toHaveAttribute('aria-expanded');
     expect(toggle).not.toHaveAttribute('aria-controls');
     fireEvent.click(toggle);
@@ -386,7 +386,7 @@ it('広い窓でもVSTの入口はホームを覆わず、同じ入口から開�
     try {
         const onOpenVst = vi.fn();
         const { container } = render(<AppShell {...commonProps} onOpenVst={onOpenVst}><p>rack</p></AppShell>);
-        const edit = screen.getByRole('button', { name: 'VSTを編集' });
+        const edit = screen.getByRole('button', { name: 'VSTを開く' });
         fireEvent.click(edit);
         expect(container.querySelector('main')).not.toHaveAttribute('inert');
         expect(edit.closest('[inert]')).toBeNull();

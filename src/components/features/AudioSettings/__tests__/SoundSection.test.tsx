@@ -94,5 +94,36 @@ it('音楽鑑賞では指定した小区分でも音量の保護だけを出し�
     expect(screen.queryByRole('heading', { name: 'ノイズ低減' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTを開く' }));
     expect(open).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('region', { name: message('ja', 'truePeak.title') })).not.toBeInTheDocument());
     unregister();
+});
+
+it('統計のモードが分からないとき、ホームと音づくりは弱も強も選ばず詳細とも出さない', async () => {
+    const current = stats({ noiseReductionEnabled: false });
+    (current as { noiseReductionMode: string }).noiseReductionMode = 'later';
+    vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(current);
+    render(<><HomeQuick /><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></>);
+    const homeRoot = await screen.findByTestId('home-quick');
+    const home = within(homeRoot);
+    const low = await home.findByRole('radio', { name: '弱' });
+    await waitFor(() => expect(low).toBeEnabled());
+    const soundLow = screen.getAllByRole('radio', { name: '弱' }).find(radio => !homeRoot.contains(radio))!;
+    await waitFor(() => expect(soundLow).toBeEnabled());
+    for (const name of ['弱', '強']) {
+        expect(home.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
+        expect(screen.getAllByRole('radio', { name }).find(radio => !homeRoot.contains(radio))).toHaveAttribute('aria-checked', 'false');
+    }
+    expect(screen.queryByText(/詳細で調整中/)).not.toBeInTheDocument();
+    expect(home.queryByText(/詳細で調整中/)).not.toBeInTheDocument();
+});
+
+it('音楽鑑賞で配信用true-peakがONのときは出し、OFFに戻せる', async () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const enabled = { ...broadcast, applied: true, config: { ...broadcast.config, enabled: true } };
+    const request = vi.spyOn(broadcastTruePeakApi, 'request').mockResolvedValue(enabled);
+    vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(stats());
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const region = await screen.findByRole('region', { name: message('ja', 'truePeak.title') });
+    fireEvent.click(within(region).getByRole('button', { name: message('ja', 'truePeak.disable') }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ enabled: false })));
 });
