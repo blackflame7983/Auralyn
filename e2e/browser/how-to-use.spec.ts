@@ -19,7 +19,7 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
         await page.goto('/');
         await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
         // 既存の拡大表示試験と同じCSS zoomで表示の収まりを確認する。
-        await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+        await page.evaluate(value => { document.documentElement.style.zoom = String(value); document.documentElement.style.setProperty('--ui-zoom', String(value)); }, zoom);
         if (zoom === 1) {
             const trigger = page.getByRole('button', { name: t('header.helpOpen'), exact: true });
             await trigger.click();

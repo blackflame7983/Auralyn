@@ -74,7 +74,7 @@ test('オケを開かず配信VSTを自動表示し、音量・エラー詳細�
 for (const size of [{ width: 900, height: 600 }, { width: 1024, height: 768 }]) {
     test(`英語・150%表示 ${size.width}x${size.height} で配信ミックスが収まる`, async ({ page }, info) => {
         await page.setViewportSize(size); await page.addInitScript(() => localStorage.setItem('vst_host_locale', 'en')); await fixture(page); await page.goto('/'); const dialog = await streamMix(page);
-        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
         const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('Finish broadcast audio with VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
         const slider = post.getByRole('slider', { name: 'Fixture EQ gain' }); await expect(slider).toBeVisible(); await slider.scrollIntoViewIfNeeded(); await noOverflow(dialog);

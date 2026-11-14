@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
+import { uiScale } from '../../src/lib/largeWindow';
 import { settleLayoutMotion } from './layoutMotion';
 
 test.describe('通常のホーム表示', () => {
@@ -227,7 +228,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
-    await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
+    await page.evaluate(() => { document.documentElement.style.zoom = '2'; document.documentElement.style.setProperty('--ui-zoom', '2'); });
     const setup = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
     await setup.click();
     const rail = page.getByRole('navigation', { name: '行き先' });
@@ -303,7 +304,7 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
         await page.setViewportSize({ width, height: width <= 1024 ? 640 : 1080 });
         const columnBox = (await column.boundingBox())!;
         const box = (await meter.boundingBox())!;
-        expect(box.height).toBe(16);
+        expect(box.height).toBeCloseTo(16 * uiScale(width, width <= 1024 ? 640 : 1080), 1);
         expect(box.x).toBeGreaterThanOrEqual(columnBox.x - 1);
         expect(box.x + box.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
         const status = meter.locator('[data-meter-status]');

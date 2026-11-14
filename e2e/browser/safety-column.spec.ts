@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { test, expect } from './tauriFixture';
 import type { Page } from '@playwright/test';
+import { uiScale } from '../../src/lib/largeWindow';
 
 mkdirSync('docs/verification/design-renewal-stage-a', { recursive: true });
 
@@ -29,7 +30,7 @@ async function expectColumnFits(page: Page, width: number, height: number, landm
     await expect(aside).toBeVisible();
     await expect(page.locator('footer')).toHaveCount(0);
     const box = (await aside.boundingBox())!;
-    expect(Math.round(box.width)).toBe(212);
+    expect(Math.round(box.width)).toBe(Math.round(212 * uiScale(width, height)));
     expect(Math.round(box.x + box.width)).toBe(width);
     expect(Math.round(box.y + box.height)).toBe(height);
     expect(await aside.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
