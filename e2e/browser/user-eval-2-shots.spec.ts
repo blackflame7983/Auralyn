@@ -19,6 +19,7 @@ test.describe('段階2の画面記録', () => {
     test('home-ja-1024x768', async ({ page }) => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto('/?mock=live-home');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: '音量を測る', exact: true })).toBeVisible();
         await page.screenshot({ path: `${dir}/home-ja-1024x768.png`, animations: 'disabled' });
     });
@@ -27,6 +28,7 @@ test.describe('段階2の画面記録', () => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
         await page.goto('/?mock=live-home');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         const open = page.getByRole('button', { name: '再生の確認', exact: true });
         await expect(open).toBeEnabled();
         await open.click();
@@ -43,6 +45,7 @@ test.describe('段階2の画面記録', () => {
         test(shot.name, async ({ page }) => {
             await page.setViewportSize({ width: 1024, height: 768 });
             await page.goto(`/?mock=live-home&screen=${shot.screen}`);
+            await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
             await expect(page.getByRole('heading', { level: 1, name: shot.title, exact: true })).toBeVisible();
             await page.screenshot({ path: `${dir}/${shot.name}.png`, animations: 'disabled' });
         });
@@ -51,6 +54,7 @@ test.describe('段階2の画面記録', () => {
     test('voice-check-ja-960x640', async ({ page }) => {
         await page.setViewportSize({ width: 960, height: 640 });
         await page.goto('/?mock=live-home&screen=voice-check');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /録音開始/ })).toBeVisible();
         await page.screenshot({ path: `${dir}/voice-check-ja-960x640.png`, animations: 'disabled' });
     });
@@ -58,6 +62,7 @@ test.describe('段階2の画面記録', () => {
     test('plugins-ja-1024x768', async ({ page }) => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto('/?mock=live-home&screen=plugin-browser');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: '更新', exact: true })).toBeVisible();
         await page.screenshot({ path: `${dir}/plugins-ja-1024x768.png`, animations: 'disabled' });
     });
