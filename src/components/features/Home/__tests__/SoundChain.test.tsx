@@ -289,6 +289,35 @@ it('設定済みの声表示では音色の形だけを描き、未設定時は�
     expect(view.container.querySelector('[data-tone-guide]')).toBeNull();
 });
 
+it('周囲の音を測るは2段目に置き、測定の状態は出さない', () => {
+    const measure = vi.fn();
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady onMeasureNoise={measure} /></RuntimeStatsContext.Provider>);
+    const tier = document.querySelector('#home-noise [data-home-tier="2"]');
+    expect(tier).toHaveTextContent(message('ja', 'home.measureNoise'));
+    expect(tier).not.toHaveTextContent(message('ja', 'measurement.title'));
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.measureNoise') }));
+    expect(measure).toHaveBeenCalledOnce();
+});
+
+it('2段目が隠れるとき、焦点はカードの見出しへ移る', () => {
+    let listener: (() => void) | undefined;
+    const media = {
+        matches: true,
+        addEventListener: (_type: string, fn: () => void) => { listener = fn; },
+        removeEventListener: () => { listener = undefined; },
+    };
+    vi.stubGlobal('matchMedia', () => media);
+    try {
+        render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady onMeasureNoise={vi.fn()} /></RuntimeStatsContext.Provider>);
+        screen.getByRole('button', { name: message('ja', 'home.measureNoise') }).focus();
+        media.matches = false;
+        listener?.();
+        expect(screen.getByRole('heading', { name: message('ja', 'settings.AudioSettingsModal.105') })).toHaveFocus();
+    } finally {
+        vi.unstubAllGlobals();
+    }
+});
+
 it.each(['ja', 'en'] as const)('ノイズ低減の図は実測にないdB値を出さず、現在のモードと停止状態を示す (%s)', locale => {
     const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>

@@ -9,7 +9,7 @@ export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts'
 export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
 export type SoundPlace = 'basic' | 'liveModes' | 'singing' | 'peak';
 
-type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean; vstFocusAdd?: boolean };
+type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean; openMeasurement?: boolean; vstFocusAdd?: boolean };
 
 function soundPlaceFrom(section?: SettingsAnchor): SoundPlace {
     if (section === 'liveModes') return 'liveModes';
@@ -38,6 +38,8 @@ export const useUIState = () => {
     const [soundPlace, setSoundPlace] = useState<SoundPlace>('basic');
     // 入口から小区分を指定して開いたときだけ、見出しへ焦点を移す。
     const [soundFocusNonce, setSoundFocusNonce] = useState(0);
+    // ホームの「周囲の音を測る」から、測定の欄を開いて焦点を移す。状態はホームで読まない。
+    const [measurementNonce, setMeasurementNonce] = useState(0);
     // VST のページを開くたびに進める。追加から開いたときだけ、追加ボタンへ焦点を移す。
     const [vstFocusAdd, setVstFocusAdd] = useState(false);
     const [vstOpenNonce, setVstOpenNonce] = useState(0);
@@ -53,6 +55,7 @@ export const useUIState = () => {
         if (next.page === 'sound') {
             setSoundPlace(next.soundPlace ?? soundPlaceFrom(next.section));
             if (next.soundFocus) setSoundFocusNonce(n => n + 1);
+            if (next.openMeasurement) setMeasurementNonce(n => n + 1);
         }
         if (next.page === 'vst') {
             setVstFocusAdd(Boolean(next.vstFocusAdd));
@@ -97,6 +100,8 @@ export const useUIState = () => {
         const anchor = section === 'liveModes' || section === 'singing' ? section : undefined;
         go({ page: 'sound', section: anchor, soundFocus: anchor !== undefined });
     };
+    // 音づくりの基本を開き、測定の欄を開く。ホームでは測定の状態を読まない。
+    const openNoiseMeasurement = () => go({ page: 'sound', soundPlace: 'basic', openMeasurement: true });
     const openLiveModeSettings = () => go({ page: 'sound', section: 'liveModes', soundFocus: true });
     // ページ内の小区分。focus は入口のボタンだけ。タブのクリックでは見出しへ移さない。
     const moveSoundPlace = (place: SoundPlace, focus = false) => go({
@@ -131,6 +136,7 @@ export const useUIState = () => {
         settingsSection,
         soundPlace,
         soundFocusNonce,
+        measurementNonce,
         vstFocusAdd,
         vstOpenNonce,
         openVst,
@@ -144,6 +150,7 @@ export const useUIState = () => {
         openMixingSettings,
         openDeviceSettings,
         openSoundSettings,
+        openNoiseMeasurement,
         leave,
         applyNavigation,
         isBrowserOpen,

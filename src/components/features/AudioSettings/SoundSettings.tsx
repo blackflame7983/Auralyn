@@ -177,11 +177,13 @@ interface SoundSettingsProps {
   onSaveSingingProfile?: () => void;
   onOpenMixing: () => void;
   streamMixAvailable?: boolean;
+  /** ホームの「周囲の音を測る」から開くたびに増える。測定の欄を開いて焦点を移す。 */
+  measurementNonce?: number;
 }
 
 const places = ['basic', 'liveModes', 'singing', 'peak'] as const satisfies readonly SoundPlace[];
 
-export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, place, onPlace, onPeakPending, music = false, singingDirty = false, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true }: SoundSettingsProps) {
+export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, place, onPlace, onPeakPending, music = false, singingDirty = false, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true, measurementNonce = 0 }: SoundSettingsProps) {
   const t = useMessages();
   const shown = music ? 'peak' : place;
   const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount } = model;
@@ -192,6 +194,21 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
     void singingModel.refresh();
     return release;
   }, [music, singingModel.activate, singingModel.refresh]);
+  // 測定の欄は詳細の中にある。入口から開くときは、親の詳細と測定の両方を開いてから焦点を移す。
+  useEffect(() => {
+    if (!measurementNonce) return;
+    setNoiseAdvancedOpen(true);
+    setNoiseMeasurementOpen(true);
+  }, [measurementNonce, setNoiseAdvancedOpen, setNoiseMeasurementOpen]);
+  useEffect(() => {
+    if (!measurementNonce || !noiseAdvancedOpen || !noiseMeasurementOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>('#noise-measurement button');
+      document.getElementById('noise-measurement')?.scrollIntoView?.({ block: 'center' });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [measurementNonce, noiseAdvancedOpen, noiseMeasurementOpen]);
   const onPeak = useCallback((pending: boolean) => onPeakPending('peak', pending), [onPeakPending]);
   const onBroadcast = useCallback((pending: boolean) => onPeakPending('broadcast', pending), [onPeakPending]);
   const lead = shown === 'basic' ? t('settings.apply.soundImmediate')
@@ -221,6 +238,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             {shown === 'basic' && <>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
+              {/* ノイズ低減と声を整える機能は、ページの幅に余裕があるときだけ横に並べる。DOM の順は変えない。 */}
+              <div className="page-pair">
                 {/* Noise reduction */}
                 <div className="p-4 bg-muted/20 rounded-card border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
@@ -291,10 +310,12 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       onValueCommit={value => commitNoiseStrength(String(value))} />
                   </div>}
 
+                  <div id="noise-measurement">
                   <Disclosure open={noiseMeasurementOpen} onOpenChange={setNoiseMeasurementOpen} label={t('measurement.title')}>
                     {/* 閉じると測定欄を外し、既存の後片付けを維持する。 */}
                     {noiseMeasurementOpen && <NoiseMeasurementPanel embedded />}
                   </Disclosure>
+                  </div>
 
                   <div className="flex items-center justify-between gap-3 rounded-control border border-input bg-background px-3 py-2">
                     <div>
@@ -353,6 +374,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   </div>
                   </fieldset>
                 </div>
+              </div>
                 <div className="space-y-3 rounded-card border border-border bg-muted/20 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
