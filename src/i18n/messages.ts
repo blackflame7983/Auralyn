@@ -3931,7 +3931,7 @@ const en: Record<MessageKey, string> = {
     "purpose.label": "Home layout",
     "purpose.hint": "Changes which controls appear on Home. Audio settings and the destination stay the same.",
     "details.label": "Show detailed numbers",
-    "details.hint": "Shows latency beside the status in the top band, estimated latency and noise reduction strength (%) in Settings, and level values in dBFS. In loudness protection, detailed settings stay open. Audio settings stay the same.",
+    "details.hint": "Shows latency beside the status in the top band, estimated latency and noise reduction strength (%) in Settings, and level values in dBFS. In loudness protection, it opens detailed settings. Audio settings stay the same.",
     "purpose.voice": "For streaming / calls",
     "purpose.music": "For music listening",
     "flow.partial": "Partly configured ON",
