@@ -167,6 +167,13 @@ it('数値の詳細を出さない間はノイズ低減の強さを弱／強だ�
 
 it.each(['touch', 'pen'])('ノイズ低減OFF中に強度を変更してもONにせず、%sのpointer操作で確定する', async pointerType => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
+    // 統計にモードがないときは詳細と決め打ちしない。OFFのまま強さを送る確認は、統計の弱で行う。
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return devices;
+        if (command === 'get_engine_runtime_stats') return { noiseReductionEnabled: false, noiseReductionMode: 'low', builtInEffectsEnabled: false };
+        if (command === 'get_autostart_status') return { enabled: false };
+        return null;
+    });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     const slider = await screen.findByRole('slider', { name: 'ノイズ低減の抑制強度' });
@@ -177,7 +184,7 @@ it.each(['touch', 'pen'])('ノイズ低減OFF中に強度を変更してもONに
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_noise_control_config')).toHaveLength(0);
     fireEvent.pointerUp(track, { pointerId: 1, pointerType, clientX: 75 });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
-        active: false, mode: 'smart', strength: 1, voiceGuard: true,
+        active: false, mode: 'low', strength: 1, voiceGuard: true,
     }));
     await waitFor(() => expect(slider).toBeEnabled());
     fireEvent.blur(slider);
@@ -185,13 +192,19 @@ it.each(['touch', 'pen'])('ノイズ低減OFF中に強度を変更してもONに
 });
 
 it('声を守るの変更でも明示したON/OFF状態を維持する', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return devices;
+        if (command === 'get_engine_runtime_stats') return { noiseReductionEnabled: false, noiseReductionMode: 'low', noiseControlStrength: 0.8, noiseVoiceGuard: true, builtInEffectsEnabled: false };
+        if (command === 'get_autostart_status') return { enabled: false };
+        return null;
+    });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     const guard = await screen.findByRole('switch', { name: '声を守る' });
     await waitFor(() => expect(guard).toBeEnabled());
     fireEvent.click(guard);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
-        active: false, mode: 'smart', strength: 0.8, voiceGuard: false,
+        active: false, mode: 'low', strength: 0.8, voiceGuard: false,
     }));
 });
 
