@@ -52,7 +52,36 @@ it('切り替え中は操作を止め、失敗したら理由を出す', async (
 it('切替前の自動退避は、保存した構成の一覧に出さない', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue(['__backup_previous']);
     renderDesk({ onOpenVst: vi.fn() });
-    // 退避だけのときは、保存した構成がないときと同じ案内になる。
+    // 切替前の退避だけのときは、保存した構成がないときと同じ案内になる。
     expect(await screen.findByText(/設定の保存・復帰/)).toBeVisible();
     expect(screen.queryByRole('option', { name: '__backup_previous' })).not.toBeInTheDocument();
+});
+
+it('利用者の構成を先に並べ、復旧の退避は自動の退避から元の名前で読み込む', async () => {
+    const recovery = 'VST-recovery-f6051925-1234-4abc-8def-0123456789ab';
+    vi.spyOn(presetApi, 'list').mockResolvedValue([recovery, '夜', 'VST-recovery-abc', '__backup_previous']);
+    const load = vi.fn(async () => true);
+    renderDesk({ onLoadPreset: load, onOpenVst: vi.fn() });
+    const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
+    expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
+    const options = [...select.querySelectorAll('option')].map(option => option.value);
+    expect(options.indexOf('夜')).toBeLessThan(options.indexOf(recovery));
+    expect(options.indexOf('VST-recovery-abc')).toBeLessThan(options.indexOf(recovery));
+    const group = select.querySelector('optgroup');
+    expect(group).toHaveAttribute('label', '自動の退避');
+    expect([...group!.querySelectorAll('option')].map(option => option.value)).toEqual([recovery]);
+    expect(group!.querySelector('option')?.textContent).toBe('VSTの復旧の退避（f6051925）');
+    expect(select.querySelector('option[value="VST-recovery-abc"]')?.parentElement).toBe(select);
+    fireEvent.change(select, { target: { value: recovery } });
+    expect(load).toHaveBeenCalledWith(recovery);
+});
+
+it('復旧の退避だけでも空の案内は出さず、一覧を出す', async () => {
+    const recovery = 'VST-recovery-f6051925-1234-4abc-8def-0123456789ab';
+    vi.spyOn(presetApi, 'list').mockResolvedValue([recovery]);
+    renderDesk({ onOpenVst: vi.fn() });
+    const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
+    expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'VSTのページを開く' })).not.toBeInTheDocument();
+    expect(select.querySelector('optgroup option')).toHaveTextContent('VSTの復旧の退避（f6051925）');
 });

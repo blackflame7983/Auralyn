@@ -81,6 +81,40 @@ it('locale切替で未保存名・カテゴリ・確認dialogを保持し同じ�
     fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(meta.name, expect.objectContaining({ includeNoiseControl: false })));
 });
+it('復旧の退避は表示名と自動の札で出し、適用は元の名前で行う', async () => {
+    const recovery = 'VST-recovery-f6051925-1234-4abc-8def-0123456789ab';
+    const plain = 'VST-recovery-abc';
+    const shown = 'VSTの復旧の退避（f6051925）';
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') return [
+            { ...meta, name: '夜' },
+            { ...meta, name: recovery },
+            { ...meta, name: plain },
+        ];
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+        if (command === 'load_preset') return { name: recovery, plugins: [] };
+    });
+    const apply = vi.fn(async () => null);
+    render(<PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={apply} onRestoreBackup={vi.fn()} />);
+    expect(await screen.findByText(shown)).toBeVisible();
+    expect(screen.getByText('自動')).toBeVisible();
+    expect(screen.getByText(plain)).toBeVisible();
+    expect(screen.queryByText(recovery)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: '復旧' } });
+    expect(screen.getByText(shown)).toBeVisible();
+    expect(screen.queryByText('夜')).not.toBeInTheDocument();
+    expect(screen.queryByText(plain)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: 'VST-recovery-f605' } });
+    expect(screen.getByText(shown)).toBeVisible();
+    expect(screen.queryByText(plain)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: `${shown}を適用` }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(recovery);
+    fireEvent.click(screen.getByRole('button', { name: '適用する' }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(recovery, undefined, expect.objectContaining({ soundOnly: true })));
+});
+
 it('英語でのexport取消tokenを成功/失敗へ翻訳せず追加操作しない', async () => {
     const store = createLocaleStore(() => 'en', () => true);
     const original = vi.mocked(invoke).getMockImplementation()!;

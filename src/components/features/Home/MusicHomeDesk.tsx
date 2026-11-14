@@ -4,7 +4,8 @@ import { Select } from '@/components/ui/Select';
 import { Switch } from '@/components/ui/switch';
 import { presetApi, PROFILE_BACKUP_NAME } from '@/api/presets';
 import { displayAudioHost } from '@/lib/audioDevices';
-import { useMessages } from '@/i18n/LocaleProvider';
+import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 
 // 音楽鑑賞のホームに、保存済みの VST 構成と聴き比べと再生の状態を置く。
@@ -19,6 +20,7 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
     onOpenVst?: () => void;
 }) {
     const t = useMessages();
+    const { locale } = useLocale();
     const [names, setNames] = useState<string[] | null>(null);
     const [listFailed, setListFailed] = useState(false);
     const [chosen, setChosen] = useState('');
@@ -29,7 +31,7 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
         void presetApi.list().then(list => {
             if (!active) return;
             if (!Array.isArray(list)) { setListFailed(true); return; }
-            // 切替前の自動退避は、利用者が保存した構成ではないので出さない。
+            // 切替前の自動退避は出さない。復旧の退避は元の名前のまま残し、表示で分ける。
             setNames(list.filter(name => name !== PROFILE_BACKUP_NAME));
         }).catch(() => { if (active) setListFailed(true); });
         return () => { active = false; };
@@ -49,18 +51,24 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
         }
     };
     const rate = sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${sampleRate / 1000} kHz` : t('master.unset');
+    const savedNames = names?.filter(name => !isRecoveryProfileName(name)) ?? [];
+    const recoveryNames = names?.filter(name => isRecoveryProfileName(name)) ?? [];
+    const hasChoices = savedNames.length > 0 || recoveryNames.length > 0;
     return <section aria-label={t('music.playback')} aria-busy={switching} className="mb-4 space-y-3 rounded-card border border-border bg-card p-4">
         <h2 className="text-ui-heading font-semibold">{t('music.playback')}</h2>
         <p className="break-words text-ui-support">{t('music.playbackValues', { host: host ? displayAudioHost(host) : t('master.unset'), rate })}</p>
         {listFailed && <p role="alert" className="text-ui-support text-destructive-text">{t('music.presetListFailed')}</p>}
-        {names && names.length === 0 && <div className="space-y-2">
+        {names && !hasChoices && <div className="space-y-2">
             <p className="text-ui-support text-muted-foreground">{t('music.presetEmpty', { save: t('rack.manageProfiles') })}</p>
             {onOpenVst && <Button type="button" variant="outline" onClick={onOpenVst}>{t('music.presetOpen')}</Button>}
         </div>}
-        {names && names.length > 0 && <Field label={t('music.presetLabel')}>
+        {names && hasChoices && <Field label={t('music.presetLabel')}>
             <Select value={chosen} disabled={switching} onChange={event => { void apply(event.target.value); }}>
                 <option value="">{t('music.presetChoose')}</option>
-                {names.map(name => <option key={name} value={name}>{name}</option>)}
+                {savedNames.map(name => <option key={name} value={name}>{name}</option>)}
+                {recoveryNames.length > 0 && <optgroup label={t('profile.recoveryGroup')}>
+                    {recoveryNames.map(name => <option key={name} value={name}>{profileDisplayName(name, locale)}</option>)}
+                </optgroup>}
             </Select>
         </Field>}
         {switching && <p role="status" className="text-ui-support">{t('music.presetSwitching')}</p>}

@@ -10,7 +10,8 @@ import { SavePurposeHelp } from './SavePurposeHelp';
 import { TemporarySessionPanel } from './TemporarySessionPanel';
 import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { useMessages } from '@/i18n/LocaleProvider';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
+import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
 import { SaveScopeSummary } from './SaveScopeSummary';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from '../../ui/modal';
@@ -195,6 +196,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     onOpenAudioSettings,
 }) => {
     const t = useMessages();
+    const { locale } = useLocale();
     const temporaryActive = sessionMode().temporary;
     const [recoveryOpen, setRecoveryOpen] = useState(false);
     const [bundleOpen, setBundleOpen] = useState(initialBundleOpen);
@@ -399,8 +401,10 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         });
     };
 
+    const query = searchTerm.toLowerCase();
+    // 検索は、画面の名前と保存されている名前の両方に当たる。
     const filteredProfiles = profiles.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        p.name.toLowerCase().includes(query) || profileDisplayName(p.name, locale).toLowerCase().includes(query)
     );
 
     if (!isOpen) return null;
@@ -545,17 +549,22 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                     : <p className="mt-2 text-ui-support">{t('presets.copy.072')}</p>}
                             </div>
                         ) : (
-                            filteredProfiles.map(profile => (
+                            filteredProfiles.map(profile => {
+                                const visibleName = profileDisplayName(profile.name, locale);
+                                return (
                                 <div
                                     key={profile.name}
                                     className={`group flex items-center justify-between p-3 rounded-card border cursor-pointer hover:bg-accent transition ${
                                         profile.name === saveName ? 'border-selection ring-1 ring-selection/50 bg-selection/10' : 'border-border bg-card'
                                     }`}
                                 >
-                                    <button type="button" onClick={() => setSaveName(profile.name)} aria-label={t('presets.copy.073', { arg0: profile.name })} aria-pressed={profile.name === saveName} className="flex items-center gap-3 min-w-0 text-left rounded-control focus-visible:ring-2 focus-visible:ring-primary">
+                                    <button type="button" onClick={() => setSaveName(profile.name)} aria-label={t('presets.copy.073', { arg0: visibleName })} aria-pressed={profile.name === saveName} className="flex items-center gap-3 min-w-0 text-left rounded-control focus-visible:ring-2 focus-visible:ring-primary">
                                         <CategoryIcons meta={profile} />
-                                        <span className={`font-medium truncate ${profile.name === saveName ? 'text-primary' : ''}`}>
-                                            {profile.name}
+                                        <span className="flex min-w-0 items-center gap-2">
+                                            <span className={`min-w-0 truncate font-medium ${profile.name === saveName ? 'text-primary' : ''}`}>
+                                                {visibleName}
+                                            </span>
+                                            {isRecoveryProfileName(profile.name) && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('profile.recoveryBadge')}</span>}
                                         </span>
                                     </button>
                                     <div className="flex items-center gap-1 shrink-0">
@@ -563,7 +572,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                             onClick={(e) => { e.stopPropagation(); handleApply(profile.name); }}
 
                                             title={t('presets.copy.074')}
-                                            aria-label={t('presets.copy.075', { arg0: profile.name })}
+                                            aria-label={t('presets.copy.075', { arg0: visibleName })}
                                         >
                                             <MdPlayArrow className="w-4 h-4" />
                                         </Button>
@@ -571,7 +580,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                             onClick={(e) => { e.stopPropagation(); handleLegacyLoad(profile.name); }}
 
                                             title={t('presets.copy.076')}
-                                            aria-label={t('presets.copy.077', { arg0: profile.name })}
+                                            aria-label={t('presets.copy.077', { arg0: visibleName })}
                                         >
                                             VST
                                         </Button>
@@ -579,7 +588,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                             onClick={(e) => { e.stopPropagation(); handleExport(profile.name); }}
 
                                             title={t('presets.copy.078')}
-                                            aria-label={t('presets.copy.079', { arg0: profile.name })}
+                                            aria-label={t('presets.copy.079', { arg0: visibleName })}
                                         >
                                             <MdFileDownload className="w-4 h-4" />
                                         </Button>
@@ -587,13 +596,14 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                             onClick={(e) => { e.stopPropagation(); handleDelete(profile.name); }}
 
                                             title={t('presets.copy.080')}
-                                            aria-label={t('presets.copy.081', { arg0: profile.name })}
+                                            aria-label={t('presets.copy.081', { arg0: visibleName })}
                                         >
                                             <MdDelete className="w-4 h-4" />
                                         </Button>
                                     </div>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>
