@@ -1,20 +1,21 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
+import { Switch } from '@/components/ui/switch';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { broadcastTruePeakApi, type BroadcastTruePeakStatus } from '@/api/broadcastTruePeak';
+import { broadcastTruePeakApi, type BroadcastTruePeakConfig, type BroadcastTruePeakStatus } from '@/api/broadcastTruePeak';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false, hideApplyNote = false, music = false }: {
+export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false, music = false }: {
     onPendingChange?: (pending: boolean) => void;
-    applyInHeading?: boolean;
     hideApplyNote?: boolean;
     /** 音楽鑑賞では、配信用の制限がONのときだけ出す。 */
     music?: boolean;
 } = {}) {
     const t = useMessages();
+    const headingId = useId();
     const [status, setStatus] = useState<BroadcastTruePeakStatus | null>(null);
     const [ceiling, setCeiling] = useState(-1);
     const [release, setRelease] = useState(100);
@@ -42,14 +43,24 @@ export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false
         void read(); const timer = setInterval(() => { void read(); }, 500);
         return () => { active = false; alive.current = false; version.current++; clearInterval(timer); removeAppVisibilityListener(visible); subscriptions.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
     }, []);
-    const apply = async (enabled: boolean) => {
+    const write = async (config: BroadcastTruePeakConfig) => {
         if (!status || writing.current || isAppHidden()) return;
         writing.current = true; setBusy(true); setFailed(false); const serial = ++version.current;
         try {
-            const next = await broadcastTruePeakApi.request(enabled ? { enabled, ceilingDb: ceiling, releaseMs: release } : { ...status.config, enabled });
+            const next = await broadcastTruePeakApi.request(config);
             if (alive.current && serial === version.current) { setStatus(next); window.dispatchEvent(new Event('preparation-external-change')); }
         } catch { if (alive.current && serial === version.current) { setStatus(null); setFailed(true); } }
         finally { writing.current = false; if (alive.current) setBusy(false); }
+    };
+    // ON はいまの天井と復帰時間で適用する。OFF は保存済みの数値のまま止める。
+    const setEnabled = (enabled: boolean) => {
+        if (!status) return;
+        void write(enabled ? { enabled, ceilingDb: ceiling, releaseMs: release } : { ...status.config, enabled });
+    };
+    // 数値の適用は ON と OFF を変えない。
+    const applyValues = () => {
+        if (!status) return;
+        void write({ enabled: status.config.enabled, ceilingDb: ceiling, releaseMs: release });
     };
     // 読み込み中・失敗・OFFは出さない。ONのときだけ残し、OFFへ戻せる。保存値は変えない。
     const hidden = music && !status?.config.enabled;
@@ -58,13 +69,16 @@ export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false
         onPendingChange?.(pending);
         return () => onPendingChange?.(false);
     }, [pending, onPendingChange]);
-    const applyDisabled = !status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
-    const applyButton = <Button type="button" variant="outline" className="h-auto min-h-10 shrink-0 whitespace-normal" disabled={applyDisabled} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'truePeak.apply' : 'truePeak.enable')}</Button>;
+    const valuesInvalid = !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
+    const enabled = status?.config.enabled ?? false;
+    const applyDisabled = !status || busy || valuesInvalid;
+    // 無効な数値のまま ON にはしない。OFF は保存済みの数値で止められる。
+    const switchDisabled = !status || busy || (!enabled && valuesInvalid);
     if (hidden) return null;
     return <section aria-label={t('truePeak.title')} className="p-4 rounded-card border space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>
-            {applyInHeading && applyButton}
+        <div className="flex items-center justify-between gap-3">
+            <h3 id={headingId} className="text-ui-heading font-semibold">{t('truePeak.title')}</h3>
+            <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={setEnabled} aria-labelledby={headingId} />
         </div>
         <p className="text-ui-support text-muted-foreground">{t('truePeak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
@@ -80,8 +94,7 @@ export function BroadcastTruePeakPanel({ onPendingChange, applyInHeading = false
         {status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         {status && <p className="text-ui-support">{t('truePeak.latency', { samples: String(status.addedLatencySamples) })}</p>}
         {status?.config.enabled && !status.applied && <p className="text-ui-support">{t('truePeak.notApplied')}</p>}
-        {!applyInHeading && applyButton}
-        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status?.config.enabled || busy} onClick={() => void apply(false)}>{t('truePeak.disable')}</Button>
+        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('truePeak.apply')}</Button>
         <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('truePeak.limitsTitle')}</summary><p className="mt-2">{t('truePeak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('truePeak.failed')}</p>}
     </section>;
