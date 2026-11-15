@@ -13,13 +13,13 @@ const output = (ready = true) => ({ config: { deviceId: ready ? 'out' : null, sp
 const audio = { is_running: false, config: { host: 'WASAPI', input: 'Mic', input_id: 'mic', output: 'Phones', output_id: 'phones', sample_rate: 48000, buffer_size: 128, routing: { inputChannels: [0, 1] as [number, number], outputRouting: { mode: 'legacy' as const } } } };
 beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
-async function setup(value = snapshot(), ready = true, primaryIsVoiceDevice = true, onNavigate = vi.fn()) {
+async function setup(value = snapshot(), ready = true, primaryIsVoiceDevice = true, onNavigate = vi.fn(), settled: RegExp | string = /いま使っているオケ/) {
     const request = vi.spyOn(mixingApi, 'request').mockResolvedValue(value);
     vi.spyOn(liveOutputApi, 'request').mockResolvedValue(output(ready));
     vi.spyOn(audioApi, 'getAudioState').mockResolvedValue(audio);
     render(<MixingPanel inputs={inputs} primaryIsVoiceDevice={primaryIsVoiceDevice} onNavigate={onNavigate} />);
     expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('オケを追加して配信する'));
-    await screen.findByText(/適用中の入力元/); return request;
+    await screen.findByText(settled); return request;
 }
 const voice = () => screen.getByRole('slider', { name: '声の音量' });
 it('開いた時に自動取得し、0%を保持してキーボード調整を即時反映する', async () => {
@@ -29,26 +29,29 @@ it('開いた時に自動取得し、0%を保持してキーボード調整を�
     expect(voice()).toHaveAttribute('aria-valuetext', '1%'); expect(screen.queryByText('調整を適用')).not.toBeInTheDocument();
 });
 it('最新状態の再取得で編集中の入力元と音量を失わない', async () => {
-    const request = await setup(); fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } });
+    const request = await setup(); fireEvent.change(screen.getByRole('combobox', { name: '使う入力チャンネル' }), { target: { value: '2,3' } });
     fireEvent.keyDown(voice(), { key: 'ArrowRight' });
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole('combobox', { name: '入力ペア' })).toHaveValue('2,3'); expect(voice()).toHaveAttribute('aria-valuetext', '1%');
+    expect(screen.getByRole('combobox', { name: '使う入力チャンネル' })).toHaveValue('2,3'); expect(voice()).toHaveAttribute('aria-valuetext', '1%');
 });
 it('動作中と編集中を区別し、保存内容の明示的な読み直しで下書きを置き換える', async () => {
     const request = await setup();
-    const active = screen.getByRole('region', { name: '動作中の設定' });
-    const draft = screen.getByRole('region', { name: '編集中の内容' });
+    const active = screen.getByRole('region', { name: 'いま使っているオケ' });
+    const draft = screen.getByRole('region', { name: 'オケの入力元を変える' });
     expect(active).toHaveTextContent('Music');
     expect(within(active).queryByRole('combobox')).not.toBeInTheDocument();
-    const pair = within(draft).getByRole('combobox', { name: '入力ペア' });
+    const pair = within(draft).getByRole('combobox', { name: '使う入力チャンネル' });
     fireEvent.change(pair, { target: { value: '2,3' } });
     expect(pair).toHaveValue('2,3');
     expect(request).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(draft).getByRole('button', { name: '保存内容で編集中の内容を置き換える' }));
+    fireEvent.click(within(draft).getByRole('button', { name: '変更を取り消して、保存した設定に戻す' }));
     await waitFor(() => expect(pair).toHaveValue('0,1'));
     expect(request).toHaveBeenLastCalledWith({ action: 'reload', expectedEpoch: 'e', expectedRevision: '1' });
     expect(active).toHaveTextContent('Music');
+    expect(screen.queryByText('オケを足すには、先に次の準備が要ります。')).not.toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: '声の音量' })).toBeInTheDocument();
+    expect(screen.getByText(/音量の目安/)).toBeInTheDocument();
 });
 it('前提の不足から設定欄へ移動でき、準備状態を自動更新する', async () => {
     const navigate = vi.fn(); await setup(snapshot(), false, false, navigate);
@@ -58,8 +61,59 @@ it('前提の不足から設定欄へ移動でき、準備状態を自動更新�
     vi.mocked(liveOutputApi.request).mockResolvedValue(output());
     await waitFor(() => expect(screen.queryByRole('button', { name: '配信用の分離出力を設定' })).not.toBeInTheDocument(), { timeout: 2500 });
 });
+const intro = 'オケを足すには、先に次の準備が要ります。';
+it('前提が無くオケが無効なら、準備の案内と入口だけを出す', async () => {
+    const navigate = vi.fn();
+    await setup(snapshot({ config: null, savedConfig: null }), false, false, navigate, intro);
+    expect(screen.getByRole('button', { name: '表示を最新にする' })).toBeInTheDocument();
+    const outputGuide = screen.getByText('配信用の出力先と、声の処理を分ける設定が必要です。');
+    const inputGuide = screen.getByText('主入力には声用途のマイク機器を選んでください。');
+    expect(outputGuide.compareDocumentPosition(inputGuide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '配信用の分離出力を設定' }));
+    expect(navigate).toHaveBeenCalledWith('output');
+    fireEvent.click(screen.getByRole('button', { name: '主入力と用途を設定' }));
+    expect(navigate).toHaveBeenCalledWith('input');
+    expect(screen.queryByRole('region', { name: 'いま使っているオケ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'オケの入力元を変える' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'オケの入力元' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '入力元を適用' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'オケを無効にする' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: '声の音量' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: 'オケの音量' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '本人にもオケを返す' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton', { name: '配信用の手動時間差（ms）' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/声の処理待ち/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/音量の目安/)).not.toBeInTheDocument();
+    expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
+});
+it('分離出力だけが無いときは、その案内だけを出す', async () => {
+    await setup(snapshot({ config: null }), false, true, vi.fn(), intro);
+    expect(screen.getByText(intro)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '配信用の分離出力を設定' })).toBeInTheDocument();
+    expect(screen.queryByText('主入力には声用途のマイク機器を選んでください。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '主入力と用途を設定' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '使う入力チャンネル' })).not.toBeInTheDocument();
+    expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
+});
+it('声の主入力だけが無いときは、その案内だけを出す', async () => {
+    await setup(snapshot({ config: null }), true, false, vi.fn(), intro);
+    expect(screen.getByText(intro)).toBeInTheDocument();
+    expect(screen.queryByText('配信用の出力先と、声の処理を分ける設定が必要です。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '配信用の分離出力を設定' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '主入力と用途を設定' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '入力元を適用' })).not.toBeInTheDocument();
+    expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
+});
+it('前提が無くてもオケが有効なら、無効にする操作を出す', async () => {
+    await setup(snapshot(), false, false);
+    expect(screen.queryByText(intro)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'オケを無効にする' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'いま使っているオケ' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: '声の音量' })).toBeInTheDocument();
+    expect(screen.getByText(/音量の目安/)).toBeInTheDocument();
+});
 it('有効な1始まりの入力ペアだけを選び、機器変更時は先頭ペアになる', async () => {
-    await setup(); const pair = screen.getByRole('combobox', { name: '入力ペア' });
+    await setup(); const pair = screen.getByRole('combobox', { name: '使う入力チャンネル' });
     expect(within(pair).getAllByRole('option').map(o => o.textContent)).toEqual(['1–2', '3–4']);
     fireEvent.change(pair, { target: { value: '2,3' } }); fireEvent.change(screen.getByRole('combobox', { name: '機器を選択' }), { target: { value: 'music' } }); expect(pair).toHaveValue('0,1');
 });
@@ -67,11 +121,11 @@ it('経路が同じ再適用は確認を要求せず、経路変更は改めて�
     const request = await setup(); const confirm = () => screen.getByRole('checkbox', { name: /配信先と原音/ });
     // 開いた直後の適用中の経路は確認済みとして扱う。
     expect(screen.queryByRole('checkbox', { name: /配信先と原音/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '使う入力チャンネル' }), { target: { value: '2,3' } });
     fireEvent.click(confirm()); fireEvent.click(screen.getByRole('button', { name: '入力元を適用' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('button', { name: '入力元を適用' })).toBeEnabled(); expect(screen.queryByRole('checkbox', { name: /配信先と原音/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '0,1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '使う入力チャンネル' }), { target: { value: '0,1' } });
     expect(confirm()).not.toBeChecked(); expect(screen.getByRole('button', { name: '入力元を適用' })).toHaveAccessibleDescription(/経路の確認/);
 });
 it('停止中は停止要求を出さず、動作中は無効理由として伝える', async () => {
@@ -91,12 +145,14 @@ it('アプリ候補、原音ミュート、経路確認の順に無効理由を�
 });
 it.each([{ epoch: 'e', revision: '2' }, { epoch: 'new', revision: '1' }])('外部の世代変更 $epoch/$revision は下書きを保持して書込みを止める', async external => {
     const request = await setup(); vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList);
-    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } }); request.mockResolvedValue(snapshot(external));
-    await screen.findAllByText(/設定が変わりました/, {}, { timeout: 2500 }); expect(screen.getByRole('combobox', { name: '入力ペア' })).toHaveValue('2,3');
+    fireEvent.change(screen.getByRole('combobox', { name: '使う入力チャンネル' }), { target: { value: '2,3' } }); request.mockResolvedValue(snapshot(external));
+    const notices = await screen.findAllByText(/設定が変わりました/, {}, { timeout: 2500 });
+    expect(notices[0]).toHaveTextContent('表示を最新にする');
+    expect(screen.getByRole('combobox', { name: '使う入力チャンネル' })).toHaveValue('2,3');
     expect(screen.getByRole('button', { name: '入力元を適用' })).toBeDisabled(); expect(screen.getByRole('button', { name: 'オケを無効にする' })).toBeDisabled();
     expect(voice()).toHaveAttribute('data-disabled');
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' })); await waitFor(() => expect(voice()).not.toHaveAttribute('data-disabled'));
-    expect(screen.getByRole('combobox', { name: '入力ペア' })).toHaveValue('2,3');
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' })); await waitFor(() => expect(voice()).not.toHaveAttribute('data-disabled'));
+    expect(screen.getByRole('combobox', { name: '使う入力チャンネル' })).toHaveValue('2,3');
 });
 it('古いポーリング応答は新しい書込み結果を上書きしない', async () => {
     let finish!: (value: MixSnapshot) => void; const request = await setup(); vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList);
@@ -189,7 +245,7 @@ it('機材を判定できないときは控えめに案内し、確認ボタン�
     const old = { ...config, levels: { ...levels, offsetMs: 35 } };
     await setup(snapshot({ config: old, savedConfig: old }));
     vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: false, config: null });
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await waitFor(() => expect(screen.getByText(/機材の組み合わせを取得できない/, { selector: '[role="status"]' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'この機材で確認済みにする' })).not.toBeInTheDocument();
 });
@@ -200,10 +256,10 @@ it('声の機材を変えると案内が出て、同じ機材に戻すと保存�
     const request = await setup(snapshot({ config: saved, savedConfig: saved }));
     expect(screen.queryByText(/時間差は未確認/)).not.toBeInTheDocument();
     vi.mocked(audioApi.getAudioState).mockResolvedValue({ ...audio, config: { ...audio.config, input_id: 'new-mic' } });
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await screen.findByText(/変わった項目：声の入力/);
     vi.mocked(audioApi.getAudioState).mockResolvedValue(audio);
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await waitFor(() => expect(screen.queryByText(/時間差は未確認/)).not.toBeInTheDocument());
     expect(request.mock.calls.every(([r]) => r.action === 'snapshot')).toBe(true);
 });
@@ -225,7 +281,7 @@ it('時間差の保存待ちに音量を変えても、次の要求に新しい�
 
 it('まだ適用していない時間差は、入力元の適用時にその入力元の文脈を保存する', async () => {
     const request = await setup(snapshot({ config: null, savedConfig: config }));
-    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '使う入力チャンネル' }), { target: { value: '2,3' } });
     fireEvent.change(screen.getByRole('spinbutton', { name: '配信用の手動時間差（ms）' }), { target: { value: '35' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /配信先と原音/ }));
     const source = { ...config.source, config: { ...config.source.config, inputChannels: [2, 3] as [number, number] } };
@@ -240,7 +296,7 @@ it('配信先の再取得に失敗した場合は、以前の機材を確認済�
     const saved = { ...config, levels: { ...levels, offsetMs: 35, offsetContext: context } };
     await setup(snapshot({ config: saved, savedConfig: saved }));
     vi.mocked(liveOutputApi.request).mockRejectedValueOnce(new Error('output unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await screen.findByText('Error: output unavailable');
     expect(screen.getByText(/機材の組み合わせを取得できない/, { selector: '[role="status"]' })).toBeInTheDocument();
 });
