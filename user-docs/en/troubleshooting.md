@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 description: "Find checks and a next action for each symptom."
 order: 7
-uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Refresh", "Rescan all", "Try again", "Folders to search"]
+uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Bypass VST", "Add VST", "Refresh", "Rescan all", "Try again", "Folders to search"]
 ---
 
 ## No sound {#no-sound}
@@ -21,7 +21,7 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check 
 
 1. Check first: use “Diagnose audio problems” to check audio processing status.
 2. One action in Auralyn: increase the buffer in “Connection” → “Connection and dropout settings”. This may improve stability but increases latency.
-3. If it persists: compare with external VSTs bypassed using “Compare without VST”. For call-only dropouts, also compare [receiving-app processing](./discord.md#processing).
+3. If it persists: compare with external VSTs bypassed using “Bypass VST”. For call-only dropouts, also compare [receiving-app processing](./discord.md#processing).
 
 ## Audio is delayed {#latency}
 
