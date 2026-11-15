@@ -167,8 +167,8 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(within(now).getByRole('heading', { name: message(locale, 'liveBar.singing') })).toBeVisible();
     expect(now.querySelector('[data-now-incoming]')).toHaveAttribute('data-now-incoming', 'silent');
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.silent'));
-    expect(now.querySelector('[data-now-mute]')).toHaveAttribute('data-now-mute', 'clear');
-    expect(now).toHaveTextContent(message(locale, 'home.notMuted'));
+    expect(now.querySelector('[data-now-mute]')).toBeNull();
+    expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
 });
 
 it('送る音の目安は、小さめと大きすぎの境目に置く', () => {

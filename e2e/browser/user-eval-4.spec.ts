@@ -19,7 +19,7 @@ test('配信のいまの状態に、モードと送る音とミュートが出�
     const now = page.getByRole('region', { name: 'いまの状態', exact: true });
     await expect(now.getByText('モード', { exact: true })).toBeVisible();
     await expect(now.getByRole('heading', { name: 'いまの調整', exact: true })).toBeVisible();
-    await expect(now.locator('[data-now-mute="clear"]')).toHaveText('ミュートしていない');
+    await expect(now.locator('[data-now-mute]')).toHaveCount(0);
     await expect(now.getByRole('meter', { name: '送る音', exact: true })).toBeVisible();
     await expect(now.locator('[data-now-incoming]')).toBeVisible();
     await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));

@@ -60,7 +60,6 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         })
         : (liveModeName ?? t('liveBar.custom'));
     const muted = model.observation.availability === 'muted';
-    const showMute = muted || model.observation.availability === 'ready';
     const startButton = !running && Boolean(onStartAudio);
     const chooseButton = !music && running && !usage && Boolean(onChooseDestination);
     const startNote = startButton && !startError;
@@ -71,7 +70,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {!music && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
             <h2 className="min-w-0 truncate text-ui-heading font-medium" title={heading}>{heading}</h2>
-            {showMute && <span role="status" data-now-mute={muted ? 'muted' : 'clear'} className={`ml-auto text-ui-support font-medium ${muted ? 'text-warning' : 'text-muted-foreground'}`}>{t(muted ? 'prep.muted' : 'home.notMuted')}</span>}
+            {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t('prep.muted')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <IncomingStatus running={running} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
