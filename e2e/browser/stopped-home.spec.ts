@@ -45,6 +45,10 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);
         await expect(strip.locator('.now-action').getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
+        const compare = column.getByRole('switch', { name: 'VSTを外して比較', exact: true });
+        await expect(compare).toBeDisabled();
+        await expect(compare).toHaveAttribute('aria-describedby', /safety-compare-needs-audio/);
+        await expect(compare).toHaveAttribute('title', '音声を開始すると使えます');
         await expect(page.getByText('音声を開始すると、ここで音を調整できます。')).toHaveCount(0);
         await expect(page.getByText('音声停止中（開始後に反映）')).toHaveCount(0);
         const check = page.getByRole('region', { name: '接続の確認', exact: true });
