@@ -6,10 +6,19 @@ import { Button } from '@/components/ui/button';
 import { UserDocLink } from '@/components/ui/UserDocLink';
 import { glossary, glossaryDocName, type UserDocName } from '@/lib/userDocs';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
+import type { MessageKey } from '@/i18n/messages';
 import { shortcutActions, type ShortcutAction } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
 const sections = ['home', 'setup', 'trouble', 'terms', 'keys'] as const;
+/** ホームの見方は、場所や操作ごとの短い項目にする（#591）。 */
+export const homeGuidePoints = {
+    stage: ['help.home.stage.1', 'help.home.stage.2', 'help.home.stage.3', 'help.home.stage.4', 'help.home.stage.5', 'help.home.stage.6', 'help.home.stage.7'],
+    meters: ['help.home.meters.1', 'help.home.meters.2', 'help.home.meters.3', 'help.home.meters.4', 'help.home.meters.5', 'help.home.meters.6'],
+    sound: ['help.home.sound.1', 'help.home.sound.2', 'help.home.sound.3', 'help.home.sound.4', 'help.home.sound.5', 'help.home.sound.6', 'help.home.sound.7', 'help.home.sound.8', 'help.home.sound.9'],
+    check: ['help.home.check.1', 'help.home.check.2', 'help.home.check.3'],
+    footer: ['help.home.footer.1', 'help.home.footer.2', 'help.home.footer.3'],
+} as const satisfies Record<string, readonly MessageKey[]>;
 type Section = typeof sections[number];
 const storageKey = 'auralyn_help_section';
 const sectionDocs = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
@@ -85,7 +94,9 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                             <h2 id={heading} className="text-ui-heading font-semibold">{t(`help.section.${section}`)}</h2>
                             {section === 'home' && (['stage', 'meters', 'sound', 'check', 'footer'] as const).map(item => <div key={item}>
                                 <h3 className="font-semibold">{item === 'check' ? t('prep.title') : t(`help.home.${item}.title`)}</h3>
-                                <p className="mt-1 text-muted-foreground">{t(`help.home.${item}.body`, labels)}</p>
+                                <ul className="mt-1 list-disc list-inside space-y-1 text-muted-foreground">
+                                    {homeGuidePoints[item].map(key => <li key={key}>{t(key, labels)}</li>)}
+                                </ul>
                             </div>)}
                             {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
                             {section === 'trouble' && <>
