@@ -146,22 +146,27 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         observer.observe(canvas);
         return () => observer.disconnect();
     }, []);
+    const stopped = idle === 'stopped';
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
         className="mb-3 rounded-card bg-card px-4 py-2">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
             {action}
         </div>
-        {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。 */}
+        {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。
+            停止中は中央の言葉と凡例を出さず、凡例の高さだけ空けて波形欄は実行中と同じにする（#602）。 */}
         <div className="flex h-[72px] flex-col">
             <div className="relative min-h-0 flex-1">
-                <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
-                {/* 点滅は付けない。動きを減らす設定でも、状態は同じ文字のまま読める。 */}
-                {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
+                <canvas ref={canvasRef} role="img" data-flow-status={stopped ? 'stopped' : undefined}
+                    aria-label={stopped ? `${t('home.flowGraph')}（${t(meterStatusLabel('stopped'))}）` : t('home.flowGraph')} className="h-full w-full" />
+                {/* 点滅は付けない。動きを減らす設定でも、停止以外の状態は同じ文字のまま読める。 */}
+                {idle && !stopped && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
             </div>
-            <div className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
+            <div data-flow-legend={stopped ? 'hidden' : 'shown'} className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
+            {!stopped && <>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-0 w-4 border-t-[1.5px] border-foreground/70" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
+            </>}
             </div>
         </div>
     </section>;

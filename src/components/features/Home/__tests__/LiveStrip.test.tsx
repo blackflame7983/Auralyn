@@ -77,6 +77,30 @@ it('音楽鑑賞では送り先を出さず、再生元から出力への経路�
     expect(within(now).getByRole('meter', { name: message('ja', 'home.listenLevel') })).toBeVisible();
 });
 
+it.each(['ja', 'en'] as const)('停止中の音楽鑑賞は、保存済みの再生元と出力先を見出しにし、開始の補足も再生元にする (%s)', locale => {
+    // #598: 動いている設定が無いときは、上の帯と同じ保存済みの名前を使う。あるときはそちらを優先する。
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const model = fixture();
+    model.observation = { ...model.observation, config: null };
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={model} running={false} onStartAudio={vi.fn()} inputName="CABLE Output" outputName="スピーカー" />
+    </LocaleProvider>);
+    expect(screen.getByRole('heading', { name: 'CABLE Output → スピーカー' })).toBeVisible();
+    expect(screen.getByText(message(locale, 'home.startSavedPlayback'))).toBeVisible();
+    expect(screen.queryByText(message(locale, 'home.startSavedDevices'))).not.toBeInTheDocument();
+    const running = fixture();
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={running} running={false} onStartAudio={vi.fn()} inputName="別の再生元" outputName="別の出力" />
+    </LocaleProvider>);
+    expect(screen.getByRole('heading', { name: 'Mic → CABLE Input' })).toBeVisible();
+    const empty = fixture();
+    empty.observation = { ...empty.observation, config: null };
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={empty} running={false} onStartAudio={vi.fn()} />
+    </LocaleProvider>);
+    expect(screen.getByRole('heading', { name: `${message(locale, 'master.unset')} → ${message(locale, 'master.unset')}` })).toBeVisible();
+});
+
 it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操作の順で、停止時の開始条件も保つ (%s)', locale => {
     const start = vi.fn();
     const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} onStartAudio={start} liveModeName={message(locale, 'liveBar.singing')} liveControls={<button>mode</button>} /></LocaleProvider>);
@@ -123,6 +147,10 @@ it.each(['ja', 'en'] as const)('稼働の札はいまの状態に置かず、実
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped onStartAudio={vi.fn()} startError="missing" liveControls={<span>controls</span>} /></LocaleProvider>);
     expect(now.querySelector('[data-now-incoming]')).toHaveAttribute('data-now-incoming', 'stopped');
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.stopped'));
+    const send = within(now).getByRole('meter', { name: message(locale, 'home.sendLevel') });
+    expect(send).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'meter.state.stopped')));
+    expect(send.querySelector('[data-meter-status]')).toBeNull();
+    expect(send.textContent).not.toContain(message(locale, 'meter.state.stopped'));
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(now.querySelector('.now-action')).not.toBeNull();
     expect(within(now).getByRole('button', { name: message(locale, 'home.startAudio') })).toBeVisible();

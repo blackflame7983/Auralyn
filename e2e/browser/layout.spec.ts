@@ -292,6 +292,9 @@ test('最小〜最大: VSTのページは右の列と重ならず、Escapeでは
     }
 });
 
+test.describe('稼働中の横メーター', () => {
+    // 停止中はバーの中の状態文を出さない（#602）。重なりは、受信待ちの札が残る稼働中で見る。
+    test.use({ liveHome: true });
 test('右の列の横メーターは列の中に収まり、状態文はバーの中に重なる', async ({ page }, testInfo) => {
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -324,6 +327,7 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
         })).toBe(true);
         if (width === 960 || width === 2560) await page.screenshot({ path: testInfo.outputPath(`meter-spacing-${width}.png`) });
     }
+});
 });
 
 test.describe('登録済みの歌・雑談とVSTのページ', () => {

@@ -259,6 +259,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     const compareInColumn = purpose === 'music' && page === 'home'
         ? isABBypassed
         : chrome.footer.compare === 'always' || isABBypassed;
+    // 止まっているあいだは比べられない。比較のオンオフはここでは変えない（#612）。
+    const compareStopped = !isEngineRunning;
+    const compareDescribedBy = [
+        isABBypassed ? 'safety-compare-state' : '',
+        compareStopped ? 'safety-compare-needs-audio' : '',
+    ].filter(Boolean).join(' ') || undefined;
 
     useEffect(() => {
         const unlisten = listen<boolean>('global-bypass-changed', event => setIsABBypassed(event.payload));
@@ -309,10 +315,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} outputName={currentOutput} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {configured && purpose === 'music' && <MusicHomeDesk host={currentHost} sampleRate={currentSampleRate}
-                            vstBypassed={isABBypassed} onCompare={() => { void handleABToggle(); }} onLoadPreset={onLoadPreset}
+                            vstBypassed={isABBypassed} audioRunning={isEngineRunning} onCompare={() => { void handleABToggle(); }} onLoadPreset={onLoadPreset}
                             onOpenVst={onOpenVst ? () => onOpenVst(false) : undefined} />}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
                         {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
@@ -376,13 +382,16 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 <TooltipTrigger asChild>
                                     <button
                                         id="ab-compare-btn"
-                                        onClick={handleABToggle}
+                                        type="button"
+                                        disabled={compareStopped}
+                                        onClick={() => { if (!compareStopped) void handleABToggle(); }}
                                         aria-label={t('header.compare')}
                                         role="switch"
                                         aria-checked={isABBypassed}
-                                        aria-describedby={isABBypassed ? 'safety-compare-state' : undefined}
+                                        aria-describedby={compareDescribedBy}
+                                        title={compareStopped ? t('header.compareNeedsAudio') : undefined}
                                         className={cn(
-                                            "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control",
+                                            "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control disabled:cursor-not-allowed disabled:opacity-50",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
@@ -401,6 +410,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <p>{isABBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
                                 </TooltipContent>
                             </Tooltip>
+                            {/* 列が狭いので理由は title と読み上げに残し、ボタンの中へは出さない。 */}
+                            {compareStopped && <span id="safety-compare-needs-audio" className="sr-only">{t('header.compareNeedsAudio')}</span>}
                         </TooltipProvider>}
                     />
                 </aside>

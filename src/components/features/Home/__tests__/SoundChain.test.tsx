@@ -238,8 +238,8 @@ it('音調整のカードは開閉せず、声の種類は2段目に常に出す
 });
 
 
-it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文を出し、VSTの名前は実行中と同じ (%s)', locale => {
-    // #587: 「—」をやめ、色は off のまま。配信の見出しは実行中の外部VSTと停止中で同じ。
+it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文を並びの上に1回出し、VSTの名前は実行中と同じ (%s)', locale => {
+    // #602: 一文は3枚に重ねず、見出しの下に1回。カードは名前の行だけ。見出しは実行中の外部VSTのまま。
     const content = (stopped: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stopped ? null : stats(), running: !stopped }}>
         <SoundChain {...props()} stopped={stopped} audioReady isEngineRunning={!stopped} />
     </RuntimeStatsContext.Provider></LocaleProvider>;
@@ -247,17 +247,21 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     const runningName = within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).textContent;
     expect(runningName).toBe(message(locale, 'chain.vstEmptyName'));
     view.rerender(content(true));
+    const section = screen.getByRole('region', { name: message(locale, 'shell.sound') });
     const chain = screen.getByRole('list');
     const items = within(chain).getAllByRole('listitem');
     expect(items).toHaveLength(3);
     const hint = message(locale, 'chain.stoppedHint');
+    expect(section).toHaveTextContent(hint);
+    expect(within(section).getAllByText(hint, { exact: true })).toHaveLength(1);
     for (const item of items) {
-        expect(item).toHaveTextContent(hint);
+        expect(item).not.toHaveTextContent(hint);
         expect(item).not.toHaveTextContent('—');
         expect(item).not.toHaveTextContent(message(locale, 'shell.stopped'));
-        expect(item.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'off');
+        expect(item.querySelector('[data-tone]')).toBeNull();
     }
     expect(within(items[2]).getByRole('heading', { level: 3 })).toHaveTextContent(runningName ?? '');
+    expect(within(items[2]).getByRole('button', { name: message(locale, 'sound.openVst') })).toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
@@ -273,7 +277,9 @@ it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止
     expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
     view.rerender(content(true));
     expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
-    expect(screen.getByRole('listitem')).toHaveTextContent(message(locale, 'chain.stoppedHint'));
+    const section = screen.getByRole('region', { name: message(locale, 'wizard.musicSound') });
+    expect(within(section).getAllByText(message(locale, 'chain.stoppedHint'), { exact: true })).toHaveLength(1);
+    expect(screen.getByRole('listitem')).not.toHaveTextContent(message(locale, 'chain.stoppedHint'));
     expect(screen.getByRole('listitem')).not.toHaveTextContent('—');
 });
 

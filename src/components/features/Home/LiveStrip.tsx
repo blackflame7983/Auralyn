@@ -38,9 +38,11 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
 }
 
 // ホーム先頭の「いまの状態」。右の列のメーターは残し、ここでは状態と送る音の大きさを横長に置く。主ボタンは多くて1つ。
-export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices, outputName }: {
+export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices, inputName, outputName }: {
     onStartAudio?: () => void; /** 札は上の帯に移した。呼び出し側の引数は残す。 */ stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
+    /** 保存済みの再生元・出力先。上の帯と同じく、動いている設定が無いときの見出しに使う。 */
+    inputName?: string;
     outputName?: string;
     /** 札は上の帯に移した。呼び出し側の引数は残す。 */
     engineProcessReady?: boolean | null;
@@ -50,8 +52,12 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const music = purpose === 'music';
     const { usage } = model.context;
     const unset = t('master.unset');
+    // 動いている設定を優先し、無いときは上の帯と同じ保存済みの名前を使う。両方無いときだけ未設定（#598）。
     const heading = music
-        ? t('home.listeningRoute', { source: deviceName(model.observation.config?.input, unset), output: deviceName(model.observation.config?.output ?? outputName, unset) })
+        ? t('home.listeningRoute', {
+            source: deviceName(model.observation.config?.input ?? inputName, unset),
+            output: deviceName(model.observation.config?.output ?? outputName, unset),
+        })
         : (liveModeName ?? t('liveBar.custom'));
     const muted = model.observation.availability === 'muted';
     const showMute = muted || model.observation.availability === 'ready';
@@ -74,7 +80,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
             {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
-            {startNote && <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>}
+            {startNote && <p className="text-ui-support text-muted-foreground">{t(music ? 'home.startSavedPlayback' : 'home.startSavedDevices')}</p>}
         </div>}
         {!music && <div className="now-controls flex min-h-10 flex-col gap-2">
             {liveControls}

@@ -52,6 +52,19 @@ currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
     expect(screen.getByText('音声処理中に使えます')).not.toHaveClass('sr-only');
 });
 
+it('停止中の「音声停止中」は上の帯といまの状態だけに出て、音調整の一文は1回だけ出る', () => {
+    // #602: メーター・声の流れ・音調整の各カードには同じ言葉を重ねない。右の列の出力は MasterBar の試験で見る。
+    render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Speakers" isEngineRunning={false} onStartAudio={vi.fn()}><p>rack</p></AppShell>);
+    const stopped = screen.getAllByText('音声停止中', { exact: true });
+    expect(stopped).toHaveLength(2);
+    expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
+    expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
+    expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
+    expect(screen.getAllByText('音声を開始すると表示・変更できます', { exact: true })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('音声停止中');
+    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('加工前');
+});
+
 it('未設定時は音の流れと次の1歩だけを示し、音声を自動変更しない（#297）', () => {
     const sound = vi.fn();
     const voice = vi.fn();
@@ -240,6 +253,41 @@ it('音楽鑑賞のホームから、構成の切り替えと聴き比べに1回
     expect(column).toHaveAttribute('aria-checked', 'true');
     expect(column).toHaveAccessibleName(compareName);
     expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(2);
+});
+
+it('停止中の右の列では、比較を無効にして理由を結ぶ', () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    render(<AppShell {...commonProps} isEngineRunning={false}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    expect(compare).toBeDisabled();
+    expect(compare).toHaveAttribute('aria-checked', 'false');
+    expect(compare).toHaveAttribute('title', message('ja', 'header.compareNeedsAudio'));
+    expect(compare).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+    fireEvent.click(compare);
+    expect(bypass).not.toHaveBeenCalled();
+});
+
+it('比較中のまま止めても、比較のオンオフは切り替えない', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    saveDisplayPurpose('music');
+    const props = { ...commonProps, currentInput: 'CABLE Output', currentOutput: 'Speakers' };
+    const view = render(<AppShell {...props}><p>rack</p></AppShell>);
+    const compareName = message('ja', 'header.compare');
+    await act(async () => { fireEvent.click(await screen.findByRole('switch', { name: compareName })); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    expect(bypass).toHaveBeenCalledWith(true);
+    view.rerender(<AppShell {...props} isEngineRunning={false}><p>rack</p></AppShell>);
+    const switches = screen.getAllByRole('switch', { name: compareName });
+    expect(switches).toHaveLength(2);
+    for (const toggle of switches) {
+        expect(toggle).toBeDisabled();
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudio')));
+    }
+    fireEvent.click(switches[0]);
+    fireEvent.click(switches[1]);
+    expect(bypass).toHaveBeenCalledTimes(1);
 });
 
 it('音楽鑑賞のほかのページと配信のホームでは、右の列の比較をこれまでどおり出す', () => {

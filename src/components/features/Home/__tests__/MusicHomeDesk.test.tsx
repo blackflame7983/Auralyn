@@ -10,9 +10,22 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const renderDesk = (props: Partial<ComponentProps<typeof MusicHomeDesk>> = {}) => render(
     <LocaleProvider store={createLocaleStore(() => 'ja', () => true)}>
-        <MusicHomeDesk host="wasapi" sampleRate={44100} vstBypassed={false} onCompare={vi.fn()} {...props} />
+        <MusicHomeDesk host="wasapi" sampleRate={44100} audioRunning vstBypassed={false} onCompare={vi.fn()} {...props} />
     </LocaleProvider>,
 );
+
+it('停止中は比較を無効にし、オンのままでも理由を結んで状態は変えない', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
+    const compare = vi.fn();
+    renderDesk({ audioRunning: false, vstBypassed: true, onCompare: compare });
+    const toggle = await screen.findByRole('switch', { name: 'VSTを外して比較' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription('音声を開始すると使えます');
+    expect(screen.getByText('音声を開始すると使えます')).toBeVisible();
+    fireEvent.click(toggle);
+    expect(compare).not.toHaveBeenCalled();
+});
 
 it('再生の状態の見出しは、ほかのホームのカードと同じ home-title にする', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);

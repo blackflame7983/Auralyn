@@ -34,17 +34,22 @@ function matchMedia(matches: boolean) {
     vi.stubGlobal('matchMedia', () => ({ matches, addEventListener() {}, removeEventListener() {} }));
 }
 
-it('停止中は時間の流れを描かず、波形の場所に停止を文字で出し、凡例は残す', () => {
-    // 段階4で、live 以外は波形を描かず meterStatusLabel の文言を出す。凡例は残す。
+it('停止中は時間の流れを描かず、言葉と凡例は出さず、波形欄の高さは空のまま残す', () => {
+    // #602: 停止の言葉は出さない。読み上げには残し、凡例の段の高さは空けて波形欄を実行中と同じにする。
     matchMedia(false);
     render(<SoundFlow running={false} music={false} />);
-    const graph = screen.getByRole('img', { name: '加工前と加工後の音量' });
+    const graph = screen.getByRole('img', { name: /加工前と加工後の音量/ });
     expect(graph).toHaveAttribute('data-flow', 'idle');
+    expect(graph).toHaveAttribute('data-flow-status', 'stopped');
+    expect(graph).toHaveAttribute('aria-label', expect.stringContaining('音声停止中'));
     const region = screen.getByRole('region', { name: '声の流れ' });
-    expect(region).toHaveTextContent('加工前');
-    expect(region).toHaveTextContent('加工後');
-    expect(region.querySelector('[data-flow-status]')).toHaveAttribute('data-flow-status', 'stopped');
-    expect(region.querySelector('[data-flow-status]')).toHaveTextContent('音声停止中');
+    expect(region).not.toHaveTextContent('加工前');
+    expect(region).not.toHaveTextContent('加工後');
+    expect(region).not.toHaveTextContent('音声停止中');
+    const legend = region.querySelector('[data-flow-legend]');
+    expect(legend).toHaveAttribute('data-flow-legend', 'hidden');
+    expect(legend).toHaveClass('h-5');
+    expect(region.querySelector('.h-\\[72px\\]')).not.toBeNull();
 });
 
 it.each([
@@ -198,7 +203,8 @@ it('サンプルが1つのときは加工前を横の直線2本で描く', () =>
 
 it('凡例の加工前は線の見本で、加工後は塗りの見本のまま', () => {
     matchMedia(false);
-    render(<SoundFlow running={false} music={false} />);
+    meter.state = 'live';
+    render(<SoundFlow running music={false} />);
     const before = screen.getByText('加工前', { exact: true }).querySelector('[aria-hidden="true"]')!;
     expect(before.className).toContain(`border-t-[${flowBeforeLineWidth}px]`);
     expect(before.className).toContain(`border-foreground/${Math.round(flowBeforeLineAlpha * 100)}`);
