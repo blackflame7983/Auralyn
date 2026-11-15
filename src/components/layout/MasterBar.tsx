@@ -141,10 +141,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {hasRecentGlitch && onOpenAudioTuning && <Button variant="outline" size="sm" type="button" onClick={onOpenAudioTuning}
                 className="shrink-0">{t('settings.audioTuning.open')}</Button>}
 
-            <Button variant="ghost" size="icon" ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
+            <Button variant="ghost" size="sm" ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.details')} title={t('master.details')}
-                className="shrink-0">
-                <MdInfoOutline aria-hidden="true" className="h-4 w-4" />
+                className="h-auto max-w-full shrink-0 justify-start gap-1 self-start whitespace-normal px-2 py-1 text-left text-ui-support font-normal text-muted-foreground">
+                <MdInfoOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
+                <span>{t('master.details')}</span>
             </Button>
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}

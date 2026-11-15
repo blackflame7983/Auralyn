@@ -214,6 +214,8 @@ describe('起動時の保存ゲイン復元', () => {
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const details = screen.getByRole('button', { name: '音声処理の詳細' });
+        expect(details).toHaveTextContent('音声処理の詳細');
+        expect(details.querySelector('svg')).not.toBeNull();
         details.focus();
         fireEvent.click(details);
         expect(screen.getByRole('dialog', { name: '音声処理の詳細' })).toBeInTheDocument();
@@ -340,7 +342,10 @@ it.each([
     expect(voice).not.toHaveBeenCalled();
     expect(audioApi.setNoiseReduction).not.toHaveBeenCalled();
     expect(screen.getByRole('slider', { name: message(locale, 'master.outputGain') })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: message(locale, 'master.details') }));
+    const details = screen.getByRole('button', { name: message(locale, 'master.details') });
+    expect(details).toHaveTextContent(message(locale, 'master.details'));
+    expect(details.querySelector('svg')).not.toBeNull();
+    fireEvent.click(details);
     expect(screen.getByRole('dialog', { name: message(locale, 'master.detailsTitle') })).toBeVisible();
     expect(screen.getAllByText(state)).toHaveLength(failed ? 2 : 1);
 });
