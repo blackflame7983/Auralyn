@@ -3380,7 +3380,7 @@ const ja = {
     "home.levelLow": "小さめ",
     "home.levelOk": "適正",
     "home.levelHigh": "大きすぎ",
-    "home.toneGuide": "整え具合に合わせた形の目安",
+    "home.toneGuide": "整え具合の目安",
     "home.outputPeak": "出力のピーク",
     "home.changeDevices": "入出力を変更",
     "home.soundAfterSetup": "マイクと出力先を設定すると、ここで声を整えられます。",

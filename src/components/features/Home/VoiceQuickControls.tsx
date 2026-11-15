@@ -143,7 +143,7 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     </div>;
 }
 
-/** 整え具合に合わせた形の目安。効果の保証ではなく、設定の形を見せる。 */
+/** 整え具合の目安。効果の保証ではなく、設定の形を見せる。語の途中では折り返さない。 */
 export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const t = useMessages();
     const factor = on ? amount / 100 : 0;
@@ -152,7 +152,7 @@ export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const yHigh = Math.round(36 - factor * 18);
     const curve = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
     return <figure className="w-full" aria-label={t('home.toneGuide')}>
-        <figcaption className="text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
+        <figcaption className="break-keep text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
         <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
             <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />
             <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" />
