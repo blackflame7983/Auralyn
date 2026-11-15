@@ -122,9 +122,38 @@ test.describe('右の本番中の操作', () => {
         await expectColumnFits(page, 960, 640, 'Live controls', [
             { role: 'button', name: 'Emergency mute' },
             { role: 'slider', name: 'Output volume' },
-            { role: 'switch', name: 'Compare without VST' },
+            { role: 'switch', name: 'Bypass VST' },
             { role: 'button', name: 'Audio processing details' },
         ]);
+    });
+
+    test('英語 1024×768 の右の列で、聴き比べのスイッチが1行に収まる', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_locale', 'en');
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.setViewportSize({ width: 1024, height: 768 });
+        await page.goto('/');
+        const toggle = page.getByRole('complementary', { name: 'Live controls' }).getByRole('switch', { name: 'Bypass VST', exact: true });
+        await expect(toggle).toBeVisible();
+        const lines = await toggle.evaluate(element => {
+            // 親の span は同じ文字を含むので、文字ノードを直接持つ span を測る。
+            const label = [...element.querySelectorAll('span')].find(node => node.childNodes.length === 1 && node.firstChild?.nodeType === Node.TEXT_NODE && node.textContent === 'Bypass VST');
+            const text = label?.firstChild;
+            if (!text || text.nodeType !== Node.TEXT_NODE) return -1;
+            const value = text.textContent ?? '';
+            const range = document.createRange();
+            const tops = new Set<number>();
+            for (let index = 0; index < value.length; index += 1) {
+                range.setStart(text, index);
+                range.setEnd(text, index + 1);
+                tops.add(Math.round(range.getBoundingClientRect().top));
+            }
+            return tops.size;
+        });
+        expect(lines).toBe(1);
     });
 
     test('VSTのページを開いても右の列の3操作が押せる', async ({ page }) => {
