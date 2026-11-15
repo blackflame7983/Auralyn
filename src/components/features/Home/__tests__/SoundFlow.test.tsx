@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { MeterReading } from '@/hooks/useMeterLevels';
-import { SoundFlow, flowHalfHeight, flowIdleState } from '../SoundFlow';
+import { SoundFlow, drawFlowWave, flowBeforeLineAlpha, flowBeforeLineWidth, flowHalfHeight, flowIdleState } from '../SoundFlow';
 
 const meter = vi.hoisted(() => ({
     state: 'stopped' as MeterReading['state'],
@@ -99,6 +99,110 @@ it('稼働中は時間の流れを描き、動きを減らす設定では静止�
     matchMedia(true);
     view.rerender(<SoundFlow running music={false} />);
     expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'still');
+});
+
+function recordingContext() {
+    const ops: { op: string; x?: number; y?: number; strokeStyle?: string; lineWidth?: number; fillStyle?: unknown }[] = [];
+    const ctx = {
+        fillStyle: '' as string | CanvasGradient,
+        strokeStyle: '' as string | CanvasGradient,
+        lineWidth: 1,
+        beginPath() { ops.push({ op: 'beginPath' }); },
+        moveTo(x: number, y: number) { ops.push({ op: 'moveTo', x, y }); },
+        lineTo(x: number, y: number) { ops.push({ op: 'lineTo', x, y }); },
+        closePath() { ops.push({ op: 'closePath' }); },
+        fill() { ops.push({ op: 'fill', fillStyle: this.fillStyle }); },
+        stroke() { ops.push({ op: 'stroke', strokeStyle: String(this.strokeStyle), lineWidth: this.lineWidth }); },
+        fillRect() { ops.push({ op: 'fillRect' }); },
+        createLinearGradient() { return { addColorStop() {} }; },
+    };
+    return { ctx: ctx as unknown as CanvasRenderingContext2D, ops };
+}
+
+const waveColors = {
+    before: `hsl(220 20% 94% / ${flowBeforeLineAlpha})`,
+    teal: 'hsl(176 70% 48% / 0.95)',
+    green: 'hsl(152 60% 45% / 0.95)',
+    playhead: 'hsl(220 20% 94%)',
+};
+
+function strokedPaths(ops: { op: string; x?: number; y?: number; strokeStyle?: string; lineWidth?: number }[]) {
+    const paths: { points: { op: string; x?: number; y?: number }[]; lineWidth?: number; strokeStyle?: string }[] = [];
+    let points: { op: string; x?: number; y?: number }[] = [];
+    for (const op of ops) {
+        if (op.op === 'beginPath') points = [];
+        else if (op.op === 'moveTo' || op.op === 'lineTo') points.push({ op: op.op, x: op.x, y: op.y });
+        else if (op.op === 'stroke') paths.push({ points, lineWidth: op.lineWidth, strokeStyle: op.strokeStyle });
+    }
+    return paths;
+}
+
+it('加工後は塗り、加工前は塗りの上に上下の線で描く', () => {
+    const { ctx, ops } = recordingContext();
+    const samples = [{ inn: 0.1, out: 0.5 }, { inn: 0.2, out: 0.8 }];
+    drawFlowWave(ctx, samples, 100, 40, waveColors, false);
+    const fillAt = ops.findIndex(op => op.op === 'fill');
+    const strokeAt = ops.findIndex(op => op.op === 'stroke');
+    expect(fillAt).toBeGreaterThan(-1);
+    expect(strokeAt).toBeGreaterThan(fillAt);
+    expect(ops.filter(op => op.op === 'fill')).toHaveLength(1);
+    expect(ops.filter(op => op.op === 'stroke')).toHaveLength(2);
+    expect(ops.filter(op => op.op === 'closePath')).toHaveLength(1);
+    expect(ops.find(op => op.op === 'fill')?.fillStyle).not.toEqual(expect.any(String));
+    for (const stroke of ops.filter(op => op.op === 'stroke')) {
+        expect(stroke.lineWidth).toBe(flowBeforeLineWidth);
+        expect(stroke.strokeStyle).toBe(waveColors.before);
+    }
+    const mid = 20;
+    expect(ops.find(op => op.op === 'moveTo')).toMatchObject({ y: mid - flowHalfHeight(samples[0].out, mid) });
+    const [upper, lower] = strokedPaths(ops);
+    expect(upper.points.map(point => point.y)).toEqual([
+        mid - flowHalfHeight(samples[0].inn, mid),
+        mid - flowHalfHeight(samples[1].inn, mid),
+    ]);
+    expect(lower.points.map(point => point.y)).toEqual([
+        mid + flowHalfHeight(samples[0].inn, mid),
+        mid + flowHalfHeight(samples[1].inn, mid),
+    ]);
+    expect(ops.some(op => op.op === 'fillRect')).toBe(false);
+});
+
+it('加工後が大きくても小さくても、加工前の線は残る', () => {
+    for (const samples of [[{ inn: 0.05, out: 0.9 }], [{ inn: 0.9, out: 0.05 }]]) {
+        const { ctx, ops } = recordingContext();
+        drawFlowWave(ctx, samples, 80, 40, waveColors, true);
+        expect(ops.filter(op => op.op === 'stroke')).toHaveLength(2);
+        expect(ops.filter(op => op.op === 'fill')).toHaveLength(1);
+        expect(ops.some(op => op.op === 'fillRect')).toBe(true);
+    }
+});
+
+it('サンプルが1つのときは加工前を横の直線2本で描く', () => {
+    // 動きを減らす設定は現在値1つだけを渡す。そのとき加工前は幅いっぱいの水平線になる。
+    const { ctx, ops } = recordingContext();
+    const sample = { inn: 0.25, out: 0.25 };
+    drawFlowWave(ctx, [sample], 80, 40, waveColors, false);
+    const mid = 20;
+    const upper = mid - flowHalfHeight(sample.inn, mid);
+    const lower = mid + flowHalfHeight(sample.inn, mid);
+    expect(strokedPaths(ops).map(path => path.points)).toEqual([
+        [{ op: 'moveTo', x: 0, y: upper }, { op: 'lineTo', x: 80, y: upper }],
+        [{ op: 'moveTo', x: 0, y: lower }, { op: 'lineTo', x: 80, y: lower }],
+    ]);
+});
+
+it('凡例の加工前は線の見本で、加工後は塗りの見本のまま', () => {
+    matchMedia(false);
+    render(<SoundFlow running={false} music={false} />);
+    const before = screen.getByText('加工前', { exact: true }).querySelector('[aria-hidden="true"]')!;
+    expect(before.className).toContain(`border-t-[${flowBeforeLineWidth}px]`);
+    expect(before.className).toContain(`border-foreground/${Math.round(flowBeforeLineAlpha * 100)}`);
+    expect(before.className).toContain('h-0');
+    expect(before.className).not.toContain('rounded-full');
+    expect(before.className).not.toContain('bg-muted-foreground');
+    const after = screen.getByText('加工後', { exact: true }).querySelector('[aria-hidden="true"]')!;
+    expect(after.className).toContain('meter-fill-aurora');
+    expect(after.className).toContain('rounded-full');
 });
 
 it('画面が隠れている間は流れを描かない', () => {
