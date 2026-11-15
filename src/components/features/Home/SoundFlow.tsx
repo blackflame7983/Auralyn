@@ -16,6 +16,9 @@ export function flowIdleState(running: boolean, input: MeterState, output: Meter
 interface Sample { inn: number; out: number }
 
 const HISTORY = 96;
+/** 加工前の包絡線。凡例の `border-t-[1.5px] border-foreground/70` と揃える（#582）。 */
+export const flowBeforeLineWidth = 1.5;
+export const flowBeforeLineAlpha = 0.7;
 
 /** 波形の片側の高さ。目盛りはメーターと同じ −60〜0 dBFS の等間隔。 */
 export function flowHalfHeight(level: number, mid: number): number {
@@ -28,6 +31,57 @@ export function pushFlowSample(history: Sample[], sample: Sample, flowing: boole
     const next = history.length >= HISTORY ? history.slice(history.length - HISTORY + 1) : history.slice();
     next.push(sample);
     return next;
+}
+
+/**
+ * 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる。
+ * 加工後が大きくても、加工前の形が残る。差が無いときは線が塗りの縁に重なる。
+ * サンプルが1つのときは、加工前を横の直線2本にする。
+ */
+export function drawFlowWave(
+    ctx: CanvasRenderingContext2D,
+    samples: readonly Sample[],
+    width: number,
+    height: number,
+    colors: { before: string; teal: string; green: string; playhead: string },
+    flowing: boolean,
+) {
+    if (samples.length === 0 || width <= 0 || height <= 0) return;
+    const mid = height / 2;
+    const n = samples.length;
+    const step = n <= 1 ? width : width / (n - 1);
+    const yAt = (level: number, sign: -1 | 1) => mid + sign * flowHalfHeight(level, mid);
+    // 加工後の塗りは、これまでの閉じた形のままにする。
+    ctx.beginPath();
+    ctx.moveTo(0, yAt(samples[0].out, -1));
+    if (n === 1) ctx.lineTo(width, yAt(samples[0].out, -1));
+    else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, yAt(samples[i].out, -1));
+    // 1つのときは、右下から左下へ戻して長方形にする。斜めの辺を作らない。
+    if (n === 1) { ctx.lineTo(width, yAt(samples[0].out, 1)); ctx.lineTo(0, yAt(samples[0].out, 1)); }
+    else for (let i = n - 1; i >= 0; i -= 1) ctx.lineTo(i * step, yAt(samples[i].out, 1));
+    ctx.closePath();
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, colors.teal);
+    gradient.addColorStop(0.5, colors.green);
+    gradient.addColorStop(1, colors.teal);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    // 加工前は塗らない。上下の包絡だけを、塗りの上に線で重ねる。
+    ctx.strokeStyle = colors.before;
+    ctx.lineWidth = flowBeforeLineWidth;
+    const envelope = (sign: -1 | 1) => {
+        ctx.beginPath();
+        ctx.moveTo(0, yAt(samples[0].inn, sign));
+        if (n === 1) ctx.lineTo(width, yAt(samples[0].inn, sign));
+        else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, yAt(samples[i].inn, sign));
+        ctx.stroke();
+    };
+    envelope(-1);
+    envelope(1);
+    if (flowing) {
+        ctx.fillStyle = colors.playhead;
+        ctx.fillRect(width - 1, 0, 1, height);
+    }
 }
 
 function paint(canvas: HTMLCanvasElement, samples: Sample[], flowing: boolean) {
@@ -46,33 +100,12 @@ function paint(canvas: HTMLCanvasElement, samples: Sample[], flowing: boolean) {
     if (samples.length === 0) return;
     const style = getComputedStyle(canvas);
     const token = (name: string) => style.getPropertyValue(name).trim();
-    const mid = h / 2;
-    const shape = (pick: (sample: Sample) => number) => {
-        ctx.beginPath();
-        const n = samples.length;
-        const step = n <= 1 ? w : w / (n - 1);
-        const amp = (sample: Sample) => flowHalfHeight(pick(sample), mid);
-        ctx.moveTo(0, mid - amp(samples[0]));
-        if (n === 1) ctx.lineTo(w, mid - amp(samples[0]));
-        else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, mid - amp(samples[i]));
-        if (n === 1) ctx.lineTo(w, mid + amp(samples[0]));
-        else for (let i = n - 1; i >= 0; i -= 1) ctx.lineTo(i * step, mid + amp(samples[i]));
-        ctx.closePath();
-    };
-    shape(sample => sample.inn);
-    ctx.fillStyle = `hsl(${token('--muted-foreground')} / 0.38)`;
-    ctx.fill();
-    shape(sample => sample.out);
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, `hsl(${token('--aurora-teal')} / 0.95)`);
-    gradient.addColorStop(0.5, `hsl(${token('--aurora-green')} / 0.95)`);
-    gradient.addColorStop(1, `hsl(${token('--aurora-teal')} / 0.95)`);
-    ctx.fillStyle = gradient;
-    ctx.fill();
-    if (flowing) {
-        ctx.fillStyle = `hsl(${token('--foreground')})`;
-        ctx.fillRect(w - 1, 0, 1, h);
-    }
+    drawFlowWave(ctx, samples, w, h, {
+        before: `hsl(${token('--foreground')} / ${flowBeforeLineAlpha})`,
+        teal: `hsl(${token('--aurora-teal')} / 0.95)`,
+        green: `hsl(${token('--aurora-green')} / 0.95)`,
+        playhead: `hsl(${token('--foreground')})`,
+    }, flowing);
 }
 
 /** 加工前と加工後の音量を重ねる帯。共有メーター以外の購読やタイマーは持たない。 */
@@ -127,7 +160,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
                 {idle && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
             </div>
             <div className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-2 w-4 rounded-full bg-muted-foreground/50" />{t('home.flowBefore')}</span>
+            <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-0 w-4 border-t-[1.5px] border-foreground/70" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
             </div>
         </div>
