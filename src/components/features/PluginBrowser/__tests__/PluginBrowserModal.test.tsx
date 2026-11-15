@@ -27,7 +27,8 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
     scan.mockClear();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
-    // 検索横の更新は一覧の読み直し、空のときの案内はすべて再スキャンのまま（#558）。
+    // 更新は差分、すべて再スキャンは全件。空でも動きが違うので両方残し、違いの文を出す（#583）。
+    expect(screen.getByText(/変わったファイルだけを読み直します/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '更新' }));
     expect(scan).toHaveBeenCalledWith();
     scan.mockClear();
@@ -38,6 +39,13 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     view.rerender(<PluginBrowserModal {...props} error="scan error" />);
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
+});
+
+it('登録があるときは更新を出し、空のときの違いの文は出さない', () => {
+    openBrowser();
+    expect(screen.getByRole('button', { name: '更新' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'すべて再スキャン' })).toBeInTheDocument();
+    expect(screen.queryByText(/変わったファイルだけを読み直します/)).not.toBeInTheDocument();
 });
 
 it('読み取れなかった候補がある空一覧は件数と再スキャンを示す', () => {

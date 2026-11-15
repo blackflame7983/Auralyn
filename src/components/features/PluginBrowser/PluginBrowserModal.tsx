@@ -527,6 +527,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.retryScan')}</Button>
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
+                    {/* 更新は差分で失敗分を含めない。すべて再スキャンは全件で、チェックに従う。空でも両方残す（#583）。 */}
+                    <p className="mt-2 max-w-md text-center text-ui-support text-muted-foreground">{t('pluginBrowser.emptyActionDifference')}</p>
                     <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.fullScan')}</Button>
                   </>}
                 </>}
