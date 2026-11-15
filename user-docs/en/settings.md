@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Reduce loud peaks", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Reduce loud peaks", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes"]
 ---
 
 ## Connection {#audio}
@@ -13,9 +13,9 @@ In “Connection” on the left rail, choose microphone, output, connection meth
 
 1. Check the devices and route you will change.
 2. Open “Connection and dropout settings” to adjust the connection or dropouts.
-3. Review the changes and interruption notice before applying them.
+3. When something has changed, review the changes before saving. “Audio will briefly cut out” appears only while audio is running and the connection has changed. When nothing has changed, only “No connection changes” is shown.
 
-The button at the bottom saves connection settings. It restarts audio while running, or starts audio while stopped.
+The button at the bottom saves connection settings. Saving a change while audio is running restarts audio. While audio is stopped, it starts audio.
 Input/output presets save the connection settings you are editing. Loading a preset does not apply it to audio; review it and apply it using the button at the bottom.
 Split-output routing is saved and applied independently in its own section. Discarding edits there only restores that section's unapplied values.
 
