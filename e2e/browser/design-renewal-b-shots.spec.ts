@@ -68,7 +68,8 @@ test.describe('段階 B の画面記録', () => {
         expect(about590.chain).toBeLessThan(620);
         expect(about590.sameRow).toBe(false);
         expect(about590.overflow).toBe(false);
-        expect(en960.sameRow).toBe(true);
+        // #586: 英語の960は2列なので、3枚は同じ行にならない。
+        expect(en960.sameRow).toBe(false);
         expect(en960.overflow).toBe(false);
     });
 });

@@ -141,7 +141,7 @@ test('960と1024の日本語で音調整の見出しと状態は1行', async ({ 
     }
 });
 
-test('960の英語は音調整が1列で、見出しと状態が1行', async ({ page }) => {
+test('960の英語は音調整が2列で、見出しと状態が1行', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('vst_host_locale', 'en'));
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
@@ -163,8 +163,9 @@ test('960の英語は音調整が1列で、見出しと状態が1行', async ({ 
         };
     });
     console.log(JSON.stringify({ english960: measured }));
+    // #586: 内側が520〜650pxの英語は、ノイズ低減と声を整えるを1段目、外部VSTを2段目にする。
     expect(measured.cards).toBe(3);
-    expect(measured.rows).toBe(3);
+    expect(measured.rows).toBe(2);
     expect(measured.lines).toBe(true);
     expect(measured.overflow).toBe(false);
 });
@@ -196,7 +197,7 @@ test('900の音楽鑑賞でも上の帯は1行', async ({ page }) => {
 
 test.describe('停止から開始する', () => {
     test.use({ stoppedHome: true });
-    test('停止・開始中・実行中・モード切替の高さは同じで、開始の失敗だけ伸びる', async ({ page }) => {
+    test('停止と開始中は同じ高さで、実行中は操作の行が無く、開始の失敗だけ伸びる', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
     await ready(page);
@@ -235,11 +236,12 @@ test.describe('停止から開始する', () => {
     await settleLayoutMotion(page);
     const switched = await height();
     console.log(JSON.stringify({ stopped, failed, starting, running, switched }));
-    // 失敗以外は同じ高さ。開始の失敗の文だけ、その行数の分だけ伸びてよい。
+    // #581: 実行中は開始・送り先・補足が無いので now-action を描かず、停止より低い。開始中は開始ボタンがあるので停止と同じ。モード切替は実行中の高さを変えない。開始の失敗の文だけ伸びてよい。
+    await expect(page.locator('.now-action')).toHaveCount(0);
     expect(stopped).toBeLessThan(180);
     expect(starting).toBe(stopped);
-    expect(running).toBe(stopped);
-    expect(switched).toBe(stopped);
+    expect(running).toBeLessThan(stopped);
+    expect(switched).toBe(running);
     expect(failed).toBeGreaterThan(stopped);
     expect(failureInside).toBe(true);
     // 切替の失敗は模擬応答が意図して拒む。成功した応答で隠してはいない。

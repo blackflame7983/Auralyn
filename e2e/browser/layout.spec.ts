@@ -103,8 +103,10 @@ test.describe('通常のホーム表示', () => {
                 await settleLayoutMotion(page);
                 samples.push({ row: await routing.boundingBox(), button: await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).boundingBox() });
             }
-            expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
-            expect(samples[0].row!.height).toBeLessThan(96);
+            // #580: ミュートでないときは札の行を残さない。札が折り返すと見出し側だけ高くなってよい。中央のボタン位置は変えない。
+            expect(samples[1].button).toEqual(samples[0].button);
+            expect(samples[2]).toEqual(samples[0]);
+            expect(samples[0].row!.height).toBeLessThan(40);
             await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
             const recovery = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
             await expect(recovery).toBeInViewport();
@@ -461,6 +463,8 @@ test.describe('メーター数値の幅', () => {
                 const value = await input.getAttribute('aria-valuenow');
                 return value !== null && Number.isFinite(Number(value)) && Math.abs(Number(value) + 20) < 0.05;
             }).toBe(true);
+            // 模擬は最初から出力ミュート。札は見出しの行に出る（#580）。統計が届く前に測ると、札の出現でメーターが動く。
+            await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toBeVisible();
             // 状態の文言が変わるとホームの区画が位置を補間する（#298）。動きの途中ではなく、止まった位置で比べる。
             await settleLayoutMotion(page);
             const baseline = await Promise.all([input, output].map(locator => locator.boundingBox()));

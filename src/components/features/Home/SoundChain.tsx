@@ -107,14 +107,18 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {t(vstKnownEmpty ? 'chain.vstAdd' : 'sound.openVst')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </Button>;
 
-    const noiseSummary = stopped ? '—' : live
+    // 停止中は「—」にせず、開始すると見られる一文にする。色は off のまま（#587）。
+    const stoppedHint = t('chain.stoppedHint');
+    const noiseSummary = stopped ? stoppedHint : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
-    const builtinSummary = stopped ? '—' : deesserOnly ? t('flow.deesserOnly')
+    const builtinSummary = stopped ? stoppedHint : deesserOnly ? t('flow.deesserOnly')
         : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
         : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
-    const vstSummary = stopped ? '—' : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
+    const vstSummary = stopped ? stoppedHint : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
+    // 音楽鑑賞の見出しはこれまで「VST」。配信は空のときの「外部VST」。用途ごとに1つにし、実行中と停止中で変えない。
+    const vstCardName = t(music ? 'chain.vstName' : 'chain.vstEmptyName');
 
     const card = ({ key, on, name, summary, statusTone, action, info, body, tier2 }: {
         key: string; on: boolean; name: string; summary?: string; statusTone: StatusTone;
@@ -132,7 +136,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {!unconfigured && info}
                 </div>
                 {!unconfigured && <div className="sound-card-status">
-                    <StatusDot tone={stopped ? 'off' : statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>
+                    <StatusDot tone={stopped ? 'off' : statusTone} className={cn('text-ui-support text-muted-foreground', stopped && 'sound-card-stopped')}>{summary}</StatusDot>
                     {showAction && <div className="sound-card-action">{action}</div>}
                 </div>}
             </div>
@@ -166,11 +170,11 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 tier2: live ? <BuiltinPresets q={q} /> : undefined }),
         ]),
         emptyVst
-            ? card({ key: 'vst', on: false, name: t('chain.vstEmptyName'), summary: (vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : t('chain.vstEmptySub')) ?? undefined,
+            ? card({ key: 'vst', on: false, name: vstCardName, summary: (vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : t('chain.vstEmptySub')) ?? undefined,
                 statusTone: vstUnrestored.length ? 'warn' : 'off', action: vstEdit,
-                info: <InfoPopover docName="home.vst" label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>,
+                info: <InfoPopover docName="home.vst" label={vstCardName}>{t('chain.vstEmptyHint')}</InfoPopover>,
                 body: vstUnrestored.length > 0 ? <StatusDot tone="warn" className="text-ui-support">{unrestoredNamesText(t, vstUnrestored) ?? ''}</StatusDot> : undefined })
-            : card({ key: 'vst', on: vstOn, name: 'VST', summary: vstSummary, statusTone: vstTone, action: vstEdit,
+            : card({ key: 'vst', on: vstOn, name: vstCardName, summary: vstSummary, statusTone: vstTone, action: vstEdit,
                 body: vst, tier2: vstEditors }),
     ];
 

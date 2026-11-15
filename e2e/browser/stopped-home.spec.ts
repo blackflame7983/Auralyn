@@ -27,7 +27,10 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);
         await expect(chain.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        await expect(chain.getByText('—', { exact: true })).toHaveCount(3);
+        // #587: 停止中の「—」をやめ、開始すると表示・変更できる一文にする。VSTの見出しは配信の外部VST。
+        await expect(chain.getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(3);
+        await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
+        await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);
         await expect(strip.locator('.now-action').getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
         await expect(page.getByText('音声を開始すると、ここで音を調整できます。')).toHaveCount(0);

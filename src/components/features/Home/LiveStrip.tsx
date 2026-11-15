@@ -57,8 +57,11 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const showMute = muted || model.observation.availability === 'ready';
     const startButton = !running && Boolean(onStartAudio);
     const chooseButton = !music && running && !usage && Boolean(onChooseDestination);
+    const startNote = startButton && !startError;
+    // 開始・送り先・開始の補足があるときだけ行を描く。実行中でどれも無いときは描かず、下を詰める（#581）。
+    const showNowAction = startButton || chooseButton || startNote;
     return <section aria-label={t('home.now')} className="now-status mb-3 rounded-card bg-card px-5 py-3">
-        {/* 見出しの行に札とミュートを乗せ、行の高さは見出しに合わせる。実行中の空行は、停止中の「音声を開始」と同じ高さ（#298）。 */}
+        {/* 見出しの行に札とミュートを乗せ、行の高さは見出しに合わせる。 */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {!music && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
             <h2 className="min-w-0 truncate text-ui-heading font-medium" title={heading}>{heading}</h2>
@@ -68,11 +71,11 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <IncomingStatus running={running} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
-        <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
+        {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
             {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
-            {startButton && !startError && <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>}
-        </div>
+            {startNote && <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>}
+        </div>}
         {!music && <div className="now-controls flex min-h-10 flex-col gap-2">
             {liveControls}
             {/* 開始の失敗だけは、出た行数の分だけ区画を伸ばす。操作の結果なので、停止中の高さには含めない。 */}
