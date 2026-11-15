@@ -13,7 +13,7 @@ import { notice, renderNotice, type SettingsNotice } from '@/components/features
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
 import { SaveScopeSummary } from './SaveScopeSummary';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from '../../ui/modal';
 import {
     MdClose, MdSave, MdDelete, MdFolderOpen, MdPlayArrow, MdSearch,
@@ -197,6 +197,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 }) => {
     const t = useMessages();
     const { locale } = useLocale();
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
     const temporaryActive = sessionMode().temporary;
     const [recoveryOpen, setRecoveryOpen] = useState(false);
     const [bundleOpen, setBundleOpen] = useState(initialBundleOpen);
@@ -410,7 +411,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <Modal title={t('presets.copy.049')} onClose={onClose}>
+        <Modal title={t('presets.copy.049')} onClose={onClose} initialFocusRef={closeButtonRef}>
         <div className="modal-overlay-base">
             <div
                 className="modal-surface-base w-full max-w-lg flex flex-col max-h-[calc(85vh/var(--ui-zoom))]"
@@ -444,7 +445,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                 <MdAutoFixHigh />
                                 {t('presets.copy.054')}</Button>
                         )}
-                        <Button variant="ghost" size="icon" aria-label={t('presets.copy.055')} onClick={onClose} >
+                        <Button variant="ghost" size="icon" ref={closeButtonRef} aria-label={t('presets.copy.055')} onClick={onClose} >
                             <MdClose className="w-5 h-5" />
                         </Button>
                     </div>

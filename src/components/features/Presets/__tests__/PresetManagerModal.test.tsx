@@ -16,6 +16,12 @@ beforeEach(() => {
     });
 });
 afterEach(cleanup);
+it('開いた直後の焦点は閉じる', async () => {
+    render(<PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} onOpenTemplateWizard={vi.fn()} />);
+    const close = await screen.findByRole('button', { name: '閉じる' });
+    expect(screen.getByRole('button', { name: 'VST構成テンプレート' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(close);
+});
 it.each(['ja', 'en'] as const)('保存方法の説明は編集内容・保存対象を変えず、保存・適用もしない（%s）', async locale => {
     const save = vi.fn(); const apply = vi.fn();
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={save} onApplyProfile={apply} onRestoreBackup={vi.fn()} /></LocaleProvider>);
