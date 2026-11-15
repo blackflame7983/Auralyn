@@ -113,18 +113,19 @@ it.each(['ja', 'en'] as const)('次の1歩の主操作は舞台の中央に置�
 });
 
 
-it.each(['ja', 'en'] as const)('稼働の札はいまの状態に置かず、停止中は入力の状態語を出し、主ボタンの行は残す (%s)', locale => {
-    // 段階4で、停止中のカードにメーターの「音声停止中」を出す。上の帯の「実行中」札は置かない。
+it.each(['ja', 'en'] as const)('稼働の札はいまの状態に置かず、実行中は空の操作行を描かず、停止中は開始の行を出す (%s)', locale => {
+    // #581: 実行中で開始・送り先・補足が無いときは now-action を描かない。停止中の開始ボタンと、歌・雑談の行は残す。
     const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running onStartAudio={vi.fn()} liveControls={<span>controls</span>} /></LocaleProvider>);
     const now = screen.getByRole('region', { name: message(locale, 'home.now') });
     expect(now).not.toHaveTextContent(message(locale, 'device.engine'));
-    expect(now.querySelector('.now-action')).not.toBeNull();
+    expect(now.querySelector('.now-action')).toBeNull();
     expect(now.querySelector('.now-controls')).not.toBeNull();
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped onStartAudio={vi.fn()} startError="missing" liveControls={<span>controls</span>} /></LocaleProvider>);
     expect(now.querySelector('[data-now-incoming]')).toHaveAttribute('data-now-incoming', 'stopped');
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.stopped'));
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(now.querySelector('.now-action')).not.toBeNull();
+    expect(within(now).getByRole('button', { name: message(locale, 'home.startAudio') })).toBeVisible();
     expect(now.querySelector('.now-controls')).not.toBeNull();
 });
 

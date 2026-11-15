@@ -44,3 +44,17 @@ test.describe('出力の見出しとメーター', () => {
         });
     }
 });
+
+test.describe('いまの状態の操作行', () => {
+    test.use({ liveHome: true, stoppedHome: true });
+    test('停止中は開始ボタンがあり、実行中は now-action が無い', async ({ page }) => {
+        await page.setViewportSize({ width: 1024, height: 768 });
+        await page.addInitScript(readyStorage);
+        await page.goto('/');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+        await expect(page.locator('.now-action').getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: '音声を開始', exact: true }).click();
+        await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
+        await expect(page.locator('.now-action')).toHaveCount(0);
+    });
+});
