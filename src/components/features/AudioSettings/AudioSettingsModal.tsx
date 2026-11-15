@@ -1000,7 +1000,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="appearance" className="space-y-6">
             <LanguageSelector />
             <p className="text-ui-support text-muted-foreground">
-              {t('purpose.moved')}{' '}
+              {t('purpose.whereToSwitch')}{' '}
               <Button type="button" variant="link" className="h-auto px-0" onClick={() => chooseTab('audio')}>{t('purpose.openConnect')}</Button>
             </p>
             <NumericDetailsSwitch />

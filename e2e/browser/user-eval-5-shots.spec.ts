@@ -69,7 +69,7 @@ test.describe('段階5の画面記録', () => {
                 if (locale !== 'ja') return;
                 await page.getByRole('button', { name: '設定', exact: true }).click();
                 await page.getByRole('tab', { name: '外観', exact: true }).click();
-                await expect(page.getByText('使い方の切り替えは、接続のページの先頭に移しました。')).toBeVisible();
+                await expect(page.getByText('配信と音楽鑑賞の切り替えは、接続のページの「使い方」にあります。')).toBeVisible();
                 await page.screenshot({ path: `${dir}/appearance-ja-1024x768.png`, animations: 'disabled' });
             });
         }
