@@ -391,8 +391,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-describedby={compareDescribedBy}
                                         title={compareStopped ? t('header.compareNeedsAudio') : undefined}
                                         className={cn(
-                                            "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control",
-                                            compareStopped && "cursor-not-allowed opacity-50",
+                                            "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control disabled:cursor-not-allowed disabled:opacity-50",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
