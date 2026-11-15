@@ -1,15 +1,23 @@
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { useMessages } from '@/i18n/LocaleProvider';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useState, useEffect } from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
-import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate } from '../../../templates/chainTemplates';
+import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate, TemplateRole } from '../../../templates/chainTemplates';
 import type { MessageKey } from '@/i18n/messages';
 
 const templateUse: Record<string, MessageKey> = {
     chatting: 'templates.chatting.use',
     singing: 'templates.singing.use',
     ASMR: 'templates.ASMR.use',
+};
+const roleLabel: Record<TemplateRole, MessageKey> = {
+    noise_gate: 'templates.role.noise_gate',
+    compressor: 'templates.role.compressor',
+    deesser: 'templates.role.deesser',
+    eq: 'templates.role.eq',
+    limiter: 'templates.role.limiter',
+    reverb: 'templates.role.reverb',
 };
 import { VstPlugin } from '../../../api/audio';
 import { toast } from 'sonner';
@@ -36,6 +44,17 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     isScanning
 }) => {
     const t = useMessages();
+    const { locale } = useLocale();
+    const neededKinds = (template: ChainTemplate) => {
+        const seen = new Set<TemplateRole>();
+        const labels: string[] = [];
+        for (const slot of template.slots) {
+            if (seen.has(slot.role)) continue;
+            seen.add(slot.role);
+            labels.push(t(roleLabel[slot.role]));
+        }
+        return labels.join(locale === 'en' ? ', ' : '・');
+    };
     const templateText = (template: ChainTemplate, field: 'name' | 'description') => {
         const copy = CHAIN_TEMPLATE_COPY[template.id];
         return copy ? t(copy[field]) : template[field];
@@ -164,6 +183,11 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                             {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} disabled={loading} className="underline text-primary disabled:opacity-50">{t('presets.copy.095')}</button>}
                         </div>
                     </details>
+                    {/* 置き換えと用意の注意はカードに繰り返さず、折りたたみの外に1回だけ出す（#585）。 */}
+                    <div className="mb-4 space-y-1">
+                        <p className="text-ui-support font-bold text-foreground">{t('templates.applyReplaces')}</p>
+                        <p className="text-ui-support text-muted-foreground">{t('templates.beforeCheck')}</p>
+                    </div>
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {CHAIN_TEMPLATES.map(template => (
@@ -179,8 +203,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                         <span className="text-ui-heading font-bold">{templateText(template, 'name')}</span>
                                         <span className="mt-2 text-ui-support text-muted-foreground">{templateText(template, 'description')}</span>
                                         <span className="mt-2 text-ui-support text-foreground"><span className="text-muted-foreground">{t('templates.suits')}</span> {t(templateUse[template.id])}</span>
-                                        <span className="mt-1 text-ui-support text-foreground">{t('templates.applyReplaces')}</span>
-                                        <span className="mt-1 text-ui-support text-muted-foreground">{t('templates.beforeCheck')}</span>
+                                        <span className="mt-2 text-ui-support text-foreground">{t('templates.needsVst', { kinds: neededKinds(template) })}</span>
                                     </button>
                                     <details className="text-ui-support text-muted-foreground">
                                         <summary className="cursor-pointer">{t('templates.chainDetails')}</summary>

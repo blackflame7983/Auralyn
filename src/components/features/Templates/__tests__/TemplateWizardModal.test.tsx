@@ -9,8 +9,19 @@ it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイス�
     const settings = vi.fn();
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={vi.fn()}
         onScan={vi.fn()} isScanning={false} onOpenSoundSettings={settings} />);
-    expect(screen.getAllByText('適用すると、いまのVSTの並びを置き換えます。').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('VSTは別に用意します。設定値は自動では合わせません。').length).toBeGreaterThan(0);
+    // 共通の注意は画面に1回だけ。カードの中には置かない（#585）。
+    const replace = screen.getByText('適用すると、いまのVSTの並びを置き換えます。');
+    expect(replace).toHaveClass('font-bold');
+    const prepare = screen.getByText('VSTは別に用意します。設定値は自動では合わせません。');
+    expect(prepare).not.toHaveClass('font-bold');
+    for (const name of [/雑談/, /歌枠/, /ASMR/]) {
+        const card = screen.getByRole('button', { name });
+        expect(card).not.toHaveTextContent('適用すると、いまのVSTの並びを置き換えます。');
+        expect(card).not.toHaveTextContent('VSTは別に用意します。設定値は自動では合わせません。');
+    }
+    expect(screen.getByRole('button', { name: /雑談/ })).toHaveTextContent('要るVST：ノイズゲート・コンプ・リミッター');
+    expect(screen.getByRole('button', { name: /歌枠/ })).toHaveTextContent('要るVST：EQ・コンプ・リバーブ・リミッター');
+    expect(screen.getByRole('button', { name: /ASMR/ })).toHaveTextContent('要るVST：コンプ・リミッター');
     fireEvent.click(screen.getByText('適用の前に'));
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     expect(settings).toHaveBeenCalledOnce();
