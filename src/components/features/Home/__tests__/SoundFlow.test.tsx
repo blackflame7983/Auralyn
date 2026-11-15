@@ -189,6 +189,11 @@ it('サンプルが1つのときは加工前を横の直線2本で描く', () =>
         [{ op: 'moveTo', x: 0, y: upper }, { op: 'lineTo', x: 80, y: upper }],
         [{ op: 'moveTo', x: 0, y: lower }, { op: 'lineTo', x: 80, y: lower }],
     ]);
+    // 加工後の塗りは長方形。左下の角まで戻してから閉じ、斜めの辺を作らない。
+    const fillPath = ops.slice(0, ops.findIndex(op => op.op === 'closePath')).filter(op => op.op === 'moveTo' || op.op === 'lineTo').map(op => [op.x, op.y]);
+    const outTop = mid - flowHalfHeight(sample.out, mid);
+    const outBottom = mid + flowHalfHeight(sample.out, mid);
+    expect(fillPath).toEqual([[0, outTop], [80, outTop], [80, outBottom], [0, outBottom]]);
 });
 
 it('凡例の加工前は線の見本で、加工後は塗りの見本のまま', () => {

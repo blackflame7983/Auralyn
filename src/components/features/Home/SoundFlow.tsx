@@ -56,7 +56,8 @@ export function drawFlowWave(
     ctx.moveTo(0, yAt(samples[0].out, -1));
     if (n === 1) ctx.lineTo(width, yAt(samples[0].out, -1));
     else for (let i = 1; i < n; i += 1) ctx.lineTo(i * step, yAt(samples[i].out, -1));
-    if (n === 1) ctx.lineTo(width, yAt(samples[0].out, 1));
+    // 1つのときは、右下から左下へ戻して長方形にする。斜めの辺を作らない。
+    if (n === 1) { ctx.lineTo(width, yAt(samples[0].out, 1)); ctx.lineTo(0, yAt(samples[0].out, 1)); }
     else for (let i = n - 1; i >= 0; i -= 1) ctx.lineTo(i * step, yAt(samples[i].out, 1));
     ctx.closePath();
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
