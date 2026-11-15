@@ -74,8 +74,8 @@ export function MusicHomeDesk({ host, sampleRate, vstBypassed, onCompare, onLoad
         {switching && <p role="status" className="text-ui-support">{t('music.presetSwitching')}</p>}
         {failed && <p role="alert" className="text-ui-support text-destructive-text">{t('pluginNotices.loadPresetFailed')}</p>}
         <div className="flex items-center justify-between gap-3">
-            <p className="min-w-0 text-ui-control font-semibold">{t('music.compareVst')}</p>
-            <Switch checked={vstBypassed} disabled={switching} onCheckedChange={() => onCompare()} aria-label={t('music.compareVst')} />
+            <p className="min-w-0 text-ui-control font-semibold">{t('header.compare')}</p>
+            <Switch checked={vstBypassed} disabled={switching} onCheckedChange={() => onCompare()} aria-label={t('header.compare')} />
         </div>
     </section>;
 }

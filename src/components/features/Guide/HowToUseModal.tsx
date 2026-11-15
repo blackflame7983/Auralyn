@@ -63,7 +63,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
         mode: t('home.modeMark'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
-        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('music.compareVst'),
+        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
     };
     return <Modal title={t('help.title')} onClose={onClose}>

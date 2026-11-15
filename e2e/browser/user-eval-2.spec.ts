@@ -109,6 +109,6 @@ test('再生の確認からVSTを外した比較を1回で切り替える', asyn
     await expect(open).toBeEnabled();
     await open.click();
     const panel = page.getByRole('region', { name: '再生の確認', exact: true });
-    await panel.getByRole('switch', { name: 'VSTを外して聴き比べる', exact: true }).click();
+    await panel.getByRole('switch', { name: 'VSTを外して比較', exact: true }).click();
     await expect(page.locator('#ab-compare-btn')).toHaveAttribute('aria-checked', 'true');
 });

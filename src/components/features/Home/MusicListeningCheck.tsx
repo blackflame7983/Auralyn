@@ -28,10 +28,10 @@ export function MusicListeningCheck({ running, input, output, vstBypassed, onCom
         <MeterVisual reading={outputLevel} label={t('meter.output')} orientation="horizontal" height={12} />
         <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-                <p className="text-ui-control font-semibold">{t('music.compareVst')}</p>
+                <p className="text-ui-control font-semibold">{t('header.compare')}</p>
                 <p className="text-ui-support text-muted-foreground">{vstBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
             </div>
-            <Switch checked={vstBypassed} onCheckedChange={() => onCompareVst()} aria-label={t('music.compareVst')} />
+            <Switch checked={vstBypassed} onCheckedChange={() => onCompareVst()} aria-label={t('header.compare')} />
         </div>
         <p className="text-ui-support text-muted-foreground">{t('music.listenScope')}</p>
         <div className="flex flex-wrap gap-2"><Button variant="outline" size="default" type="button" onClick={onSettings} className="home-action">{t('music.listenSettings')}</Button><Button variant="outline" size="default" type="button" onClick={onClose} className="home-action">{t('common.close')}</Button></div>
