@@ -128,7 +128,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {!open && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-ui-support">
-                    {!statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted') && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
+                    {/* 正常に実行中の札は上の帯の「実行中」と重なるので出さない。失敗・確認中・停止などは残す（#599）。 */}
+                    {observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted') && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
                     {devices && <span className="min-w-0 text-muted-foreground">{devices}</span>}
                 </span>}
             </div>

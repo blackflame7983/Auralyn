@@ -767,7 +767,7 @@ const ja = {
     "prep.externalChanged": "設定変更後のチェックをやり直す",
     "prep.signalPath": "入力・処理・出力",
     "prep.processing": "音声処理",
-    "prep.running": "処理稼働中",
+    "prep.running": "実行中",
     "prep.failed": "出力失敗・音声エラー",
     "prep.pending": "設定の反映・確認待ち",
     "prep.muted": "出力ミュート・音量ゼロ",

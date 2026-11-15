@@ -128,14 +128,14 @@ it('送り先は条件パネルの外の1か所で、アイコン付きのボタ
     expect(call).toBeChecked();
     expect(call).toHaveFocus();
 });
-it('正常時は手順と入出力の要約を畳んで状態の点と警告だけを残し、問題が起きたら開き直す', () => {
+it('正常時は手順と入出力の要約を畳み、実行中の札は出さず、問題が起きたら開き直す', () => {
     const model = fixture(); model.context.location = 'venue';
     const view = render(<PreparationPanel model={model} {...callbacks()} signalSummary={<p>summary</p>} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('summary')).not.toBeInTheDocument();
-    const badge = screen.getByText(message('ja', 'prep.running'));
-    expect(badge.closest('[data-tone]')).toHaveAttribute('data-tone', 'ok');
+    // 正常に実行中の札は上の帯と重なるので、下の行には出さない（#599）。
+    expect(screen.queryByText(message('ja', 'prep.running'))).not.toBeInTheDocument();
     expect(screen.queryByText(message('ja', 'prep.venueWarning'))).not.toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -231,19 +231,41 @@ it('ミュートで開いている手順は、反映待ちの間も閉じない'
     }
 });
 
-it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘッダーと同じ停止理由を添える', () => {
+it.each(['ja', 'en'] as const)('実行中は下の行の札を出さず、失敗や確認中は出す (%s)', locale => {
+    const model = fixture();
+    const devices = 'USB マイク → CABLE Input';
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+    </LocaleProvider>);
+    const status = screen.getByText(devices).closest('[role="status"]')!;
+    expect(status).not.toHaveTextContent(message(locale, 'prep.running'));
+    expect(status).not.toHaveTextContent(message(locale, 'device.engine'));
+    model.observation = { ...model.observation, availability: 'pending' };
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+    </LocaleProvider>);
+    const pending = screen.getByText(message(locale, 'prep.pending'));
+    expect(pending.closest('[role="status"]')).toHaveTextContent(devices);
+    // 機器名が長くても、短い状態の文言は縮めて折らず、機器名の側を先に詰める。
+    expect(pending.closest('[data-tone]')).toHaveClass('shrink-0');
+    model.observation = { ...model.observation, availability: 'failed' };
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+    </LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
+    expect(screen.getByText(message(locale, 'prep.failed')).closest('[data-tone]')).toHaveAttribute('data-tone', 'error');
+});
+
+it('畳んでいる間は機器名を読み上げ、停止中に手で畳むとヘッダーと同じ理由を添える', () => {
     const model = fixture();
     const view = render(<PreparationPanel model={model} {...callbacks()} devices="USB マイク → CABLE Input" />);
-    const status = screen.getByText(message('ja', 'prep.running')).closest('[role="status"]')!;
-    expect(status).toHaveTextContent(message('ja', 'prep.running'));
-    expect(status).toHaveTextContent('USB マイク → CABLE Input');
-    // 機器名が長くても、短い状態の文言は縮めて折らず、機器名の側を先に詰める。
-    expect(screen.getByText(message('ja', 'prep.running')).closest('[data-tone]')).toHaveClass('shrink-0');
+    const status = screen.getByText('USB マイク → CABLE Input').closest('[role="status"]')!;
+    expect(status).not.toHaveTextContent(message('ja', 'prep.running'));
     // 畳んでいる間は枠を付けず、状態の1行だけにする。
     expect(screen.getByRole('region', { name: message('ja', 'prep.title') })).not.toHaveClass('rounded-xl');
     // 停止中に手で畳んでも、AppShell の状態文（ヘッダーと同じ文言）を使う。
     model.observation = { ...model.observation, availability: 'stopped' };
-    view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} />);
+    view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} devices="USB マイク → CABLE Input" />);
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
     expect(screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]')).not.toBeNull();
     expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
