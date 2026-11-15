@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { meterStatusLabel } from '@/hooks/useMeterLevels';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -48,6 +48,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     engineProcessReady?: boolean | null;
 }) {
     const t = useMessages();
+    const customHintId = useId();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { usage } = model.context;
@@ -59,8 +60,9 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             output: deviceName(model.observation.config?.output ?? outputName, unset),
         })
         : (liveModeName ?? t('liveBar.custom'));
+    // 名前が「いまの調整」のときだけ、見出しに説明を結ぶ。上の帯の切替には出さない（#601）。
+    const customHeading = !music && heading === t('liveBar.custom');
     const muted = model.observation.availability === 'muted';
-    const showMute = muted || model.observation.availability === 'ready';
     const startButton = !running && Boolean(onStartAudio);
     const chooseButton = !music && running && !usage && Boolean(onChooseDestination);
     const startNote = startButton && !startError;
@@ -70,8 +72,9 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
         {/* 見出しの行に札とミュートを乗せ、行の高さは見出しに合わせる。 */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {!music && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
-            <h2 className="min-w-0 truncate text-ui-heading font-medium" title={heading}>{heading}</h2>
-            {showMute && <span role="status" data-now-mute={muted ? 'muted' : 'clear'} className={`ml-auto text-ui-support font-medium ${muted ? 'text-warning' : 'text-muted-foreground'}`}>{t(muted ? 'prep.muted' : 'home.notMuted')}</span>}
+            <h2 className="min-w-0 truncate text-ui-heading font-medium" title={customHeading ? t('liveBar.customHint') : heading} aria-describedby={customHeading ? customHintId : undefined}>{heading}</h2>
+            {customHeading && <span id={customHintId} className="sr-only">{t('liveBar.customHint')}</span>}
+            {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t('prep.muted')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <IncomingStatus running={running} label={t(music ? 'music.source' : 'unsetFlow.mic')} />

@@ -2,7 +2,7 @@
 title: "Hotkeys"
 description: "Learn the available keyboard actions and assignment precautions."
 order: 9
-uiLabels: ["How to use", "Help", "Keyboard shortcuts", "Emergency mute (toggle)", "Compare without VST (toggle)", "Switch to Sing mode", "Switch to Talk mode", "Emergency mute (on)", "Emergency mute (off)", "Compare without VST (start)", "Compare without VST (end)", "Increase output volume by 1%", "Decrease output volume by 1%", "Toggle noise reduction", "Settings", "Hotkeys", "Enter keys", "Not set", "Choose from a list", "Remove binding", "Fill recommended keys", "Save key settings"]
+uiLabels: ["How to use", "Help", "Keyboard shortcuts", "Emergency mute (toggle)", "Bypass VST (toggle)", "Switch to Sing mode", "Switch to Talk mode", "Emergency mute (on)", "Emergency mute (off)", "Bypass VST (start)", "Bypass VST (end)", "Increase output volume by 1%", "Decrease output volume by 1%", "Toggle noise reduction", "Settings", "Hotkeys", "Enter keys", "Not set", "Choose from a list", "Remove binding", "Fill recommended keys", "Save key settings"]
 ---
 
 ## Open help {#help}
@@ -14,13 +14,13 @@ Press F1, or use “Help” at the bottom of the left rail, to open “How to us
 These actions can be assigned. Keys are not automatically assigned to every action.
 
 - “Emergency mute (toggle)”
-- “Compare without VST (toggle)”
+- “Bypass VST (toggle)”
 - “Switch to Sing mode”
 - “Switch to Talk mode”
 - “Emergency mute (on)”
 - “Emergency mute (off)”
-- “Compare without VST (start)”
-- “Compare without VST (end)”
+- “Bypass VST (start)”
+- “Bypass VST (end)”
 - “Increase output volume by 1%”
 - “Decrease output volume by 1%”
 - “Toggle noise reduction”

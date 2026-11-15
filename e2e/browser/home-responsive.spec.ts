@@ -213,3 +213,33 @@ test('1200〜1411pxの音調整は3列で、1280×800の出力先名は縦に積
     }
     console.log(JSON.stringify(measured));
 });
+
+test('900×600 で整え具合の目安が語の途中で折り返さない', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_locale', 'ja');
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+    });
+    await page.goto('/');
+    const caption = page.locator('#home-builtin figcaption');
+    await caption.scrollIntoViewIfNeeded();
+    await expect(caption).toHaveText('整え具合の目安');
+    expect(await caption.evaluate(element => getComputedStyle(element).wordBreak)).toBe('keep-all');
+    const lines = await caption.evaluate(element => {
+        const text = element.firstChild;
+        if (!text || text.nodeType !== Node.TEXT_NODE) return -1;
+        const value = text.textContent ?? '';
+        const range = document.createRange();
+        const tops = new Set<number>();
+        for (let index = 0; index < value.length; index += 1) {
+            range.setStart(text, index);
+            range.setEnd(text, index + 1);
+            tops.add(Math.round(range.getBoundingClientRect().top));
+        }
+        return tops.size;
+    });
+    expect(lines).toBe(1);
+});

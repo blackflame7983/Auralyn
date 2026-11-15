@@ -105,6 +105,8 @@ it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操
     const start = vi.fn();
     const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} onStartAudio={start} liveModeName={message(locale, 'liveBar.singing')} liveControls={<button>mode</button>} /></LocaleProvider>);
     const heading = screen.getByRole('heading', { name: message(locale, 'liveBar.singing') });
+    expect(heading).toHaveAttribute('title', message(locale, 'liveBar.singing'));
+    expect(heading).not.toHaveAttribute('aria-describedby');
     expect(heading.compareDocumentPosition(screen.getByRole('button', { name: message(locale, 'home.startAudio') })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 停止中の「音声停止中」は、上の帯の札ではなく入力メーターの状態語として出す。
     const now = screen.getByRole('region', { name: message(locale, 'home.now') });
@@ -113,7 +115,10 @@ it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'home.startAudio') }));
     expect(start).toHaveBeenCalledOnce();
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running onStartAudio={start} liveControls={<button>mode</button>} /></LocaleProvider>);
-    expect(screen.getByRole('heading', { name: message(locale, 'liveBar.custom') })).toBeVisible();
+    const custom = screen.getByRole('heading', { name: message(locale, 'liveBar.custom') });
+    expect(custom).toBeVisible();
+    expect(custom).toHaveAttribute('title', message(locale, 'liveBar.customHint'));
+    expect(custom).toHaveAccessibleDescription(message(locale, 'liveBar.customHint'));
     expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).toBeNull();
 });
 
@@ -167,8 +172,8 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(within(now).getByRole('heading', { name: message(locale, 'liveBar.singing') })).toBeVisible();
     expect(now.querySelector('[data-now-incoming]')).toHaveAttribute('data-now-incoming', 'silent');
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.silent'));
-    expect(now.querySelector('[data-now-mute]')).toHaveAttribute('data-now-mute', 'clear');
-    expect(now).toHaveTextContent(message(locale, 'home.notMuted'));
+    expect(now.querySelector('[data-now-mute]')).toBeNull();
+    expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
 });
 
 it('送る音の目安は、小さめと大きすぎの境目に置く', () => {

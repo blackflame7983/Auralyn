@@ -566,7 +566,7 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const names = locale === 'ja'
         ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（切替）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
-        : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Compare without VST (toggle)', 'Compare without VST (start)', 'Compare without VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
+        : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Bypass VST (toggle)', 'Bypass VST (start)', 'Bypass VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
     for (const name of names) {
         expect(screen.getByText(name, { exact: true, selector: 'span' })).toBeVisible();
         expect(screen.getByRole('button', { name: locale === 'ja' ? `${name}のキーを入力` : `Enter keys for ${name}` })).toBeInTheDocument();
