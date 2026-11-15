@@ -349,6 +349,38 @@ pub async fn save_shortcuts(
     })?
 }
 
+/// 画面の `isEngineRunning` と同じ意味か。
+/// 常駐プロセスだけでは足りない。停止後もプロセスは残るため、適用中の設定と、
+/// 実ストリームが動いていて失敗していないことを見る。画面の定期取得は
+/// `getAudioState` の `is_running` と `config`、および `getAudioStreamState`
+/// （`auto_gain` の status）の `running && !streamFailed` を使っている。
+pub(crate) fn shortcut_audio_running(
+    process_running: bool,
+    has_config: bool,
+    stream_running: bool,
+    stream_failed: bool,
+) -> bool {
+    process_running && has_config && stream_running && !stream_failed
+}
+
+/// 音声が止まっている比較ショートカットは送らない。
+/// 動いているときは、これまでと同じオン・オフ・反転を返す。
+pub(crate) fn compare_shortcut_bypass(
+    audio_running: bool,
+    action: &Action,
+    current_bypass: bool,
+) -> Option<bool> {
+    if !audio_running {
+        return None;
+    }
+    match action {
+        Action::BypassOn => Some(true),
+        Action::BypassOff => Some(false),
+        Action::BypassToggle => Some(!current_bypass),
+        _ => None,
+    }
+}
+
 pub fn dispatch(app: AppHandle, id: u32) {
     let state = app.state::<Shortcuts>();
     let Some(Some((action, generation))) = try_dispatch_gate(&state.3, |gate| {
@@ -422,12 +454,39 @@ pub fn dispatch(app: AppHandle, id: u32) {
                 Action::MuteOn => host.set_global_mute(true)?,
                 Action::MuteOff => host.set_global_mute(false)?,
                 Action::BypassToggle | Action::BypassOn | Action::BypassOff => {
-                    let active = match action {
-                        Action::BypassOn => true,
-                        Action::BypassOff => false,
-                        _ => !host.get_engine_runtime_stats()?.global_bypass,
+                    // 止まっているあいだは比較の切り替えを送らず、フラグも変えない。
+                    // プロセスが無い、または適用中の設定が無いときは、状態の照会もしない。
+                    let info = host.get_state();
+                    let (stream_running, stream_failed) =
+                        if info.is_running && info.config.is_some() {
+                            match host.auto_gain(crate::audio_engine::auto_gain::Request::Status) {
+                                Ok(status) => (status.running, status.stream_failed),
+                                // 画面の取得失敗と同じく、動いていないものとして扱う。通知は出さない。
+                                Err(_) => (false, false),
+                            }
+                        } else {
+                            (false, false)
+                        };
+                    let audio_running = shortcut_audio_running(
+                        info.is_running,
+                        info.config.is_some(),
+                        stream_running,
+                        stream_failed,
+                    );
+                    let current_bypass = if audio_running && matches!(action, Action::BypassToggle)
+                    {
+                        host.get_engine_runtime_stats()?.global_bypass
+                    } else {
+                        false
                     };
-                    host.set_global_bypass(active)?;
+                    match compare_shortcut_bypass(audio_running, &action, current_bypass) {
+                        Some(active) => host.set_global_bypass(active)?,
+                        None => {
+                            log::info!(
+                                "音声が止まっているため、比較のショートカットを無視しました"
+                            );
+                        }
+                    }
                 }
                 Action::NoiseToggle => {
                     let next = noise_toggle(&host.get_engine_runtime_stats()?);
@@ -699,6 +758,47 @@ mod tests {
             serde_json::to_value(on).unwrap(),
             serde_json::json!({"enabled": true, "mode": "low", "strength": 0.8f32, "voiceGuard": true})
         );
+    }
+
+    #[test]
+    fn stopped_compare_shortcuts_are_not_sent_and_running_ones_are() {
+        for action in [Action::BypassToggle, Action::BypassOn, Action::BypassOff] {
+            assert_eq!(compare_shortcut_bypass(false, &action, false), None);
+            assert_eq!(compare_shortcut_bypass(false, &action, true), None);
+        }
+        assert_eq!(
+            compare_shortcut_bypass(true, &Action::BypassOn, false),
+            Some(true)
+        );
+        assert_eq!(
+            compare_shortcut_bypass(true, &Action::BypassOff, true),
+            Some(false)
+        );
+        assert_eq!(
+            compare_shortcut_bypass(true, &Action::BypassToggle, false),
+            Some(true)
+        );
+        assert_eq!(
+            compare_shortcut_bypass(true, &Action::BypassToggle, true),
+            Some(false)
+        );
+        // 緊急ミュートなど、比較以外はここでは送らない。
+        assert_eq!(
+            compare_shortcut_bypass(true, &Action::MuteToggle, false),
+            None
+        );
+    }
+
+    #[test]
+    fn shortcut_audio_running_matches_the_screen_not_the_resident_process() {
+        assert!(shortcut_audio_running(true, true, true, false));
+        // 停止後もプロセスと設定は残る。実ストリームが止まっていれば比較は送らない。
+        assert!(!shortcut_audio_running(true, true, false, false));
+        assert!(!shortcut_audio_running(true, true, true, true));
+        assert!(!shortcut_audio_running(true, true, false, true));
+        assert!(!shortcut_audio_running(true, false, true, false));
+        assert!(!shortcut_audio_running(false, true, true, false));
+        assert!(!shortcut_audio_running(false, false, false, false));
     }
 
     #[test]
