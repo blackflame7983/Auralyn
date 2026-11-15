@@ -163,7 +163,11 @@ it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止�
     const save = await screen.findByRole('button', { name: '接続を保存して再起動' });
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     expect(save).toBeDisabled();
-    expect(save).toHaveAccessibleDescription(/変更はありません.*音声が一瞬途切れます/);
+    // 変更が無いあいだは途切れ注意を出さず、説明もその要素を指さない（#588）。
+    expect(screen.getByText('接続設定に変更はありません')).toBeInTheDocument();
+    expect(screen.queryByText('音声が一瞬途切れます')).not.toBeInTheDocument();
+    expect(save).toHaveAccessibleDescription('接続設定に変更はありません');
+    expect(save).toHaveAttribute('aria-describedby', 'settings-connection-changes');
     fireEvent.click(save);
     expect(start).not.toHaveBeenCalled();
     const summary = screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
@@ -172,8 +176,12 @@ it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止�
     fireEvent.click(await screen.findByRole('radio', { name: '途切れにくく' }));
     expect(save).toBeEnabled();
     expect(screen.getByText('変更予定：音の途切れにくさ')).toBeInTheDocument();
+    expect(screen.getByText('音声が一瞬途切れます')).toBeInTheDocument();
+    expect(save).toHaveAttribute('aria-describedby', 'settings-connection-changes settings-save-restart');
     fireEvent.click(screen.getByRole('radio', { name: '標準' }));
     expect(save).toBeDisabled();
+    expect(screen.queryByText('音声が一瞬途切れます')).not.toBeInTheDocument();
+    expect(save).toHaveAttribute('aria-describedby', 'settings-connection-changes');
 });
 
 it('停止中の変更なしでも明示開始できる', async () => {
