@@ -17,7 +17,7 @@ it.each(['ja', 'en'] as const)('OBS連携の最初の見出しは、接続ペー
     const heading = screen.getByRole('heading', { name: message(locale, 'obs.section.connect') });
     expect(heading).toHaveTextContent(locale === 'ja' ? 'OBSへの接続' : 'Connect to OBS');
     expect(heading.closest('section')).toHaveAttribute('aria-label', message(locale, 'obs.section.connect'));
-    expect(screen.queryByRole('heading', { name: locale === 'ja' ? '接続' : 'Connection', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: locale === 'ja' ? /^接続$/ : /^Connection$/ })).not.toBeInTheDocument();
 });
 it('保存済みの接続先を使い、失敗時に秘密を含むエラーを転記しない', async () => {
     localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: 'studio-pc', port: 5544 }));
