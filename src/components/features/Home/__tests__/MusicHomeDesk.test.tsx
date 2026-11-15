@@ -48,9 +48,9 @@ it('切り替え中は操作を止め、失敗したら理由を出す', async (
     const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
     fireEvent.change(select, { target: { value: '夜' } });
     expect(select).toBeDisabled();
-    expect(screen.getByRole('switch', { name: 'VSTを外して聴き比べる' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'VSTを外して比較' })).toBeDisabled();
     expect(load).toHaveBeenCalledWith('夜');
-    fireEvent.click(screen.getByRole('switch', { name: 'VSTを外して聴き比べる' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'VSTを外して比較' }));
     expect(compare).not.toHaveBeenCalled();
     await act(async () => { finish(false); });
     expect(screen.getByRole('alert')).toHaveTextContent('プリセットの読み込みに失敗しました');

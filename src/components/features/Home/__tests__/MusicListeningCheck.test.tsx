@@ -24,7 +24,7 @@ it('再生の確認から、右の列と同じVST外しを1回で切り替える
     const start = vi.spyOn(audioApi, 'start');
     const compare = vi.fn();
     render(<MusicListeningCheck running vstBypassed={false} onCompareVst={compare} onSettings={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('switch', { name: 'VSTを外して聴き比べる' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'VSTを外して比較' }));
     expect(compare).toHaveBeenCalledOnce();
     expect(start).not.toHaveBeenCalled();
 });

@@ -54,7 +54,8 @@ it('本番保護の間はスイッチ・数値・適用を止めて理由を示�
     expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.release') })).toBeDisabled();
     const apply = screen.getByRole('button', { name: message('ja', 'peak.apply') });
     expect(apply).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'peak.off'));
+    // ON と OFF はスイッチだけが示す。稼働中で反映待ちでも停止でもないときは、状態の行を出さない（#589）。
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     fireEvent.click(toggle);
     fireEvent.click(apply);
     await act(async () => {});
@@ -72,4 +73,29 @@ it('本番保護の間はスイッチ・数値・適用を止めて理由を示�
     expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
     fireEvent.click(applyAgain); await act(async () => {});
     expect(request.mock.calls.filter(args => args.length > 0)).toHaveLength(2);
+});
+it('ONとOFFの文字は出さず、数値と抑制量は数値の詳細のときだけ、状態の行は読めない・反映途中・停止のときだけ出す', async () => {
+    const request = vi.spyOn(peakProtectionApi, 'request').mockResolvedValue(fixture(true));
+    const view = render(<PeakProtectionPanel />); await act(async () => {});
+    const region = screen.getByRole('region', { name: message('ja', 'peak.title') });
+    // 守る対象の「既定はOFF」は残す。状態の行には ON も OFF も出さない。
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(region).not.toHaveTextContent('dBFS /');
+    expect(region).not.toHaveTextContent(message('ja', 'peak.reduction', { db: '0.0' }));
+    await act(async () => { view.rerender(<PeakProtectionPanel numericDetails />); });
+    expect(screen.getByText('-3.0 dBFS / 150 ms')).toBeInTheDocument();
+    expect(screen.getByText(message('ja', 'peak.reduction', { db: '0.0' }))).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    request.mockResolvedValue({ ...fixture(true), pending: true, running: false, reductionDb: 1.2 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(`${message('ja', 'peak.pending')} · ${message('ja', 'peak.stopped')}`);
+    expect(status).not.toHaveTextContent('ON');
+    expect(status).not.toHaveTextContent('OFF');
+    expect(screen.getByText(message('ja', 'peak.reduction', { db: '1.2' }))).toBeInTheDocument();
+    request.mockRejectedValue(new Error('down'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'peak.unknown'));
+    expect(screen.queryByText(/dBFS \//)).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'peak.reduction', { db: '1.2' }))).not.toBeInTheDocument();
 });

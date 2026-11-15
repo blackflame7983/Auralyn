@@ -230,8 +230,30 @@ it('音楽鑑賞のホームから、構成の切り替えと聴き比べに1回
     expect(desk).toHaveTextContent('WASAPI · 48 kHz');
     fireEvent.change(within(desk).getByRole('combobox', { name: '保存したVSTの構成' }), { target: { value: '夜' } });
     await waitFor(() => expect(load).toHaveBeenCalledWith('夜'));
-    await act(async () => { fireEvent.click(within(desk).getByRole('switch', { name: 'VSTを外して聴き比べる' })); });
+    const compareName = message('ja', 'header.compare');
+    // 比較中でない音楽鑑賞のホームでは、右の列に比較を出さない。入口は再生の状態の同じ名前（#590）。
+    expect(document.getElementById('ab-compare-btn')).toBeNull();
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
+    await act(async () => { fireEvent.click(within(desk).getByRole('switch', { name: compareName })); });
     expect(bypass).toHaveBeenCalledWith(true);
+    const column = document.getElementById('ab-compare-btn');
+    expect(column).toHaveAttribute('aria-checked', 'true');
+    expect(column).toHaveAccessibleName(compareName);
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(2);
+});
+
+it('音楽鑑賞のほかのページと配信のホームでは、右の列の比較をこれまでどおり出す', () => {
+    saveDisplayPurpose('music');
+    const musicPage = render(<AppShell {...commonProps} page="sound"><p>rack</p></AppShell>);
+    const compareName = message('ja', 'header.compare');
+    expect(document.getElementById('ab-compare-btn')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
+    expect(screen.queryByRole('region', { name: message('ja', 'music.playback') })).not.toBeInTheDocument();
+    musicPage.unmount();
+    saveDisplayPurpose('voice');
+    render(<AppShell {...commonProps}><p>rack</p></AppShell>);
+    expect(document.getElementById('ab-compare-btn')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
 });
 
 it('表示用途はホームの本文に置かず、設定から切り替えると保存済みの音声用途と準備設定を保持する', () => {

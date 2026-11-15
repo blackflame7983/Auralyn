@@ -57,7 +57,8 @@ it('本番保護の間はスイッチ・数値・適用を止めて理由を示�
     expect(screen.getByRole('spinbutton', { name: message('ja', 'truePeak.release') })).toBeDisabled();
     const apply = screen.getByRole('button', { name: message('ja', 'truePeak.apply') });
     expect(apply).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'truePeak.off'));
+    // ON と OFF はスイッチだけが示す。稼働中で反映待ちでも停止でもないときは、状態の行を出さない（#589）。
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     fireEvent.click(toggle);
     fireEvent.click(apply);
     await act(async () => {});
@@ -75,4 +76,30 @@ it('本番保護の間はスイッチ・数値・適用を止めて理由を示�
     expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
     fireEvent.click(applyAgain); await act(async () => {});
     expect(request.mock.calls.filter(args => args.length > 0)).toHaveLength(2);
+});
+it('ONとOFFの文字は出さず、数値と抑制量は数値の詳細のときだけ、状態の行は読めない・反映途中・停止のときだけ出す', async () => {
+    const request = vi.spyOn(broadcastTruePeakApi, 'request').mockResolvedValue(fixture(true));
+    const view = render(<BroadcastTruePeakPanel />); await act(async () => {});
+    const region = screen.getByRole('region', { name: message('ja', 'truePeak.title') });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(region).not.toHaveTextContent('dBFS /');
+    expect(region).not.toHaveTextContent(message('ja', 'truePeak.reduction', { db: '0.0' }));
+    // 先読みの説明は数値の詳細とは別で、これまでどおり出す。
+    expect(screen.getByText(/48 sample/)).toBeInTheDocument();
+    await act(async () => { view.rerender(<BroadcastTruePeakPanel numericDetails />); });
+    expect(screen.getByText('-3.0 dBFS / 150 ms')).toBeInTheDocument();
+    expect(screen.getByText(message('ja', 'truePeak.reduction', { db: '0.0' }))).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    request.mockResolvedValue({ ...fixture(true), pending: true, running: false, reductionDb: 1.2 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(`${message('ja', 'truePeak.pending')} · ${message('ja', 'truePeak.stopped')}`);
+    expect(status).not.toHaveTextContent('ON');
+    expect(status).not.toHaveTextContent('OFF');
+    expect(screen.getByText(message('ja', 'truePeak.reduction', { db: '1.2' }))).toBeInTheDocument();
+    request.mockRejectedValue(new Error('down'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'truePeak.unknown'));
+    expect(screen.queryByText(/dBFS \//)).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'truePeak.reduction', { db: '1.2' }))).not.toBeInTheDocument();
 });

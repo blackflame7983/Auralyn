@@ -254,6 +254,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             toast.error(<LocalizedMessage id="shell.compareFailed" />);
         }
     }, [isABBypassed]);
+    // 音楽鑑賞のホームでは、再生の状態のカードが聴き比べの入口。
+    // 右の列は比較中だけ出し、どのページでも比較中は見える（whileActive と同じ）。
+    const compareInColumn = purpose === 'music' && page === 'home'
+        ? isABBypassed
+        : chrome.footer.compare === 'always' || isABBypassed;
 
     useEffect(() => {
         const unlisten = listen<boolean>('global-bypass-changed', event => setIsABBypassed(event.payload));
@@ -366,7 +371,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onOpenVoiceCheck={onOpenVoiceCheck}
                         onOpenSoundSettings={onOpenSoundSettings}
                         onOpenAudioTuning={onOpenAudioTuning}
-                        compare={(chrome.footer.compare === 'always' || isABBypassed) && <TooltipProvider>
+                        compare={compareInColumn && <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
