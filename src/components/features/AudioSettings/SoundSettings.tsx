@@ -261,6 +261,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             </>}
             {shown === 'basic' && <>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
+            {/* OFFのまま選べる注意は、各カードではなく基本の先頭に1回だけ出す（#603）。使い方の音調整は別の文のまま。 */}
+            <p id="sound-off-until-on" className="text-ui-support text-muted-foreground">{t('settings.offUntilOn')}</p>
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
               {/* ノイズ低減と声を整える機能は、ページの幅に余裕があるときだけ横に並べる。DOM の順は変えない。 */}
               <div className="page-pair">
@@ -300,7 +302,6 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     />
                   </div>
 
-                  {!engineStats?.noiseReductionEnabled && <p className="text-ui-support text-muted-foreground">{t('settings.noiseOffHint')}</p>}
                   <div className="min-w-0 space-y-4">
                   <fieldset className="space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
                     <SegmentedControl label={t('structure.noise.standard')}
@@ -380,7 +381,6 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     />
                   </div>
 
-                  {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-ui-support text-muted-foreground">{t('settings.fxOffHint')}</p>}
                   <fieldset disabled={!singingModel.snapshot || singingModel.busy} className="space-y-4 disabled:opacity-50">
                   <SegmentedControl label={t('home.chainPreset')}
                     options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },

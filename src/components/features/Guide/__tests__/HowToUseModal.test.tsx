@@ -163,6 +163,17 @@ it.each(['ja', 'en'] as const)('ホームの見方は節ごとに箇条で出し
     expect(within(dialog).getByText(message(locale, 'help.setup.body', labels))).toBeInTheDocument();
 });
 
+it.each(['ja', 'en'] as const)('再生の状態の説明は、保存したを重ねず差し込みを埋める（%s）', locale => {
+    open(locale);
+    fireEvent.keyDown(window, { key: 'F1' });
+    const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    const text = message(locale, 'help.home.stage.7', guideLabels(locale));
+    expect(within(dialog).getByText(text)).toBeInTheDocument();
+    expect(text).not.toMatch(/\{[A-Za-z]+\}/);
+    expect(text).not.toContain(locale === 'ja' ? '保存した「保存した' : 'saved “Saved');
+    if (locale === 'ja') expect(text).toBe('「再生の状態」には、接続方式と周波数、「保存したVSTの構成」の切り替え、「VSTを外して比較」があります。');
+});
+
 it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュメントを開く（%s）', locale => {
     open(locale); fireEvent.keyDown(window, { key: 'F1' });
     const sections = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const;

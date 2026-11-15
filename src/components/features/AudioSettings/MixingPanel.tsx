@@ -133,12 +133,14 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const preparationOnly = !!snapshot && (!ready || !primaryIsVoiceDevice) && !snapshot.config;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary tabIndex={0} className="cursor-pointer text-ui-heading font-semibold">{t('mixing.title')}</summary>
-        <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>
+        {/* 準備だけの表示では、説明と入口のあとに更新を置く。整ったあとの並びは変えない（#611）。 */}
+        {!preparationOnly && <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
         {snapshot && <div className="space-y-4 text-ui-support">
             {stale && <p role="alert">{notice('mixing.stale')}</p>}
             {preparationOnly && <p>{t('mixing.prepare')}</p>}
             {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
+            {preparationOnly && <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
             {!preparationOnly && <>
             <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
                 {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</section>

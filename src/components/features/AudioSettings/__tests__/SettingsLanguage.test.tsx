@@ -5,6 +5,7 @@ import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 import { ShortcutsPanel } from '../ShortcutsPanel';
 import { ObsSafeSetup } from '../ObsSafeSetup';
@@ -157,17 +158,17 @@ it('移行の動的件数を英語で表示し、実ファイル名・VST名は�
     expect(screen.getByText('実名VST')).toBeVisible();
 });
 
-it('使い方は接続の先頭にあり、外観には移った先の案内だけを残す', async () => {
-    // ホームの表示は外観から接続の先頭へ移した（#554）。言語との上下関係は、もう外観では見ない。
-    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const purpose = await screen.findByRole('combobox', { name: 'ホームの表示' });
-    const summary = screen.getByRole('heading', { name: '選択中の入出力' });
+it.each(['ja', 'en'] as const)('使い方は接続の先頭にあり、外観は置き場所を案内して接続を開く（%s）', async locale => {
+    // ホームの表示は接続の先頭のまま（#554）。外観の文は移行の告知ではなく、置き場所の案内（#606）。
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    const purpose = await screen.findByRole('combobox', { name: message(locale, 'purpose.label') });
+    const summary = screen.getByRole('heading', { name: message(locale, 'settings.connection.summary') });
     expect(purpose.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
-    expect(screen.queryByRole('combobox', { name: 'ホームの表示' })).not.toBeInTheDocument();
-    expect(screen.getByText('使い方の切り替えは、接続のページの先頭に移しました。')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '接続を開く' }));
-    expect(await screen.findByRole('combobox', { name: 'ホームの表示' })).toBeVisible();
+    fireEvent.keyDown(screen.getByRole('tab', { name: message(locale, 'settings.appearance') }), { key: 'Enter' });
+    expect(screen.queryByRole('combobox', { name: message(locale, 'purpose.label') })).not.toBeInTheDocument();
+    expect(screen.getByText(message(locale, 'purpose.whereToSwitch'))).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'purpose.openConnect') }));
+    expect(await screen.findByRole('combobox', { name: message(locale, 'purpose.label') })).toBeVisible();
 });
 
 

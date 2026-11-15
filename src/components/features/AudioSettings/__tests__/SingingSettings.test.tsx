@@ -114,7 +114,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     const legacy = screen.getByRole('radio', { name: message(locale, 'settings.AudioSettingsModal.098') });
     // OFFでも種類は選べる。ONにしたあとの即時反映は、この下の確認のまま。
     await waitFor(() => expect(legacy).toBeEnabled());
-    expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(message(locale, 'settings.offUntilOn'))).toHaveLength(1);
     fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
     expect(screen.getByText(message(locale, 'settings.apply.soundImmediate'))).toBeVisible();
@@ -125,6 +125,18 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledWith({ active: true, preset: 'broadcast', amount: 0.6 }));
 });
 
+
+it.each(['ja', 'en'] as const)('基本の先頭に、OFFのまま選べる注意を1回だけ出す（%s）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    const note = await screen.findByText(message(locale, 'settings.offUntilOn'));
+    expect(screen.getAllByText(message(locale, 'settings.offUntilOn'))).toHaveLength(1);
+    const noise = screen.getByRole('heading', { name: message(locale, 'settings.AudioSettingsModal.105') });
+    const voice = screen.getByRole('heading', { name: message(locale, 'settings.AudioSettingsModal.095') });
+    expect(note.compareDocumentPosition(noise) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(note.compareDocumentPosition(voice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(noise.closest('.rounded-card')?.contains(note)).toBe(false);
+    expect(voice.closest('.rounded-card')?.contains(note)).toBe(false);
+});
 
 it.each(['ja', 'en'] as const)('分離中だけ、歯擦音は配信側に適用され自分用は変わらないと示す（%s）', async locale => {
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
@@ -193,7 +205,7 @@ it('声・VST の保存適用でモードが変わっても音づくりの表示
     const low = screen.getByRole('radio', { name: message('ja', 'master.nrLow') });
     await waitFor(() => expect(low).toBeEnabled());
     expect(low).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
+    expect(screen.getAllByText(message('ja', 'settings.offUntilOn'))).toHaveLength(1);
     fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
     expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: true, noiseReductionActive: true, noiseReductionMode: 'venue', noiseControlStrength: 1.1, noiseVoiceGuard: true, builtInEffectsEnabled: false, builtInEffectsPreset: 'warm', builtInEffectsAmount: 0.4 } as EngineRuntimeStats);
