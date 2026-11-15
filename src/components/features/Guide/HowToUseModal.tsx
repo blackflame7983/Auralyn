@@ -14,7 +14,7 @@ const sections = ['home', 'setup', 'trouble', 'terms', 'keys'] as const;
 /** ホームの見方は、場所や操作ごとの短い項目にする（#591）。 */
 export const homeGuidePoints = {
     stage: ['help.home.stage.1', 'help.home.stage.2', 'help.home.stage.3', 'help.home.stage.4', 'help.home.stage.5', 'help.home.stage.6', 'help.home.stage.7'],
-    meters: ['help.home.meters.1', 'help.home.meters.2', 'help.home.meters.3', 'help.home.meters.4', 'help.home.meters.5', 'help.home.meters.6'],
+    meters: ['help.home.meters.1', 'help.home.meters.2', 'help.home.meters.3', 'help.home.meters.4', 'help.home.meters.5'],
     sound: ['help.home.sound.1', 'help.home.sound.2', 'help.home.sound.3', 'help.home.sound.4', 'help.home.sound.5', 'help.home.sound.6', 'help.home.sound.7', 'help.home.sound.8', 'help.home.sound.9'],
     check: ['help.home.check.1', 'help.home.check.2', 'help.home.check.3'],
     footer: ['help.home.footer.1', 'help.home.footer.2', 'help.home.footer.3'],
