@@ -127,13 +127,19 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const describe = (config: MixConfig | null) => !config ? t('mixing.none') : config.source.kind === 'device' ? inputs.find(d => d.id === (config.source.kind === 'device' ? config.source.config.inputId : ''))?.name ?? t('mixing.device') : config.source.config.appName;
     const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !ready ? 'mixing.notReady' : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
+    // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
+    const notice = (key: MessageKey) => key === 'mixing.stale' ? t(key, { load: t('mixing.load') }) : t(key);
+    // 前提が無く、オケがまだ有効でないときは、準備の案内と復旧だけを出す。有効なオケは無効化のため残す。
+    const preparationOnly = !!snapshot && (!ready || !primaryIsVoiceDevice) && !snapshot.config;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary tabIndex={0} className="cursor-pointer text-ui-heading font-semibold">{t('mixing.title')}</summary>
         <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>
         {snapshot && <div className="space-y-4 text-ui-support">
-            {stale && <p role="alert">{t('mixing.stale')}</p>}
+            {stale && <p role="alert">{notice('mixing.stale')}</p>}
+            {preparationOnly && <p>{t('mixing.prepare')}</p>}
             {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
+            {!preparationOnly && <>
             <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
                 {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</section>
             <section aria-labelledby={`${reasonId}-draft`} className="rounded-control border border-border bg-muted/40 p-3 space-y-3">
@@ -152,7 +158,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             </fieldset>
             <div className="flex flex-wrap gap-2"><Button  disabled={!!reason} aria-describedby={reason ? reasonId : undefined} onClick={() => void run('configure')}>{t('mixing.save')}</Button>
                 <Button variant="outline"  disabled={!!disableReason} aria-describedby={disableReason ? `${reasonId}-disable` : undefined} onClick={() => { queue.cancel(); void run('disable'); }}>{t('mixing.disable')}</Button></div>
-            {reason && <p id={reasonId}>{t(reason)}</p>}{disableReason && <p id={`${reasonId}-disable`}>{t(disableReason)}</p>}
+            {reason && <p id={reasonId}>{notice(reason)}</p>}{disableReason && <p id={`${reasonId}-disable`}>{notice(disableReason)}</p>}
             {(['voice', 'accompaniment'] as const).map(key => <fieldset key={key} className="space-y-2"><legend className="text-ui-control font-semibold">{t(key === 'voice' ? 'mixing.voice' : 'mixing.accompaniment')}</legend>
                 <GainControl settings label={t(key === 'voice' ? 'mixingUi.voiceVolume' : 'mixingUi.accompanimentVolume')} value={levels[key].gain} disabled={disabled || stale} onChange={gain => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], gain } })} />
                 <label className="flex gap-2 text-ui-control"><Checkbox disabled={disabled || stale} checked={levels[key].muted} onChange={e => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], muted: e.target.checked } })} />{t('mixing.mute')}</label></fieldset>)}
@@ -171,6 +177,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             <p>{t('mixing.meter')}: {t('mixing.voice')} {Math.max(...snapshot.voicePeak).toFixed(2)} / {t('mixing.accompaniment')} {Math.max(...snapshot.accompanimentPeak).toFixed(2)} / {t('mixingUi.mix')} {Math.max(...snapshot.mixPeak).toFixed(2)}</p>
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}
             {snapshot.pending && <p role="status">{t('mixing.pending')}</p>}{snapshot.failed && <p role="alert">{t('mixing.engineFailed')}</p>}
+            </>}
             <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('mixing.recoveryTitle')}</summary><p>{t('mixing.recoveryHelp')}</p>
                 <label className="flex gap-2 text-ui-control"><Checkbox disabled={!editable || snapshot.running || stale} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('mixing.recoveryConfirm')}</label>
                 <Button variant="destructive" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale || !resetConfirmed} onClick={() => { queue.cancel(); void run('reset'); }}>{t('mixing.recoveryAction')}</Button>{resetSuccess && <p role="status">{t('mixing.recoverySuccess')}</p>}</details>

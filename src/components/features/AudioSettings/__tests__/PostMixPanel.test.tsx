@@ -39,7 +39,7 @@ it('異なる世代のポーリングは入力を保持し、書込みを拒否�
     vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList);
 
     request.mockResolvedValue(snapshot({ revision: '2', restored: true, plugins: [plugin] }));
-    await screen.findByText(/設定が変わりました/, {}, { timeout: 2500 });
+    expect(await screen.findByText(/設定が変わりました/, {}, { timeout: 2500 })).toHaveTextContent('表示を最新にする');
     expect(screen.getByRole('slider', { name: 'EQのゲイン' })).toHaveAttribute('data-disabled');
     expect(screen.getByRole('button', { name: '配信VSTを保存' })).toBeDisabled();
 });
@@ -60,7 +60,7 @@ it('音量の送信前は保存を禁止し、失敗後と再読込後も未反�
     const save = screen.getByRole('button', { name: '配信VSTを保存' });
     expect(save).toBeDisabled(); expect(save).toHaveAccessibleDescription(/まだ反映されていない/);
     await screen.findAllByRole('alert'); expect(screen.getByRole('slider', { name: 'EQのゲイン' })).toHaveAttribute('aria-valuetext', '1%');
-    fireEvent.click(screen.getByRole('button', { name: '最新の状態を読み直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示を最新にする' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: '配信VSTを保存' })).toBeDisabled(); expect(screen.getByText(/まだ反映されていない変更/)).toBeInTheDocument();
     request.mockResolvedValue(snapshot({ revision: '2', restored: true, plugins: [{ ...plugin, gain: 0.01 }] }));

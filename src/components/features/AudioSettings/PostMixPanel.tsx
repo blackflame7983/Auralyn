@@ -68,19 +68,21 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     const editable = !disabled && !busy && !stale, stopped = editable && !isMainRunning;
     const gainDifferences = snapshot?.plugins.filter(p => gains[p.id] !== undefined && gains[p.id] !== p.gain).map(p => [p.id, gains[p.id]] as const) ?? [];
     const enableReason = !(hasMixing ?? mixConfigured) ? 'mixingUi.postNeedsMix' : !snapshot?.restored ? 'postMix.restoreNeeded' : isMainRunning ? 'postMix.stop' : stale ? 'postMix.stale' : null;
+    // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
+    const staleNotice = t('postMix.stale', { load: t('postMix.load') });
     return <details ref={panel} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary className="cursor-pointer text-ui-heading font-semibold">{t('postMix.title')}</summary>
         <ScopeDisclosure settings summary="mixingUi.postScope" detail="postMix.scope" />
         <Button  variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
         {snapshot && <div className="space-y-3 text-ui-support">
-            {stale && <p role="alert">{t('postMix.stale')}</p>}
+            {stale && <p role="alert">{staleNotice}</p>}
             <p>{t('mixingUi.transportMs', { value: framesToMs(snapshot.transportLatencyFrames, snapshot.sampleRate) ?? t('postMix.unknown') })}</p>
             <p>{t('mixingUi.declaredMs', { value: framesToMs(snapshot.declaredPluginLatencyFrames, snapshot.sampleRate) ?? t('postMix.unknown') })}</p>
             <p>{t('postMix.saved')}: {snapshot.savedPlugins.map(p => p.name).join(', ') || t('postMix.none')}</p>
             {!snapshot.restored && <p>{t('postMix.restoreNeeded')}</p>}{isMainRunning && <p>{t('postMix.stop')}</p>}
             <div className="flex flex-wrap gap-2"><Button  variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'restore_saved' })}>{t('postMix.restore')}</Button><Button  variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'reload' })}>{t('postMix.reload')}</Button></div>
             <label className="flex items-center gap-2 text-ui-control"><Switch aria-label={t('postMix.enabled')} aria-describedby={enableReason ? 'post-enable-reason' : undefined} disabled={!stopped || (!snapshot.enabled && !!enableReason)} checked={snapshot.enabled} onCheckedChange={enabled => void run({ action: 'enable', enabled })} />{t('postMix.enabled')}</label>
-            {enableReason && <p id="post-enable-reason">{t(enableReason)}</p>}
+            {enableReason && <p id="post-enable-reason">{enableReason === 'postMix.stale' ? staleNotice : t(enableReason)}</p>}
             <PluginList rackKind="broadcast" structureDisabled={!stopped} disabled={!editable} audioReady
                 plugins={snapshot.plugins.map(p => ({ ...p, gain: gains[p.id] ?? p.gain, vendor: '', version: '', hasEditor: true }))}
                 onAddClick={() => { setBrowser(true); void scan(); }} onOpenPresets={() => {}} onOpenTemplates={() => {}}

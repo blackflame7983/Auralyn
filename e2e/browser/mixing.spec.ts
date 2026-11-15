@@ -39,10 +39,10 @@ async function noOverflow(dialog: Locator) { expect(await dialog.evaluate(el => 
 test('オケは1段で自動表示し、キーボードの音量調整を適用ボタンなしで送る', async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await fixture(page); await page.goto('/'); const dialog = await streamMix(page);
     const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
-    await expect(mixing.getByText('適用中の入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち：10.0 ms', { exact: true })).toBeVisible();
-    await expect(mixing.getByRole('region', { name: '動作中の設定' })).toBeVisible();
-    const draft = mixing.getByRole('region', { name: '編集中の内容' });
-    const reload = draft.getByRole('button', { name: '保存内容で編集中の内容を置き換える' });
+    await expect(mixing.getByText('オケの入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち：10.0 ms', { exact: true })).toBeVisible();
+    await expect(mixing.getByRole('region', { name: 'いま使っているオケ' })).toBeVisible();
+    const draft = mixing.getByRole('region', { name: 'オケの入力元を変える' });
+    const reload = draft.getByRole('button', { name: '変更を取り消して、保存した設定に戻す' });
     expect(await reload.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
     const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', '1%');
@@ -60,7 +60,7 @@ test('オケを開かず配信VSTを自動表示し、音量・エラー詳細�
     const slider = post.getByRole('slider', { name: 'Fixture EQのゲイン' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect.poll(() => page.evaluate(() => (window as any).__postRequests.some((r: any) => r.action === 'gain' && r.value === 0.01 && r.expectedRevision === '1'))).toBe(true);
     await page.evaluate(() => { (window as any).__postCorrupt = true; });
-    await post.getByRole('button', { name: '最新の状態を読み直す' }).click();
+    await post.getByRole('button', { name: '表示を最新にする' }).click();
     const error = post.getByRole('alert'); await expect(error).toContainText('保存ファイルを読み取れません');
     await keyboardOpen(page, error.locator('summary')); await expect(error.getByText('corrupt saved state', { exact: true })).toBeVisible();
     const recovery = post.locator('details').filter({ has: page.locator('summary').getByText('保存設定を復旧する', { exact: true }) });
