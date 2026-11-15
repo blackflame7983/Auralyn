@@ -433,7 +433,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               className="w-full pl-10 pr-4"
             /></Field>
           </div>
-          <Button variant="outline"
+          {/* 登録も失敗も無いうちは、差分の更新は全件と同じ結果になる。空の案内の「すべて再スキャン」だけを残す（#583）。 */}
+          {!(plugins.length === 0 && failures.length === 0 && !error) && <Button variant="outline"
             onClick={() => onScan()}
             disabled={isLoading || Boolean(retryingPath)}
             title={t('pluginBrowser.refreshHint')}
@@ -441,7 +442,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           >
             <MdRefresh aria-hidden="true" className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             {t('pluginBrowser.refresh')}
-          </Button>
+          </Button>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {!(activeTab === 'all' && plugins.length === 0 && failures.length === 0 && !searchQuery && !selectedCategory && !error) && <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"

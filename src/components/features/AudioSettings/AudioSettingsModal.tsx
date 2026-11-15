@@ -364,6 +364,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const streamRunning = isAudioRunning ?? engineStats?.latencyMetadata?.streamRunning === true;
   // 停止中は「開始」が必要。稼働中の変更なし保存だけを抑止する。
   const canSaveConnection = !streamRunning || hasConnectionChanges || reviewRequired || allowConnectionRetry || connectionRetry;
+  // 途切れる注意は、音声が動いていて接続の変更があるときだけ出す（#588）。
+  const showSaveRestartHint = streamRunning && hasConnectionChanges;
   useEffect(() => {
     if (!isBeginnerMode || (engineStats?.glitchCount ?? 0) > 0 || initialSection === 'audioTuning') setTuningOpen(true);
   }, [isBeginnerMode, engineStats?.glitchCount, initialSection]);
@@ -1056,16 +1058,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         )}
         {activeTab === 'audio' && !loading && (
           <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
-            {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
+            {/* 音声が動いていて接続の変更があるときだけ、途切れることを押す前に示す。 */}
             <div className="settings-action-note space-y-1 text-left text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
                 ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: displayAudioHost(selectedHost), input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
-              {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
+              {showSaveRestartHint && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
             <Button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
               className="shrink-0"
-              aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
+              aria-describedby={showSaveRestartHint ? 'settings-connection-changes settings-save-restart' : 'settings-connection-changes'}
               >
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </Button>
