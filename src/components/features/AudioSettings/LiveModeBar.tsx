@@ -25,15 +25,14 @@ export function LiveModeSwitch({ model, embedded = true }: { model: LiveModesMod
     const t = useMessages();
     const value = model.snapshot;
     if (!value || !(value.definitions.singing || value.definitions.talk)) return null;
-    const applied = value.phase === 'settled' ? value.applied : null;
-    const selected = applied ?? (value.phase === 'custom' || value.phase === 'settled' ? 'custom' : null);
+    // 登録した歌・雑談のどちらも当たっていないときは、どちらも選ばない。名前はいまの状態の見出しに残す（#601）。
+    const selected = value.phase === 'settled' ? value.applied : null;
     const describedBy = liveModeNoteIds(model, embedded, false).join(' ') || undefined;
     return <SegmentedControl label={t('liveBar.mode')} describedBy={describedBy} value={selected}
-        onValueChange={mode => { if (mode !== 'custom') void model.select(mode); }}
+        onValueChange={mode => { void model.select(mode); }}
         options={[
             { value: 'singing' as const, label: <><MdMusicNote aria-hidden="true" className="h-4 w-4" />{t('liveBar.singing')}</>, disabled: model.busy || model.changesBlocked || !value.definitions.singing },
             { value: 'talk' as const, label: <><MdMic aria-hidden="true" className="h-4 w-4" />{t('liveBar.talk')}</>, disabled: model.busy || model.changesBlocked || !value.definitions.talk },
-            { value: 'custom' as const, label: t('liveBar.custom'), readOnly: true, hint: t('liveBar.customHint') },
         ]} />;
 }
 

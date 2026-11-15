@@ -56,7 +56,10 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         const live = page.getByRole('region', { name: message('ja', 'home.now'), exact: true });
         const modes = page.getByRole('region', { name: message('ja', 'band.label'), exact: true }).getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
         for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
-        await expect(modes.locator('[aria-current=true]')).toHaveText(message('ja', 'liveBar.custom'));
+        await expect(modes.getByRole('radio', { checked: true })).toHaveCount(0);
+        await expect(modes.getByText(message('ja', 'liveBar.custom'))).toHaveCount(0);
+        const customHeading = live.getByRole('heading', { name: message('ja', 'liveBar.custom'), exact: true });
+        await expect(customHeading).toHaveAttribute('title', message('ja', 'liveBar.customHint'));
         await expect(page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
@@ -122,11 +125,11 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
     await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
     const modes = page.getByRole('region', { name: message('ja', 'band.label'), exact: true }).getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
-    const custom = modes.locator('[aria-current=true]');
-    expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);
+    await expect(modes.getByRole('radio', { checked: true })).toHaveCount(0);
+    const marker = modes.locator('[data-segment-indicator]');
+    await expect(marker).toHaveCSS('opacity', '0');
     await modes.getByRole('radio', { name: '歌', exact: true }).click();
     await expect(modes.getByRole('radio', { name: '歌', exact: true })).toHaveAttribute('aria-checked', 'true');
-    const marker = modes.locator('[data-segment-indicator]');
     // 拡大時の境界線は物理ピクセルに丸められるため、CSS上の厳密な3px比較はしない。
     expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
