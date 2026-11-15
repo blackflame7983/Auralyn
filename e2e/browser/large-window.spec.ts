@@ -112,16 +112,17 @@ test('拡大後もクリック位置・ポップアップ・スライダー・�
 
         const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
         const track = await slider.evaluate(element => {
-            const rect = element.parentElement!.getBoundingClientRect();
+            // つまみの親はつまみの位置で動くので、スライダー全体（トラック）の右端を押す。
+            const rect = element.closest('#master-output-gain')!.getBoundingClientRect();
             return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         });
         const point = { x: track.x + track.width - 6, y: track.y + track.height / 2 };
         const sliderHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('#master-output-gain') != null, point);
         expect(sliderHit).toBe(true);
-        await slider.focus();
-        await page.keyboard.press('End');
+        // 負荷が高いと、起動直後の再描画でフォーカスが外れることがある。キー操作は要素に当てて送る。
+        await slider.press('End');
         await expect(slider).toHaveAttribute('aria-valuenow', '200');
-        await page.keyboard.press('Home');
+        await slider.press('Home');
         await expect(slider).toHaveAttribute('aria-valuenow', '0');
         await page.mouse.click(point.x, point.y);
         await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(100);

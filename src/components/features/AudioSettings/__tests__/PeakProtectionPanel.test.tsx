@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { peakProtectionApi, type PeakStatus } from '@/api/peakProtection';
 import { PeakProtectionPanel } from '../PeakProtectionPanel';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 const fixture = (enabled = false): PeakStatus => ({ config: { enabled, ceilingDb: -3, releaseMs: 150 }, running: true, pending: false, revision: '2', reductionDb: 0, addedLatencySamples: 0 });
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); vi.mocked(listen).mockClear(); });
@@ -21,6 +23,28 @@ it('読取りでは有効化せず、保持値を編集へ読み込み、明示�
     fireEvent.change(screen.getByRole('spinbutton', { name: message('ja', 'peak.ceiling') }), { target: { value: '' } });
     fireEvent.click(screen.getByRole('switch', { name: message('ja', 'peak.title') })); await act(async () => {});
     expect(request).toHaveBeenLastCalledWith({ enabled: false, ceilingDb: -3, releaseMs: 150 });
+});
+it.each(['ja', 'en'] as const)('音楽鑑賞の音量の保護は配信の話をせず、配信の表示はこれまでの文のまま（%s）', async locale => {
+    vi.spyOn(peakProtectionApi, 'request').mockResolvedValue(fixture());
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PeakProtectionPanel /></LocaleProvider>);
+    await act(async () => {});
+    const voice = screen.getByRole('region', { name: message(locale, 'peak.title') });
+    expect(voice).toHaveTextContent(message(locale, 'peak.lead'));
+    expect(voice).toHaveTextContent(message(locale, 'peak.scope'));
+    expect(voice).toHaveTextContent(message(locale, 'peak.limits'));
+    expect(voice).toHaveTextContent(message(locale, 'peak.limitsTitle'));
+    if (locale === 'ja') expect(voice).toHaveTextContent('配信');
+    await act(async () => { view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PeakProtectionPanel music /></LocaleProvider>); });
+    const music = screen.getByRole('region', { name: message(locale, 'peak.title') });
+    expect(music).toHaveTextContent(message(locale, 'peak.leadMusic'));
+    expect(music).toHaveTextContent(message(locale, 'peak.scopeMusic'));
+    expect(music).toHaveTextContent(message(locale, 'peak.limitsMusic'));
+    expect(music).toHaveTextContent(message(locale, 'peak.limitsTitle'));
+    expect(music).not.toHaveTextContent(message(locale, 'peak.lead'));
+    expect(music).not.toHaveTextContent(message(locale, 'peak.scope'));
+    expect(music).not.toHaveTextContent('配信');
+    expect(music).not.toHaveTextContent('OBS');
+    expect(music).not.toHaveTextContent('stream');
 });
 it('守る対象は開かずに読め、数値の詳細では詳しい設定が開き、適用はONにしない', async () => {
     const request = vi.spyOn(peakProtectionApi, 'request').mockImplementation(async config => ({ ...fixture(), config: config ?? fixture().config }));

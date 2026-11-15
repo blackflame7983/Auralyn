@@ -317,6 +317,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured
                             ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
+                        {/* 音楽鑑賞は、音を整える（VST）をいまの状態の直後に置く。配信・通話の順は変えない（#605）。 */}
+                        {configured && purpose === 'music' && soundChain}
                         {configured && purpose === 'music' && <MusicHomeDesk host={currentHost} sampleRate={currentSampleRate}
                             vstBypassed={isABBypassed} audioRunning={isEngineRunning} onCompare={() => { void handleABToggle(); }} onLoadPreset={onLoadPreset}
                             onOpenVst={onOpenVst ? () => onOpenVst(false) : undefined} />}
@@ -332,8 +334,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         /></div>
-                        {/* チェーン列は本番操作の後、準備や経路の情報より前に置く。未設定の間だけ準備の後ろへ回す。 */}
-                        {configured && soundChain}
+                        {/* 配信・通話のチェーン列は音の流れのあと、準備より前。音楽鑑賞は上でいまの状態の直後に置いた（#605）。未設定の間だけ準備の後ろへ回す。 */}
+                        {configured && purpose !== 'music' && soundChain}
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}

@@ -406,6 +406,31 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
     expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
 });
 
+it('音楽鑑賞のホームは、いまの状態、音を整える、再生の状態、音の流れ、接続の詳細の順（#605）', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
+    saveDisplayPurpose('music');
+    render(<AppShell {...commonProps} currentInput="再生アプリ" currentOutput="スピーカー"><p>rack</p></AppShell>);
+    const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const now = screen.getByRole('region', { name: 'いまの状態' });
+    const sound = screen.getByRole('region', { name: '音を整える' });
+    const playback = await screen.findByRole('region', { name: '再生の状態' });
+    // 接続の詳細の中にも同じ名前の図がある。ホームの帯は波形のキャンバスがある方。
+    const flow = screen.getAllByRole('region', { name: '音の流れ' }).find(region => region.querySelector('canvas'));
+    if (!flow) throw new Error('ホームの音の流れが見つかりません');
+    const connect = screen.getByRole('region', { name: '接続の確認' });
+    expect(within(now).getByRole('heading', { name: '再生アプリ → スピーカー' })).toBeInTheDocument();
+    expect(within(now).getByRole('meter', { name: '出力の大きさ' })).toBeInTheDocument();
+    expect(within(sound).getByRole('heading', { name: 'VST' })).toBeInTheDocument();
+    expect(sound).toHaveAttribute('data-purpose', 'music');
+    expect(follows(now, sound)).toBe(true);
+    expect(follows(sound, playback)).toBe(true);
+    expect(follows(playback, flow)).toBe(true);
+    expect(follows(flow, connect)).toBe(true);
+    expect(within(connect).getByRole('button', { name: '音のトラブルを診断' })).toBeInTheDocument();
+    expect(within(connect).getByRole('button', { name: '接続の詳細' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '音調整' })).not.toBeInTheDocument();
+});
+
 it('チェーン列は本番操作の後で音声チェックより前に置き、未設定の間だけ音の流れの後ろへ回す', () => {
     const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const view = render(<AppShell {...commonProps} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);

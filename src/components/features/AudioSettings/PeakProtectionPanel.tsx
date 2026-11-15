@@ -8,13 +8,15 @@ import { listen } from '@tauri-apps/api/event';
 import { peakProtectionApi, type PeakConfig, type PeakStatus } from '@/api/peakProtection';
 import { useMessages } from '@/i18n/LocaleProvider';
 
-export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, numericDetails = false, locked = false }: {
+export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, numericDetails = false, locked = false, music = false }: {
     onPendingChange?: (pending: boolean) => void;
     hideApplyNote?: boolean;
     /** 「数値の詳細を表示」が ON のときは、詳しい設定を開く。 */
     numericDetails?: boolean;
     /** 本番保護（操作ロック）の間は、スイッチと数値と適用を止める。 */
     locked?: boolean;
+    /** 音楽鑑賞では、配信の話をしない説明にする。動きと数値は変えない。 */
+    music?: boolean;
 } = {}) {
     const t = useMessages();
     const headingId = useId();
@@ -95,8 +97,8 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
             <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={setEnabled} aria-labelledby={headingId} aria-describedby={locked ? lockReasonId : undefined} />
         </div>
         {locked && <p id={lockReasonId} className="text-ui-support text-muted-foreground">{t('peak.liveLocked')}</p>}
-        <p className="text-ui-support text-muted-foreground">{t('peak.lead')}</p>
-        <p className="text-ui-support text-muted-foreground">{t('peak.scope')}</p>
+        <p className="text-ui-support text-muted-foreground">{t(music ? 'peak.leadMusic' : 'peak.lead')}</p>
+        <p className="text-ui-support text-muted-foreground">{t(music ? 'peak.scopeMusic' : 'peak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
         {stateNotes.length > 0 && <p role="status" className="text-ui-support">{stateNotes.join(' · ')}</p>}
         {ceilingText && <p className="text-ui-support">{ceilingText}</p>}
@@ -111,7 +113,7 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
                 <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('peak.apply')}</Button>
             </div>
         </details>
-        <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('peak.limitsTitle')}</summary><p className="mt-2">{t('peak.limits')}</p></details>
+        <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('peak.limitsTitle')}</summary><p className="mt-2">{t(music ? 'peak.limitsMusic' : 'peak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('peak.failed')}</p>}
     </section>;
 }

@@ -775,6 +775,16 @@ html[data-app-hidden="true"] *::after {
   .sound-tool-list:lang(en) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sound-tool-list:lang(en) > li:last-child { grid-column: 1 / -1; margin-top: 0.75rem; }
 }
+/* 音楽鑑賞は VST が1枚。日本語は 520px 以上で3列のままなので幅の3分の1になり、
+   英語の 520〜650px は :lang(en) が最後のカードだけ全幅にしていた（#605）。
+   言語と幅によらず並びの全幅にする。配信の3枚はこの上の規則のまま。 */
+.sound-chain[data-purpose="music"] .sound-tool-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sound-chain[data-purpose="music"] .sound-tool-list > li:last-child {
+  grid-column: auto;
+  margin-top: 0;
+}
 /* 日本語の声の種類（配信・低め・明瞭）は、ノイズの2択と同じボタン幅にすると960のカード（約164px）に3つ収まる。
    印は幅に含めない。文字は省略も折り返しもしない。 */
 .sound-chain .segment-option:lang(ja) {
