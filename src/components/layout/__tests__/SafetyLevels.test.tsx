@@ -20,6 +20,26 @@ it('出力のミュートは見えている名前で押せ、押した位置を�
     expect(onCheckOutput).toHaveBeenCalledWith(chip);
 });
 
+it('ミュートでないときは札を出さず、ミュートのときは札を出して判定を出さない', () => {
+    // #580: 札の分の空行を残さない。ミュート中は音が出ないので、判定の代わりに札を出す。
+    meter.state = 'live';
+    meter.levels = [0.1, 0.1];
+    meter.peak = [0.1, 0.1];
+    const view = render(<SafetyOutput running name="Speakers" muted={false} />);
+    expect(screen.queryByRole('button', { name: '出力ミュート・音量ゼロ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-output-verdict="ok"]')).not.toBeNull();
+    view.rerender(<SafetyOutput running name="Speakers" muted />);
+    const badge = screen.getByRole('status');
+    const chip = screen.getByRole('button', { name: '出力ミュート・音量ゼロ' });
+    expect(badge).toBeVisible();
+    expect(badge).toContainElement(chip);
+    expect(document.querySelector('[data-output-verdict]')).toBeNull();
+    expect(screen.queryByText('適正')).not.toBeInTheDocument();
+    expect(screen.queryByText('大きすぎ')).not.toBeInTheDocument();
+    expect(screen.queryByText('小さめ')).not.toBeInTheDocument();
+});
+
 it('稼働中の一言と dBFS はピーク保持で出し、停止中は一言を出さない', () => {
     meter.peak = [1, 1];
     meter.levels = [0.01, 0.01];
