@@ -76,6 +76,17 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
     const valuesInvalid = !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
     const enabled = status?.config.enabled ?? false;
     const applyDisabled = !status || busy || locked || valuesInvalid;
+    // ON と OFF は見出し横のスイッチだけが示す。状態の行は、読めない・反映途中・停止のときだけ残す。
+    const stateNotes: string[] = [];
+    if (!status) stateNotes.push(t('peak.unknown'));
+    else {
+        if (status.pending) stateNotes.push(t('peak.pending'));
+        if (!status.running) stateNotes.push(t('peak.stopped'));
+    }
+    // 天井と復帰時間、いま抑えた量は、「数値の詳細を表示」が ON のときだけ出す。天井の数値は保護が ON のときだけ。
+    const ceilingText = numericDetails && status?.config.enabled
+        ? `${status.config.ceilingDb.toFixed(1)} dBFS / ${status.config.releaseMs} ms`
+        : '';
     // 無効な数値のまま ON にはしない。OFF は保存済みの数値で止められる。本番保護中はどちらも止める。
     const switchDisabled = !status || busy || locked || (!enabled && valuesInvalid);
     return <section aria-label={t('peak.title')} className="p-4 rounded-card border space-y-3">
@@ -87,12 +98,9 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
         <p className="text-ui-support text-muted-foreground">{t('peak.lead')}</p>
         <p className="text-ui-support text-muted-foreground">{t('peak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
-        <p role="status" className="text-ui-support">{!status ? t('peak.unknown') : t(status.config.enabled ? 'peak.on' : 'peak.off')}
-            {status?.config.enabled && ` · ${status.config.ceilingDb.toFixed(1)} dBFS / ${status.config.releaseMs} ms`}
-            {status?.pending && ` · ${t('peak.pending')}`}
-            {status && !status.running && ` · ${t('peak.stopped')}`}
-        </p>
-        {status && <p className="text-ui-support">{t('peak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
+        {stateNotes.length > 0 && <p role="status" className="text-ui-support">{stateNotes.join(' · ')}</p>}
+        {ceilingText && <p className="text-ui-support">{ceilingText}</p>}
+        {numericDetails && status && <p className="text-ui-support">{t('peak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         <details open={detailsOpen} onToggle={event => setDetailsOpen(event.currentTarget.open)} className="text-ui-support">
             <summary className="cursor-pointer text-ui-control font-semibold">{t('peak.details')}</summary>
             <div className="mt-3 space-y-3">

@@ -80,6 +80,17 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
     const valuesInvalid = !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
     const enabled = status?.config.enabled ?? false;
     const applyDisabled = !status || busy || locked || valuesInvalid;
+    // ON と OFF は見出し横のスイッチだけが示す。状態の行は、読めない・反映途中・停止のときだけ残す。
+    const stateNotes: string[] = [];
+    if (!status) stateNotes.push(t('truePeak.unknown'));
+    else {
+        if (status.pending) stateNotes.push(t('truePeak.pending'));
+        if (!status.running) stateNotes.push(t('truePeak.stopped'));
+    }
+    // 天井と復帰時間、いま抑えた量は、「数値の詳細を表示」が ON のときだけ出す。天井の数値は保護が ON のときだけ。
+    const ceilingText = numericDetails && status?.config.enabled
+        ? `${status.config.ceilingDb.toFixed(1)} dBFS / ${status.config.releaseMs} ms`
+        : '';
     // 無効な数値のまま ON にはしない。OFF は保存済みの数値で止められる。本番保護中はどちらも止める。
     const switchDisabled = !status || busy || locked || (!enabled && valuesInvalid);
     if (hidden) return null;
@@ -92,12 +103,9 @@ export function BroadcastTruePeakPanel({ onPendingChange, hideApplyNote = false,
         <p className="text-ui-support text-muted-foreground">{t('truePeak.lead')}</p>
         <p className="text-ui-support text-muted-foreground">{t('truePeak.scope')}</p>
         {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
-        <p role="status" className="text-ui-support">{!status ? t('truePeak.unknown') : t(status.config.enabled ? 'truePeak.on' : 'truePeak.off')}
-            {status?.config.enabled && ` · ${status.config.ceilingDb.toFixed(1)} dBFS / ${status.config.releaseMs} ms`}
-            {status?.pending && ` · ${t('truePeak.pending')}`}
-            {status && !status.running && ` · ${t('truePeak.stopped')}`}
-        </p>
-        {status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
+        {stateNotes.length > 0 && <p role="status" className="text-ui-support">{stateNotes.join(' · ')}</p>}
+        {ceilingText && <p className="text-ui-support">{ceilingText}</p>}
+        {numericDetails && status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         {status && <p className="text-ui-support">{t('truePeak.latency', { samples: String(status.addedLatencySamples) })}</p>}
         {status?.config.enabled && !status.applied && <p className="text-ui-support">{t('truePeak.notApplied')}</p>}
         <details open={detailsOpen} onToggle={event => setDetailsOpen(event.currentTarget.open)} className="text-ui-support">
