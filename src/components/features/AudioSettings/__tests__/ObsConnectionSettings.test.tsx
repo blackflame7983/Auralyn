@@ -11,6 +11,14 @@ vi.mock('../ObsSafeSetup', () => ({ ObsSafeSetup: () => null }));
 vi.mock('sonner',()=>({toast:{info:vi.fn(),success:vi.fn(),error:vi.fn()}}));
 afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); localStorage.clear(); });
 const open = () => render(<ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} />);
+it.each(['ja', 'en'] as const)('OBS連携の最初の見出しは、接続ページと同じ名前にしない（%s）', locale => {
+    vi.mocked(invoke).mockResolvedValue(false);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} /></LocaleProvider>);
+    const heading = screen.getByRole('heading', { name: message(locale, 'obs.section.connect') });
+    expect(heading).toHaveTextContent(locale === 'ja' ? 'OBSへの接続' : 'Connect to OBS');
+    expect(heading.closest('section')).toHaveAttribute('aria-label', message(locale, 'obs.section.connect'));
+    expect(screen.queryByRole('heading', { name: locale === 'ja' ? '接続' : 'Connection', exact: true })).not.toBeInTheDocument();
+});
 it('保存済みの接続先を使い、失敗時に秘密を含むエラーを転記しない', async () => {
     localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: 'studio-pc', port: 5544 }));
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
