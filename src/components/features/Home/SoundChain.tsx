@@ -180,7 +180,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 body: vst, tier2: vstEditors }),
     ];
 
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} inert={unconfigured} aria-disabled={unconfigured || undefined}
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} data-purpose={music ? 'music' : 'voice'} inert={unconfigured} aria-disabled={unconfigured || undefined}
         className={cn('sound-chain mb-4 rounded-card bg-card px-5 py-4 min-[1100px]:px-6', unconfigured && 'text-muted-foreground')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
@@ -208,7 +208,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
-        <ol aria-label={t('flow.title')} className="sound-tool-list mt-3 grid grid-cols-3 gap-3">
+        <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3')}>
             {rows}
         </ol>
     </section>;
