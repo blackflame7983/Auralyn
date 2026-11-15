@@ -764,12 +764,16 @@ html[data-app-hidden="true"] *::after {
 .sound-eq-graph, .sound-vst-bars { width: 100%; height: 2.5rem; flex: 1 1 0%; min-width: 0; }
 .sound-visual-badge { font-size: 0.8125rem; line-height: 1.2; font-weight: 600; color: hsl(var(--foreground)); flex-shrink: 0; }
 /* 1列にするのは内側の幅が520px未満のとき。日本語の960×640と1024×768は3列。 */
-@container (max-width: 519px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 519px) {
+  .sound-tool-list { grid-template-columns: minmax(0, 1fr); }
+  /* 行の間隔は0にしているので、積んだカードどうしが接しないよう、2枚目から上に余白を置く。 */
+  .sound-tool-list > .sound-module-item ~ .sound-module-item { margin-top: 0.75rem; }
+}
 /* 英語は520〜650pxを2列にする。1段目はノイズ低減と声を整える、2段目は外部VSTが2列分（#586）。
    声の種類（Broadcast など）は単語の途中で切らない。 */
 @container (min-width: 520px) and (max-width: 650px) {
   .sound-tool-list:lang(en) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sound-tool-list:lang(en) > li:last-child { grid-column: 1 / -1; }
+  .sound-tool-list:lang(en) > li:last-child { grid-column: 1 / -1; margin-top: 0.75rem; }
 }
 /* 日本語の声の種類（配信・低め・明瞭）は、ノイズの2択と同じボタン幅にすると960のカード（約164px）に3つ収まる。
    印は幅に含めない。文字は省略も折り返しもしない。 */
