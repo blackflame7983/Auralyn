@@ -79,7 +79,8 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     const chain = screen.getByRole('list', { name: message(locale, 'flow.title') });
     const rows = within(chain).getAllByRole('listitem');
     expect(rows).toHaveLength(3);
-    const labels = locale === 'ja' ? ['ノイズ低減', '声を整える', 'VST'] : ['Noise reduction', 'Shape voice', 'VST'];
+    // 配信のカード名は、VST が入っていても外部VST。音楽鑑賞の「VST」は別の試験（#587）。
+    const labels = locale === 'ja' ? ['ノイズ低減', '声を整える', message('ja', 'chain.vstEmptyName')] : ['Noise reduction', 'Shape voice', message('en', 'chain.vstEmptyName')];
     labels.forEach((label, i) => expect(rows[i]).toHaveTextContent(label));
     expect(rows[0]).toHaveTextContent(message(locale, 'flow.enabled'));
     expect(rows[0].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
@@ -153,7 +154,7 @@ it('音楽鑑賞では有効な声向け処理の横から設定へ直接進め�
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.voiceTools') }));
     expect(screen.getByRole('dialog')).toHaveTextContent('声の処理：OFF ／ 残響：ON');
     for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[0]).not.toHaveTextContent(text);
-    expect(rows[0]).toHaveTextContent('VST');
+    expect(within(rows[0]).getByRole('heading', { level: 3 })).toHaveTextContent(message('ja', 'chain.vstName'));
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
     expect(screen.getByRole('button', { name: '詳しく調整' })).toBeInTheDocument();
@@ -237,21 +238,43 @@ it('音調整のカードは開閉せず、声の種類は2段目に常に出す
 });
 
 
-it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示にし、取得警告を出さない (%s)', locale => {
-    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: null, running: false }}>
-        <SoundChain {...props()} stopped audioReady isEngineRunning={false} />
-    </RuntimeStatsContext.Provider></LocaleProvider>);
+it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文を出し、VSTの名前は実行中と同じ (%s)', locale => {
+    // #587: 「—」をやめ、色は off のまま。配信の見出しは実行中の外部VSTと停止中で同じ。
+    const content = (stopped: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stopped ? null : stats(), running: !stopped }}>
+        <SoundChain {...props()} stopped={stopped} audioReady isEngineRunning={!stopped} />
+    </RuntimeStatsContext.Provider></LocaleProvider>;
+    const view = render(content(false));
+    const runningName = within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).textContent;
+    expect(runningName).toBe(message(locale, 'chain.vstEmptyName'));
+    view.rerender(content(true));
     const chain = screen.getByRole('list');
     const items = within(chain).getAllByRole('listitem');
     expect(items).toHaveLength(3);
+    const hint = message(locale, 'chain.stoppedHint');
     for (const item of items) {
-        expect(item).toHaveTextContent('—');
+        expect(item).toHaveTextContent(hint);
+        expect(item).not.toHaveTextContent('—');
         expect(item).not.toHaveTextContent(message(locale, 'shell.stopped'));
         expect(item.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'off');
     }
+    expect(within(items[2]).getByRole('heading', { level: 3 })).toHaveTextContent(runningName ?? '');
     expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
+});
+
+it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止中も同じ (%s)', locale => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const content = (stopped: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stopped ? null : stats(), running: !stopped }}>
+        <SoundChain {...props()} stopped={stopped} audioReady isEngineRunning={!stopped} />
+    </RuntimeStatsContext.Provider></LocaleProvider>;
+    const view = render(content(false));
+    const heading = () => within(screen.getByRole('listitem')).getByRole('heading', { level: 3 });
+    expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
+    view.rerender(content(true));
+    expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
+    expect(screen.getByRole('listitem')).toHaveTextContent(message(locale, 'chain.stoppedHint'));
+    expect(screen.getByRole('listitem')).not.toHaveTextContent('—');
 });
 
 
