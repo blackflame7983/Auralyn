@@ -207,9 +207,10 @@ describe('起動時の保存ゲイン復元', () => {
         } as EngineRuntimeStats);
         const view = render(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning={false} />);
         await act(async () => { finishListening(); });
-        // 停止の札はホームの「いまの状態」へ集約する。右の列では、メーター自身の状態の語だけが残る。
-        expect(screen.getAllByText('音声停止中').every(node => node.closest('[role="meter"]') !== null || node.classList.contains('invisible'))).toBe(true);
+        // #602: 右の列のメーターに停止の札は出さない。読み上げと、停止中のピークの横線は残す。
+        expect(screen.queryByText('音声停止中')).not.toBeInTheDocument();
         expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '音声停止中');
+        expect(screen.getByText('—')).toHaveAttribute('aria-label', expect.stringContaining('出力のピーク'));
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const details = screen.getByRole('button', { name: '音声処理の詳細' });

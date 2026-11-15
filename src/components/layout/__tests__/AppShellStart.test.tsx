@@ -52,6 +52,19 @@ currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
     expect(screen.getByText('音声処理中に使えます')).not.toHaveClass('sr-only');
 });
 
+it('停止中の「音声停止中」は上の帯といまの状態だけに出て、音調整の一文は1回だけ出る', () => {
+    // #602: メーター・声の流れ・音調整の各カードには同じ言葉を重ねない。右の列の出力は MasterBar の試験で見る。
+    render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Speakers" isEngineRunning={false} onStartAudio={vi.fn()}><p>rack</p></AppShell>);
+    const stopped = screen.getAllByText('音声停止中', { exact: true });
+    expect(stopped).toHaveLength(2);
+    expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
+    expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
+    expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
+    expect(screen.getAllByText('音声を開始すると表示・変更できます', { exact: true })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('音声停止中');
+    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('加工前');
+});
+
 it('未設定時は音の流れと次の1歩だけを示し、音声を自動変更しない（#297）', () => {
     const sound = vi.fn();
     const voice = vi.fn();

@@ -147,6 +147,10 @@ it.each(['ja', 'en'] as const)('稼働の札はいまの状態に置かず、実
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped onStartAudio={vi.fn()} startError="missing" liveControls={<span>controls</span>} /></LocaleProvider>);
     expect(now.querySelector('[data-now-incoming]')).toHaveAttribute('data-now-incoming', 'stopped');
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.stopped'));
+    const send = within(now).getByRole('meter', { name: message(locale, 'home.sendLevel') });
+    expect(send).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'meter.state.stopped')));
+    expect(send.querySelector('[data-meter-status]')).toBeNull();
+    expect(send.textContent).not.toContain(message(locale, 'meter.state.stopped'));
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(now.querySelector('.now-action')).not.toBeNull();
     expect(within(now).getByRole('button', { name: message(locale, 'home.startAudio') })).toBeVisible();

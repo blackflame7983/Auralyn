@@ -65,7 +65,7 @@ test.describe('段階4の停止中の画面記録', () => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
-        await expect(page.getByRole('region', { name: '声の流れ', exact: true }).locator('[data-flow-status="stopped"]')).toHaveText('音声停止中');
+        await expect(page.getByRole('region', { name: '声の流れ', exact: true }).locator('[data-flow-status="stopped"]')).toHaveAttribute('aria-label', /音声停止中/);
         await page.screenshot({ path: `${dir}/stopped-ja-960x640.png`, animations: 'disabled' });
     });
 });

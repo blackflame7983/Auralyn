@@ -64,6 +64,7 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
         </div>
         <DeviceName name={name} />
         <MeterVisual reading={reading} label={t('meter.output')} orientation="horizontal" height={16} fill="aurora" showValues statusOverlay numbers={false} />
-        <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground" aria-label={t('home.outputPeak')}>{formatPeakDbfs(peakHold)} dBFS</p>
+        {/* 停止中のピークは数字にせず、横線だけにする。停止であることはメーターの読み上げに残す（#602）。 */}
+        <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground" aria-label={reading.state === 'stopped' ? `${t('home.outputPeak')}（${t('meter.state.stopped')}）` : t('home.outputPeak')}>{reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}</p>
     </div>;
 }

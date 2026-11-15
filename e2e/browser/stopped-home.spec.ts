@@ -17,18 +17,30 @@ for (const theme of ['dark', 'light', 'gaming']) {
         const strip = page.getByRole('region', { name: 'いまの状態', exact: true });
         const band = page.getByRole('region', { name: '状態の帯', exact: true });
         await expect(band.getByText('音声停止中', { exact: true })).toHaveCount(1);
-        // 段階4で、停止中の入力状態と送る音をカードに同じ言葉で出す。帯の札は1つのまま。
+        // #602: 「音声停止中」の見た目は、上の帯といまの状態の入力の状態語だけ。メーターは空で、読み上げには残す。
+        await expect(page.getByText('音声停止中', { exact: true })).toHaveCount(2);
         await expect(strip.locator('[data-now-incoming="stopped"]')).toHaveText('音声停止中');
-        await expect(strip.getByRole('meter', { name: '送る音', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
+        const send = strip.getByRole('meter', { name: '送る音', exact: true });
+        await expect(send).toHaveAttribute('aria-valuetext', /音声停止中/);
+        await expect(send.locator('[data-meter-status]')).toHaveCount(0);
         const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
         await expect(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
         await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
+        await expect(column.locator('[role="meter"] [data-meter-status]')).toHaveCount(0);
+        await expect(column.getByText('—', { exact: true })).toBeVisible();
+        await expect(column.getByText('−∞ dBFS', { exact: true })).toHaveCount(0);
+        const flow = page.getByRole('region', { name: '声の流れ', exact: true });
+        await expect(flow.locator('[data-flow-status="stopped"]')).toHaveAttribute('aria-label', /音声停止中/);
+        await expect(flow.getByText('音声停止中', { exact: true })).toHaveCount(0);
+        await expect(flow.getByText('加工前', { exact: true })).toHaveCount(0);
+        await expect(flow.getByText('加工後', { exact: true })).toHaveCount(0);
         const chain = page.getByRole('region', { name: '音調整', exact: true });
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);
         await expect(chain.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        // #587: 停止中の「—」をやめ、開始すると表示・変更できる一文にする。VSTの見出しは配信の外部VST。
-        await expect(chain.getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(3);
+        // #602: 開始すると表示・変更できる一文は、3枚の上に1回。VSTの見出しは配信の外部VST。
+        await expect(chain.getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(1);
+        await expect(chain.getByRole('listitem').getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(0);
         await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);

@@ -107,16 +107,16 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {t(vstKnownEmpty ? 'chain.vstAdd' : 'sound.openVst')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </Button>;
 
-    // 停止中は「—」にせず、開始すると見られる一文にする。色は off のまま（#587）。
+    // 停止中の一文はカードごとではなく、並びの上に1回だけ出す（#602）。
     const stoppedHint = t('chain.stoppedHint');
-    const noiseSummary = stopped ? stoppedHint : live
+    const noiseSummary = stopped ? undefined : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
-    const builtinSummary = stopped ? stoppedHint : deesserOnly ? t('flow.deesserOnly')
+    const builtinSummary = stopped ? undefined : deesserOnly ? t('flow.deesserOnly')
         : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
         : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
-    const vstSummary = stopped ? stoppedHint : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
+    const vstSummary = stopped ? undefined : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
     // 音楽鑑賞の見出しはこれまで「VST」。配信は空のときの「外部VST」。用途ごとに1つにし、実行中と停止中で変えない。
     const vstCardName = t(music ? 'chain.vstName' : 'chain.vstEmptyName');
 
@@ -125,18 +125,20 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         action?: ReactNode; info?: ReactNode; body?: ReactNode; tier2?: ReactNode;
     }) => {
         const Icon = key === 'noise' ? MdFilterAlt : key === 'builtin' ? MdGraphicEq : MdExtension;
-        const showBody = !unconfigured && !stopped ? body : key === 'vst' && stopped ? vst : null;
+        const showBody = !unconfigured && !stopped ? body : null;
         const showAction = !unconfigured && (!stopped || key === 'vst') && action;
         return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || stopped ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
-            {/* 見出しはアイコン・名前・説明だけ。スイッチと追加・編集は状態の行の右端（収まらなければその下）に置く。 */}
+            {/* 見出しはアイコン・名前・説明だけ。スイッチと追加・編集は状態の行の右端（収まらなければその下）に置く。
+                停止中は名前の行だけにし、外部VSTの追加は名前の行の右に残す（#602）。 */}
             <div className="flex min-w-0 flex-col gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                     <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
                     <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className="home-card-name min-w-0 whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{name}</h3>
                     {!unconfigured && info}
+                    {stopped && showAction && <div className="ml-auto">{action}</div>}
                 </div>
-                {!unconfigured && <div className="sound-card-status">
-                    <StatusDot tone={stopped ? 'off' : statusTone} className={cn('text-ui-support text-muted-foreground', stopped && 'sound-card-stopped')}>{summary}</StatusDot>
+                {!unconfigured && !stopped && <div className="sound-card-status">
+                    <StatusDot tone={statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>
                     {showAction && <div className="sound-card-action">{action}</div>}
                 </div>}
             </div>
@@ -202,6 +204,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>
             </div>}
         </div>
+        {stopped && !unconfigured && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}

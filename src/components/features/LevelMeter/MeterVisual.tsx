@@ -29,7 +29,9 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
     const text = current ? `${Number.isFinite(db) ? db.toFixed(1) : '−∞'} dBFS` : t(meterStatusLabel(reading.state));
     const statusText = t(meterStatusLabel(reading.state));
     const accessibleText = `${reading.state === 'silent' ? t('meter.silentLevel', { state: statusText, level: text }) : text}${reading.clipped ? ` — ${t('meter.clip')}` : ''}`;
-    const displayText = orientation === 'horizontal' && reading.state !== 'live'
+    // 停止中はバーへ「音声停止中」を重ねない。読み上げは aria-valuetext に残す（#602）。
+    const quietStopped = statusOverlay && reading.state === 'stopped';
+    const displayText = quietStopped ? '' : orientation === 'horizontal' && reading.state !== 'live'
         ? t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingShort' : meterStatusLabel(reading.state))
         : current && numbers ? text : '';
     const bars = orientation === 'horizontal' ? [Math.max(...reading.levels)] : reading.levels;
@@ -80,7 +82,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
                 </div>;
             })}
             {/* 文字の背面を不透明にし、目盛りや減衰中の色と重なっても読めるようにする。 */}
-            {horizontalStatus && empty && <span title={accessibleText} data-meter-status
+            {horizontalStatus && empty && !quietStopped && <span title={accessibleText} data-meter-status
                 className="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center rounded bg-background px-1 text-xs leading-4 text-muted-foreground">{displayText}</span>}
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
                 {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}

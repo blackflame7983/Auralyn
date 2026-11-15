@@ -189,7 +189,13 @@ it.each(['ja', 'en'] as const)('本番帯の横メーターは状態行を増や
         // 値欄とクリップの場所は従来の横並びのまま。状態では新しい行を作らない。
         expect(meter.nextElementSibling).toHaveClass('basis-[12ch]', 'h-4', 'overflow-hidden');
         expect(meter.parentElement?.lastElementChild).toHaveClass('h-5', 'w-6');
-        if (state !== 'live') {
+        if (state === 'stopped') {
+            // #602: 停止の札はバーに重ねない。読み上げだけ残す。
+            expect(meter.querySelector('[data-meter-status]')).toBeNull();
+            expect(meter).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'meter.state.stopped')));
+            expect(meter.textContent).not.toContain(message(locale, 'meter.state.stopped'));
+            expect(meter.nextElementSibling).toHaveClass('invisible');
+        } else if (state !== 'live') {
             expect(meter.firstElementChild).toHaveClass('bg-muted/40');
             const status = meter.querySelector('[data-meter-status]');
             expect(status).toHaveClass('absolute', 'inset-y-0', 'bg-background', 'text-muted-foreground');
