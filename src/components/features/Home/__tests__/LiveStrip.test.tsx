@@ -207,6 +207,23 @@ it.each(['ja', 'en'] as const)('送る音の線のあいだは適正の範囲で
     expect(band.parentElement).toHaveAttribute('title', message(locale, 'home.levelRange'));
     expect(send).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'home.levelOk')));
     expect(send.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
+    expect(screen.queryByText(message(locale, 'home.levelOk'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('小さめと大きすぎは、いまの状態にも注意の色で出す (%s)', locale => {
+    meter.output = 'live';
+    meter.levels = [0.01, 0.01];
+    meter.peak = [0.2, 0.2];
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const low = screen.getByText(message(locale, 'home.levelLow'));
+    expect(low).toHaveAttribute('data-now-verdict', 'low');
+    expect(low).toHaveClass('text-warning');
+    meter.levels = [0.1, 0.1];
+    meter.peak = [0.8, 0.8];
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const high = screen.getByText(message(locale, 'home.levelHigh'));
+    expect(high).toHaveAttribute('data-now-verdict', 'high');
+    expect(high).toHaveClass('text-warning');
 });
 
 it('出力がミュートか音量ゼロのときは、その状態をカードに出す', () => {

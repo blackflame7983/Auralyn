@@ -30,10 +30,12 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
     const reading = useSharedMeter(running, 'output');
     const verdict = outputVerdict({ state: reading.state, smoothed: Math.max(0, ...reading.levels), peakHold: Math.max(0, ...reading.peak) });
     const verdictText = verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : verdict === 'ok' ? t('home.levelOk') : null;
+    // 適正は範囲の色で分かる。小さめと大きすぎだけ、いまの状態にも注意の色で出す（#668）。
+    const attention = verdict === 'high' || verdict === 'low';
     return <div className="flex min-w-48 flex-1 items-center gap-2">
         <span className="shrink-0 text-ui-support text-muted-foreground">{label}</span>
         <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} guideTitle={t('home.levelRange')} valueNote={verdictText ?? undefined} />
-        {verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium">{verdictText}</span>}
+        {attention && verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium text-warning">{verdictText}</span>}
     </div>;
 }
 
