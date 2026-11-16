@@ -1,5 +1,6 @@
 //! VST原音比較の経路変更を無音のcallback境界で行う。
 //! 遅延の異なるdry/wetを重ねず、各5 ms以上の短いfadeで波形の段差を抑える。
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
 
 pub(crate) struct Transition {
     requested: bool,

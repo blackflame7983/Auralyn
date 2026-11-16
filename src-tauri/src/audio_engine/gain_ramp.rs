@@ -1,4 +1,5 @@
 //! 音量の途中変更を、現在値から20 msでつなぐ無割当の線形ランプ。
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
 pub(crate) struct GainRamp {
     current: f32,
     target: f32,

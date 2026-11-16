@@ -1,5 +1,5 @@
 import { message } from '@/i18n/messages';
-import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import type { RoutingDiagnosticsReport } from '../api/audio';
 import { deviceDisplayName, findCableReceiver } from './audioRouting';
 

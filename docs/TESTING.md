@@ -2,6 +2,9 @@
 
 本アプリケーションの品質、安定性、および使いやすさを確認するための自動・手動テストの手順です。
 
+日常の入口は`npm run verify -- --changed`、全フロントは`--full`、Rustの関連検証は`--static --rust`。
+準備・出力・既存負債の扱いは[GARDENING](GARDENING.md)、機能からの探索は[feature-map](feature-map.md)を参照する。
+
 類似アプリとの比較やリソース使用量を含む評価の軸は [EVALUATION_CRITERIA.md](EVALUATION_CRITERIA.md) に定める。
 
 検証用のビルド・一時領域の作成と終了後の整理は [ビルド領域・容量管理](BUILD_GUIDE.md#ビルド領域容量管理) に従う。並行検証に必要な隔離と証跡を保ち、再生成可能な成果物を作業ごとに残し続けない。
@@ -57,13 +60,13 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 `.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
 
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
-Node.js 24とlockfileを使い、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
+Node.js 24・Python 3.12とlockfileを使い、設定指紋・ESLint・Ruff・検査器の試験、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
 単体・DOM・型・配布の `checks` と、本番ビルド・Chromium試験の `browser` を別runnerで並行実行する。
 最後の `frontend` は両jobの成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
 ブラウザ試験はCIでファイル単位の2並列とし、ファイル内の試験は直列を保つ。手元は既定1並列で、`--workers=2` を指定して同じ並列数を試せる。
 並列数・重複ケースの判断と代替ツールの試作は [2026-11-06の比較記録](CI_BROWSER_STUDY_2026-11-06.md) を参照する。
 ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
-失敗したブラウザの証拠は `ci-artifacts/browser` から7日間のartifactへ保存する。
+失敗したブラウザの証拠は`ci-artifacts/browser`、検証CLIの詳細は`test-results/gardening`から7日間のartifactへ保存する。
 既存証拠を含む `test-results` の初期化を避け、公開・デバイス開始・通常設定の変更は行わない。
 
 これらのjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。

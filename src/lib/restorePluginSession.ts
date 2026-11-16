@@ -1,6 +1,6 @@
 import { PluginClientError, defaultPluginMessages, type PluginNoticeFormatter } from './pluginNotice';
 import { audioApi, type RestorePluginRequest, type RestoredPlugin } from '../api/audio';
-import type { Plugin } from '../components/features/PluginRack/PluginCard';
+import type { Plugin } from './model/plugin';
 import type { PresetPlugin } from '../api/presets';
 import { toast } from 'sonner';
 import { claimLegacyClassWarning, pendingStorageValue, readPending, reportedChannelLayout, samePlugin, type PluginRef } from './pluginIdentity';

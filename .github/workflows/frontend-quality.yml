@@ -26,18 +26,21 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Unit and DOM tests
-        run: npm test -- --run --maxWorkers=4
-      - name: TypeScript
-        run: npx tsc --noEmit
-      - name: Browser test TypeScript
-        run: npx tsc --noEmit -p tsconfig.e2e.json
-      - name: UI terms
-        run: npm run lint:terms
-      - name: Distribution script tests
-        run: npm run test:release
-      - name: Release policy
-        run: npm run release:check
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Python static analyzer
+        run: python -m pip install --target node_modules/.cache/auralyn-python -r requirements-dev.txt
+      - name: Deterministic verification
+        run: npm run verify -- --full
+      - name: Preserve verification failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/gardening
+          if-no-files-found: ignore
+          retention-days: 7
 
   browser:
     runs-on: windows-latest

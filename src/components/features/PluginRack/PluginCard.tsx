@@ -19,20 +19,8 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-export interface Plugin {
-    id: string;
-    name: string;
-    path: string;
-    vendor: string;
-    version: string;
-    enabled: boolean;
-    hasEditor: boolean;
-    muted: boolean;
-    gain: number;
-    classId?: string;
-    /** 交渉済みの入出力。ステレオと未交渉は付けない。 */
-    channelLayout?: 'stereo' | 'mono' | 'monoToStereo';
-}
+import type { Plugin } from '@/lib/model/plugin';
+export type { Plugin } from '@/lib/model/plugin';
 
 function ChannelBadge({ layout }: { layout?: Plugin['channelLayout'] }) {
     const t = useMessages();

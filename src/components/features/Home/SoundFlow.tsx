@@ -6,7 +6,7 @@ import { useSharedMeter } from '../LevelMeter/MeterContext';
 /**
  * 波形を描くか、区画を出さないかを決める状態。
  * 入力か出力が live なら null（波形）。動いていなければ停止。動いていれば入力の状態。
- * silent は平らな波形を描く。stopped・waiting・stale は区画を出さない（#624、#639）。
+ * 区画の表示継続はSoundFlowが受信履歴から決める。waiting・staleでは最後の波形を保持する（#644）。
  */
 export function flowIdleState(running: boolean, input: MeterState, output: MeterState): MeterState | null {
     if (running && (input === 'live' || output === 'live')) return null;

@@ -1,4 +1,4 @@
-import { toDbfs, type MeterState } from '@/hooks/useMeterLevels';
+import { toDbfs, type MeterState } from './model/meter';
 
 /** 出力の一言。ピーク保持は 2 秒（メーターの peak）、平滑化は levels。 */
 export type OutputVerdict = 'low' | 'ok' | 'high';

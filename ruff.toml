@@ -1,0 +1,6 @@
+target-version = "py312"
+include = ["scripts/**/*.py"]
+extend-exclude = ["third_party", "node_modules", "src-tauri/target", "target"]
+
+[lint]
+select = ["E9", "F", "E722", "PGH003", "PGH004", "RUF100"]
