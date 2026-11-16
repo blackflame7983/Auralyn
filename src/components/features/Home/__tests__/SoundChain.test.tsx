@@ -287,8 +287,11 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
 
 it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前より先にONを出し、OFFのときはOFFのまま (%s)', locale => {
     const current = stats();
-    current.latencyMetadata!.stageBreakdown!.builtinVoiceEnabled = true;
-    current.latencyMetadata!.stageBreakdown!.builtinReverbEnabled = false;
+    const stage = current.latencyMetadata?.stageBreakdown;
+    expect(stage, '声の段の内訳').toBeTruthy();
+    if (!stage) return;
+    stage.builtinVoiceEnabled = true;
+    stage.builtinReverbEnabled = false;
     const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>
     </LocaleProvider>;
@@ -299,7 +302,7 @@ it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前�
     expect(row()).toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
     expect(row()).not.toHaveTextContent(locale === 'ja' ? '配信' : 'Broadcast');
     quick.chainOn = false;
-    current.latencyMetadata!.stageBreakdown!.builtinVoiceEnabled = false;
+    stage.builtinVoiceEnabled = false;
     view.rerender(content());
     expect(row()).toHaveTextContent(message(locale, 'flow.disabled'));
     expect(row()).not.toHaveTextContent(message(locale, 'chain.voiceOn', { name }));

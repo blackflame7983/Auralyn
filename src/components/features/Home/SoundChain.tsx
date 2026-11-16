@@ -1,15 +1,15 @@
 import { Button } from '@/components/ui/button';
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension, MdChevronRight } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useHiddenTierFocus } from '@/hooks/useHiddenTierFocus';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
-import { largeWindow } from '@/lib/largeWindow';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { noiseModeLabelKey } from '@/lib/noiseMode';
 import { BuiltinAmount, BuiltinPresets, BuiltinSwitch, NoiseQuick, NoiseSwitch, ToneGuide, useVoiceQuick } from './VoiceQuickControls';
@@ -43,34 +43,7 @@ interface Props {
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false, vstCount = null }: Props) {
     const t = useMessages();
-    // 2段目の出し分けは CSS の min-height。隠れた操作に焦点があるときだけ、カードの見出しへ移す。
-    useEffect(() => {
-        if (typeof window.matchMedia !== 'function') return;
-        const media = window.matchMedia(`(min-height: ${largeWindow.tier2MinHeight}px)`);
-        let tierHost: HTMLElement | null = null;
-        const onFocusIn = (event: FocusEvent) => {
-            const target = event.target;
-            if (!(target instanceof HTMLElement)) return;
-            const tier = target.closest<HTMLElement>('[data-home-tier="2"]');
-            if (tier) tierHost = tier;
-            else if (target !== document.body) tierHost = null;
-        };
-        const onChange = () => {
-            if (media.matches) return;
-            const active = document.activeElement;
-            const current = active instanceof HTMLElement ? active.closest<HTMLElement>('[data-home-tier="2"]') : null;
-            // display:none で焦点が body に落ちたときは、隠れる直前の2段目を見出しへ戻す。
-            const tier = current ?? (active === document.body && tierHost && tierHost.getClientRects().length === 0 ? tierHost : null);
-            tier?.closest('li')?.querySelector<HTMLElement>('h3')?.focus();
-            tierHost = null;
-        };
-        document.addEventListener('focusin', onFocusIn);
-        media.addEventListener('change', onChange);
-        return () => {
-            document.removeEventListener('focusin', onFocusIn);
-            media.removeEventListener('change', onChange);
-        };
-    }, []);
+    useHiddenTierFocus();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { stats, running } = useRuntimeStats();
