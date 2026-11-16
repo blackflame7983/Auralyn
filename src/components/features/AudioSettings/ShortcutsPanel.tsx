@@ -11,6 +11,7 @@ import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
 import { formatShortcut } from '@/lib/shortcutLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InfoPopover } from '@/components/ui/InfoPopover';
+import { MeasuredSaveBar, useSaveBarSlot } from './saveBarInset';
 
 import { shortcutActions as actions, type ShortcutAction as Action } from '@/lib/shortcutActions';
 type Values = Partial<Record<Action, string>>;
@@ -48,6 +49,7 @@ function normalized(value: string) {
 export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureChange?: (capturing: boolean) => void; onDirtyChange?: (dirty: boolean) => void } = {}) {
     const t = useMessages();
     const headingId = useId();
+    const saveSlot = useSaveBarSlot();
     const [values, setValues] = useState<Values>({});
     const [saved, setSaved] = useState<Values>({});
     // 起動時の登録失敗は値の変更と別に保持し、競合解消後の再登録を可能にする。
@@ -195,7 +197,7 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
         const modifier = [event.metaKey ? 'Super' : '', event.ctrlKey ? 'Control' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean).join('+');
         accept(`${modifier}+${event.code}`, action);
     };
-    return <section className="space-y-3 rounded-card border border-border p-4 pb-0">
+    return <section className={`space-y-3 rounded-card border border-border p-4 ${saveSlot ? '' : 'pb-0'}`}>
         <h3 className="text-ui-heading font-semibold text-left">{t('settings.ShortcutsPanel.378')}</h3>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1 text-ui-support text-muted-foreground">
@@ -252,10 +254,13 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
             </fieldset>;
         })}</div>
         </section>)}
-        <div className="sticky bottom-0 -mx-4 px-4 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
+        {/* 置き場があるときは一覧の外へ出す。無いときは、これまでどおり一覧の下に貼る。 */}
+        <MeasuredSaveBar relocate className={saveSlot
+            ? 'flex flex-wrap items-center gap-2 border-t border-border bg-muted/20 px-4 py-2'
+            : 'sticky bottom-0 -mx-4 px-4 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2'}>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</Button>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</Button>
             {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-ui-support">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
-        </div>
+        </MeasuredSaveBar>
     </section>;
 }

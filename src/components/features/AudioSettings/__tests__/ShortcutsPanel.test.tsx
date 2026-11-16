@@ -1,8 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ShortcutsPanel } from '../ShortcutsPanel';
+import { SaveBarScope } from '../saveBarInset';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 const initial = [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }];
@@ -579,10 +581,24 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
 });
 
 
-it('保存欄の下にパネルの余白を残さず、不透明な面で項目を覆う', async () => {
-    open();
-    const save = await screen.findByRole('button', { name: 'キー設定を保存' });
-    const footer = save.parentElement!;
-    expect(footer).toHaveClass('sticky', 'bottom-0', 'bg-card');
-    expect(footer.parentElement).toHaveClass('pb-0');
+it('保存欄は一覧の外へ出し、スクロールの中身に被さらない', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_shortcuts') return { bindings: initial, errors: [] };
+        if (command === 'begin_shortcut_capture') return '1';
+        return { bindings: [], errors: [] };
+    });
+    function PanelInPage() {
+        const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+        const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+        return <SaveBarScope scroller={scroller} slot={slot}>
+            <div ref={setScroller} className="overflow-y-auto"><ShortcutsPanel /></div>
+            <div ref={setSlot} />
+        </SaveBarScope>;
+    }
+    render(<PanelInPage />);
+    await waitFor(() => {
+        const save = screen.getByRole('button', { name: 'キー設定を保存' });
+        expect(save.closest('.overflow-y-auto')).toBeNull();
+        expect(save.parentElement).toHaveClass('bg-muted/20', 'border-t');
+    });
 });

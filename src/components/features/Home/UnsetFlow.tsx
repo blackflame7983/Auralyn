@@ -37,7 +37,8 @@ export function UnsetFlow({ usage, input, output, music = false, onSetup }: {
                     <span className="unset-flow-icon grid h-8 w-8 shrink-0 place-items-center rounded-full"><node.icon aria-hidden="true" className="h-4 w-4" /></span>
                     <span className="min-w-0">
                         <span className="block text-ui-support text-muted-foreground">{t(node.label)}</span>
-                        <span className="home-card-name block truncate" title={node.value}>{node.value ?? (node.state === 'next' ? t('unsetFlow.next') : <span aria-hidden="true">—</span>)}</span>
+                        {/* 機器名は1行に省略し、全文は title に残す。値が無い「ここを決める」は短く、省略せず全文を見せる（#637）。 */}
+                        <span className={`home-card-name block${node.value ? ' truncate' : ''}`} title={node.value}>{node.value ?? (node.state === 'next' ? t('unsetFlow.next') : <span aria-hidden="true">—</span>)}</span>
                     </span>
                 </Button>
                 {index < nodes.length - 1 && <span aria-hidden="true" className="unset-flow-link" data-lit={node.state === 'set' && nodes[index + 1].state === 'set'} />}

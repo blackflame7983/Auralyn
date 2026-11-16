@@ -40,6 +40,7 @@ import { OutputChannelSelector } from './OutputChannelSelector';
 import { readOutputRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { ShortcutsPanel } from './ShortcutsPanel';
+import { MeasuredSaveBar, SaveBarScope } from './saveBarInset';
 import { DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
@@ -275,6 +276,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, []);
 
   const settingsBody = useRef<HTMLDivElement>(null);
+  const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
+  const [saveSlot, setSaveSlot] = useState<HTMLDivElement | null>(null);
+  const bindScroller = useCallback((node: HTMLDivElement | null) => {
+    settingsBody.current = node;
+    setScrollerEl(current => current === node ? current : node);
+  }, []);
+  const bindSlot = useCallback((node: HTMLDivElement | null) => {
+    setSaveSlot(current => current === node ? current : node);
+  }, []);
   const pageHeading = useRef<HTMLHeadingElement>(null);
   const [headingNode, setHeadingNode] = useState<HTMLHeadingElement | null>(null);
   // 中央へ差し込むまでは見出しが無い。付いたときだけ焦点を移す。
@@ -606,6 +616,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           {activeTab === 'sound' && soundPlace === 'singing' && !musicSound && <SingingGuideHelp />}
           {musicSound && <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => requestOpenRack()}>{t('sound.openVst')}</Button>}
         </>} />
+        <SaveBarScope scroller={scrollerEl} slot={saveSlot}>
         <Tabs value={activeTab} onValueChange={value => chooseTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col">
           {/* レールが移動を持つときは、設定のページでだけ4区分を出す。単体で開いたときは、この画面の中で切り替える。 */}
           <TabsList hidden={!!onRequestTab && pageKind !== 'settings'} aria-label={t('rail.settings')} className="h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto">
@@ -616,7 +627,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <TabsTrigger className="text-ui-control" value="obs" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.obs')}</TabsTrigger>
             <TabsTrigger className="text-ui-control" value="system" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.system')}</TabsTrigger>
           </TabsList>
-          <div ref={settingsBody} className={`min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent ${activeTab === 'shortcuts' ? 'pb-0' : ''}`}>
+          <div ref={bindScroller} className="min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
           <TabsContent value="audio" className="space-y-4">
             {reviewRequired && <div className="rounded-control border border-input bg-muted p-3 text-ui-support space-y-2">
               <p>{t('settings.AudioSettingsModal.029')}</p>
@@ -1050,6 +1061,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             onClose={leavePage} onOpenWizard={onOpenWizard} onOpenLicense={onOpenLicense} handleRestart={handleRestart}
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
+          {/* ホットキーの保存欄は、ここへ出て一覧に被さらない（#641）。空のときは高さを持たない。 */}
+          <div ref={bindSlot} className="shrink-0 empty:hidden" />
         {showSingingBar && (
           <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
             <p className="settings-action-note text-ui-support text-muted-foreground">{singingDirty ? t('sound.unapplied') : t('sound.noChanges')}</p>
@@ -1057,7 +1070,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </div>
         )}
         {activeTab === 'audio' && !loading && (
-          <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
+          <MeasuredSaveBar className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
             {/* 音声が動いていて接続の変更があるときだけ、途切れることを押す前に示す。 */}
             <div className="settings-action-note space-y-1 text-left text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
@@ -1071,9 +1084,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               >
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </Button>
-          </div>
+          </MeasuredSaveBar>
         )}
         </Tabs>
+        </SaveBarScope>
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={renderNotice(t, confirmDialog.title)}
