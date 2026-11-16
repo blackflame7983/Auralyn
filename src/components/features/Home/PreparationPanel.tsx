@@ -120,9 +120,10 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         </ChoiceCard>)}
     </div>;
     // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。
+    // 畳んだ下の行は、送り先を先に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div className={open ? 'flex flex-wrap items-center justify-between gap-2' : 'home-route-row'}>
+            <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>
                 <h2 className={cn("home-title shrink-0", !open && "sr-only")}>{t('prep.title')}</h2>
                 {open && <InfoPopover docName="home.audio-check" label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>}
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
@@ -133,10 +134,13 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     {devices && <span className="min-w-0 text-muted-foreground">{devices}</span>}
                 </span>}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className={open ? 'flex flex-wrap items-center gap-2' : 'home-route-actions'}>
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
                 {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
-                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={() => {
+                {/* 名前の指定は入力欄を開くだけなので、音声が止まっていても押せる（#625）。受け側の確認はこれまでどおり音声が要る。 */}
+                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <Button variant="outline" size="sm" type="button" disabled={!audioReady && !routeNeedsTarget}
+                    // 受け側の確認は音声が要る。押せない理由を、ほかの無効の操作と同じ言い方で示す（#625）。
+                    title={!audioReady && !routeNeedsTarget ? t('header.compareNeedsAudio') : undefined} onClick={() => {
                     if (routeNeedsTarget) {
                         setUserOpen(true);
                         requestAnimationFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });

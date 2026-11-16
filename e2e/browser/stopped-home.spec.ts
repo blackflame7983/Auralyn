@@ -29,11 +29,8 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(column.locator('[role="meter"] [data-meter-status]')).toHaveCount(0);
         await expect(column.getByText('—', { exact: true })).toBeVisible();
         await expect(column.getByText('−∞ dBFS', { exact: true })).toHaveCount(0);
-        const flow = page.getByRole('region', { name: '声の流れ', exact: true });
-        await expect(flow.locator('[data-flow-status="stopped"]')).toHaveAttribute('aria-label', /音声停止中/);
-        await expect(flow.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        await expect(flow.getByText('加工前', { exact: true })).toHaveCount(0);
-        await expect(flow.getByText('加工後', { exact: true })).toHaveCount(0);
+        await expect(page.getByRole('region', { name: '声の流れ', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: '音量を測る', exact: true })).toHaveCount(0);
         const chain = page.getByRole('region', { name: '音調整', exact: true });
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);

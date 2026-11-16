@@ -1,12 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { meterPosition, meterStatusLabel, type MeterState } from '@/hooks/useMeterLevels';
+import { meterPosition, type MeterState } from '@/hooks/useMeterLevels';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 
 /**
- * 波形を描かないときの状態。
- * live のときだけ波形を描く。止まっているときは停止、動いているときは入力の状態を文字にする。
- * stale と waiting は、meterStatusLabel がどちらも「レベル未受信」にする。
+ * 波形を描くか、区画を出さないかを決める状態。
+ * 入力か出力が live なら null（波形）。動いていなければ停止。動いていれば入力の状態。
+ * silent は平らな波形を描く。stopped・waiting・stale は区画を出さない（#624、#639）。
  */
 export function flowIdleState(running: boolean, input: MeterState, output: MeterState): MeterState | null {
     if (running && (input === 'live' || output === 'live')) return null;
@@ -118,25 +118,38 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     const lastPaint = useRef<{ samples: Sample[]; flowing: boolean }>({ samples: [], flowing: false });
     const idle = flowIdleState(running, input.state, output.state);
     const live = idle === null;
+    const receiving = live || idle === 'silent';
+    // 無音は値が届いているので平らな波形を描く。停止中と、開始してからまだ値が届いていないあいだは
+    // 区画ごと出さない（#624、#639）。一度届いたら、受信待ち・更新停止になっても停止まで区画を残し、
+    // 最後の波形を止めて見せる。値の届き方が途切れるたびに区画が出入りして、ホームが跳ね続けるのを防ぐ（#644）。
+    const received = useRef(false);
+    received.current = running && (received.current || receiving);
+    const shown = received.current;
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!shown || !canvas) {
+            history.current = [];
+            return;
+        }
+        // 受信待ち・更新停止のあいだは、最後に描いた波形のまま止める。
+        if (!receiving) return;
         const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
         if (document.hidden) return;
         const sample = {
-            inn: live ? Math.max(0, ...input.levels) : 0,
-            out: live ? Math.max(0, ...output.levels) : 0,
+            inn: Math.max(0, ...input.levels),
+            out: Math.max(0, ...output.levels),
         };
-        // 動きを減らす設定と、停止・未稼働では時間の流れを描かない。
+        // 動きを減らす設定と、無音では時間の流れを描かない。無音は現在の値で横に伸ばす。
         const flowing = live && !reduced;
         history.current = flowing ? pushFlowSample(history.current, sample, true) : [];
-        const shown = !live ? [] : flowing ? history.current : [sample];
-        lastPaint.current = { samples: shown, flowing };
-        paint(canvas, shown, flowing);
-        canvas.dataset.flow = !live ? 'idle' : flowing ? 'time' : 'still';
-    }, [input, output, live]);
-    // 大きさが変わったときだけ、最後の値で描き直す。監視は一度だけ作る。
+        const samples = flowing ? history.current : [sample];
+        lastPaint.current = { samples, flowing };
+        paint(canvas, samples, flowing);
+        canvas.dataset.flow = flowing ? 'time' : live ? 'still' : 'flat';
+    }, [input, output, live, shown, receiving]);
+    // 見えているときだけ、大きさが変わった最後の値で描き直す。
     useEffect(() => {
+        if (!shown) return;
         const canvas = canvasRef.current;
         if (!canvas || typeof ResizeObserver === 'undefined') return;
         const observer = new ResizeObserver(() => {
@@ -145,8 +158,8 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         });
         observer.observe(canvas);
         return () => observer.disconnect();
-    }, []);
-    const stopped = idle === 'stopped';
+    }, [shown]);
+    if (!shown) return null;
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
         className="mb-3 rounded-card bg-card px-4 py-2">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -154,19 +167,14 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
             {action}
         </div>
         {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。
-            停止中は中央の言葉と凡例を出さず、凡例の高さだけ空けて波形欄は実行中と同じにする（#602）。 */}
+            無音の言葉はいまの状態のメーターに任せ、ここでは平らな波形と凡例だけを出す（#624、#639）。 */}
         <div className="flex h-[72px] flex-col">
             <div className="relative min-h-0 flex-1">
-                <canvas ref={canvasRef} role="img" data-flow-status={stopped ? 'stopped' : undefined}
-                    aria-label={stopped ? `${t('home.flowGraph')}（${t(meterStatusLabel('stopped'))}）` : t('home.flowGraph')} className="h-full w-full" />
-                {/* 点滅は付けない。動きを減らす設定でも、停止以外の状態は同じ文字のまま読める。 */}
-                {idle && !stopped && <p data-flow-status={idle} className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center justify-center text-center text-ui-control text-foreground">{t(meterStatusLabel(idle))}</p>}
+                <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
             </div>
-            <div data-flow-legend={stopped ? 'hidden' : 'shown'} className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
-            {!stopped && <>
+            <div data-flow-legend="shown" className="pointer-events-none flex h-5 shrink-0 items-center gap-3 text-ui-support text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-block h-0 w-4 border-t-[1.5px] border-foreground/70" />{t('home.flowBefore')}</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="meter-fill-aurora inline-block h-2 w-4 rounded-full" />{t('home.flowAfter')}</span>
-            </>}
             </div>
         </div>
     </section>;

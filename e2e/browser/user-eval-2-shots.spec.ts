@@ -20,6 +20,7 @@ test.describe('段階2の画面記録', () => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto('/?mock=live-home');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+        await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
         await expect(page.getByRole('button', { name: '音量を測る', exact: true })).toBeVisible();
         await page.screenshot({ path: `${dir}/home-ja-1024x768.png`, animations: 'disabled' });
     });

@@ -246,6 +246,8 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     const view = render(content(false));
     const runningName = within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).textContent;
     expect(runningName).toBe(message(locale, 'chain.vstEmptyName'));
+    // 実行中の名前行は、追加を折り返す停止中の行とは別に置く。
+    expect(within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).parentElement).not.toHaveClass('flex-wrap');
     view.rerender(content(true));
     const section = screen.getByRole('region', { name: message(locale, 'shell.sound') });
     const chain = screen.getByRole('list');
@@ -261,10 +263,27 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
         expect(item.querySelector('[data-tone]')).toBeNull();
     }
     expect(within(items[2]).getByRole('heading', { level: 3 })).toHaveTextContent(runningName ?? '');
-    expect(within(items[2]).getByRole('button', { name: message(locale, 'sound.openVst') })).toBeInTheDocument();
+    const add = within(items[2]).getByRole('button', { name: message(locale, 'sound.openVst') });
+    expect(add).toBeInTheDocument();
+    // 停止中は名前を縮めず、幅が足りなければ追加を次の行へ送る（#621）。実行中の名前行は折り返さない。
+    const stoppedNameRow = within(items[2]).getByRole('heading', { level: 3 }).parentElement;
+    expect(stoppedNameRow).toHaveClass('flex-wrap');
+    expect(stoppedNameRow).toContainElement(add);
+    expect(within(items[2]).getByRole('heading', { level: 3 })).not.toHaveClass('min-w-0');
     expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
+});
+
+it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2段目を描く（#623）', () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    expect(document.querySelector('[data-home-tier="2"]')).toBeNull();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}>
+        <SoundChain {...props()} audioReady vstEditors={<button type="button">画面を開く</button>} />
+    </RuntimeStatsContext.Provider>);
+    expect(document.querySelector('[data-home-tier="2"]')).toHaveTextContent('画面を開く');
+    expect(document.querySelector('[data-home-tier="2"]')).toHaveClass('border-t');
 });
 
 it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止中も同じ (%s)', locale => {

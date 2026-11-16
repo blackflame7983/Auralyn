@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { settleLayoutMotion } from './layoutMotion';
 import type { Page, Locator } from '@playwright/test';
 
 async function fixture(page: Page, configPresent = true, running = false, panelShown = true) {
@@ -170,9 +171,16 @@ test.describe('本番中の配信ミックスの配置', () => {
                 await fixture(page, true, true);
                 await page.goto('/');
                 const panel = await streamMix(page);
+                // 受信待ちのあいだ声の流れは無い。位置は、レベルが届いて区画が出てから測る（#624）。
+                await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+                await expect(page.getByRole('region', { name: '声の流れ', exact: true })).toBeVisible();
                 const main = page.locator('main');
-                // 起動画面の退場と区画の位置の補間（transform）が終わってから測る。
-                await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
+                // 起動画面の退場と、声の流れが出たあとの位置の補間が終わってから測る。
+                await settleLayoutMotion(page);
+                // 1回の通知は約1秒で更新停止になり、声の流れが消える。補間のあと、測る直前にもう一度届ける。
+                await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+                await expect(page.getByRole('region', { name: '声の流れ', exact: true })).toBeVisible();
+                await settleLayoutMotion(page);
                 const bounds = await panel.evaluate(el => {
                     const strip = document.querySelector('[aria-label="声の流れ"]')!;
                     const chain = document.querySelector('.sound-chain')!;
@@ -190,7 +198,11 @@ test.describe('本番中の配信ミックスの配置', () => {
                 await expect(panel.locator(':scope > details > summary')).not.toHaveCount(0);
                 for (const summary of await panel.locator(':scope > details > summary').all()) {
                     await expect(summary).toBeInViewport({ ratio: 1 });
-                    expect(await summary.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
+                    // 声の流れが出た直後の補間が、入口の中央を一瞬だけ覆うことがある。覆いが消えるまで見る。
+                    await expect.poll(() => summary.evaluate(el => {
+                        const rect = el.getBoundingClientRect();
+                        return el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+                    })).toBe(true);
                 }
                 expect(await main.evaluate(el => el.scrollTop)).toBe(0);
                 // 本番帯の既存の近道でも音量操作を続けられる。

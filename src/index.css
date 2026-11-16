@@ -830,6 +830,12 @@ html[data-app-hidden="true"] *::after {
 @media (min-height: 800px) {
   [data-home-tier="2"] { display: block; }
 }
+/* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
+[data-home-tier="2"]:empty {
+  display: none;
+  border-top-width: 0;
+  padding-top: 0;
+}
 @media (min-width: 1400px) {
   .home-content:has(> .home-connect-column) {
     max-width: 1480px;
@@ -856,6 +862,29 @@ html[data-app-hidden="true"] *::after {
 .settings-action-note {
   flex: 1 1 12rem;
   min-width: min(100%, 12rem);
+}
+/* ホーム下の行。送り先の1行は内容の幅を取り、足りなければボタン群を次の行へ送る（#622、#638）。
+   容器より長いときだけ、行の幅いっぱいで折り返す。細い列にはしない。 */
+.home-route-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+}
+.home-route-line {
+  flex: 1 1 max-content;
+  min-width: min(100%, max-content);
+  max-width: 100%;
+}
+.home-route-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
 }
 /* 接続の区画は fieldset のまま、見出しを枠線の上に乗せない。 */
 .page-section {

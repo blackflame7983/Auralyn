@@ -34,37 +34,45 @@ function matchMedia(matches: boolean) {
     vi.stubGlobal('matchMedia', () => ({ matches, addEventListener() {}, removeEventListener() {} }));
 }
 
-it('停止中は時間の流れを描かず、言葉と凡例は出さず、波形欄の高さは空のまま残す', () => {
-    // #602: 停止の言葉は出さない。読み上げには残し、凡例の段の高さは空けて波形欄を実行中と同じにする。
-    matchMedia(false);
-    render(<SoundFlow running={false} music={false} />);
-    const graph = screen.getByRole('img', { name: /加工前と加工後の音量/ });
-    expect(graph).toHaveAttribute('data-flow', 'idle');
-    expect(graph).toHaveAttribute('data-flow-status', 'stopped');
-    expect(graph).toHaveAttribute('aria-label', expect.stringContaining('音声停止中'));
-    const region = screen.getByRole('region', { name: '声の流れ' });
-    expect(region).not.toHaveTextContent('加工前');
-    expect(region).not.toHaveTextContent('加工後');
-    expect(region).not.toHaveTextContent('音声停止中');
-    const legend = region.querySelector('[data-flow-legend]');
-    expect(legend).toHaveAttribute('data-flow-legend', 'hidden');
-    expect(legend).toHaveClass('h-5');
-    expect(region.querySelector('.h-\\[72px\\]')).not.toBeNull();
-});
-
-it.each([
-    ['silent', '無音'],
-    ['waiting', 'レベル未受信'],
-    ['stale', 'レベル未受信'],
-] as const)('入力が %s のときは波形を描かず、その状態の言葉を出す', (state, label) => {
+it.each(['stopped', 'waiting', 'stale'] as const)('入力が %s のときは声の流れの区画を出さない（#624、#639）', state => {
     matchMedia(false);
     meter.state = state;
+    const { container } = render(<SoundFlow running={state !== 'stopped'} music={false} action={<button type="button">音量を測る</button>} />);
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '音量を測る' })).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+});
+
+it('一度値が届いたら、受信待ち・更新停止になっても停止まで区画を残す（#644）', () => {
+    matchMedia(false);
+    meter.state = 'live';
+    const view = render(<SoundFlow running music={false} />);
+    expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
+    for (const state of ['stale', 'waiting', 'live', 'stale'] as const) {
+        meter.state = state;
+        view.rerender(<SoundFlow running music={false} />);
+        expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
+    }
+    meter.state = 'stopped';
+    view.rerender(<SoundFlow running={false} music={false} />);
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+    // 停止のあと開き直した直後は、値が届くまで出さない。
+    meter.state = 'waiting';
+    view.rerender(<SoundFlow running music={false} />);
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+});
+
+it('無音のときは平らな波形と凡例を描き、無音の言葉は出さない（#624）', () => {
+    matchMedia(false);
+    meter.state = 'silent';
     render(<SoundFlow running music={false} />);
     const region = screen.getByRole('region', { name: '声の流れ' });
-    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'idle');
-    expect(region.querySelector('[data-flow-status]')).toHaveAttribute('data-flow-status', state);
-    expect(region.querySelector('[data-flow-status]')).toHaveTextContent(label);
-    expect(region.querySelector('[data-flow-status]')).not.toHaveClass('animate-pulse');
+    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'flat');
+    expect(region).not.toHaveTextContent('無音');
+    expect(region.querySelector('[data-flow-status]')).toBeNull();
+    expect(region.querySelector('[data-flow-legend]')).toHaveAttribute('data-flow-legend', 'shown');
+    expect(region).toHaveTextContent('加工前');
+    expect(region).toHaveTextContent('加工後');
 });
 
 it('live のときだけ波形を描き、状態の文字は出さない', () => {

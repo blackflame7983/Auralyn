@@ -30,24 +30,11 @@ export interface PurposeAllowance {
 }
 
 export const knownViolations: KnownViolation[] = [
-    // 停止中の外部VSTカードで、名前の上に「追加」が乗る。
-    { check: 'overlap', screen: 'home', state: 'stopped', purpose: 'voice', size: '900x600', locale: 'ja', match: '外部VST', issue: '#621' },
-    // 音楽鑑賞の VST カードは、中身の無い2段目の区切りを描いたままにする。配信ミックスはパネルを出さないので、同じホームが見える。
-    { check: 'separator', screen: 'home', state: 'live', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },
-    { check: 'separator', screen: 'stream-mix', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },
-
     // 未設定の「ここを決める」は title が無く、狭いカードではみ出す。1280×800 では収まる。
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'ja', match: 'ここを決める', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'ja', match: 'ここを決める', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'en', match: 'Choose this', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'en', match: 'Choose this', issue: '#637' },
-
-    // 停止中の英語だけ、送り先を指定するボタンが上の帯の経路に重なる。
-    { check: 'overlap', screen: 'home', state: 'stopped', purpose: 'voice', size: '1024x768', locale: 'en', match: 'Specify the destination', issue: '#638' },
-
-    // 実行中の英語で、声の流れと今の状態が同じ「レベル未受信」を言う。日本語は10文字未満なので対象外。
-    { check: 'duplicate', screen: 'home', state: 'live', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
-    { check: 'duplicate', screen: 'stream-mix', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
 
     // 接続ページの機器選択が、下に固定した保存の欄に重なる。1280 は出力、900 の英語は名前の長い入力。
     { check: 'overlap', screen: 'connect', size: '1280x800', match: 'CABLE Output', issue: '#640' },
