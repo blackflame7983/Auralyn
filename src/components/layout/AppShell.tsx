@@ -1,10 +1,14 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useGlobalBypass } from '@/hooks/useGlobalBypass';
+import { useClearedRuntimeStats } from '@/hooks/useClearedRuntimeStats';
 import { useMatchMedia } from '@/hooks/useMatchMedia';
+import { useStartErrorRecovery } from '@/hooks/useStartErrorRecovery';
+import { delay } from '@/hooks/internal/afterFrame';
 import { largeWindow } from '@/lib/largeWindow';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { renderClientError } from '@/lib/clientError';
 import { useUsageWindow } from '@/hooks/useUsageWindow';
-import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { actionWord, ChannelAction } from '../features/Home/ChannelAction';
@@ -15,12 +19,12 @@ import { SoundChain } from '../features/Home/SoundChain';
 import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useLayoutMotion } from '@/hooks/useLayoutMotion';
-import React, { ReactNode, useState, useCallback, useEffect, useRef } from 'react';
+import React, { ReactNode, useState, useRef } from 'react';
 import { deriveHomeChrome } from './homeChrome';
 import { AppRail, type RailDestination } from './AppRail';
 import { PageSlot } from './pageSlot';
 import { requestLeave } from './pageLeave';
-import { registerRackOpener } from './openRackBridge';
+import { useRackOpener } from './useRackOpener';
 import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
@@ -33,11 +37,8 @@ import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
 import { SafetyInput } from './SafetyLevels';
-import { audioApi } from '../../api/audio';
 import { AudioCheckIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
-import { listen } from '@tauri-apps/api/event';
 import {
     Tooltip,
     TooltipContent,
@@ -103,7 +104,6 @@ interface AppShellProps {
 
 import { MasterBar } from './MasterBar';
 import { MeterProvider } from '../features/LevelMeter/MeterContext';
-import type { EngineRuntimeStats } from '@/api/audio';
 import { RuntimeStatsContext } from './RuntimeStatsContext';
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -160,16 +160,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         catch (error) { setStartError(() => error); setStartPartiallyApplied(error instanceof HomeAudioStartError && error.started); }
         finally { startPending.current = false; setStarting(false); }
     };
-    useEffect(() => {
-        const recovered = () => { setStartError(null); setStartPartiallyApplied(false); };
-        window.addEventListener('audio-settings-started', recovered);
-        return () => window.removeEventListener('audio-settings-started', recovered);
-    }, []);
     const canStart = Boolean(onStartAudio && currentHost && currentInput && currentOutput);
     const [purpose] = useDisplayPurpose();
     useUsageWindow(purpose);
-    const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
-    useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
+    const [runtimeStats, setRuntimeStats] = useClearedRuntimeStats(isEngineRunning);
     const shellRef = useRef<HTMLDivElement>(null);
     const mainRef = useRef<HTMLElement>(null);
     const listenButton = useRef<HTMLButtonElement>(null);
@@ -179,9 +173,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
     // イベント・定期取得のどちらで復旧しても開始失敗を解除する。開始後の反映失敗は残す。
-    useEffect(() => {
-        if (audioReady && !startPartiallyApplied) setStartError(null);
-    }, [audioReady, startError, startPartiallyApplied]);
+    useStartErrorRecovery(audioReady, startError, startPartiallyApplied, setStartError, setStartPartiallyApplied);
     const startErrorDetail = startError === null ? null : renderClientError(t,
         startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
@@ -189,8 +181,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
     const requestId = useRef(0);
-    // 音づくりなど、シェルの外から VST のページを開く。
-    useEffect(() => registerRackOpener(() => { onOpenVst?.(false); }), [onOpenVst]);
+    useRackOpener(onOpenVst);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
@@ -199,16 +190,19 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
     // 開いた後の測定・停止・閉じるはパネル側に集める。押せない理由は画面にも出し、押せるときの対象範囲は読み上げだけにする。
-    const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
+    const music = purpose === 'music';
+    const measureName = t(music ? 'music.measureLevel' : 'shell.loudness');
+    const measureScope = t(music ? 'music.measurementScope' : 'loudness.scope');
+    const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : music ? 'music.measureLevel' : 'loudness.startAction');
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
-        <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+        <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : measureScope}</span>
         <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><ChannelAction aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
             aria-label={loudnessLabel}
-            word={actionWord(t('shell.loudness'))}
+            word={actionWord(measureName)}
             icon={<AudioCheckIcon className="h-[18px] w-[18px]" />}
-        /></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-ui-support">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
+        /></TooltipTrigger><TooltipContent><p>{measureName}</p><p className="max-w-64 text-ui-support">{measureScope}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const focusOutputControl = () => {
         const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
@@ -218,7 +212,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         if (!target) return;
         target.focus();
         target.dataset.attention = '';
-        window.setTimeout(() => { delete target.dataset.attention; }, 1200);
+        delay(1200, () => { delete target.dataset.attention; });
     };
     const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
@@ -238,38 +232,15 @@ export const AppShell: React.FC<AppShellProps> = ({
         purpose === 'music',
     ) : null;
     const elapsed = useSessionElapsed(isEngineRunning);
-    const [isABBypassed, setIsABBypassed] = useState(false);
-    const handleABToggle = useCallback(async () => {
-        try {
-            const next = !isABBypassed;
-            await audioApi.setGlobalBypass(next);
-            setIsABBypassed(next);
-            if (next) {
-                toast.warning(<LocalizedMessage id="shell.compareOn" />);
-            } else {
-                toast.success(<LocalizedMessage id="shell.compareOff" />);
-            }
-        } catch (e) {
-            console.error("A/B toggle failed", e);
-            toast.error(<LocalizedMessage id="shell.compareFailed" />);
-        }
-    }, [isABBypassed]);
-    // 音楽鑑賞のホームでは、再生の状態のカードが聴き比べの入口。
-    // 右の列は比較中だけ出し、どのページでも比較中は見える（whileActive と同じ）。
-    const compareInColumn = purpose === 'music' && page === 'home'
-        ? isABBypassed
-        : chrome.footer.compare === 'always' || isABBypassed;
+    const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass();
+    // 比較は配信も音楽鑑賞も、右の列に常に出す。未設定のホームだけ、比較中に限る。
+    const compareInColumn = chrome.footer.compare === 'always' || isABBypassed;
     // 止まっているあいだは比べられない。比較のオンオフはここでは変えない（#612）。
     const compareStopped = !isEngineRunning;
     const compareDescribedBy = [
         isABBypassed ? 'safety-compare-state' : '',
         compareStopped ? 'safety-compare-needs-audio' : '',
     ].filter(Boolean).join(' ') || undefined;
-
-    useEffect(() => {
-        const unlisten = listen<boolean>('global-bypass-changed', event => setIsABBypassed(event.payload));
-        return () => { void unlisten.then(stop => stop()); };
-    }, []);
 
     return (
         <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef}
@@ -315,13 +286,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 音楽鑑賞は、音を整える（VST）をいまの状態の直後に置く。配信・通話の順は変えない（#605）。 */}
                         {configured && purpose === 'music' && soundChain}
-                        {configured && purpose === 'music' && <MusicHomeDesk host={currentHost} sampleRate={currentSampleRate}
-                            vstBypassed={isABBypassed} audioRunning={isEngineRunning} onCompare={() => { void handleABToggle(); }} onLoadPreset={onLoadPreset}
-                            onOpenVst={onOpenVst ? () => onOpenVst(false) : undefined} />}
+                        {configured && purpose === 'music' && <MusicHomeDesk onLoadPreset={onLoadPreset} />}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
                         {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
@@ -345,6 +314,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             destinationRequest={destinationRequest}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
+                            host={currentHost} sampleRate={currentSampleRate}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onCheckOutput={focusOutputControl}

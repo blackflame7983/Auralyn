@@ -10,97 +10,85 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const renderDesk = (props: Partial<ComponentProps<typeof MusicHomeDesk>> = {}) => render(
     <LocaleProvider store={createLocaleStore(() => 'ja', () => true)}>
-        <MusicHomeDesk host="wasapi" sampleRate={44100} audioRunning vstBypassed={false} onCompare={vi.fn()} {...props} />
+        <MusicHomeDesk {...props} />
     </LocaleProvider>,
 );
 
-it('停止中は比較を無効にし、オンのままでも理由を結んで状態は変えない', async () => {
-    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
-    const compare = vi.fn();
-    renderDesk({ audioRunning: false, vstBypassed: true, onCompare: compare });
-    const toggle = await screen.findByRole('switch', { name: 'VSTを外して比較' });
-    expect(toggle).toBeDisabled();
-    expect(toggle).toBeChecked();
-    expect(toggle).toHaveAccessibleDescription('音声を開始すると使えます');
-    expect(screen.getByText('音声を開始すると使えます')).toBeVisible();
-    fireEvent.click(toggle);
-    expect(compare).not.toHaveBeenCalled();
-});
-
-it('再生の状態の見出しは、ほかのホームのカードと同じ home-title にする', async () => {
+it('保存した構成が無ければ、カードも案内も出さない', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     renderDesk();
-    const heading = await screen.findByRole('heading', { name: '再生の状態' });
-    expect(heading).toHaveClass('home-title');
-    expect(heading).not.toHaveClass('text-ui-heading');
+    await act(async () => {});
+    expect(screen.queryByRole('region', { name: '保存した構成' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'VSTのページを開く' })).not.toBeInTheDocument();
 });
 
-it('構成がなければ、VSTのページの保存へ案内する', async () => {
-    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
-    const open = vi.fn();
-    renderDesk({ onOpenVst: open });
-    expect(await screen.findByText(/設定の保存・復帰/)).toBeVisible();
-    expect(screen.getByText('WASAPI · 44.1 kHz')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'VSTのページを開く' }));
-    expect(open).toHaveBeenCalledOnce();
+it('保存した構成の見出しは、ほかのホームのカードと同じ home-title にする', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue(['夜']);
+    renderDesk();
+    const heading = await screen.findByRole('heading', { name: '保存した構成' });
+    expect(heading).toHaveClass('home-title');
+    expect(heading).not.toHaveClass('text-ui-heading');
+    expect(screen.queryByRole('switch', { name: 'VSTを外して比較' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/WASAPI/)).not.toBeInTheDocument();
 });
 
 it('一覧が取れないときは、空とは区別して理由を出す', async () => {
     vi.spyOn(presetApi, 'list').mockRejectedValue(new Error('offline'));
     renderDesk();
-    expect(await screen.findByRole('alert')).toHaveTextContent('保存した構成を読み込めませんでした。');
+    const desk = await screen.findByRole('region', { name: '保存した構成' });
+    expect(desk).toHaveTextContent('保存した構成を読み込めませんでした。');
     expect(screen.queryByRole('button', { name: 'VSTのページを開く' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 });
 
-it('切り替え中は操作を止め、失敗したら理由を出す', async () => {
+it('切り替え中は選択を止め、失敗したら理由を出す', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue(['夜']);
     let finish!: (value: boolean) => void;
     const load = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
-    const compare = vi.fn();
-    renderDesk({ onLoadPreset: load, onCompare: compare });
+    renderDesk({ onLoadPreset: load });
     const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
     fireEvent.change(select, { target: { value: '夜' } });
     expect(select).toBeDisabled();
-    expect(screen.getByRole('switch', { name: 'VSTを外して比較' })).toBeDisabled();
     expect(load).toHaveBeenCalledWith('夜');
-    fireEvent.click(screen.getByRole('switch', { name: 'VSTを外して比較' }));
-    expect(compare).not.toHaveBeenCalled();
     await act(async () => { finish(false); });
     expect(screen.getByRole('alert')).toHaveTextContent('プリセットの読み込みに失敗しました');
     expect(select).toBeEnabled();
 });
 
-it('切替前の自動退避は、保存した構成の一覧に出さない', async () => {
+it('切替前の自動退避だけなら、カードを出さない', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue(['__backup_previous']);
-    renderDesk({ onOpenVst: vi.fn() });
-    // 切替前の退避だけのときは、保存した構成がないときと同じ案内になる。
-    expect(await screen.findByText(/設定の保存・復帰/)).toBeVisible();
+    renderDesk();
+    await act(async () => {});
+    expect(screen.queryByRole('region', { name: '保存した構成' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '__backup_previous' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
 });
 
 it('利用者の構成を先に並べ、復旧の退避は自動の退避から元の名前で読み込む', async () => {
     const recovery = 'VST-recovery-f6051925-1234-4abc-8def-0123456789ab';
     vi.spyOn(presetApi, 'list').mockResolvedValue([recovery, '夜', 'VST-recovery-abc', '__backup_previous']);
     const load = vi.fn(async () => true);
-    renderDesk({ onLoadPreset: load, onOpenVst: vi.fn() });
+    renderDesk({ onLoadPreset: load });
     const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
     expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
     const options = [...select.querySelectorAll('option')].map(option => option.value);
     expect(options.indexOf('夜')).toBeLessThan(options.indexOf(recovery));
     expect(options.indexOf('VST-recovery-abc')).toBeLessThan(options.indexOf(recovery));
     const group = select.querySelector('optgroup');
+    if (!group) throw new Error('自動の退避が見つかりません');
     expect(group).toHaveAttribute('label', '自動の退避');
-    expect([...group!.querySelectorAll('option')].map(option => option.value)).toEqual([recovery]);
-    expect(group!.querySelector('option')?.textContent).toBe('VSTの復旧の退避（f6051925）');
+    expect([...group.querySelectorAll('option')].map(option => option.value)).toEqual([recovery]);
+    expect(group.querySelector('option')?.textContent).toBe('VSTの復旧の退避（f6051925）');
     expect(select.querySelector('option[value="VST-recovery-abc"]')?.parentElement).toBe(select);
     fireEvent.change(select, { target: { value: recovery } });
     expect(load).toHaveBeenCalledWith(recovery);
 });
 
-it('復旧の退避だけでも空の案内は出さず、一覧を出す', async () => {
+it('復旧の退避だけでもカードを出し、空の案内は出さない', async () => {
     const recovery = 'VST-recovery-f6051925-1234-4abc-8def-0123456789ab';
     vi.spyOn(presetApi, 'list').mockResolvedValue([recovery]);
-    renderDesk({ onOpenVst: vi.fn() });
+    renderDesk();
     const select = await screen.findByRole('combobox', { name: '保存したVSTの構成' });
     expect(screen.queryByText(/設定の保存・復帰/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'VSTのページを開く' })).not.toBeInTheDocument();

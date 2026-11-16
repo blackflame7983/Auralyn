@@ -51,9 +51,13 @@ test('音楽鑑賞は再生元から出力を示し、聴く音の大きさを�
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
     await page.goto('/');
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    await page.evaluate(() => {
+        const host: Window & { __e2eSetOutputMuted?: (muted: boolean) => void } = window;
+        host.__e2eSetOutputMuted?.(false);
+    });
     const now = page.getByRole('region', { name: 'いまの状態', exact: true });
-    await expect(now.getByRole('heading', { name: 'CABLE Output → スピーカー', exact: true })).toBeVisible();
+    await expect(now.getByRole('heading', { name: '音楽鑑賞', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '状態の帯', exact: true })).toContainText('CABLE Output → スピーカー');
     await expect(now.getByText('モード', { exact: true })).toHaveCount(0);
     await expect(now.getByText('再生元', { exact: true })).toBeVisible();
     await expect(now.getByRole('meter', { name: '出力の大きさ', exact: true })).toBeVisible();

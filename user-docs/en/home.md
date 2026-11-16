@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -91,21 +91,21 @@ Use “Output volume” to set the level. To silence the sound immediately, use 
 
 ### Current status {#music-stage}
 
-It shows the path from the playback source to the output and “Output level”.
+The heading is “Music listening”, with “Output level”. The path appears once, on the top band.
 
 The status, elapsed time, and audio path are on the top band. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
 
 “Lock controls” appears in the right column only while locked.
 
-“Audio flow” appears once sound starts coming in after you start audio. When audio is stopped or waiting, Current status shows the state.
+“Audio flow” appears after “Start listening”, once sound starts coming in. When audio is stopped or waiting, Current status shows the state.
 
-When setup is already finished, “Shape the sound” follows Current status, then “Playback”, then “Audio flow”.
+When setup is already finished, “Shape the sound” follows Current status, then “Saved setups” only when a setup is saved, then “Audio flow”.
 
-“Playback” includes the connection method, the sample rate, the switch for “Saved VST setup”, and “Bypass VST”.
+“Saved setups” only switches saved setups. The connection method and sample rate are in “Connection details”.
 
-While audio is stopped, the heading still uses the saved playback source and output shown on the band above. A running setup is used when one is active. The note beside Start audio names the playback source and the output. “Check playback” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
+The path on the top band prefers the running setup, and otherwise uses the saved playback source and output. The note beside the start button names the playback source and the output. “Check playback” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
 
-“Shape the sound” follows Current status, then “Playback”, “Audio flow”, and “Connection details”. Setups you saved come first. A backup made while recovering a VST layout is grouped afterward under “Automatic backups”. If you have neither a saved setup nor a backup, it points to “Save and restore settings” and offers “Open the VST page”. When only a backup is present, that list is shown instead of the empty guidance. While a setup is switching, the choice and the comparison stay unavailable. While audio is stopped, “Bypass VST” cannot be used. The reason is tied to the switch. While comparing, it also appears in the right column.
+Setups you saved come first. A backup made while recovering a VST layout is grouped afterward under “Automatic backups”. Switch them from “Saved VST setup”. If you have neither a saved setup nor a backup, this card stays hidden. While a setup is switching, the choice stays unavailable.
 
 While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
@@ -123,7 +123,7 @@ The output may also say “A bit low”, “In range”, or “Too loud”. The 
 
 ### Sound flow {#music-flow}
 
-One band stacks the level before processing and the level after. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure playback level” starts from the heading of this band.
 
 ### Shape the sound {#music-sound}
 
@@ -143,9 +143,9 @@ On a wide window, the connection column opens on the right of Home. On a narrow 
 
 ### Controls on the right {#music-output}
 
-The right column runs from “Emergency mute” and “Playback source” volume to “Output volume”. “Bypass VST” appears while comparing, and “Lock controls” appears while locked.
+The right column runs from “Emergency mute”, “Playback source” volume, and “Output volume” to “Bypass VST”. “Lock controls” also appears while locked.
 
-“Bypass VST” is in “Playback”, and it appears in the right column only while comparing.
+While audio is stopped, “Bypass VST” cannot be pressed. The reason is tied to the switch.
 
 “Bypass VST” bypasses the VST only.
 

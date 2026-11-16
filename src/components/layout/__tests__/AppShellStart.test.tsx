@@ -265,26 +265,30 @@ it('音量チェックは声の流れの見出し横に置き、明示要求だ�
     expect(measurementProps.current.request).toBe(start);
 });
 
-it('音楽鑑賞のホームから、構成の切り替えと聴き比べに1回で届く', async () => {
+it('音楽鑑賞のホームから、構成の切り替えと右の列の聴き比べに1回で届く', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue(['夜']);
     const load = vi.fn().mockResolvedValue(true);
     const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
     saveDisplayPurpose('music');
     render(<AppShell {...commonProps} currentSampleRate={48000} onLoadPreset={load}><p>rack</p></AppShell>);
-    const desk = await screen.findByRole('region', { name: '再生の状態' });
-    expect(desk).toHaveTextContent('WASAPI · 48 kHz');
+    const desk = await screen.findByRole('region', { name: '保存した構成' });
+    expect(desk).not.toHaveTextContent('WASAPI');
+    expect(within(desk).queryByRole('switch')).not.toBeInTheDocument();
     fireEvent.change(within(desk).getByRole('combobox', { name: '保存したVSTの構成' }), { target: { value: '夜' } });
     await waitFor(() => expect(load).toHaveBeenCalledWith('夜'));
     const compareName = message('ja', 'header.compare');
-    // 比較中でない音楽鑑賞のホームでは、右の列に比較を出さない。入口は再生の状態の同じ名前（#590）。
-    expect(document.getElementById('ab-compare-btn')).toBeNull();
-    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
-    await act(async () => { fireEvent.click(within(desk).getByRole('switch', { name: compareName })); });
-    expect(bypass).toHaveBeenCalledWith(true);
+    // 音楽鑑賞でも比較は右の列に常に出す。保存した構成には置かない（#653）。
     const column = document.getElementById('ab-compare-btn');
-    expect(column).toHaveAttribute('aria-checked', 'true');
-    expect(column).toHaveAccessibleName(compareName);
-    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(2);
+    if (!column) throw new Error('右の列の比較が見つかりません');
+    expect(column).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
+    await act(async () => { fireEvent.click(column); });
+    expect(bypass).toHaveBeenCalledWith(true);
+    expect(document.getElementById('ab-compare-btn')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
+    const details = screen.getByRole('button', { name: '接続の詳細' });
+    if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
+    expect(screen.getByText('WASAPI · 48 kHz')).toBeVisible();
 });
 
 it('停止中の右の列では、比較を無効にして理由を結ぶ', () => {
@@ -299,7 +303,7 @@ it('停止中の右の列では、比較を無効にして理由を結ぶ', () =
     expect(bypass).not.toHaveBeenCalled();
 });
 
-it('比較中のまま止めても、比較のオンオフは切り替えない', async () => {
+it('比較中のまま止めても、右の列の比較のオンオフは切り替えない', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
     saveDisplayPurpose('music');
@@ -310,15 +314,12 @@ it('比較中のまま止めても、比較のオンオフは切り替えない'
     expect(bypass).toHaveBeenCalledTimes(1);
     expect(bypass).toHaveBeenCalledWith(true);
     view.rerender(<AppShell {...props} isEngineRunning={false}><p>rack</p></AppShell>);
-    const switches = screen.getAllByRole('switch', { name: compareName });
-    expect(switches).toHaveLength(2);
-    for (const toggle of switches) {
-        expect(toggle).toBeDisabled();
-        expect(toggle).toHaveAttribute('aria-checked', 'true');
-        expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudio')));
-    }
-    fireEvent.click(switches[0]);
-    fireEvent.click(switches[1]);
+    const toggle = screen.getByRole('switch', { name: compareName });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveAttribute('title', message('ja', 'header.compareNeedsAudio'));
+    expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudio')));
+    fireEvent.click(toggle);
     expect(bypass).toHaveBeenCalledTimes(1);
 });
 
@@ -438,30 +439,70 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
     expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
 });
 
-it('音楽鑑賞のホームは、いまの状態、音を整える、再生の状態、音の流れ、接続の詳細の順（#605）', async () => {
+it('音楽鑑賞のホームは、見出しを音楽鑑賞にし、構成が無いときは保存した構成を出さない（#605、#651、#652）', async () => {
     meter.state = 'live';
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     saveDisplayPurpose('music');
-    render(<AppShell {...commonProps} currentInput="再生アプリ" currentOutput="スピーカー"><p>rack</p></AppShell>);
+    render(<AppShell {...commonProps} currentInput="再生アプリ" currentOutput="スピーカー" currentSampleRate={48000}><p>rack</p></AppShell>);
     const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const now = screen.getByRole('region', { name: 'いまの状態' });
     const sound = screen.getByRole('region', { name: '音を整える' });
-    const playback = await screen.findByRole('region', { name: '再生の状態' });
+    await act(async () => {});
+    expect(screen.queryByRole('region', { name: '保存した構成' })).not.toBeInTheDocument();
     // 接続の詳細の中にも同じ名前の図がある。ホームの帯は波形のキャンバスがある方。
     const flow = screen.getAllByRole('region', { name: '音の流れ' }).find(region => region.querySelector('canvas'));
     if (!flow) throw new Error('ホームの音の流れが見つかりません');
     const connect = screen.getByRole('region', { name: '接続の確認' });
-    expect(within(now).getByRole('heading', { name: '再生アプリ → スピーカー' })).toBeInTheDocument();
+    expect(within(now).getByRole('heading', { name: '音楽鑑賞' })).toBeInTheDocument();
+    expect(within(now).queryByRole('heading', { name: '再生アプリ → スピーカー' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '状態の帯' })).toHaveTextContent('再生アプリ → スピーカー');
     expect(within(now).getByRole('meter', { name: '出力の大きさ' })).toBeInTheDocument();
     expect(within(sound).getByRole('heading', { name: 'VST' })).toBeInTheDocument();
     expect(sound).toHaveAttribute('data-purpose', 'music');
     expect(follows(now, sound)).toBe(true);
-    expect(follows(sound, playback)).toBe(true);
-    expect(follows(playback, flow)).toBe(true);
+    expect(follows(sound, flow)).toBe(true);
     expect(follows(flow, connect)).toBe(true);
     expect(within(connect).getByRole('button', { name: '音のトラブルを診断' })).toBeInTheDocument();
-    expect(within(connect).getByRole('button', { name: '接続の詳細' })).toBeInTheDocument();
+    const details = within(connect).getByRole('button', { name: '接続の詳細' });
+    if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
+    expect(within(connect).getByText('WASAPI · 48 kHz')).toBeVisible();
     expect(screen.queryByRole('region', { name: '音調整' })).not.toBeInTheDocument();
+    expect(within(flow).getByRole('button', { name: '再生の音量を測る' })).toBeVisible();
+});
+
+it('保存した構成がある音楽鑑賞は、音を整えると音の流れのあいだに出す', async () => {
+    meter.state = 'live';
+    vi.spyOn(presetApi, 'list').mockResolvedValue(['夜']);
+    saveDisplayPurpose('music');
+    render(<AppShell {...commonProps} currentInput="再生アプリ" currentOutput="スピーカー"><p>rack</p></AppShell>);
+    const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const sound = screen.getByRole('region', { name: '音を整える' });
+    const playback = await screen.findByRole('region', { name: '保存した構成' });
+    const flow = screen.getAllByRole('region', { name: '音の流れ' }).find(region => region.querySelector('canvas'));
+    if (!flow) throw new Error('ホームの音の流れが見つかりません');
+    expect(follows(sound, playback)).toBe(true);
+    expect(follows(playback, flow)).toBe(true);
+});
+
+it('停止中の音楽鑑賞は、上の帯の経路に保存済みの名前を使い、動いている設定があればそちらを優先する（#598）', async () => {
+    saveDisplayPurpose('music');
+    const stopped = render(<AppShell {...commonProps} isEngineRunning={false} onStartAudio={vi.fn()} currentInput="CABLE Output" currentOutput="スピーカー"><p>rack</p></AppShell>);
+    const band = screen.getByRole('region', { name: '状態の帯' });
+    expect(band).toHaveTextContent('CABLE Output → スピーカー');
+    expect(screen.getByRole('heading', { name: '音楽鑑賞' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '聴き始める' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '音声を開始' })).not.toBeInTheDocument();
+    stopped.unmount();
+    vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({
+        is_running: false,
+        config: { host: 'WASAPI', input: 'Live In', output: 'Live Out', sample_rate: 48000, buffer_size: 256 },
+    } as Awaited<ReturnType<typeof audioApi.getAudioState>>);
+    const running = render(<AppShell {...commonProps} currentInput="CABLE Output" currentOutput="スピーカー"><p>rack</p></AppShell>);
+    await waitFor(() => expect(screen.getByRole('region', { name: '状態の帯' })).toHaveTextContent('Live In → Live Out'));
+    running.unmount();
+    render(<AppShell {...commonProps} isEngineRunning={false} currentInput="" currentOutput=""><p>rack</p></AppShell>);
+    expect(screen.getByRole('region', { name: '状態の帯' }).textContent ?? '').not.toContain('未設定 → 未設定');
+    expect(screen.getByRole('heading', { name: '音楽鑑賞' })).toBeVisible();
 });
 
 it('チェーン列は本番操作の後で音声チェックより前に置き、未設定の間だけ音の流れの後ろへ回す', () => {
