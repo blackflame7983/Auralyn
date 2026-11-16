@@ -31,6 +31,12 @@ Built-in processing that adjusts bass, volume differences and tone.
 
 Compare before and after processing in Voice Check.
 
+### Voice type {#term-voice-type}
+
+The name of the tone used while shaping your voice.
+
+The choices are Standard, Warm, and Bright. This is separate from sending sound to OBS.
+
 ### VST {#term-vst}
 
 An external plug-in that processes audio.

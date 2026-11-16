@@ -2,7 +2,7 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search", "Standard", "Warm", "Bright"]
 ---
 
 ## Noise reduction {#noise-reduction}
@@ -13,7 +13,7 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Byp
 
 ## Voice shaping {#voice-shaping}
 
-1. Adjust “Shape voice” in “Sound”. You can choose the type and amount while off. Choosing does not turn it on, and the sound does not change.
+1. Adjust “Shape voice” in “Sound”. The type names are “Standard”, “Warm”, and “Bright”. On Home, an enabled card shows ON before the type name. Off stays OFF. You can choose the type and amount while off. Choosing does not turn it on, and the sound does not change.
 2. Check changes to bass, volume differences and tone one at a time.
 3. Record and listen after each small change. If the voice becomes thin or sharp, reduce the adjustment and compare.
 

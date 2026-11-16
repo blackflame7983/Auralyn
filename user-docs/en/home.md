@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -55,7 +55,7 @@ Use “Shape voice” or VST effects to adjust your voice, then listen with Voic
 
 You can choose the strength, type, and amount while off. Choosing does not turn it on, and the sound does not change.
 
-On a tall window, the second row of each card shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the same controls from “Basics” on the Sound page and from the VST page.
+On a tall window, the second row of each card shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, “Detailed adjustments are on the Sound page.” under the sound section opens the Sound page.
 
 When no VST is loaded, open the page with “Add”. Otherwise use “Open VST”.
 
@@ -67,7 +67,7 @@ On and off for “Loudness protection” is the switch beside the heading. Ceili
 
 The standard folders cannot be removed. Add other places from “Folders to search”.
 
-Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. Open the “VST” page from the rail. When none are loaded, use “Add”. When the count is unknown, or at least one is loaded, use “Open VST”. While audio is stopped, one note under the heading replaces the status on each card. Each card keeps its name, and “Add” stays when no VST is loaded. Change one thing at a time and [listen](./sound.md#voice-check).
+Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. Open the “VST” page from the rail. When none are loaded, use “Add”. When the count is unknown, or at least one is loaded, use “Open VST”. While audio is stopped, one note under the heading says that noise reduction and voice shaping change after audio starts. Each card is only its name row and does not grow to the height of the card beside it. “Add” stays when no VST is loaded. Change one thing at a time and [listen](./sound.md#voice-check).
 
 ### Check the connection {#audio-check}
 
@@ -127,7 +127,7 @@ One band stacks the level before processing and the level after. The waveform is
 
 ### Shape the sound {#music-sound}
 
-When no VST is loaded, open the page with “Add”. Otherwise use “Open VST”.
+When no VST is loaded, open the page with “Add”. Otherwise use “Open VST”. The note about changing noise reduction and voice shaping is not shown here. “Add” stays available while audio is stopped.
 
 On and off for “Loudness protection” is the switch beside the heading. Ceiling and release are in “Detailed settings”.
 

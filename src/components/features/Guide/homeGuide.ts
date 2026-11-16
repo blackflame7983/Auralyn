@@ -34,6 +34,7 @@ export function homeGuideLabels(locale: Locale) {
         basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
         peakDetails: t('peak.details'),
         details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
+        tierLink: t('home.tierFallback'),
         add: t('chain.vstAdd'), openVst: t('sound.openVst'),
         settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
