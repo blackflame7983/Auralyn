@@ -12,7 +12,7 @@ import { knownViolations, purposeAllowances, type KnownViolation, type PurposeAl
 type State = 'live' | 'stopped' | 'unconfigured';
 type Purpose = 'voice' | 'music';
 type Locale = 'ja' | 'en';
-type ScreenId = 'home' | 'sound' | 'vst' | 'connect' | 'appearance' | 'shortcuts' | 'obs' | 'system' | 'stream-mix';
+type ScreenId = 'home' | 'sound' | 'sound-singing' | 'vst' | 'connect' | 'appearance' | 'shortcuts' | 'obs' | 'system' | 'stream-mix';
 
 interface Context {
     screen: ScreenId;
@@ -24,11 +24,13 @@ interface Context {
 
 const homeSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1024, height: 768, name: '1024x768' }, { width: 1280, height: 800, name: '1280x800' }];
 const pageSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1280, height: 800, name: '1280x800' }];
-const pageScreens: ScreenId[] = ['sound', 'vst', 'connect', 'appearance', 'shortcuts', 'obs', 'system', 'stream-mix'];
+const pageScreens: ScreenId[] = ['sound', 'sound-singing', 'vst', 'connect', 'appearance', 'shortcuts', 'obs', 'system', 'stream-mix'];
 
 const previewScreen: Record<ScreenId, string | null> = {
     home: null,
     sound: 'settings-sound',
+    // 音づくりの「歌向け」タブ。下に固定した保存の欄があるので、最後まで送って重なりを見る（#645）。
+    'sound-singing': 'settings-sound',
     vst: 'vst',
     connect: 'settings-audio',
     appearance: 'settings-appearance',
@@ -39,8 +41,8 @@ const previewScreen: Record<ScreenId, string | null> = {
 };
 
 const labels = {
-    ja: { nav: '行き先', sound: '音づくり', vst: 'VST', connect: '接続（オーディオの設定）', settings: '設定', appearance: '外観', shortcuts: 'ホットキー', obs: 'OBS連携', system: 'システム' },
-    en: { nav: 'Destinations', sound: 'Sound', vst: 'VST', connect: 'Connection (audio settings)', settings: 'Settings', appearance: 'Appearance', shortcuts: 'Hotkeys', obs: 'OBS', system: 'System' },
+    ja: { nav: '行き先', sound: '音づくり', singing: '歌向け', vst: 'VST', connect: '接続（オーディオの設定）', settings: '設定', appearance: '外観', shortcuts: 'ホットキー', obs: 'OBS連携', system: 'システム' },
+    en: { nav: 'Destinations', sound: 'Sound', singing: 'Singing', vst: 'VST', connect: 'Connection (audio settings)', settings: 'Settings', appearance: 'Appearance', shortcuts: 'Hotkeys', obs: 'OBS', system: 'System' },
 } as const;
 
 const configured = {
@@ -158,7 +160,7 @@ async function openScreen(page: Page, ctx: Context, width: number, height: numbe
     } else if (ctx.screen !== 'home') {
         const name = labels[ctx.locale];
         const nav = page.getByRole('navigation', { name: name.nav, exact: true });
-        if (ctx.screen === 'sound') await nav.getByRole('button', { name: name.sound, exact: true }).click();
+        if (ctx.screen === 'sound' || ctx.screen === 'sound-singing') await nav.getByRole('button', { name: name.sound, exact: true }).click();
         else if (ctx.screen === 'vst') await nav.getByRole('button', { name: name.vst, exact: true }).click();
         else if (ctx.screen === 'connect') await nav.getByRole('button', { name: name.connect, exact: true }).click();
         else if (ctx.screen === 'stream-mix') {
@@ -170,7 +172,21 @@ async function openScreen(page: Page, ctx: Context, width: number, height: numbe
             await expect(page.getByRole('tab', { name: name[ctx.screen], exact: true })).toHaveAttribute('data-state', 'active');
         }
     }
-    if (ctx.screen === 'sound') await expect(page.locator('[data-settings-page="sound"]')).toBeVisible();
+    if (ctx.screen === 'sound' || ctx.screen === 'sound-singing') await expect(page.locator('[data-settings-page="sound"]')).toBeVisible();
+    if (ctx.screen === 'sound-singing') {
+        const tab = page.getByRole('tab', { name: labels[ctx.locale].singing, exact: true });
+        await tab.click();
+        await expect(tab).toHaveAttribute('data-state', 'active');
+        // 保存の欄に最後の操作が潜らないかは、最後まで送った位置で見る。
+        await page.locator('[data-settings-page="sound"]').evaluate(root => {
+            for (let node: Element | null = root; node; node = node.parentElement) {
+                if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight) node.scrollTop = node.scrollHeight;
+            }
+            for (const node of root.querySelectorAll<HTMLElement>('*')) {
+                if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight) node.scrollTop = node.scrollHeight;
+            }
+        });
+    }
     if (ctx.screen === 'vst') await expect(page.locator('[data-vst-page]')).toBeVisible();
     if (ctx.screen === 'connect') await expect(page.locator('[data-settings-page="connect"]')).toBeVisible();
     if (ctx.screen === 'stream-mix' && ctx.purpose === 'voice') {
@@ -231,6 +247,8 @@ test.describe('画面の状態をまとめて開く', () => {
 
     for (const screen of pageScreens) {
         for (const purpose of ['voice', 'music'] as const) {
+            // 音楽鑑賞の音づくりには「歌向け」タブが無い。
+            if (screen === 'sound-singing' && purpose === 'music') continue;
             for (const locale of ['ja', 'en'] as const) {
                 test(`${screen} ${purpose} ${locale}`, async ({ page }) => {
                     const errors: string[] = [];
