@@ -535,6 +535,7 @@ body:has(.app-shell) {
 @media (max-height: 500px) { .setup-rail { width: 9rem; } }
 
 /* 未設定のホームの音の流れ（DESIGN.md 5.7）。未決定は破線、次に決める所は主色の線と静かな波紋、決定済みは塗り。 */
+.unset-flow { container-type: inline-size; container-name: unset-flow; }
 .unset-flow-list { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.5rem; }
 .unset-flow-node { position: relative; box-shadow: inset 0 0 0 1px hsl(var(--border)); transition: background-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
 .unset-flow-node:hover { background: hsl(var(--accent)); }
@@ -554,8 +555,9 @@ body:has(.app-shell) {
 .unset-flow-primary:active { transform: scale(0.97); }
 .unset-flow-arrow { transition: transform var(--motion-base) var(--ease-out); }
 .unset-flow-primary:hover .unset-flow-arrow { transform: translateX(4px); }
-/* 作業幅が狭いときは2列2段にし、つなぎの線は省く（音の順は読み上げの並びで保つ）。 */
-@media (max-width: 760px) {
+/* レールと右の列を除くと、900×600 や 1024×768 でもこの欄は狭い。
+   窓の幅ではなく欄の幅で2列にし、「ここを決める」を1行で収める（#637）。音の順は読み上げの並びで保つ。 */
+@container unset-flow (max-width: 52.5rem) {
   .unset-flow-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unset-flow-link { display: none; }
 }

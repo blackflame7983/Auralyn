@@ -30,12 +30,6 @@ export interface PurposeAllowance {
 }
 
 export const knownViolations: KnownViolation[] = [
-    // 未設定の「ここを決める」は title が無く、狭いカードではみ出す。1280×800 では収まる。
-    { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'ja', match: 'ここを決める', issue: '#637' },
-    { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'ja', match: 'ここを決める', issue: '#637' },
-    { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'en', match: 'Choose this', issue: '#637' },
-    { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'en', match: 'Choose this', issue: '#637' },
-
     // 音楽鑑賞の接続ページに、配信向けの欄が出る（用途の混ざり）。
     { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'ja', match: '自分用と配信用に分ける', issue: '#642' },
     { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'ja', match: '歌・モニター', issue: '#642' },
