@@ -1,10 +1,24 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
 
 // 下の行は経路を出さない。上の帯は送り先を残す。続きがある列は下端をぼかす（#669、#670、#671）。
 
 test.use({ liveHome: true, builtinEnabled: true });
+
+async function collapsedRow(prep: Locator) {
+    const row = await prep.evaluate(section => {
+        const line = section.querySelector('.home-route-row');
+        const button = section.querySelector('button');
+        if (!(line instanceof HTMLElement) || !(button instanceof HTMLElement)) return null;
+        return {
+            section: section.clientHeight,
+            buttonInset: button.getBoundingClientRect().x - line.getBoundingClientRect().x,
+        };
+    });
+    if (!row) throw new Error('畳んだ下の行が無い');
+    return row;
+}
 
 async function openHome(page: Page, size: { width: number; height: number }) {
     await page.setViewportSize(size);
@@ -21,7 +35,7 @@ async function openHome(page: Page, size: { width: number; height: number }) {
     });
 }
 
-test('900×600では送り先が見え、下の行は経路を出さず、続きは下端のフェードで示す', async ({ page }) => {
+test('900×600では送り先が見え、下の行は1行のまま。列が溢れると続きのフェードが出る', async ({ page }) => {
     await openHome(page, { width: 900, height: 600 });
     const route = page.locator('[data-route-box]');
     await expect(route).toHaveAttribute('title', /OBSで配信$/);
@@ -49,19 +63,18 @@ test('900×600では送り先が見え、下の行は経路を出さず、続き
     const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
     await expect(prep.locator('.home-route-line')).toHaveCount(0);
     await expect(prep).not.toContainText('→');
-    const register = prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true });
-    await expect(register).toBeVisible();
-    const places = await Promise.all([prep.boundingBox(), register.boundingBox()]);
-    const prepBox = places[0];
-    const buttonBox = places[1];
-    expect(prepBox).not.toBeNull();
-    expect(buttonBox).not.toBeNull();
-    if (prepBox && buttonBox) {
-        expect(prepBox.height).toBeGreaterThan(28);
-        expect(prepBox.height).toBeLessThan(120);
-        expect(buttonBox.x - prepBox.x).toBeLessThan(48);
-    }
+    await expect(prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true })).toBeVisible();
+    const row = await collapsedRow(prep);
+    expect(row.section).toBeGreaterThan(28);
+    expect(row.section).toBeLessThan(80);
+    expect(row.buttonInset).toBeLessThan(48);
 
+    // この組立では 900×600 の中央の列に縦の続きは無い。続きができたときだけフェードを出す。
+    const fitted = await page.locator('main.home-main').evaluate(element => element.scrollHeight - element.clientHeight);
+    expect(fitted).toBeLessThanOrEqual(1);
+    await expect(page.locator('[data-scroll-more]')).toBeHidden();
+
+    await page.setViewportSize({ width: 900, height: 420 });
     const fade = page.locator('[data-scroll-more]');
     await expect(fade).toBeVisible();
     await expect(fade).toHaveAttribute('aria-hidden', 'true');
@@ -77,17 +90,11 @@ for (const size of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }])
         await openHome(page, size);
         const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
         await expect(prep.locator('.home-route-line')).toHaveCount(0);
-        const register = prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true });
-        const places = await Promise.all([prep.boundingBox(), register.boundingBox()]);
-        const prepBox = places[0];
-        const buttonBox = places[1];
-        expect(prepBox).not.toBeNull();
-        expect(buttonBox).not.toBeNull();
-        if (prepBox && buttonBox) {
-            expect(prepBox.height).toBeGreaterThan(28);
-            expect(prepBox.height).toBeLessThan(size.width === 1280 ? 55 : 120);
-            expect(buttonBox.x - prepBox.x).toBeLessThan(48);
-        }
+        await expect(prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true })).toBeVisible();
+        const row = await collapsedRow(prep);
+        expect(row.section).toBeGreaterThan(28);
+        expect(row.section).toBeLessThan(80);
+        expect(row.buttonInset).toBeLessThan(48);
     });
 }
 
