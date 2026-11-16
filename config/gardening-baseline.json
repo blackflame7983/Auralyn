@@ -894,13 +894,6 @@
     {
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "47b09972bd3e1565b5877786df078e25c4bab81e25f6ff9bc9bbfa1fe74d9b8f",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
       "hash": "4b905ef8aa9d6c3d4065e186a9eb028b1a6f89c5fc9976f4d913da6ef8d2b91a",
       "count": 6,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -985,13 +978,6 @@
     {
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "47b09972bd3e1565b5877786df078e25c4bab81e25f6ff9bc9bbfa1fe74d9b8f",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "4b905ef8aa9d6c3d4065e186a9eb028b1a6f89c5fc9976f4d913da6ef8d2b91a",
       "count": 4,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -1036,13 +1022,6 @@
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "3f423bfc87e60a29a9817277ad9b392e447bc651024ea22a728ce8aa8f6c5619",
       "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "47b09972bd3e1565b5877786df078e25c4bab81e25f6ff9bc9bbfa1fe74d9b8f",
-      "count": 4,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -1098,13 +1077,6 @@
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "3f423bfc87e60a29a9817277ad9b392e447bc651024ea22a728ce8aa8f6c5619",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "47b09972bd3e1565b5877786df078e25c4bab81e25f6ff9bc9bbfa1fe74d9b8f",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
