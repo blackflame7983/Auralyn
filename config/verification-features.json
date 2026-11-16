@@ -1,0 +1,27 @@
+{
+  "connection": {
+    "sources": ["src/lib/audioChannelRouting.ts", "src/components/features/SetupWizard/", "src/components/features/AudioSettings/"],
+    "tests": ["src/lib/__tests__/routing.property.test.ts", "src/components/features/SetupWizard/__tests__/", "src/components/features/AudioSettings/__tests__/"],
+    "browser": ["e2e/browser/asio-routing.spec.ts", "e2e/browser/process-input.spec.ts"]
+  },
+  "home": {
+    "sources": ["src/components/features/Home/", "src/components/features/LevelMeter/", "src/components/layout/"],
+    "tests": ["src/components/features/Home/__tests__/", "src/components/features/LevelMeter/__tests__/", "src/components/layout/__tests__/"],
+    "browser": ["e2e/browser/home-actions.spec.ts", "e2e/browser/stopped-home.spec.ts", "e2e/browser/screen-matrix.spec.ts"]
+  },
+  "vst": {
+    "sources": ["src/components/features/PluginRack/", "src/components/features/PluginBrowser/", "src/hooks/usePlugins.ts"],
+    "tests": ["src/components/features/PluginRack/__tests__/", "src/components/features/PluginBrowser/__tests__/", "src/hooks/__tests__/"],
+    "browser": ["e2e/browser/vst-scan-folders.spec.ts", "e2e/browser/live-mode-vst.spec.ts"]
+  },
+  "voice-check": {
+    "sources": ["src/components/features/VoiceCheck/"],
+    "tests": ["src/components/features/VoiceCheck/__tests__/"],
+    "browser": ["e2e/browser/voice-check-summary.spec.ts"]
+  },
+  "restore": {
+    "sources": ["src/components/features/Presets/", "src/components/features/Recovery/", "src/lib/restorePluginSession.ts"],
+    "tests": ["src/components/features/Presets/__tests__/", "src/components/features/Recovery/__tests__/", "src/lib/__tests__/restorePluginSession.test.ts"],
+    "browser": ["e2e/browser/temporary-runtime.spec.ts", "e2e/browser/output-configuration.spec.ts"]
+  }
+}

@@ -3,7 +3,7 @@
 ## 対象環境
 
 - サポート対象は Windows 11 x64（READMEの契約に合わせる）。
-- Node.js 24 LTS 系と npm を推奨。2026-10-15の作業環境は Node 24.21.0 / npm 11.19.0。Vite 7などの `engines` を確認し、古いNode 18を前提にしない。
+- Node.js 24 LTS 系と npm を推奨。2026-11-17の作業環境は Node 24.22.1 / npm 11.19.1。現在のVite 8などの `engines` を確認し、古いNode 18を前提にしない。
 - Rust stable。`AtomicU64::try_update` を使うため1.95以降が必要。2026-10-28の確認環境は rustc / cargo 1.99.1。依存更新時には各crateのMSRVも確認する。
 - Microsoft C++ Build Tools、LLVM/Clang、ASIO SDK。固定SDK・対応ソースの扱いは `SOURCE-DISTRIBUTION.md` と `config/release-policy.json` を参照する。
 
@@ -35,6 +35,9 @@ npm run tauri dev
 MCPで実アプリを撮影・操作する場合は、通常起動ではなくデバッグ用設定を指定する。通常の `tauri dev` は意図的にグローバルTauri APIを公開しない。起動・接続確認・操作の手順は [TESTING.md](TESTING.md#tauri-mcp-による実アプリの確認) を参照する。
 
 ## 検証
+
+最初にPython 3.12以降で`python -m pip install --target node_modules/.cache/auralyn-python -r requirements-dev.txt`を実行する。Ruffはリポジトリのignored領域に固定版を入れる。CIは同じrequirementsをPython環境へ導入する。
+以後は`npm run verify -- --changed`、全フロント検証は`npm run verify -- --full`を使う。Rustのコンパイルと関連試験は`npm run verify -- --static --rust`。検証CLIは通常設定・音声開始・配布処理を呼ばない。詳細は[GARDENING.md](GARDENING.md)。
 
 ```powershell
 npm test -- --run

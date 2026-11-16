@@ -1,0 +1,13 @@
+disallowed-methods = [
+    { path = "std::thread::sleep", reason = "RT処理は待機できません。制御スレッドで待ち、callbackにはAtomicまたはringbufで通知してください。" },
+    { path = "std::sync::Mutex::lock", reason = "RT処理はブロックできません。起動時に確保した状態とAtomic/ringbufを使ってください。" },
+    { path = "std::fs::read", reason = "RT処理ではI/Oできません。commands::run_blockingかEngine制御スレッドで読み込んでください。" },
+    { path = "std::fs::write", reason = "RT処理ではI/Oできません。制御スレッドへ結果を渡してください。" },
+    { path = "std::vec::Vec::with_capacity", reason = "RT処理では確保できません。起動時にバッファを準備してください。" },
+    { path = "std::boxed::Box::new", reason = "RT処理では確保できません。起動時に状態を準備してください。" },
+]
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "RT状態はブロックしないAtomic/ringbufまたはcallback所有の状態にしてください。" },
+    { path = "std::fs::File", reason = "RT処理からファイルを扱えません。Engine制御スレッドに分離してください。" },
+    { path = "tauri::AppHandle", reason = "RT処理からUIを操作できません。制御スレッドへ通知してください。" },
+]

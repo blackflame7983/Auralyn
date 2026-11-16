@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "src-tauri/src/audio.rs",
+      "rule": "rust/suppression",
+      "hash": "b520b891938bdc204c909e3afa135073673f5c14938989bb9c00c1db37edfec2",
+      "count": 8,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio/process_inputs.rs",
+      "rule": "rust/suppression",
+      "hash": "2e5eb02aab1a5e23717dabee2a5027d32c5e5723d2d1c021e12b00f5e56bc02d",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/auto_gain_preview.rs",
+      "rule": "rust/suppression",
+      "hash": "1dc6e7344945a1b8d5a96f915bbd6f19dd307e3b32ead8e9b08ceadbd3a94bc5",
+      "count": 3,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/core.rs",
+      "rule": "rust/suppression",
+      "hash": "2ac802cccad7812dcca4b1394d9cf95b5f88c7f513b83c7296c893bc32f3fdcc",
+      "count": 6,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/core/startup.rs",
+      "rule": "rust/suppression",
+      "hash": "e8ed7164c3e5265802396ad07f9589cf2b134e6bdccf9457d8b05d5a766b2164",
+      "count": 4,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/core/startup_callbacks.rs",
+      "rule": "rust/suppression",
+      "hash": "49983e33d516c791eea5bd58a676a5e509dc2d2957a0ae31dba110470fac0a8e",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/devices.rs",
+      "rule": "rust/suppression",
+      "hash": "8b473370ddadb24a36c097fbf2f6bb9fd126d2af8aed943224716f10c4426f84",
+      "count": 2,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/latency_measure.rs",
+      "rule": "rust/suppression",
+      "hash": "dbb4f38e99e222e1070dc9b07d81f067ae75ab4103f12637794dc54a3eb1c4d1",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/audio_engine/split_monitor.rs",
+      "rule": "rust/suppression",
+      "hash": "182095d80a88915a6a0f40d99cc3157f2194d740f68133818c65c5244c654b04",
+      "count": 3,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/bin/asio_diag.rs",
+      "rule": "rust/suppression",
+      "hash": "749593651d1e29378651e47e4a22c247f47ecd5f8fc5b6a44d57991047039963",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/bin/audio_engine.rs",
+      "rule": "rust/suppression",
+      "hash": "c996b5f4a887f491d0ea250bfd5630b580ac2351e8ddc49c3b9959394e5a43cb",
+      "count": 2,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/commands/profiles.rs",
+      "rule": "rust/suppression",
+      "hash": "5d621bb2875ddd13b496746d268a14f6de1a161a34b86b13c081fcdc95618059",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/ipc.rs",
+      "rule": "rust/suppression",
+      "hash": "266fd2233f3f8c90a5f0a001a0fcf11d8caf31869806f46c74176af8a03e43f4",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/obs_setup.rs",
+      "rule": "rust/suppression",
+      "hash": "dc19c5ae06d830f3d8e9175501787c5f20402a8fffb7e484cbacf5dc5933d0b6",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/profile.rs",
+      "rule": "rust/suppression",
+      "hash": "5483dc72ac47a6d17f2dabce9984da06fc6f9ab1370b97f896a3cc98b6ab267b",
+      "count": 3,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/vst_host/blacklist.rs",
+      "rule": "rust/suppression",
+      "hash": "f8b83c817ffa72b534f74b8542779014d48cbb86f2b78b18ffd64ec0bc93f503",
+      "count": 1,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/vst_host/instance.rs",
+      "rule": "rust/suppression",
+      "hash": "2db3895d62369c9b06044ae8273535d4913a9a850c9240b7de8a3bfc2f84c411",
+      "count": 2,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    },
+    {
+      "file": "src-tauri/src/vst_host/instance/editor_window.rs",
+      "rule": "rust/suppression",
+      "hash": "2e3e0fb3215726565350d6e1c60c78a5d4a4e469f1f0ec5494339ba04fc3db15",
+      "count": 2,
+      "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
+    }
+  ]
+}

@@ -154,10 +154,9 @@ impl Shared {
                 self.failed.store(true, Ordering::Release);
             } else {
                 let began = starved_at.get_or_insert(self.elapsed_ms());
-                match clock::underrun_action(
-                    self.packet_age_ms(),
-                    || self.elapsed_ms().saturating_sub(*began),
-                ) {
+                match clock::underrun_action(self.packet_age_ms(), || {
+                    self.elapsed_ms().saturating_sub(*began)
+                }) {
                     clock::UnderrunAction::DiscardAndReprime => {
                         let discarded = queue.discard();
                         self.paused(discarded);

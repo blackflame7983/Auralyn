@@ -61,6 +61,7 @@ fn capacity(config: &StreamConfig, max_frames: usize) -> Result<usize, BuildStre
         .ok_or(BuildStreamError::StreamConfigNotSupported)
 }
 
+#[deny(clippy::disallowed_methods, clippy::disallowed_types)]
 fn input_samples<T: Native>(
     data: &[T],
     scratch: &mut [f32],
@@ -78,6 +79,7 @@ fn input_samples<T: Native>(
     callback(target);
 }
 
+#[deny(clippy::disallowed_methods, clippy::disallowed_types)]
 fn output_samples<T: Native>(
     data: &mut [T],
     scratch: &mut [f32],

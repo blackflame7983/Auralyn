@@ -1,5 +1,5 @@
 import { message } from '@/i18n/messages';
-import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 // VB-CABLE の再生側と録音側を案内する。ミキサーの内部ルーティングは推測しない。
 export function receiverDeviceNotice(outputName: string): SettingsNotice {
     outputName = deviceDisplayName(outputName);

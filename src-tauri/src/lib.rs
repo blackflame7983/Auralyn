@@ -1,4 +1,5 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
+#![deny(clippy::await_holding_lock)]
 use std::sync::{Arc, Mutex};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -68,8 +69,8 @@ async fn set_autostart_enabled(
 }
 
 #[tauri::command]
-fn open_url(url: String) -> Result<(), String> {
-    open::that(&url).map_err(|e| e.to_string())
+async fn open_url(url: String) -> Result<(), String> {
+    commands::run_blocking(move || open::that(&url).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]

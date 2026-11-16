@@ -10,13 +10,13 @@
 - **Non-Redundancy (非冗長)**: Eliminate duplication (DRY).
 
 ### Structure (構造)
-- **Layering**: If there are 3 or more files with the same concern, create a dedicated directory to layer them.
+- **Layering**: Group by responsibility and dependency direction. Do not split files only to meet a file-count or line-count target.
 
 ### Implementation Guidelines (実装指針)
 - **Simplicity First (シンプル最優先)**: Prohibit over-engineering; always design and implement the minimum necessary.
 - **File Structure**: Avoid excessive fragmentation of files. Consider merging if excessive.
 - **Comments (コメント)**:
-    - **Write appropriate comments in Japanese regarding code processing and intent.** (コードの処理に適切なコメントを日本語で入れること)
+    - コードで表現できる内容の説明やハックの正当化は書かない。仕様・数学的根拠・公開API・unsafeの安全条件・ライセンスの説明を必要な範囲で残す。過去の説明が現実装と矛盾するときは更新する。
 
 
 ---
@@ -64,14 +64,14 @@
 ### Concurrency & Audio
 - **Audio Thread**: The callback in `cpal` runs on a real-time priority thread.
     - **NO** allocations (Vec, Box, etc.) inside the callback.
-    - **NO** locks (Mutex) that might block for undefined time. Use `box_cars` or `ringbuf` for lock-free communication.
+    - **NO** locks (Mutex) that might block for undefined time. Use Atomic values or the existing `ringbuf` communication.
     - **NO** I/O (println, file write) inside the callback.
 
 ### Tauri Integration
-- **Async Commands**: All Tauri commands that involve I/O or heavy computation MUST be `async` to avoid freezing the UI.
+- **Async Commands**: I/O・重い計算・同期IPC待機は`src-tauri/src/commands/mod.rs`の`run_blocking`へ渡す。`async`宣言だけではブロッキング処理は分離されない。軽い検証と結果変換をコマンド境界に残す。
 - **Type Safety**:
     - Use `serde` for all data structs passed between Rust and JS.
-    - Prefer automatic type generation (e.g., `tauri-specta` or `ts-rs` - *to be configured*) over manual interface definitions.
+    - 現在の`src/api/`の型付きラッパーとRustのserde契約を対応させ、引数・結果を契約試験で確認する。未導入の型生成ツールを前提にしない。
 - **Security**:
     - Do not expose sensitive system paths blindly.
     - Validate all inputs from the frontend.
@@ -86,12 +86,23 @@
 ### Styling
 - Use **Tailwind CSS** for all styling.
 - Avoid CSS Modules unless strictly necessary for complex animations not possible with Tailwind.
-- Use the configured color palette (e.g., `bg-slate-950`, `text-cyan-500`).
+- Use semantic tokens in `src/index.css`, such as `bg-card`, `text-foreground`, and `text-muted-foreground`. Canvas and dynamic geometry may use inline values; new literal UI colors must use theme tokens.
 
 ### State Management
 - Use `useState` for local state.
-- Use `Context` or a lightweight store (Zustand - to be decided if needed) for global app state.
+- Use the existing Context and hooks for shared state. Mutually exclusive operation states use discriminated unions or enums; independent switches may remain boolean.
 - Keep simple.
 
 ## Directory Structure
 - Group by feature where possible, or standard `components/`, `hooks/`, `utils/` split.
+
+## 機械検査が守る境界
+
+- `src/components/`は描画と操作を扱う。外部同期は`src/hooks/`または既存のfeature専用hookへ置き、操作をEffectで推測しない。
+- `src/lib/model/`は純粋な型・計算。UI・hooks・API・実行環境へ依存しない。`src/lib/`全体には既存のユースケース・実行環境依存処理もあるため、すべてを純粋層とは扱わない。
+- `src/lib/`・`src/api/`・`src/constants/`からUI・hooks・Contextへの逆参照は禁止。Tauriの直接参照はAPI側へ集約する。既存違反は宣言指紋付き台帳に固定する。
+- pollは`src/hooks/usePolling.ts`を使う。`request`は値を返し、`onValue`で反映する。停止後の応答は反映されない。callbackは`useCallback`等で安定させる。
+- 型の穴は`unknown`の検証で閉じる。`as const`や検証済み境界の絞り込みまで一律禁止しない。
+- 任意の計算がUIにあること、複数boolの意味、コメントの正しさはLintだけでは判定できない。状態遷移と不変条件の試験で補う。
+
+実行方法、例外の撤去、RT検査の対象と限界は[GARDENING.md](GARDENING.md)を参照する。

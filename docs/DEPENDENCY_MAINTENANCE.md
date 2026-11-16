@@ -1,5 +1,14 @@
 # 依存関係の整備方針と初回棚卸し
 
+## 2026-11-17 ガード・検証ツールの追加
+
+開発依存としてESLint 10.15.0、typescript-eslint 8.72.2、eslint-plugin-react-hooks 7.1.1、fast-check 4.10.2を固定版で追加した。Pythonの静的解析は`requirements-dev.txt`のRuff 0.17.5を使う。
+既存lockfileの同じパスにあるパッケージの版は変更していない。配布用のproduction依存更新は行っていない。
+追加後の`npm audit`はmoderate 11パッケージで、typescript-eslint側のminimatchと既存archiver側のglob/minimatchの推移依存を含む。
+修正候補として表示されたtypescript-eslintの旧版への変更やarchiverのメジャー更新は、この整備に混ぜていない。アドバイザリへの一致と製品の実行時の影響を区別し、今後の依存更新時に再評価する。
+
+## 過去の調査
+
 調査日: 2026-10-15。初回は規約・開発ツールの整備と更新検討を実施。同日の追加依頼による npm audit 限定更新、React・UI系更新、Tauri関連更新、音声系の段階更新、RustSec指摘への限定更新の結果は末尾に記録する。ライブラリ置換は未実施。
 番号は調査時点の値であり、着手時にレジストリと公式リリースノートを再確認する。
 

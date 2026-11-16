@@ -1,4 +1,4 @@
-import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import type { MessageKey } from '@/i18n/messages';
 import type { useMessages } from '@/i18n/LocaleProvider';
 import { formatShortcut } from './shortcutLabel';
