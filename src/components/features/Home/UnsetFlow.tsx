@@ -23,7 +23,7 @@ export function UnsetFlow({ usage, input, output, music = false, onSetup }: {
         { key: 'input', icon: music ? MdMusicNote : MdMic, label: music ? 'unsetFlow.source' : 'unsetFlow.mic', value: input ? deviceDisplayName(input) : undefined, state: state('input', Boolean(input)) },
         { key: 'shape', icon: MdGraphicEq, label: 'unsetFlow.shape', value: 'Auralyn', state: 'set' },
         { key: 'output', icon: MdSettingsInputComponent, label: 'unsetFlow.output', value: output ? deviceDisplayName(output) : undefined, state: state('output', Boolean(output)) },
-        { key: 'destination', icon: MdCast, label: 'unsetFlow.destination', value: music ? t('prep.local') : usage ? t(destinations[usage]) : undefined, state: state('destination', music || Boolean(usage)) },
+        { key: 'destination', icon: MdCast, label: 'unsetFlow.destination', value: music ? t('wizard.music') : usage ? t(destinations[usage]) : undefined, state: state('destination', music || Boolean(usage)) },
     ];
     const action: MessageKey = next === 'destination' ? 'unsetFlow.chooseDestination' : next === 'input' ? music ? 'unsetFlow.chooseSource' : 'unsetFlow.chooseMic' : 'unsetFlow.chooseOutput';
     const stateLabel: Record<NodeState, MessageKey> = { set: 'unsetFlow.stateSet', next: 'unsetFlow.stateNext', empty: 'unsetFlow.stateEmpty' };
