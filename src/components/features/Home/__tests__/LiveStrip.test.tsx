@@ -118,7 +118,10 @@ it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操
     const custom = screen.getByRole('heading', { name: message(locale, 'liveBar.custom') });
     expect(custom).toBeVisible();
     expect(custom).toHaveAttribute('title', message(locale, 'liveBar.customHint'));
-    expect(custom).toHaveAccessibleDescription(message(locale, 'liveBar.customHint'));
+    const aside = screen.getByText(message(locale, 'home.customAside'));
+    expect(aside).toBeVisible();
+    expect(aside).not.toHaveClass('sr-only');
+    expect(custom).toHaveAccessibleDescription(message(locale, 'home.customAside'));
     expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).toBeNull();
 });
 
@@ -174,6 +177,17 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.silent'));
     expect(now.querySelector('[data-now-mute]')).toBeNull();
     expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
+});
+
+it.each(['ja', 'en'] as const)('歌・雑談を登録していないときは、モードの札といまの調整を出さず、見出しをいまの声にする (%s)', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={fixture()} running liveModeName={message(locale, 'home.currentVoice')} />
+    </LocaleProvider>);
+    const now = screen.getByRole('region', { name: message(locale, 'home.now') });
+    expect(within(now).getByRole('heading', { name: message(locale, 'home.currentVoice') })).toBeVisible();
+    expect(now).not.toHaveTextContent(message(locale, 'home.modeMark'));
+    expect(now).not.toHaveTextContent(message(locale, 'liveBar.custom'));
+    expect(now).not.toHaveTextContent(message(locale, 'home.customAside'));
 });
 
 it('送る音の目安は、小さめと大きすぎの境目に置く', () => {
