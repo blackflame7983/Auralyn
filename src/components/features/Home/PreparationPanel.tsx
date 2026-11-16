@@ -137,7 +137,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
             <div className={open ? 'flex flex-wrap items-center gap-2' : 'home-route-actions'}>
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
                 {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
-                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={() => {
+                {/* 名前の指定は入力欄を開くだけなので、音声が止まっていても押せる（#625）。受け側の確認はこれまでどおり音声が要る。 */}
+                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <Button variant="outline" size="sm" type="button" disabled={!audioReady && !routeNeedsTarget} onClick={() => {
                     if (routeNeedsTarget) {
                         setUserOpen(true);
                         requestAnimationFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });

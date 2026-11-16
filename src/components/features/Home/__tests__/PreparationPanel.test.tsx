@@ -95,6 +95,29 @@ it('畳んだ下の行は送り先を先に置き、ボタンは別の群にす�
     expect(actions).toContainElement(button);
     expect(line).not.toContainElement(button);
 });
+it('停止中でも送り先の名前の指定は開ける。音声の稼働は要らない（#625）', () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return 1; });
+    try {
+        const model = fixture();
+        model.observation.availability = 'stopped';
+        model.context.usage = 'obs';
+        model.context.receiver = '';
+        render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
+        const specify = screen.getByRole('button', { name: message('ja', 'prep.targetAction') });
+        expect(specify).toBeEnabled();
+        fireEvent.click(specify);
+        act(() => { frames.splice(0).forEach(callback => callback(0)); });
+        expect(screen.getByRole('textbox', { name: message('ja', 'prep.obsTarget') })).toHaveFocus();
+        // 名前が既にある受け側の確認は、停止中は押せないままにする。
+        cleanup();
+        model.context.receiver = 'Mic';
+        render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
+        expect(screen.getByRole('button', { name: message('ja', 'prep.checkReceiver') })).toBeDisabled();
+    } finally {
+        vi.unstubAllGlobals();
+    }
+});
 it('対象入力が未入力でも受け側確認をそのまま記録でき、推奨操作で任意の入力欄へもフォーカスできる（U02）', () => {
     const model = fixture(); checked(model, 'sound'); checked(model, 'listen'); model.context.receiver = '';
     render(<PreparationPanel model={model} {...callbacks()} />);
