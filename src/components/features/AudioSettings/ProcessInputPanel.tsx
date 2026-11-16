@@ -1,10 +1,13 @@
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { MixingError } from './mixingUi';
 import { audioApi } from '@/api/audio';
+import { useAlignInputPurpose } from '@/hooks/useAlignInputPurpose';
+import { useStaleGuard } from '@/hooks/useStaleGuard';
 import { type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 
 export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection }: {
@@ -17,9 +20,10 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
     const [apps, setApps] = useState<ProcessInputCandidate[]>([]);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
-    const revision = useRef(0);
+    const [pendingPurpose, setPendingPurpose] = useState<InputSourceRequest | null>(null);
+    const revision = useStaleGuard();
     const latest = useRef(value); latest.current = value;
-    useEffect(() => () => { revision.current++; }, []);
+    useAlignInputPurpose(value, setPendingPurpose);
     const refresh = async () => {
         const request = ++revision.current;
         setBusy(true); setError('');
@@ -48,7 +52,8 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
         onChange({ source: { kind: 'process_loopback', config: { appKey: app.appKey, appName: app.name,
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
-    return <fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
+    const aligned = pendingPurpose?.source.config.purpose;
+    return <><fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
         <legend className="text-ui-heading font-semibold">{t('processInput.title')}</legend>
         <Field label={t('processInput.source')}><Select  aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
@@ -101,5 +106,14 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             </Select>
         </Field>
         {(process || value.source.config.purpose === 'music') && <p className="text-ui-support text-muted-foreground">{t('processInput.purposeHelp')}</p>}
-    </fieldset>;
+    </fieldset>
+    <ConfirmDialog
+        isOpen={pendingPurpose !== null}
+        title={t(aligned === 'voice' ? 'purpose.askVoiceTitle' : 'purpose.askMusicTitle')}
+        description={t(aligned === 'voice' ? 'purpose.askVoiceBody' : 'purpose.askMusicBody')}
+        confirmLabel={t(aligned === 'voice' ? 'purpose.askVoiceYes' : 'purpose.askMusicYes')}
+        onConfirm={() => { if (pendingPurpose) onChange(pendingPurpose); setPendingPurpose(null); }}
+        onCancel={() => setPendingPurpose(null)}
+    />
+    </>;
 }
