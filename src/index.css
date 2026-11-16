@@ -755,7 +755,7 @@ html[data-app-hidden="true"] *::after {
 /* 停止中の一文は状態の一言より長い。省略せず、カードの幅で折り返す（#587）。 */
 .sound-card-status > [data-tone].sound-card-stopped > span:last-child { white-space: normal; overflow-wrap: anywhere; }
 .sound-card-action { margin-left: auto; flex: 0 0 auto; }
-.sound-module-card { border-radius: 0.75rem; background: hsl(var(--background) / 0.65); box-shadow: inset 0 0 0 1px hsl(var(--border)); padding: 0.5rem 0.875rem; }
+.sound-module-card { border-radius: 0.75rem; background: hsl(var(--background) / 0.65); box-shadow: inset 0 0 0 1px hsl(var(--border)); padding: 0.5rem 0.875rem; container-type: inline-size; container-name: sound-card; }
 .sound-module-card > .sound-module-visual { margin-top: 0.375rem; }
 /* 閉じた詳細パネルの0px行には余白を残さず、開いた行にだけ間隔を付ける。 */
 .sound-tool-list { row-gap: 0; }
@@ -772,7 +772,7 @@ html[data-app-hidden="true"] *::after {
   .sound-tool-list > .sound-module-item ~ .sound-module-item { margin-top: 0.75rem; }
 }
 /* 英語は520〜650pxを2列にする。1段目はノイズ低減と声を整える、2段目は外部VSTが2列分（#586）。
-   声の種類（Broadcast など）は単語の途中で切らない。 */
+   声の種類（Standard など）は単語の途中で切らない。 */
 @container (min-width: 520px) and (max-width: 650px) {
   .sound-tool-list:lang(en) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sound-tool-list:lang(en) > li:last-child { grid-column: 1 / -1; margin-top: 0.75rem; }
@@ -799,6 +799,20 @@ html[data-app-hidden="true"] *::after {
   padding-right: 0.125rem;
 }
 .sound-chain .segment-option:lang(ja) > svg { position: absolute; left: 0.125rem; }
+/* カードが広いとき（1280の約290px）は、ほかの選択と同じくチェックと文字の間を空ける（#672）。
+   1024の約208pxは3つを収めるため、上の詰めた配置のまま。15rem はカードの内側。 */
+@container sound-card (min-width: 15rem) {
+  .sound-chain .segment-option:lang(ja) {
+    width: auto;
+    min-width: 4rem;
+    max-width: none;
+    justify-content: center;
+    gap: 0.375rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .sound-chain .segment-option:lang(ja) > svg { position: static; left: auto; }
+}
 @media (max-height: 700px) { .sound-module-card { padding-block: 0.375rem; } .sound-module-visual { min-height: 2.5rem; padding: 0.25rem 0.5rem; } .sound-nr-gauge { width: 3.75rem; height: 2.25rem; } .sound-eq-graph, .sound-vst-bars { height: 2rem; } }
 
 /* 音調整を開いた舞台は、低い窓でだけ下限を外して開いた操作の場所を空ける。 */
@@ -829,8 +843,13 @@ html[data-app-hidden="true"] *::after {
    メディアクエリはカスタムプロパティを読めないので、同じ数値をここに書く。 */
 .home-content { width: 100%; max-width: 1180px; }
 [data-home-tier="2"] { display: none; }
+.home-tier-fallback { display: none; }
 @media (min-height: 800px) {
   [data-home-tier="2"] { display: block; }
+}
+/* 2段目を出さない高さのときだけ、音づくりへの一文を出す（#672）。数値は largeWindow.tier2MinHeight - 1。 */
+@media (max-height: 799px) {
+  .home-tier-fallback { display: block; }
 }
 /* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
 [data-home-tier="2"]:empty {

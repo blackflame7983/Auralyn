@@ -229,6 +229,13 @@ it('保存済みのVSTを読み込めていない空の段は「未追加」と�
     expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
 });
 
+it('低い窓向けの一文は音づくりを開く', () => {
+    const p = props();
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady /></RuntimeStatsContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.tierFallback') }));
+    expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+});
+
 it('音調整のカードは開閉せず、声の種類は2段目に常に出す', () => {
     const expanded = vi.fn();
     render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
@@ -329,6 +336,8 @@ it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2
     </RuntimeStatsContext.Provider>);
     expect(document.querySelector('[data-home-tier="2"]')).toHaveTextContent('画面を開く');
     expect(document.querySelector('[data-home-tier="2"]')).toHaveClass('border-t');
+    // 音楽鑑賞で隠れる2段目はVSTの画面。音づくりへの一文は出さない（#672）。
+    expect(screen.queryByRole('button', { name: message('ja', 'home.tierFallback') })).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止中も同じ (%s)', locale => {

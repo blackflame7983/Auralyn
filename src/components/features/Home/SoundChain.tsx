@@ -219,5 +219,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3', stopped && 'items-start')}>
             {rows}
         </ol>
+        {/* 窓が低くて2段目を出さないときだけ。音楽鑑賞の2段目はVSTの画面で、音づくりには無い（#672）。 */}
+        {!music && !unconfigured && <p className="home-tier-fallback mt-2">
+            <button type="button" className="link-button text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</button>
+        </p>}
     </section>;
 }

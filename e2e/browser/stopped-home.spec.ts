@@ -73,6 +73,7 @@ test.describe('停止中のカードの高さ', () => {
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         const chain = page.getByRole('region', { name: '音調整', exact: true });
         await expect(chain.getByRole('listitem')).toHaveCount(3);
+        await expect(chain.getByRole('button', { name: '詳しい調整は音づくりにあります', exact: true })).toBeVisible();
         const gaps = await chain.locator('.sound-module-card').evaluateAll(cards => cards.map(card => {
             const box = card.getBoundingClientRect();
             let bottom = box.top;
