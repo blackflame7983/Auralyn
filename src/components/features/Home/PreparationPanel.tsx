@@ -5,6 +5,8 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Button } from '@/components/ui/button';
 import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { afterFrame } from '@/hooks/internal/afterFrame';
+import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useInputMeterState } from '../LevelMeter/MeterContext';
 import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
@@ -31,8 +33,6 @@ interface Props {
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
     /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
     statusText?: string;
-    /** 畳んでいる間に状態の横へ出す機器名（入力 → 出力先）。 */
-    devices?: ReactNode;
     onSetup?: () => void;
     onExpandedChange?: (open: boolean) => void;
     /** 広い窓の接続の列では、詳細を開いたままにする。狭い窓の開閉は変えない。 */
@@ -53,7 +53,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange, pinnedOpen = false }: Props) {
+export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, onSetup, onExpandedChange, pinnedOpen = false }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -73,40 +73,31 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     // 手順内を操作したら開いたままにし、一時的な状態不明を経てもフォーカスを失わせない。
     const [userOpen, setUserOpen] = useState<boolean | null>(null);
     const [manualChecking, setManualChecking] = useState(false);
-    const [showChecking, setShowChecking] = useState(false);
-    useEffect(() => {
-        if (!manualChecking) { setShowChecking(false); return; }
-        const timer = window.setTimeout(() => setShowChecking(true), 600);
-        return () => window.clearTimeout(timer);
-    }, [manualChecking]);
     const refreshManually = async () => {
         setManualChecking(true);
         try { await model.refresh(); } finally { setManualChecking(false); }
     };
-    // 閉じた後でも、別の問題が起きたら開き直す。
-    useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
     // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
     const open = pinnedOpen || (userOpen ?? (problem !== null && observation.availability !== 'muted'));
-    useEffect(() => { onExpandedChange?.(open); }, [open, onExpandedChange]);
     const usageRef = useRef<HTMLDivElement>(null);
-    const focusedRequest = useRef(0);
-    useEffect(() => { if (destinationRequest) setUserOpen(true); }, [destinationRequest]);
-    useEffect(() => {
-        if (!open || destinationRequest <= focusedRequest.current) return;
-        const radio = usageRef.current?.querySelector<HTMLInputElement>('input:checked, input');
-        if (radio) {
-            focusedRequest.current = destinationRequest;
-            radio.closest('label')?.scrollIntoView?.({ block: 'center' });
-            radio.focus({ preventScroll: true });
-        }
-    }, [open, destinationRequest]);
+    const showChecking = usePreparationPanelSync({ manualChecking, problem, open, onExpandedChange, destinationRequest, usageRef, setUserOpen });
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const routeNeedsTarget = !context.usage || context.usage !== 'listening' && !context.receiver.trim();
     const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
-    const action = mutedOutput ? (event: MouseEvent<HTMLButtonElement>) => onCheckOutput!(event.currentTarget) :needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void refreshManually(); } : onSettings
-        : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
+    const action = (event: MouseEvent<HTMLButtonElement>) => {
+        if (mutedOutput && onCheckOutput) { onCheckOutput(event.currentTarget); return; }
+        if (needsTarget) { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); return; }
+        if (next === 'connect') {
+            if (observation.availability === 'unknown' || observation.availability === 'pending') { void refreshManually(); return; }
+            onSettings();
+            return;
+        }
+        if (next === 'sound') { onSound(); return; }
+        if (next === 'listen') { onListen(); return; }
+        receiver();
+    };
     const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
@@ -119,21 +110,21 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
             <span className="flex items-center gap-2"><Icon aria-hidden="true" className="h-4 w-4 shrink-0" /><span>{t(label)}</span></span>
         </ChoiceCard>)}
     </div>;
-    // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。
-    // 畳んだ下の行は、送り先を先に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
+    // 問題がなく畳んでいる間は枠を付けず、ボタンだけにしてホームの主役を目立たせる。
+    // 経路の文は上の帯に1回だけ出す（#669）。状態の札があるときだけ左に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
+    const collapsedStatus = !open && observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted');
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
+        {!open && !collapsedStatus && <h2 className="home-title sr-only">{t('prep.title')}</h2>}
         <div className={open ? 'flex flex-wrap items-center justify-between gap-2' : 'home-route-row'}>
-            <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>
+            {(open || collapsedStatus) && <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>
                 <h2 className={cn("home-title shrink-0", !open && "sr-only")}>{t('prep.title')}</h2>
                 {open && <InfoPopover docName="home.audio-check" label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>}
-                {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
-                {!open && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-ui-support">
+                {collapsedStatus && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-ui-support">
                     {/* 正常に実行中の札は上の帯の「実行中」と重なるので出さない。失敗・確認中・停止などは残す（#599）。 */}
-                    {observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted') && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
-                    {devices && <span className="min-w-0 text-muted-foreground">{devices}</span>}
+                    <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>
                 </span>}
-            </div>
+            </div>}
             <div className={open ? 'flex flex-wrap items-center gap-2' : 'home-route-actions'}>
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
                 {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
@@ -143,7 +134,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     title={!audioReady && !routeNeedsTarget ? t('header.compareNeedsAudio') : undefined} onClick={() => {
                     if (routeNeedsTarget) {
                         setUserOpen(true);
-                        requestAnimationFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });
+                        afterFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });
                     } else receiver();
                 }}>{t(routeNeedsTarget ? 'prep.targetAction' : 'prep.checkReceiver')}</Button>}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
@@ -172,7 +163,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 onChange={e => {
                     if (!e.target.checked) return;
                     const checkbox = e.currentTarget;
-                    void model.confirm(next).then(() => requestAnimationFrame(() => {
+                    void model.confirm(next).then(() => afterFrame(() => {
                         if (!checkbox.isConnected && document.activeElement === document.body) (actionRef.current ?? summaryRef.current ?? toggleRef.current)?.focus();
                     }));
                 }} />

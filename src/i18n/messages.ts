@@ -369,7 +369,6 @@ const ja = {
     "mixing.changed": "適用中の設定は保存内容と異なります。",
 
     "chain.vstCount": "{count}件",
-    "flow.routeLine": "配信用 {device} → {receiver}",
     "chain.vstOff": "オフ",
     "clientErrors.homeProtectedConfigUnverified": "操作ロック中の機器設定を確認できません。設定を確認してください。",
     "home.startAudio": "音声を開始",
@@ -747,7 +746,7 @@ const ja = {
     "prep.sessionChecked": "このセッションの確認を記録済み",
     "prep.refresh": "状態を更新",
     "prep.checkReceiver": "送り先で確認する",
-    "prep.targetAction": "送り先の入力・ソース名を指定する",
+    "prep.targetAction": "受け側の入力名を登録（診断用）",
     "prep.unconfirm": "再確認に戻す",
     "prep.details": "詳しい状態と履歴",
     "prep.location": "利用場所",
@@ -3917,7 +3916,6 @@ const en: Record<MessageKey, string> = {
     "mixing.changed": "Saved and current settings differ. Select a saved application again.",
 
     "chain.vstCount": "Plugins: {count}",
-    "flow.routeLine": "Broadcast {device} → {receiver}",
     "chain.vstOff": "Off",
     "clientErrors.homeProtectedConfigUnverified": "Could not verify the device settings while controls are locked. Check your settings.",
     "home.startAudio": "Start audio",
@@ -4296,7 +4294,7 @@ const en: Record<MessageKey, string> = {
     "prep.sessionChecked": "Checks recorded for this session",
     "prep.refresh": "Refresh status",
     "prep.checkReceiver": "Check at the destination",
-    "prep.targetAction": "Specify the destination input or source",
+    "prep.targetAction": "Register receiver input name (for diagnosis)",
     "prep.unconfirm": "Check again",
     "prep.details": "Status and history",
     "prep.location": "Location",

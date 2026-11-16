@@ -16,14 +16,3 @@ export function RouteSummary({ routing, output, onSettings, resolvedName }: { ro
         <Button variant="link" size="sm" type="button" onClick={onSettings}>{t('flow.routeDetails')}</Button>
     </div>;
 }
-
-// 畳んだホームでは、配信用の出力と受け側、自分用の分岐を同じ行で示す。
-export function RouteLine({ output, broadcastName, split, receiver, local = false }: { output?: string; broadcastName?: string | null; split: boolean; receiver: string; local?: boolean }) {
-    const t = useMessages();
-    const monitor = output ? deviceDisplayName(output) : t('master.unset');
-    // 送り先の1行。親が幅を取るので、ここでは縮めて細い列にしない（#622）。
-    return <span data-audit-short className="text-ui-support">
-        <span>{local && !split ? t('flow.monitorDestination', { device: monitor }) : t('flow.routeLine', { device: split ? broadcastName ?? t('flow.unknown') : monitor, receiver })}</span>
-        {split && <span className="ml-4">{t('flow.monitorDestination', { device: monitor })}</span>}
-    </span>;
-}

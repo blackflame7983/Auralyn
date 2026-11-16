@@ -3,7 +3,6 @@ import { TroubleshootModal } from '../../Troubleshoot/TroubleshootModal';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PreparationPanel } from '../PreparationPanel';
-import { RouteLine } from '../RouteSummary';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { buildPreparationObservation } from '@/lib/preparation';
 import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
@@ -81,19 +80,21 @@ it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネル
     fireEvent.click(screen.getByRole('checkbox', { name: message(locale, 'prep.ackSound') }));
     expect(model.confirm).toHaveBeenCalledWith('sound');
 });
-it('畳んだ下の行は送り先を先に置き、ボタンは別の群にする（#622、#638）', () => {
+it('畳んだ下の行は経路を出さず、入力名の登録はボタン群に置く（#669、#622）', () => {
     const model = fixture();
     model.observation.availability = 'stopped';
     model.context.usage = 'obs';
     model.context.receiver = '';
-    render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip devices={<RouteLine output="スピーカー" split={false} receiver="OBSで配信" />} />);
-    const line = document.querySelector('.home-route-line');
+    render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
+    const region = screen.getByRole('region', { name: message('ja', 'prep.title') });
+    expect(region).not.toHaveTextContent('配信用');
+    expect(region).not.toHaveTextContent('スピーカー');
+    expect(message('ja', 'prep.targetAction')).toBe('受け側の入力名を登録（診断用）');
+    expect(message('en', 'prep.targetAction')).toBe('Register receiver input name (for diagnosis)');
     const actions = document.querySelector('.home-route-actions');
-    expect(line).toHaveTextContent('配信用 スピーカー → OBSで配信');
-    expect(line?.querySelector('[data-audit-short]')).not.toBeNull();
     const button = screen.getByRole('button', { name: message('ja', 'prep.targetAction') });
     expect(actions).toContainElement(button);
-    expect(line).not.toContainElement(button);
+    expect(document.querySelector('.home-route-line')).not.toContainElement(button);
 });
 it('停止中でも送り先の名前の指定は開ける。音声の稼働は要らない（#625）', () => {
     const frames: FrameRequestCallback[] = [];
@@ -271,41 +272,40 @@ it('ミュートで開いている手順は、反映待ちの間も閉じない'
 
 it.each(['ja', 'en'] as const)('実行中は下の行の札を出さず、失敗や確認中は出す (%s)', locale => {
     const model = fixture();
-    const devices = 'USB マイク → CABLE Input';
     const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+        <PreparationPanel model={model} {...callbacks()} />
     </LocaleProvider>);
-    const status = screen.getByText(devices).closest('[role="status"]')!;
-    expect(status).not.toHaveTextContent(message(locale, 'prep.running'));
-    expect(status).not.toHaveTextContent(message(locale, 'device.engine'));
+    expect(screen.queryByText(message(locale, 'prep.running'))).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: message(locale, 'prep.title') })).not.toHaveTextContent('→');
     model.observation = { ...model.observation, availability: 'pending' };
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+        <PreparationPanel model={model} {...callbacks()} />
     </LocaleProvider>);
     const pending = screen.getByText(message(locale, 'prep.pending'));
-    expect(pending.closest('[role="status"]')).toHaveTextContent(devices);
-    // 機器名が長くても、短い状態の文言は縮めて折らず、機器名の側を先に詰める。
+    expect(pending.closest('[role="status"]')).not.toBeNull();
     expect(pending.closest('[data-tone]')).toHaveClass('shrink-0');
     model.observation = { ...model.observation, availability: 'failed' };
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <PreparationPanel model={model} {...callbacks()} devices={devices} />
+        <PreparationPanel model={model} {...callbacks()} />
     </LocaleProvider>);
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
     expect(screen.getByText(message(locale, 'prep.failed')).closest('[data-tone]')).toHaveAttribute('data-tone', 'error');
 });
 
-it('畳んでいる間は機器名を読み上げ、停止中に手で畳むとヘッダーと同じ理由を添える', () => {
+it('畳んだ下の行は経路を読まず、停止中に手で畳むとヘッダーと同じ理由を添える', () => {
     const model = fixture();
-    const view = render(<PreparationPanel model={model} {...callbacks()} devices="USB マイク → CABLE Input" />);
-    const status = screen.getByText('USB マイク → CABLE Input').closest('[role="status"]')!;
-    expect(status).not.toHaveTextContent(message('ja', 'prep.running'));
-    // 畳んでいる間は枠を付けず、状態の1行だけにする。
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    expect(screen.getByRole('region', { name: message('ja', 'prep.title') })).not.toHaveTextContent('→');
+    expect(document.querySelector('.home-route-line')).toBeNull();
+    // 畳んでいる間は枠を付けない。
     expect(screen.getByRole('region', { name: message('ja', 'prep.title') })).not.toHaveClass('rounded-xl');
     // 停止中に手で畳んでも、AppShell の状態文（ヘッダーと同じ文言）を使う。
     model.observation = { ...model.observation, availability: 'stopped' };
-    view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} devices="USB マイク → CABLE Input" />);
+    view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} />);
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
-    expect(screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]')).not.toBeNull();
+    const status = screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]');
+    expect(status).not.toBeNull();
+    expect(status).not.toHaveTextContent('→');
     expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
 });
 

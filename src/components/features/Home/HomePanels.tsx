@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { RouteSummary, RouteLine } from './RouteSummary';
+import { RouteSummary } from './RouteSummary';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabels } from './PreparationPanel';
@@ -57,7 +57,6 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     return <div className="mb-4 space-y-4">
         <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText} pinnedOpen={pinnedOpen}
-            devices={<RouteLine output={actualOutput} broadcastName={broadcastName} split={Boolean(broadcastId || model.observation.routing?.splitProcessing)} local={music || model.context.usage === 'listening'} receiver={model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : t('flow.receiverUnknown')} />}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
             <div className="basis-full"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
                 input={{ label: t(music ? 'music.source' : 'home.input'), value: actualInput ? deviceDisplayName(actualInput) : undefined, warning: !actualInput ? t('flow.checkInput') : undefined }}
