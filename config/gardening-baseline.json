@@ -5441,31 +5441,10 @@
     },
     {
       "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
       "rule": "auralyn/architecture",
       "hash": "4987e6380eb57914bec8fb92e53d2fd418f9d8a07dbe5ed91aeb9affdb8807a5",
       "count": 1,
       "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/features/SetupWizard/useSetupWizard.ts",

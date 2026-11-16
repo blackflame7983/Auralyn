@@ -1395,3 +1395,23 @@ it('戻って同じ送り先を決定でき、矢印選択では最初の手順�
     expect(to).toBeChecked(); expect(from).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
 });
+
+it('最初の画面は仮想ケーブルの入手を後の手順で予告し、診断の案内は確認へ置く', async () => {
+    const openTroubleshoot = vi.fn();
+    render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} onOpenTroubleshoot={openTroubleshoot} />);
+    await screen.findByRole('radio', { name: 'OBSで配信' });
+    expect(screen.getByText('まだ入れていない場合は、OBS・Discord の「出力先」の手順で入手の案内が出ます。')).toBeInTheDocument();
+    expect(screen.queryByText(/音が届かない・設定に迷ったときは/)).not.toBeInTheDocument();
+    await chooseObsRoute();
+    await screen.findByRole('heading', { name: '設定と接続の確認' });
+    expect(screen.getByText(/音が届かない・設定に迷ったときは/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '音のトラブルを診断' }));
+    expect(openTroubleshoot).toHaveBeenCalledOnce();
+});
+
+it.each(['ja', 'en'] as const)('最初の画面の仮想ケーブルの前触れは、出力先の手順を名指しする（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText(message(locale, 'wizard.cableLater', { step: message(locale, 'wizard.output') }))).toBeInTheDocument();
+    expect(screen.queryByText(message(locale, 'wizard.troubleBefore'), { exact: false })).not.toBeInTheDocument();
+});
