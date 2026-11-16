@@ -244,6 +244,7 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
         <SoundChain {...props()} stopped={stopped} audioReady isEngineRunning={!stopped} />
     </RuntimeStatsContext.Provider></LocaleProvider>;
     const view = render(content(false));
+    expect(screen.getByRole('list')).not.toHaveClass('items-start');
     const runningName = within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).textContent;
     expect(runningName).toBe(message(locale, 'chain.vstEmptyName'));
     // 実行中の名前行は、追加を折り返す停止中の行とは別に置く。
@@ -251,6 +252,8 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     view.rerender(content(true));
     const section = screen.getByRole('region', { name: message(locale, 'shell.sound') });
     const chain = screen.getByRole('list');
+    // 停止中の名前の行は、隣のカードの高さに合わせない（#673）。
+    expect(chain).toHaveClass('items-start');
     const items = within(chain).getAllByRole('listitem');
     expect(items).toHaveLength(3);
     const hint = message(locale, 'chain.stoppedHint');
