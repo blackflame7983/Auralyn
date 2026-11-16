@@ -3,6 +3,7 @@ import { TroubleshootModal } from '../../Troubleshoot/TroubleshootModal';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PreparationPanel } from '../PreparationPanel';
+import { RouteLine } from '../RouteSummary';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { buildPreparationObservation } from '@/lib/preparation';
 import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
@@ -79,6 +80,20 @@ it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネル
     expect(model.confirm).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('checkbox', { name: message(locale, 'prep.ackSound') }));
     expect(model.confirm).toHaveBeenCalledWith('sound');
+});
+it('畳んだ下の行は送り先を先に置き、ボタンは別の群にする（#622、#638）', () => {
+    const model = fixture();
+    model.observation.availability = 'stopped';
+    model.context.usage = 'obs';
+    model.context.receiver = '';
+    render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip devices={<RouteLine output="スピーカー" split={false} receiver="OBSで配信" />} />);
+    const line = document.querySelector('.home-route-line');
+    const actions = document.querySelector('.home-route-actions');
+    expect(line).toHaveTextContent('配信用 スピーカー → OBSで配信');
+    expect(line?.querySelector('[data-audit-short]')).not.toBeNull();
+    const button = screen.getByRole('button', { name: message('ja', 'prep.targetAction') });
+    expect(actions).toContainElement(button);
+    expect(line).not.toContainElement(button);
 });
 it('対象入力が未入力でも受け側確認をそのまま記録でき、推奨操作で任意の入力欄へもフォーカスできる（U02）', () => {
     const model = fixture(); checked(model, 'sound'); checked(model, 'listen'); model.context.receiver = '';

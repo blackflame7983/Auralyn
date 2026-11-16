@@ -40,9 +40,6 @@ export const knownViolations: KnownViolation[] = [
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'en', match: 'Choose this', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'en', match: 'Choose this', issue: '#637' },
 
-    // 停止中の英語だけ、送り先を指定するボタンが上の帯の経路に重なる。
-    { check: 'overlap', screen: 'home', state: 'stopped', purpose: 'voice', size: '1024x768', locale: 'en', match: 'Specify the destination', issue: '#638' },
-
     // 実行中の英語で、声の流れと今の状態が同じ「レベル未受信」を言う。日本語は10文字未満なので対象外。
     { check: 'duplicate', screen: 'home', state: 'live', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
     { check: 'duplicate', screen: 'stream-mix', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
