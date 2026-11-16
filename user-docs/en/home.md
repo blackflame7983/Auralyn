@@ -55,7 +55,7 @@ Use “Shape voice” or VST effects to adjust your voice, then listen with Voic
 
 You can choose the strength, type, and amount while off. Choosing does not turn it on, and the sound does not change.
 
-On a tall window, the second row of each card shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, “Detailed adjustments are on the Sound page.” under the sound section opens the Sound page.
+On a tall window, the second row of each card shows “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the Sound page from “Detailed adjustments are on the Sound page.”
 
 When no VST is loaded, open the page with “Add”. Otherwise use “Open VST”.
 

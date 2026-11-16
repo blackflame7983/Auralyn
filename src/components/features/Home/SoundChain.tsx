@@ -221,7 +221,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         </ol>
         {/* 窓が低くて2段目を出さないときだけ。音楽鑑賞の2段目はVSTの画面で、音づくりには無い（#672）。 */}
         {!music && !unconfigured && <p className="home-tier-fallback mt-2">
-            <button type="button" className="link-button text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</button>
+            <Button type="button" variant="link" className="link-button h-auto whitespace-normal px-0 text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</Button>
         </p>}
     </section>;
 }

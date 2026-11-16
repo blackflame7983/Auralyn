@@ -3638,7 +3638,7 @@ const en: Record<MessageKey, string> = {
     "help.home.sound.1": "“{noise}” targets steady noise such as fans, and does not fully remove speech or music.",
     "help.home.sound.2": "Use “{voice}” or VST effects to adjust your voice, then listen with Voice Check.",
     "help.home.sound.3": "You can choose the strength, type, and amount while off. Choosing does not turn it on, and the sound does not change.",
-    "help.home.sound.4": "On a tall window, the second row of each card shows “{measure}”, the voice type, and controls that open each VST. On a short window, “{tierLink}” under the sound section opens the Sound page.",
+    "help.home.sound.4": "On a tall window, the second row of each card shows “{measure}”, the voice type, and controls that open each VST. On a short window, open the Sound page from “{tierLink}”",
     "help.home.sound.5": "When no VST is loaded, open the page with “{add}”. Otherwise use “{openVst}”.",
     "help.home.sound.6": "The Sound page is split into “{basic}”, “{modes}”, “{singingSection}”, and “{peak}”.",
     "help.home.sound.7": "On and off for “{peak}” is the switch beside the heading. Ceiling and release are in “{peakDetails}”.",
