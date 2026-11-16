@@ -1,15 +1,15 @@
 import { Button } from '@/components/ui/button';
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension, MdChevronRight } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useHiddenTierFocus } from '@/hooks/useHiddenTierFocus';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
-import { largeWindow } from '@/lib/largeWindow';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { noiseModeLabelKey } from '@/lib/noiseMode';
 import { BuiltinAmount, BuiltinPresets, BuiltinSwitch, NoiseQuick, NoiseSwitch, ToneGuide, useVoiceQuick } from './VoiceQuickControls';
@@ -43,34 +43,7 @@ interface Props {
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, vstEditors,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false, vstCount = null }: Props) {
     const t = useMessages();
-    // 2段目の出し分けは CSS の min-height。隠れた操作に焦点があるときだけ、カードの見出しへ移す。
-    useEffect(() => {
-        if (typeof window.matchMedia !== 'function') return;
-        const media = window.matchMedia(`(min-height: ${largeWindow.tier2MinHeight}px)`);
-        let tierHost: HTMLElement | null = null;
-        const onFocusIn = (event: FocusEvent) => {
-            const target = event.target;
-            if (!(target instanceof HTMLElement)) return;
-            const tier = target.closest<HTMLElement>('[data-home-tier="2"]');
-            if (tier) tierHost = tier;
-            else if (target !== document.body) tierHost = null;
-        };
-        const onChange = () => {
-            if (media.matches) return;
-            const active = document.activeElement;
-            const current = active instanceof HTMLElement ? active.closest<HTMLElement>('[data-home-tier="2"]') : null;
-            // display:none で焦点が body に落ちたときは、隠れる直前の2段目を見出しへ戻す。
-            const tier = current ?? (active === document.body && tierHost && tierHost.getClientRects().length === 0 ? tierHost : null);
-            tier?.closest('li')?.querySelector<HTMLElement>('h3')?.focus();
-            tierHost = null;
-        };
-        document.addEventListener('focusin', onFocusIn);
-        media.addEventListener('change', onChange);
-        return () => {
-            document.removeEventListener('focusin', onFocusIn);
-            media.removeEventListener('change', onChange);
-        };
-    }, []);
+    useHiddenTierFocus();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { stats, running } = useRuntimeStats();
@@ -108,13 +81,19 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     </Button>;
 
     // 停止中の一文はカードごとではなく、並びの上に1回だけ出す（#602）。
+    // 対象はノイズ低減と声を整える。外部VSTの追加と「その他の操作」は停止中も使える（#665）。
     const stoppedHint = t('chain.stoppedHint');
     const noiseSummary = stopped ? undefined : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
+    // 種類の id（broadcast など）は保存のまま。画面の名前だけを出す（#656）。
+    const presetName = q.preset === 'singing' ? t('chain.singingShort')
+        : q.preset === 'warm' ? t('settings.AudioSettingsModal.099')
+        : q.preset === 'bright' ? t('settings.AudioSettingsModal.100')
+        : t('settings.AudioSettingsModal.098');
     const builtinSummary = stopped ? undefined : deesserOnly ? t('flow.deesserOnly')
         : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
-        : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled')
+        : live ? builtinOn ? t('chain.voiceOn', { name: presetName }) : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
     const vstSummary = stopped ? undefined : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
     // 音楽鑑賞の見出しはこれまで「VST」。配信は空のときの「外部VST」。用途ごとに1つにし、実行中と停止中で変えない。
@@ -204,12 +183,18 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>
             </div>}
         </div>
-        {stopped && !unconfigured && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
+        {/* 音楽鑑賞のカードはVSTだけで、停止中も追加が使える。この一文は出さない（#663）。 */}
+        {stopped && !unconfigured && !music && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
-        <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3')}>
+        {/* 停止中は名前の行だけなので、隣のカードの高さへ伸ばさない（#673）。 */}
+        <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3', stopped && 'items-start')}>
             {rows}
         </ol>
+        {/* 窓が低くて2段目を出さないときだけ。音楽鑑賞の2段目はVSTの画面で、音づくりには無い（#672）。 */}
+        {!music && !unconfigured && <p className="home-tier-fallback mt-2">
+            <Button type="button" variant="link" className="link-button h-auto whitespace-normal px-0 text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</Button>
+        </p>}
     </section>;
 }

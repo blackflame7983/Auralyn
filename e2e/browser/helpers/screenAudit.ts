@@ -233,6 +233,29 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
             return true;
         });
     };
+    // 文字・操作・キャンバス・メーターの上下。枠いっぱいの入れ物は中身に数えない。
+    const contentBand = (root: Element) => {
+        let top = Number.POSITIVE_INFINITY;
+        let bottom = Number.NEGATIVE_INFINITY;
+        const consider = (rect: DOMRect) => {
+            if (rect.width < 1 || rect.height < 1) return;
+            top = Math.min(top, rect.top);
+            bottom = Math.max(bottom, rect.bottom);
+        };
+        const range = document.createRange();
+        for (const element of [root, ...root.querySelectorAll('*')]) {
+            if (!isVisible(element)) continue;
+            if (element.matches(`canvas, [role="meter"], ${interactiveSelector}, textarea, [role="radio"], [role="checkbox"], [role="combobox"]`)) {
+                consider(element.getBoundingClientRect());
+            }
+            for (const node of element.childNodes) {
+                if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim()) continue;
+                range.selectNodeContents(node);
+                for (const rect of range.getClientRects()) consider(rect);
+            }
+        }
+        return bottom === Number.NEGATIVE_INFINITY ? null : { top, bottom };
+    };
     const isFrame = (element: Element) => element.classList.contains('rounded-card')
         || element.classList.contains('sound-module-card')
         || element.classList.contains('page-section')
@@ -241,14 +264,25 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         if (!isFrame(element) || !isVisible(element)) continue;
         const box = element.getBoundingClientRect();
         if (box.height < 40) continue;
-        if (hasSubstance(element, true)) continue;
+        const half = box.height / 2;
         const heading = element.querySelector('h1, h2, h3, h4');
-        if (heading instanceof HTMLElement && isVisible(heading)) {
-            const headingBox = heading.getBoundingClientRect();
-            // 見出しが枠の高さをほぼ占める名前の行は、中身の無い空きではない。
-            if (box.height - headingBox.height < 24) continue;
+        if (!hasSubstance(element, true)) {
+            if (heading instanceof HTMLElement && isVisible(heading)) {
+                const gap = box.height - heading.getBoundingClientRect().height;
+                // 見出しが枠をほぼ占め、その空きが枠の半分未満の名前の行だけ空にしない（#673）。
+                if (gap < 24 && gap < half) continue;
+            }
+            push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
+            continue;
         }
-        push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
+        // 名前の行に操作が付くと中身ありになる。状態の行が無い音調整のカードだけを見る。
+        // 実行中は隣のカードに合わせて伸びるので、短い外部VSTを空の枠にしない（#673）。
+        if (!element.classList.contains('sound-module-card') || element.querySelector('.sound-card-status')) continue;
+        const band = contentBand(element);
+        if (!band || band.bottom - band.top > 96) continue;
+        if (box.bottom - band.bottom >= half) {
+            push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
+        }
     }
 
     const followingSubstance = (element: Element) => {

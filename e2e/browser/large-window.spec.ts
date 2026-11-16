@@ -38,8 +38,14 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
     for (const size of sizes) {
         await page.setViewportSize(size);
         const tier = page.locator('#home-noise [data-home-tier="2"]');
-        if (size.height >= 800) await expect(tier).toBeVisible();
-        else await expect(tier).toBeHidden();
+        const tierLink = page.getByRole('button', { name: '詳しい調整は音づくりにあります', exact: true });
+        if (size.height >= 800) {
+            await expect(tier).toBeVisible();
+            await expect(tierLink).toBeHidden();
+        } else {
+            await expect(tier).toBeHidden();
+            await expect(tierLink).toBeVisible();
+        }
         const home = page.locator('.home-content');
         const display = await home.evaluate(element => getComputedStyle(element).display);
         expect(display).toBe(size.width >= 1400 ? 'grid' : 'block');
@@ -53,12 +59,14 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         });
         for (const gap of gaps) expect(gap).toBeLessThanOrEqual(32);
         const fit = await page.evaluate(() => {
-            const shell = document.querySelector('.app-shell')!.getBoundingClientRect();
+            const shell = document.querySelector('.app-shell');
+            if (!shell) throw new Error('.app-shell がありません');
+            const box = shell.getBoundingClientRect();
             const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
             return {
                 zoom,
-                shellWidth: shell.width,
-                shellHeight: shell.height,
+                shellWidth: box.width,
+                shellHeight: box.height,
                 overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 overflowY: document.documentElement.scrollHeight - document.documentElement.clientHeight,
             };
@@ -71,6 +79,24 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         readings.push(`${size.width}x${size.height} tier=${size.height >= 800} column=${size.width >= 1400} zoom=${fit.zoom} shell=${Math.round(fit.shellWidth)}x${Math.round(fit.shellHeight)}`);
     }
     console.log(readings.join('\n'));
+});
+
+test('1280×800の声の種類は、チェックと文字の間をほかの選択と同じにする', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await prepare(page);
+    const gap = await page.getByRole('radio', { name: '標準', exact: true }).evaluate(element => {
+        const svg = element.querySelector('svg');
+        return { gap: getComputedStyle(element).columnGap, position: svg ? getComputedStyle(svg).position : '' };
+    });
+    expect(gap.gap).toBe('6px');
+    expect(gap.position).toBe('static');
+});
+
+test('低い窓の一文から音づくりを開く', async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 640 });
+    await prepare(page);
+    await page.getByRole('button', { name: '詳しい調整は音づくりにあります', exact: true }).click();
+    await expect(page.locator('[data-settings-page]')).toHaveAttribute('data-settings-page', 'sound');
 });
 
 test('拡大後もクリック位置・ポップアップ・スライダー・ダイアログが窓の中に収まる', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import './tauriWindow';
 import type { Page } from '@playwright/test';
 
 test.use({ liveHome: true });
@@ -210,12 +211,16 @@ test.describe('ホームと設定の共通操作', () => {
     test.use({ builtinEnabled: true });
     test('ノイズ低減と声のプリセットは各画面内で寸法を揃え、ホームをコンパクトにする', async ({ page }) => {
         await page.addInitScript(() => {
-            const original = (window as any).__TAURI_INTERNALS__.invoke;
-            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+            const original = internals.invoke;
+            internals.invoke = async (command: string, args?: unknown) => {
                 const result = await original(command, args);
                 if (command === 'get_engine_runtime_stats') {
-                    result.noiseReductionEnabled = true;
-                    result.noiseReductionMode = 'low';
+                    if (!result || typeof result !== 'object') throw new Error('get_engine_runtime_stats の応答がオブジェクトではありません');
+                    const stats = result as Record<string, unknown>;
+                    stats.noiseReductionEnabled = true;
+                    stats.noiseReductionMode = 'low';
                 }
                 return result;
             };
@@ -223,7 +228,7 @@ test.describe('ホームと設定の共通操作', () => {
         // 声の種類は2段目。仮の境目は高さ 860 なので、同じ寸法の比較はそこ以上で続ける。
         await page.setViewportSize({ width: 1280, height: 900 });
         await page.goto('/');
-        const names = ['弱', '強', '配信', '低め', '明瞭'];
+        const names = ['弱', '強', '標準', '低め', '明瞭'];
         const home = [...names.slice(0, 2).map(name => page.locator('#home-noise').getByRole('radio', { name, exact: true })),
             ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('radio', { name, exact: true }))];
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {

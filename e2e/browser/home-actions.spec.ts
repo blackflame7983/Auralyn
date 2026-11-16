@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import './tauriWindow';
 
 test.use({ liveHome: true, builtinEnabled: true, registeredModes: false });
 test.beforeEach(async ({ page }) => {
@@ -36,13 +37,21 @@ for (const theme of ['light', 'dark', 'gaming']) {
         await page.addInitScript(theme => {
             localStorage.setItem('vst_host_theme', theme);
             // 音声は使わず、両セグメントが有効な条件の表示を比較する。
-            const original = (window as any).__TAURI_INTERNALS__.invoke;
-            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+            const original = internals.invoke;
+            const fields = (value: unknown, name: string): Record<string, unknown> => {
+                if (!value || typeof value !== 'object') throw new Error(`${name} がオブジェクトではありません`);
+                return value as Record<string, unknown>;
+            };
+            internals.invoke = async (command: string, args?: unknown) => {
                 const result = await original(command, args);
                 if (command === 'get_engine_runtime_stats') {
-                    result.noiseReductionEnabled = true;
-                    result.noiseReductionMode = 'low';
-                    result.latencyMetadata.stageBreakdown.nr.enabled = true;
+                    const stats = fields(result, 'get_engine_runtime_stats');
+                    stats.noiseReductionEnabled = true;
+                    stats.noiseReductionMode = 'low';
+                    const nr = fields(fields(fields(stats.latencyMetadata, 'latencyMetadata').stageBreakdown, 'stageBreakdown').nr, 'nr');
+                    nr.enabled = true;
                 }
                 return result;
             };
@@ -50,12 +59,19 @@ for (const theme of ['light', 'dark', 'gaming']) {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         const low = page.locator('#home-noise').getByRole('radio', { name: '弱', exact: true });
-        const broadcast = page.locator('#home-builtin').getByRole('radio', { name: '配信', exact: true });
+        const broadcast = page.locator('#home-builtin').getByRole('radio', { name: '標準', exact: true });
         await expect(low).toBeVisible();
-        const a = (await low.boundingBox())!;
-        const b = (await broadcast.boundingBox())!;
-        expect(a.width).toBe(b.width); expect(a.height).toBe(b.height);
-        await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.71, 0.7], output: [0.71, 0.7] }));
+        const lowBox = await low.boundingBox();
+        const broadcastBox = await broadcast.boundingBox();
+        expect(lowBox, '弱の寸法').not.toBeNull();
+        expect(broadcastBox, '標準の寸法').not.toBeNull();
+        if (!lowBox || !broadcastBox) return;
+        expect(lowBox.width).toBe(broadcastBox.width); expect(lowBox.height).toBe(broadcastBox.height);
+        await page.evaluate(() => {
+            const emit = window.__e2eEmit;
+            if (!emit) throw new Error('__e2eEmit がありません');
+            emit('audio-level', { input: [0.71, 0.7], output: [0.71, 0.7] });
+        });
         await expect(page.locator('aside .bg-meter-warning, aside .meter-fill-aurora').first()).toBeVisible();
         await page.screenshot({ path: info.outputPath(`${theme}.png`) });
     });

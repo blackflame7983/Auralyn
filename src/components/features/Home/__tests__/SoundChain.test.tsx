@@ -11,9 +11,9 @@ import { RuntimeStatsContext } from '@/components/layout/RuntimeStatsContext';
 import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
-const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true }));
+const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true, chainOn: true, preset: 'broadcast' }));
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, chainOn: true, preset: 'broadcast', shownAmount: 50 }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, shownAmount: 50 }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
     BuiltinAmount: () => <span>builtin-amount</span>, BuiltinPresets: () => <span>builtin-presets</span>,
@@ -45,7 +45,7 @@ const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, 
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
-beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; });
+beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn = true; quick.preset = 'broadcast'; });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
@@ -229,6 +229,13 @@ it('保存済みのVSTを読み込めていない空の段は「未追加」と�
     expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
 });
 
+it('低い窓向けの一文は音づくりを開く', () => {
+    const p = props();
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady /></RuntimeStatsContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.tierFallback') }));
+    expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+});
+
 it('音調整のカードは開閉せず、声の種類は2段目に常に出す', () => {
     const expanded = vi.fn();
     render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
@@ -244,6 +251,7 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
         <SoundChain {...props()} stopped={stopped} audioReady isEngineRunning={!stopped} />
     </RuntimeStatsContext.Provider></LocaleProvider>;
     const view = render(content(false));
+    expect(screen.getByRole('list')).not.toHaveClass('items-start');
     const runningName = within(screen.getAllByRole('listitem')[2]).getByRole('heading', { level: 3 }).textContent;
     expect(runningName).toBe(message(locale, 'chain.vstEmptyName'));
     // 実行中の名前行は、追加を折り返す停止中の行とは別に置く。
@@ -251,6 +259,8 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     view.rerender(content(true));
     const section = screen.getByRole('region', { name: message(locale, 'shell.sound') });
     const chain = screen.getByRole('list');
+    // 停止中の名前の行は、隣のカードの高さに合わせない（#673）。
+    expect(chain).toHaveClass('items-start');
     const items = within(chain).getAllByRole('listitem');
     expect(items).toHaveLength(3);
     const hint = message(locale, 'chain.stoppedHint');
@@ -275,6 +285,51 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
 });
 
+it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前より先にONを出し、OFFのときはOFFのまま (%s)', locale => {
+    const current = stats();
+    const stage = current.latencyMetadata?.stageBreakdown;
+    expect(stage, '声の段の内訳').toBeTruthy();
+    if (!stage) return;
+    stage.builtinVoiceEnabled = true;
+    stage.builtinReverbEnabled = false;
+    const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>
+    </LocaleProvider>;
+    const view = render(content());
+    const row = () => within(screen.getByRole('list')).getAllByRole('listitem')[1];
+    const name = message(locale, 'settings.AudioSettingsModal.098');
+    expect(name).toBe(locale === 'ja' ? '標準' : 'Standard');
+    expect(row()).toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
+    expect(row()).not.toHaveTextContent(locale === 'ja' ? '配信' : 'Broadcast');
+    quick.chainOn = false;
+    stage.builtinVoiceEnabled = false;
+    view.rerender(content());
+    expect(row()).toHaveTextContent(message(locale, 'flow.disabled'));
+    expect(row()).not.toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
+});
+
+it('停止中のその他の操作は、OBS連携と詳しい調整のどちらも押せ、追加も押せる', async () => {
+    // どちらも設定のページを開くだけで、音声が動いている必要はない（#665）。
+    const p = props();
+    render(<SoundChain {...p} stopped audioReady={false} isEngineRunning={false} vstCount={0} />);
+    const more = screen.getByRole('button', { name: 'その他の操作' });
+    expect(more).toBeEnabled();
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const obs = await screen.findByRole('menuitem', { name: 'OBS連携' });
+    const sound = screen.getByRole('menuitem', { name: '詳しく調整' });
+    expect(obs).toBeEnabled();
+    expect(sound).toBeEnabled();
+    fireEvent.click(obs);
+    expect(p.onOpenOBSSettings).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '詳しく調整' }));
+    expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+    const add = screen.getByRole('button', { name: '追加' });
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(p.onOpenVst).toHaveBeenCalledWith(true);
+});
+
 it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2段目を描く（#623）', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
@@ -284,6 +339,8 @@ it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2
     </RuntimeStatsContext.Provider>);
     expect(document.querySelector('[data-home-tier="2"]')).toHaveTextContent('画面を開く');
     expect(document.querySelector('[data-home-tier="2"]')).toHaveClass('border-t');
+    // 音楽鑑賞で隠れる2段目はVSTの画面。音づくりへの一文は出さない（#672）。
+    expect(screen.queryByRole('button', { name: message('ja', 'home.tierFallback') })).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止中も同じ (%s)', locale => {
@@ -297,8 +354,8 @@ it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止
     view.rerender(content(true));
     expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
     const section = screen.getByRole('region', { name: message(locale, 'wizard.musicSound') });
-    expect(within(section).getAllByText(message(locale, 'chain.stoppedHint'), { exact: true })).toHaveLength(1);
-    expect(screen.getByRole('listitem')).not.toHaveTextContent(message(locale, 'chain.stoppedHint'));
+    // 音楽鑑賞は停止中も追加が使える。ノイズ低減と声を整える向けの一文は出さない（#663）。
+    expect(within(section).queryByText(message(locale, 'chain.stoppedHint'), { exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole('listitem')).not.toHaveTextContent('—');
 });
 

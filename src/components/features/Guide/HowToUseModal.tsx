@@ -1,5 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useId, useRef, useState } from 'react';
 import { MdClose } from 'react-icons/md';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -8,15 +7,15 @@ import { glossary, glossaryDocName, type UserDocName } from '@/lib/userDocs';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useShortcutBindings } from '@/hooks/useShortcutBindings';
 import { homeGuideFor, homeGuideGroups, type HomeGuideGroup } from './homeGuide';
-import { shortcutActions, type ShortcutAction } from '@/lib/shortcutActions';
+import { shortcutActions } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
 const sections = ['home', 'setup', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
 const storageKey = 'auralyn_help_section';
 const sectionDocs = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
-type Binding = { action: ShortcutAction; shortcut: string };
 
 interface Props {
     onClose: () => void;
@@ -39,19 +38,8 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
             return sections.find(value => value === saved) ?? 'home';
         } catch { return 'home'; }
     });
-    const [bindings, setBindings] = useState<Binding[] | null>(null);
-    const read = useRef(false);
+    const bindings = useShortcutBindings(section === 'keys');
     const body = useRef<HTMLDivElement>(null);
-    // 読むだけの画面。割り当ての読み取りは、この節を初めて表示したときだけ行う。
-    useEffect(() => {
-        if (section !== 'keys' || read.current) return;
-        read.current = true;
-        void invoke<{ bindings: Binding[] }>('get_shortcuts').then(status => {
-            if (!Array.isArray(status.bindings)) return;
-            // 知らない操作の割り当てが1つ混ざっても、分かる操作の割り当ては表示する。
-            setBindings(status.bindings.filter(binding => binding && Object.prototype.hasOwnProperty.call(shortcutActions, binding.action) && typeof binding.shortcut === 'string'));
-        }).catch(() => {});
-    }, [section]);
     const select = (next: Section) => {
         setSection(next);
         if (body.current) body.current.scrollTop = 0;
@@ -64,6 +52,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
         peakDetails: t('peak.details'),
         details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
+        tierLink: t('home.tierFallback'),
         add: t('chain.vstAdd'), openVst: t('sound.openVst'),
         settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),

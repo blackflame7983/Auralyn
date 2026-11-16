@@ -35,9 +35,9 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);
         await expect(chain.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        // #602: 開始すると表示・変更できる一文は、3枚の上に1回。VSTの見出しは配信の外部VST。
-        await expect(chain.getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(1);
-        await expect(chain.getByRole('listitem').getByText('音声を開始すると表示・変更できます', { exact: true })).toHaveCount(0);
+        // #665: 一文はノイズ低減と声を整えるだけ。外部VSTの追加と「その他の操作」は対象にしない。
+        await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(1);
+        await expect(chain.getByRole('listitem').getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
         await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);
@@ -57,4 +57,33 @@ for (const theme of ['dark', 'light', 'gaming']) {
     });
 }
 
+});
+
+test.describe('停止中のカードの高さ', () => {
+    test.use({ liveHome: true, stoppedHome: true, registeredModes: true });
+    test('900×600では名前の行の下を、カードの半分以上空けない', async ({ page }) => {
+        await page.setViewportSize({ width: 900, height: 600 });
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_theme', 'dark');
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+        const chain = page.getByRole('region', { name: '音調整', exact: true });
+        await expect(chain.getByRole('listitem')).toHaveCount(3);
+        await expect(chain.getByRole('button', { name: '詳しい調整は音づくりにあります', exact: true })).toBeVisible();
+        const gaps = await chain.locator('.sound-module-card').evaluateAll(cards => cards.map(card => {
+            const box = card.getBoundingClientRect();
+            let bottom = box.top;
+            for (const node of card.querySelectorAll('h3, button')) {
+                const rect = node.getBoundingClientRect();
+                if (rect.height >= 1) bottom = Math.max(bottom, rect.bottom);
+            }
+            return { height: box.height, spaceBelow: box.bottom - bottom };
+        }));
+        expect(gaps).toHaveLength(3);
+        for (const gap of gaps) expect(gap.spaceBelow).toBeLessThan(gap.height / 2);
+    });
 });

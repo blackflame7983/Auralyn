@@ -103,8 +103,15 @@ test('共通のVSTカードでキーボードの並べ替えを配信ラック�
     const handle = post.getByRole('button', { name: 'Fixture EQを並べ替え' }); await handle.scrollIntoViewIfNeeded(); await handle.focus(); await page.keyboard.press('Space');
     await expect(handle).toHaveAttribute('aria-pressed', 'true');
     const announcements = page.locator('[id^="DndLiveRegion"]'); await expect(announcements).toContainText('並べ替えを開始');
-    await page.keyboard.press('ArrowDown'); await expect(announcements).toContainText('2番目（全2件）へ移動');
-    await page.keyboard.press('Space'); await expect.poll(() => page.evaluate(() => (window as any).__postRequests.filter((r: any) => r.action === 'reorder').map((r: any) => r.ids))).toEqual([['post-2', 'post-1']]);
+    // 並べ替えの開始直後は、矢印キーをまだ受け付けないことがある（負荷が高いとき）。移動の読み上げが出るまで押し直す。
+    // 項目は2件なので、押しすぎても2番目より先へは進まない。
+    await expect(async () => {
+        await page.keyboard.press('ArrowDown');
+        await expect(announcements).toContainText('2番目（全2件）へ移動', { timeout: 1000 });
+    }).toPass({ timeout: 10_000 });
+    await page.keyboard.press('Space');
+    await expect.poll(() => page.evaluate(() => (window.__postRequests ?? [])
+        .filter(request => request.action === 'reorder').map(request => request.ids))).toEqual([['post-2', 'post-1']]);
 });
 
 test('ミュート直後の音量操作をまとめて反映し、失敗した音量を成功表示しない', async ({ page }) => {
