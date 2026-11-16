@@ -29,15 +29,7 @@ export interface PurposeAllowance {
     reason: string;
 }
 
-export const knownViolations: KnownViolation[] = [
-    // 音楽鑑賞の接続ページに、配信向けの欄が出る（用途の混ざり）。
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'ja', match: '自分用と配信用に分ける', issue: '#642' },
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'ja', match: '歌・モニター', issue: '#642' },
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'ja', match: '配信ミックス', issue: '#642' },
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'en', match: 'Separate monitor and broadcast', issue: '#642' },
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'en', match: 'Singing and monitoring', issue: '#642' },
-    { check: 'purpose', screen: 'connect', purpose: 'music', locale: 'en', match: 'Broadcast mix', issue: '#642' },
-];
+export const knownViolations: KnownViolation[] = [];
 
 export const purposeAllowances: PurposeAllowance[] = [
     // 外観は、接続ページにある使い方の切替を案内する。設定のタブ名も残す。

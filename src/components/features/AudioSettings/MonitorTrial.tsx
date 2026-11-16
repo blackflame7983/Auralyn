@@ -42,6 +42,10 @@ function validOriginal(value: unknown): value is AudioPreferences {
         && (item.outputRouting === undefined || readOutputRouting(item.outputRouting) !== undefined)
         && (channels === undefined || (Array.isArray(channels) && channels.length === 2 && channels.every(n => Number.isSafeInteger(n) && n >= 0 && n <= 65535)));
 }
+export function monitorTrialInUse() {
+    const kind = readRecovery().kind;
+    return kind === 'saved' || kind === 'invalid';
+}
 function readRecovery(): RecoveryRecord {
     try {
         let raw = localStorage.getItem(storageKey());
