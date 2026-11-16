@@ -56,8 +56,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(saveSinging).toBeInViewport();
     await expect(saveTalk).toBeInViewport();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(0);
-    await section.getByRole('button', { name: 'モード登録とプロファイル保存の違い' }).click();
-    const help = page.getByRole('dialog', { name: 'モード登録とプロファイル保存の違い' });
+    await section.getByRole('button', { name: 'モード登録と構成の保存の違い' }).click();
+    const help = page.getByRole('dialog', { name: 'モード登録と構成の保存の違い' });
     await expect(help).toContainText('雑談では残響をOFFにします');
     await page.keyboard.press('Escape');
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(0);

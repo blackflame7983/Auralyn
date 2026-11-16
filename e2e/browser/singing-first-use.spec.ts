@@ -78,12 +78,12 @@ test('反映エラーは次の操作を示し、技術詳細は必要時に開�
     await page.screenshot({ path: testInfo.outputPath('actionable-error.png') });
 });
 
-test('登録・歌向け欄・プロファイルで同じ保存先の比較を開け、説明の開閉では登録も保存もしない', async ({ page }, testInfo) => {
+test('登録・歌向け欄・構成で同じ保存先の比較を開け、説明の開閉では登録も保存もしない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
     await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
-    const label = 'モード登録とプロファイル保存の違い';
+    const label = 'モード登録と構成の保存の違い';
     const modeHelp = page.locator('#live-mode-settings').getByRole('button', { name: label, exact: true });
     await modeHelp.press('Enter');
     const help = page.getByRole('dialog', { name: label, exact: true });
@@ -99,7 +99,7 @@ test('登録・歌向け欄・プロファイルで同じ保存先の比較を�
     await section.getByRole('button', { name: label, exact: true }).click();
     await expect(help).toHaveText(comparison);
     await page.keyboard.press('Escape');
-    await section.getByRole('button', { name: '適用済み設定をプロファイルへ保存', exact: true }).click();
+    await section.getByRole('button', { name: '適用済み設定を構成へ保存', exact: true }).click();
     await expect(page.locator('input[id^="save-"]')).toHaveCount(4);
     const categories = () => page.locator('input[id^="save-"]').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).checked));
     const before = await categories();

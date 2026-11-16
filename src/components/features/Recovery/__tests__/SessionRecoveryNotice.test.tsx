@@ -61,7 +61,7 @@ it('不在確認後に名前とバックアップの影響を示し、別の明�
     view.rerender(<SessionRecoveryNotice {...props} onCheckMissing={check} onSaveWithoutMissing={save} missingRecovery={{ names: ['A', 'B'] }} />);
     expect(screen.getByText('A')).toBeVisible();
     expect(screen.getByText('B')).toBeVisible();
-    expect(screen.getByText(/プロファイルにバックアップ/)).toBeVisible();
+    expect(screen.getByText(/バックアップの構成に残します/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '外して保存' }));
     expect(save).toHaveBeenCalledOnce();
 });

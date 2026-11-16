@@ -72,7 +72,7 @@ it('残響だけの下書きから候補入口を使え、保存操作は下書�
     fireEvent.click(screen.getByRole('button', { name: '試しに聴く' }));
     expect(preview).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByText('再取得・下書きのリセット・保存'));
-    fireEvent.click(screen.getByRole('button', { name: '適用済み設定をプロファイルへ保存' }));
+    fireEvent.click(screen.getByRole('button', { name: '適用済み設定を構成へ保存' }));
     expect(save).toHaveBeenCalledOnce();
     expect(current.config.reverb).toBeUndefined();
     expect(current.config.active).toBe(false);
