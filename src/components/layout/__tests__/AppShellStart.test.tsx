@@ -91,7 +91,7 @@ it('停止中の「音声停止中」は上の帯といまの状態だけに出�
     expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
     expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
     expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
-    expect(screen.getAllByText('音声を開始すると表示・変更できます', { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveLength(1);
     expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
     expect(screen.getByRole('meter', { name: '送る音' })).toHaveAttribute('aria-valuetext', expect.stringContaining('音声停止中'));
 });

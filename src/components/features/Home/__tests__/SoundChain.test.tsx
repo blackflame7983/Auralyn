@@ -295,6 +295,28 @@ it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前�
     expect(row()).not.toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
 });
 
+it('停止中のその他の操作は、OBS連携と詳しい調整のどちらも押せ、追加も押せる', async () => {
+    // どちらも設定のページを開くだけで、音声が動いている必要はない（#665）。
+    const p = props();
+    render(<SoundChain {...p} stopped audioReady={false} isEngineRunning={false} vstCount={0} />);
+    const more = screen.getByRole('button', { name: 'その他の操作' });
+    expect(more).toBeEnabled();
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const obs = await screen.findByRole('menuitem', { name: 'OBS連携' });
+    const sound = screen.getByRole('menuitem', { name: '詳しく調整' });
+    expect(obs).toBeEnabled();
+    expect(sound).toBeEnabled();
+    fireEvent.click(obs);
+    expect(p.onOpenOBSSettings).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '詳しく調整' }));
+    expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+    const add = screen.getByRole('button', { name: '追加' });
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(p.onOpenVst).toHaveBeenCalledWith(true);
+});
+
 it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2段目を描く（#623）', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);

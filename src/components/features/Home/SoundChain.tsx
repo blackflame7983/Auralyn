@@ -108,6 +108,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     </Button>;
 
     // 停止中の一文はカードごとではなく、並びの上に1回だけ出す（#602）。
+    // 対象はノイズ低減と声を整える。外部VSTの追加と「その他の操作」は停止中も使える（#665）。
     const stoppedHint = t('chain.stoppedHint');
     const noiseSummary = stopped ? undefined : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
