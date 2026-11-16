@@ -57,7 +57,7 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 `.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
 
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
-Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
+Node.js 24とlockfileを使い、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
 単体・DOM・型・配布の `checks` と、本番ビルド・Chromium試験の `browser` を別runnerで並行実行する。
 最後の `frontend` は両jobの成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
 ブラウザ試験はCIでファイル単位の2並列とし、ファイル内の試験は直列を保つ。手元は既定1並列で、`--workers=2` を指定して同じ並列数を試せる。
@@ -69,6 +69,10 @@ Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリ
 これらのjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
 workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
 Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
+
+`npm run lint:terms` は、`src/i18n/messages.ts` の日本語と英語を `config/ui-terms.json` と照合する。使わないと決めた語、かぎかっこや空白だけを挟んだ同じ語句の重なり（英語は同じ単語の連続）、用語集の使う語から離れた定義を、人の評価より前に止める。CI の frontend 品質では `checks` がこの検査を実行する。
+
+直すときは、失敗したキーの文言を `docs/DESIGN.md` 4章の使う語へ合わせる。その語が文脈上正しいときは、`config/ui-terms.json` の `allow` に `key`、`term`、`reason` を足す。用語を足したり変えたりしたときは、4章の表と `terms` の `use` を両方更新する。`use` が4章の使う語の列に無いと検査は失敗する。
 
 | 層 | 目的 | 実行 |
 | --- | --- | --- |

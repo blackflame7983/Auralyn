@@ -32,6 +32,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Browser test TypeScript
         run: npx tsc --noEmit -p tsconfig.e2e.json
+      - name: UI terms
+        run: npm run lint:terms
       - name: Distribution script tests
         run: npm run test:release
       - name: Release policy
