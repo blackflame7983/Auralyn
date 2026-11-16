@@ -2857,48 +2857,6 @@
     },
     {
       "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 6,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 5,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 10,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
       "rule": "auralyn/no-suppression",
       "hash": "3d90e06fbed6212564941bb4c98b5cb153769b722d98a38f950708381cf857c8",
       "count": 1,
@@ -2951,48 +2909,6 @@
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "1a7728a7d1187c34ebc9f7005564712c5baf3974e6baf19558310f0197c990e6",
       "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 8,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 60,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 18,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 6,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
