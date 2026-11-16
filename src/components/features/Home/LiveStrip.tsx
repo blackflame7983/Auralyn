@@ -4,15 +4,9 @@ import { meterStatusLabel } from '@/hooks/useMeterLevels';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { deviceDisplayName } from '@/lib/audioRouting';
 import { OUTPUT_LOUD_DB, OUTPUT_QUIET_DB, outputVerdict } from '@/lib/outputVerdict';
 import { useInputMeterState, useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
-
-function deviceName(value: string | null | undefined, unset: string) {
-    const text = value?.trim();
-    return text ? deviceDisplayName(text) : unset;
-}
 
 /** 入ってきた音の状態。レベルの平滑化では描き直さず、状態が変わったときだけ読む。 */
 function IncomingStatus({ running, label }: { running: boolean; label: string }) {
@@ -40,12 +34,9 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
 }
 
 // ホーム先頭の「いまの状態」。右の列のメーターは残し、ここでは状態と送る音の大きさを横長に置く。主ボタンは多くて1つ。
-export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices, inputName, outputName }: {
+export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices }: {
     onStartAudio?: () => void; /** 札は上の帯に移した。呼び出し側の引数は残す。 */ stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
-    /** 保存済みの再生元・出力先。上の帯と同じく、動いている設定が無いときの見出しに使う。 */
-    inputName?: string;
-    outputName?: string;
     /** 札は上の帯に移した。呼び出し側の引数は残す。 */
     engineProcessReady?: boolean | null;
 }) {
@@ -54,14 +45,8 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { usage } = model.context;
-    const unset = t('master.unset');
-    // 動いている設定を優先し、無いときは上の帯と同じ保存済みの名前を使う。両方無いときだけ未設定（#598）。
-    const heading = music
-        ? t('home.listeningRoute', {
-            source: deviceName(model.observation.config?.input ?? inputName, unset),
-            output: deviceName(model.observation.config?.output ?? outputName, unset),
-        })
-        : (liveModeName ?? t('liveBar.custom'));
+    // 音楽鑑賞の見出しは経路ではなく用途の名前。経路は上の帯に1回だけ出す（#651）。
+    const heading = music ? t('home.musicHeading') : (liveModeName ?? t('liveBar.custom'));
     // 未登録の見出しは「いまの声」。モードの札は登録してから出す（#655）。
     const currentVoice = !music && heading === t('home.currentVoice');
     // 名前が「いまの調整」のときだけ、見出しの横に短い説明を出す。詳しい文はツールチップに残す（#601、#655）。
@@ -85,7 +70,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
         {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
-            {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>}
+            {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(music ? (starting ? 'home.startingListening' : 'home.startListening') : (starting ? 'home.starting' : 'home.startAudio'))}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
             {startNote && <p className="text-ui-support text-muted-foreground">{t(music ? 'home.startSavedPlayback' : 'home.startSavedDevices')}</p>}
         </div>}

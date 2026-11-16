@@ -100,12 +100,13 @@ test.describe('右の本番中の操作', () => {
         });
         await page.goto('/');
         await ready(page);
-        // 音楽鑑賞のホームでは、比較中でないあいだ右の列に比較を出さない。入口は再生の状態の同じ名前（#590）。
-        await expect(page.getByRole('region', { name: '再生の状態' }).getByRole('switch', { name: 'VSTを外して比較', exact: true })).toBeVisible();
-        await expect(column(page).getByRole('switch', { name: 'VSTを外して比較', exact: true })).toHaveCount(0);
+        // 音楽鑑賞でも比較は右の列に常に出す（#653）。
+        await expect(column(page).getByRole('switch', { name: 'VSTを外して比較', exact: true })).toBeVisible();
+        await expect(page.getByRole('switch', { name: 'VSTを外して比較', exact: true })).toHaveCount(1);
         await expectColumnFits(page, 900, 600, columnName, [
             { role: 'button', name: '緊急ミュート' },
             { role: 'slider', name: '出力音量' },
+            { role: 'switch', name: 'VSTを外して比較' },
             { role: 'button', name: '音声処理の詳細' },
         ]);
     });

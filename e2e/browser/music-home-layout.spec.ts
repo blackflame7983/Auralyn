@@ -66,6 +66,17 @@ test.describe('音楽鑑賞のホームの並び', () => {
             expect(place.name).toBe('VST');
             expect(place.headingTop).toBeGreaterThanOrEqual(0);
             expect(place.buttonBottom).toBeLessThanOrEqual(place.viewport + 1);
+            await page.evaluate(() => {
+                const host: Window & { __e2eEmit?: (event: string, payload: unknown) => void } = window;
+                host.__e2eEmit?.('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] });
+            });
+            const flowName = locale === 'ja' ? '音の流れ' : 'Audio flow';
+            const flow = page.getByRole('region', { name: flowName, exact: true }).filter({ has: page.locator('canvas') });
+            await expect(flow).toBeVisible();
+            const flowTop = await flow.evaluate(element => element.getBoundingClientRect().top);
+            // 最初の画面に頭が入れば十分。入らないときは、ほかのカードを削らない（#652）。
+            expect(flowTop).toBeGreaterThanOrEqual(0);
+            expect(flowTop).toBeLessThan(600);
         });
     }
 });

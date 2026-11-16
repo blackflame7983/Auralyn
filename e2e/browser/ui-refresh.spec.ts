@@ -51,14 +51,18 @@ test('音楽鑑賞は送り先を変更せず、再生元と聴く機器を示�
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
     });
     await page.goto('/');
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    await page.evaluate(() => {
+        const host: Window & { __e2eSetOutputMuted?: (muted: boolean) => void } = window;
+        host.__e2eSetOutputMuted?.(false);
+    });
     await expect(page.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
     await expect(page.locator('main')).not.toContainText('OBS');
     await expect(page.locator('main')).not.toContainText('通話');
     await expect(page.locator('main')).not.toContainText('マイク');
     await expect(page.locator('main')).not.toContainText(message('ja', 'purpose.liveDetails'));
     await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true })).toContainText('CABLE Output');
-    await expect(page.locator('main')).toContainText('スピーカー');
+    await expect(page.getByRole('region', { name: '状態の帯', exact: true })).toContainText('CABLE Output → スピーカー');
+    await expect(page.locator('main')).not.toContainText('CABLE Output → スピーカー');
     const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
     await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
     await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);

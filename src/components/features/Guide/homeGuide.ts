@@ -40,6 +40,7 @@ export function homeGuideLabels(locale: Locale) {
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
         mode: t('home.modeMark'), currentVoice: t('home.currentVoice'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
         musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
+        musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
         usage: t('purpose.section'), layout: t('purpose.label'),

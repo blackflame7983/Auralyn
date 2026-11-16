@@ -3,6 +3,7 @@ import { RouteSummary } from './RouteSummary';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabels } from './PreparationPanel';
+import { displayAudioHost } from '@/lib/audioDevices';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { AudioFlow } from '@/components/ui/AudioFlow';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
@@ -24,6 +25,9 @@ interface HomePanelsProps {
     statusText?: string;
     inputName?: string;
     outputName?: string;
+    /** 接続の詳細に出す接続方式と周波数。音楽鑑賞の保存した構成からは外した。 */
+    host?: string;
+    sampleRate?: number;
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
@@ -37,7 +41,7 @@ interface HomePanelsProps {
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
-export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
+export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName, host, sampleRate,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange, pinnedOpen = false }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
@@ -58,6 +62,10 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
         <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText} pinnedOpen={pinnedOpen}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
+            {music && <p className="basis-full text-ui-support text-muted-foreground">{t('music.playbackValues', {
+                host: host ? displayAudioHost(host) : t('master.unset'),
+                rate: sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${sampleRate / 1000} kHz` : t('master.unset'),
+            })}</p>}
             <div className="basis-full"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
                 input={{ label: t(music ? 'music.source' : 'home.input'), value: actualInput ? deviceDisplayName(actualInput) : undefined, warning: !actualInput ? t('flow.checkInput') : undefined }}
                 output={{ label: t(broadcastId ? 'flow.monitorOutput' : 'home.output'), value: actualOutput ? deviceDisplayName(actualOutput) : undefined, warning: !actualOutput ? t('flow.checkOutput') : undefined }}

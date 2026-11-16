@@ -179,7 +179,7 @@ it.each(['ja', 'en'] as const)('再生の状態の説明は、音楽鑑賞の見
     expect(within(dialog).getByText(text)).toBeInTheDocument();
     expect(text).not.toMatch(/\{[A-Za-z]+\}/);
     expect(text).not.toContain(locale === 'ja' ? '保存した「保存した' : 'saved “Saved');
-    if (locale === 'ja') expect(text).toBe('「再生の状態」には、接続方式と周波数、「保存したVSTの構成」の切り替え、「VSTを外して比較」があります。');
+    if (locale === 'ja') expect(text).toBe('「保存した構成」は保存した構成の切り替えだけです。接続方式と周波数は「接続の詳細」にあります。');
 });
 
 it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュメントを開く（%s）', locale => {

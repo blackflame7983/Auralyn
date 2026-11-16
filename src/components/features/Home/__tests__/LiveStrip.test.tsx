@@ -64,8 +64,8 @@ it('送り先の行はいまの状態に残さない', () => {
     expect(screen.getByRole('region', { name: 'いまの状態' })).not.toHaveTextContent(message('ja', 'prep.local'));
 });
 
-it('音楽鑑賞では送り先を出さず、再生元から出力への経路を見出しにする', () => {
-    // 段階4で、出力機器の名前だけの見出しをやめ、再生元 → 出力にする。無い機器は未設定と書く。
+it('音楽鑑賞では送り先を出さず、見出しを音楽鑑賞にする', () => {
+    // 経路は上の帯に1回だけ出す。いまの状態の見出しは用途の名前（#651）。
     localStorage.setItem('auralyn_display_purpose', 'music');
     const model = fixture();
     model.observation = { ...model.observation, config: model.observation.config ? { ...model.observation.config, output: '' } : null };
@@ -73,32 +73,24 @@ it('音楽鑑賞では送り先を出さず、再生元から出力への経路�
     const now = screen.getByRole('region', { name: 'いまの状態' });
     expect(now).not.toHaveTextContent(message('ja', 'live.destination'));
     expect(now).not.toHaveTextContent(message('ja', 'home.modeMark'));
-    expect(screen.getByRole('heading', { name: 'Mic → 未設定' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '音楽鑑賞' })).toBeVisible();
+    expect(now).not.toHaveTextContent('Mic');
     expect(within(now).getByRole('meter', { name: message('ja', 'home.listenLevel') })).toBeVisible();
 });
 
-it.each(['ja', 'en'] as const)('停止中の音楽鑑賞は、保存済みの再生元と出力先を見出しにし、開始の補足も再生元にする (%s)', locale => {
-    // #598: 動いている設定が無いときは、上の帯と同じ保存済みの名前を使う。あるときはそちらを優先する。
+it.each(['ja', 'en'] as const)('停止中の音楽鑑賞は、見出しを音楽鑑賞にし、聴き始めると再生元の補足を出す (%s)', locale => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     const model = fixture();
     model.observation = { ...model.observation, config: null };
-    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <LiveStrip model={model} running={false} onStartAudio={vi.fn()} inputName="CABLE Output" outputName="スピーカー" />
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={model} running={false} onStartAudio={vi.fn()} />
     </LocaleProvider>);
-    expect(screen.getByRole('heading', { name: 'CABLE Output → スピーカー' })).toBeVisible();
+    const now = screen.getByRole('region', { name: message(locale, 'home.now') });
+    expect(within(now).getByRole('heading', { name: message(locale, 'home.musicHeading') })).toBeVisible();
+    expect(within(now).getByRole('button', { name: message(locale, 'home.startListening') })).toBeVisible();
     expect(screen.getByText(message(locale, 'home.startSavedPlayback'))).toBeVisible();
     expect(screen.queryByText(message(locale, 'home.startSavedDevices'))).not.toBeInTheDocument();
-    const running = fixture();
-    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <LiveStrip model={running} running={false} onStartAudio={vi.fn()} inputName="別の再生元" outputName="別の出力" />
-    </LocaleProvider>);
-    expect(screen.getByRole('heading', { name: 'Mic → CABLE Input' })).toBeVisible();
-    const empty = fixture();
-    empty.observation = { ...empty.observation, config: null };
-    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <LiveStrip model={empty} running={false} onStartAudio={vi.fn()} />
-    </LocaleProvider>);
-    expect(screen.getByRole('heading', { name: `${message(locale, 'master.unset')} → ${message(locale, 'master.unset')}` })).toBeVisible();
+    expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操作の順で、停止時の開始条件も保つ (%s)', locale => {
