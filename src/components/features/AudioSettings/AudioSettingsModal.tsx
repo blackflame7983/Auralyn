@@ -1097,10 +1097,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           {/* ホットキーの保存欄は、ここへ出て一覧に被さらない（#641）。空のときは高さを持たない。 */}
           <div ref={bindSlot} className="shrink-0 empty:hidden" />
         {showSingingBar && (
-          <div className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
+          // 接続とホットキーと同じく、欄の実際の高さだけ下に余白を取り、最後の操作と焦点を欄に潜らせない（#645）。
+          <MeasuredSaveBar className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
             <p className="settings-action-note text-ui-support text-muted-foreground">{singingDirty ? t('sound.unapplied') : t('sound.noChanges')}</p>
             <Button type="button" className="shrink-0" disabled={singingModel.busy || !singingDirty || Boolean(singingModel.snapshot?.pending) || singingModel.conflict} onClick={() => void singingModel.apply()}>{t('settings.SingingControls.427')}</Button>
-          </div>
+          </MeasuredSaveBar>
         )}
         {activeTab === 'audio' && !loading && (
           <MeasuredSaveBar className="settings-action-bar shrink-0 border-t border-border bg-muted/20 px-4 py-2">
