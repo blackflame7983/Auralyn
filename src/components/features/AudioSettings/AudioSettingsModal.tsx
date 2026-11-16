@@ -228,7 +228,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   useEffect(() => {
     if (displayPurpose !== 'music') return;
     let active = true;
-    liveOutputApi.request().then(status => {
+    // モックや失敗で Promise 以外が返っても、接続のページ自体は開いたままにする。
+    Promise.resolve().then(() => liveOutputApi.request()).then(status => {
       if (active) setLiveOutputActive(liveOutputConfigInUse(status?.config));
     }).catch(() => { if (active) setLiveOutputActive(false); });
     return () => { active = false; };
