@@ -142,7 +142,7 @@ test.describe('英語の音調整', () => {
         });
         await page.setViewportSize({ width: 1024, height: 800 });
         await page.goto('/');
-        await expect(page.locator('#home-builtin').getByRole('radio', { name: 'Broadcast', exact: true })).toBeVisible();
+        await expect(page.locator('#home-builtin').getByRole('radio', { name: 'Standard', exact: true })).toBeVisible();
         const wide = await measureVoices();
         await page.setViewportSize({ width: 900, height: 800 });
         const narrow = await measureVoices();

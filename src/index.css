@@ -787,7 +787,7 @@ html[data-app-hidden="true"] *::after {
   grid-column: auto;
   margin-top: 0;
 }
-/* 日本語の声の種類（配信・低め・明瞭）は、ノイズの2択と同じボタン幅にすると960のカード（約164px）に3つ収まる。
+/* 日本語の声の種類（標準・低め・明瞭）は、ノイズの2択と同じボタン幅にすると960のカード（約164px）に3つ収まる。
    印は幅に含めない。文字は省略も折り返しもしない。 */
 .sound-chain .segment-option:lang(ja) {
   width: 3.375rem;

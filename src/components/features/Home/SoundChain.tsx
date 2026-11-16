@@ -112,9 +112,14 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const noiseSummary = stopped ? undefined : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
+    // 種類の id（broadcast など）は保存のまま。画面の名前だけを出す（#656）。
+    const presetName = q.preset === 'singing' ? t('chain.singingShort')
+        : q.preset === 'warm' ? t('settings.AudioSettingsModal.099')
+        : q.preset === 'bright' ? t('settings.AudioSettingsModal.100')
+        : t('settings.AudioSettingsModal.098');
     const builtinSummary = stopped ? undefined : deesserOnly ? t('flow.deesserOnly')
         : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
-        : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled')
+        : live ? builtinOn ? t('chain.voiceOn', { name: presetName }) : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
     const vstSummary = stopped ? undefined : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
     // 音楽鑑賞の見出しはこれまで「VST」。配信は空のときの「外部VST」。用途ごとに1つにし、実行中と停止中で変えない。

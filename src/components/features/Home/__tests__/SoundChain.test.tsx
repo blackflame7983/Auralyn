@@ -11,9 +11,9 @@ import { RuntimeStatsContext } from '@/components/layout/RuntimeStatsContext';
 import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
-const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true }));
+const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true, chainOn: true, preset: 'broadcast' }));
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, chainOn: true, preset: 'broadcast', shownAmount: 50 }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, shownAmount: 50 }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
     BuiltinAmount: () => <span>builtin-amount</span>, BuiltinPresets: () => <span>builtin-presets</span>,
@@ -45,7 +45,7 @@ const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, 
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
-beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; });
+beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn = true; quick.preset = 'broadcast'; });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
@@ -273,6 +273,26 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
+});
+
+it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前より先にONを出し、OFFのときはOFFのまま (%s)', locale => {
+    const current = stats();
+    current.latencyMetadata!.stageBreakdown!.builtinVoiceEnabled = true;
+    current.latencyMetadata!.stageBreakdown!.builtinReverbEnabled = false;
+    const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>
+    </LocaleProvider>;
+    const view = render(content());
+    const row = () => within(screen.getByRole('list')).getAllByRole('listitem')[1];
+    const name = message(locale, 'settings.AudioSettingsModal.098');
+    expect(name).toBe(locale === 'ja' ? '標準' : 'Standard');
+    expect(row()).toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
+    expect(row()).not.toHaveTextContent(locale === 'ja' ? '配信' : 'Broadcast');
+    quick.chainOn = false;
+    current.latencyMetadata!.stageBreakdown!.builtinVoiceEnabled = false;
+    view.rerender(content());
+    expect(row()).toHaveTextContent(message(locale, 'flow.disabled'));
+    expect(row()).not.toHaveTextContent(message(locale, 'chain.voiceOn', { name }));
 });
 
 it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2段目を描く（#623）', () => {
