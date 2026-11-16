@@ -250,11 +250,11 @@ it('一覧取得失敗を表示し再取得できる', async () => {
     vi.spyOn(presetApi, 'listProfiles').mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([{ name: '歌用', hasPlugins: true, isBackup: false, hasAudioConfig: false, hasNoiseControl: false, hasBuiltinFx: false }]);
     function Panel() { return <LiveModeControls model={useLiveModes()} initiallyOpen />; }
     render(<Panel />);
-    expect(await screen.findByText('プロファイル一覧を取得できませんでした。')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'プロファイル一覧を再取得' }));
+    expect(await screen.findByText('構成の一覧を取得できませんでした。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '構成の一覧を再取得' }));
     screen.getAllByText('一緒に切り替えるVST').forEach(summary => fireEvent.click(summary));
     expect(await screen.findAllByRole('option', { name: '歌用' })).toHaveLength(2);
-    expect(screen.queryByText('プロファイル一覧を取得できませんでした。')).not.toBeInTheDocument();
+    expect(screen.queryByText('構成の一覧を取得できませんでした。')).not.toBeInTheDocument();
 });
 it('restoring は復旧中として表示する', async () => {
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ transaction: { id: 'tx', phase: 'restoring', target: null, error: null, recoveryAvailable: false } }));

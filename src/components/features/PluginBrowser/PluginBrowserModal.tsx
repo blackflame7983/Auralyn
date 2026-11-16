@@ -380,6 +380,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
 
   if (!isOpen) return null;
 
+  // 登録も失敗も無いときは、差分の更新も失敗ファイルの再スキャンも空の案内と重なる（#583、#628）。
+  const scanCatalogEmpty = plugins.length === 0 && failures.length === 0 && !error;
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'all', label: t('pluginBrowser.tab.all'), icon: <MdGridView className="w-3 h-3" /> },
     { id: 'recent', label: t('pluginBrowser.tab.recent'), icon: <MdHistory className="w-3 h-3" /> },
@@ -433,8 +435,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               className="w-full pl-10 pr-4"
             /></Field>
           </div>
-          {/* 登録も失敗も無いうちは、差分の更新は全件と同じ結果になる。空の案内の「すべて再スキャン」だけを残す（#583）。 */}
-          {!(plugins.length === 0 && failures.length === 0 && !error) && <Button variant="outline"
+          {!scanCatalogEmpty && <Button variant="outline"
             onClick={() => onScan()}
             disabled={isLoading || Boolean(retryingPath)}
             title={t('pluginBrowser.refreshHint')}
@@ -444,19 +445,21 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             {t('pluginBrowser.refresh')}
           </Button>}
         </div>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {!(activeTab === 'all' && plugins.length === 0 && failures.length === 0 && !searchQuery && !selectedCategory && !error) && <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
+        {(!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) || !scanCatalogEmpty) && <div className="mb-3 flex flex-wrap items-center gap-2">
+          {!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) && <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
             disabled={isLoading || Boolean(retryingPath)}
             onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}
           >
             {t('pluginBrowser.fullScan')}
           </Button>}
-          <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
-            <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
-            {t('pluginBrowser.includeFailed')}
-          </label>
-          <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
-        </div>
+          {!scanCatalogEmpty && <>
+            <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
+              <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
+              {t('pluginBrowser.includeFailed')}
+            </label>
+            <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
+          </>}
+        </div>}
         <ScanFolders disabled={isLoading || Boolean(retryingPath)} skippedRoots={skippedRoots} onChanged={() => onScan()} />
 
         {/* Category Filter Chips */}

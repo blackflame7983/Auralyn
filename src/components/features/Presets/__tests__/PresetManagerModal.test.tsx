@@ -56,11 +56,11 @@ it('入力の目的と各行の操作対象を公開し、検索解除で一覧�
     for (const suffix of ['を適用', 'のVSTのみ読み込み', 'をエクスポート', 'を削除']) {
         expect(screen.getByRole('button', { name: `${meta.name}${suffix}` })).toBeVisible();
     }
-    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: 'not-found' } });
-    expect(screen.getByText('検索条件に一致するプロファイルがありません')).toBeVisible();
-    expect(screen.queryByText('プロファイルがありません')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: '構成を検索' }), { target: { value: 'not-found' } });
+    expect(screen.getByText('検索条件に一致する構成がありません')).toBeVisible();
+    expect(screen.queryByText('構成がありません')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '検索をクリア' }));
-    expect(screen.getByRole('textbox', { name: 'プロファイルを検索' })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: '構成を検索' })).toHaveFocus();
     expect(screen.getByRole('button', { name: `${meta.name}を適用` })).toBeVisible();
 });
 it('一覧取得失敗を未作成扱いにせず、再試行できる', async () => {
@@ -72,7 +72,7 @@ it('一覧取得失敗を未作成扱いにせず、再試行できる', async (
     });
     open();
     expect(await screen.findByRole('alert')).toHaveTextContent('一覧を取得できません');
-    expect(screen.queryByText('プロファイルがありません')).not.toBeInTheDocument();
+    expect(screen.queryByText('構成がありません')).not.toBeInTheDocument();
     fail = false; fireEvent.click(screen.getByRole('button', { name: '一覧を再読み込み' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: `${meta.name}を適用` })).toBeVisible();
@@ -87,10 +87,10 @@ it('locale切替で未保存名・カテゴリ・確認dialogを保持し同じ�
     const noise = screen.getByRole('checkbox', { name: 'ノイズ低減' });
     fireEvent.click(noise);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    const confirm = screen.getByRole('alertdialog', { name: `プロファイル「${meta.name}」を上書きしますか？` });
+    const confirm = screen.getByRole('alertdialog', { name: `構成「${meta.name}」を上書きしますか？` });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('alertdialog', { name: `Overwrite profile “${meta.name}”?` })).toBe(confirm);
+    expect(screen.getByRole('alertdialog', { name: `Overwrite setup “${meta.name}”?` })).toBe(confirm);
     expect(name).toHaveValue(meta.name); expect(noise).not.toBeChecked();
     // The confirmation dialog intentionally hides the underlying form from accessibility queries.
     expect(document.getElementById(noise.id)).toBe(noise);
@@ -120,14 +120,14 @@ it('復旧の退避は表示名と自動の札で出し、適用は元の名前�
     expect(screen.getByText('自動')).toBeVisible();
     expect(screen.getByText(plain)).toBeVisible();
     expect(screen.queryByText(recovery)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: '復旧' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '構成を検索' }), { target: { value: '復旧' } });
     expect(screen.getByText(shown)).toBeVisible();
     expect(screen.queryByText('夜')).not.toBeInTheDocument();
     expect(screen.queryByText(plain)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: 'VST-recovery-f605' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '構成を検索' }), { target: { value: 'VST-recovery-f605' } });
     expect(screen.getByText(shown)).toBeVisible();
     expect(screen.queryByText(plain)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'プロファイルを検索' }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '構成を検索' }), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: `${shown}を適用` }));
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(recovery);
     fireEvent.click(screen.getByRole('button', { name: '適用する' }));
@@ -143,4 +143,22 @@ it('英語でのexport取消tokenを成功/失敗へ翻訳せず追加操作し�
     await act(async () => {});
     expect(invoke).toHaveBeenCalledWith('export_profile', expect.objectContaining({ name: meta.name }));
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'export_profile')).toHaveLength(1);
+});
+
+it.each(['ja', 'en'] as const)('保存・復帰のタブは動作が分かり、範囲の説明は1回で、プロファイルとは呼ばない（%s）', async locale => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') return [{ ...meta, name: '夜の設定' }];
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByRole('tab', { name: message(locale, 'presets.tab.preset') })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: message(locale, 'presets.tab.bundle') })).toBeVisible();
+    expect(screen.getByRole('tab', { name: message(locale, 'presets.tab.recovery') })).toBeVisible();
+    expect(screen.getAllByRole('heading', { name: message(locale, 'presets.copy.059') })).toHaveLength(1);
+    expect(screen.queryByText(message(locale, 'save.profileScope'))).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(locale === 'ja' ? '保存する内容' : 'Saved content'))).not.toBeInTheDocument();
+    expect(screen.queryByText(/プロファイル/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bprofile\b/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') })).toBeVisible();
 });

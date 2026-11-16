@@ -151,7 +151,7 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     expect(screen.getByRole('button', { name: 'Undo the last application once' })).toBeDisabled();
     act(() => { state = { ...state, pending: false, appliedRevision: '5' }; });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo the last application once' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'Open profile saving for applied settings' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Open setup saving for applied settings' })).toBeEnabled();
     await act(async () => { emit('audio-conditions-changed'); });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo the last application once' })).toBeEnabled());
     expect(vi.mocked(builtinApi.request).mock.calls.filter(([r]) => r.action === 'apply_proposal')).toHaveLength(1);

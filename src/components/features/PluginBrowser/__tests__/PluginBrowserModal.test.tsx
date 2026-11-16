@@ -29,6 +29,8 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
     // 登録も失敗も無いうちは、検索横の更新を出さず、空の案内のすべて再スキャンだけにする（#583）。
     expect(screen.queryByRole('button', { name: '更新' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '読み込めなかったものも含める' })).not.toBeInTheDocument();
+    expect(screen.queryByText('オフのときは、前回読み込めなかったファイルは再スキャンしません。')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'すべて再スキャン' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: '再スキャン' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));
@@ -41,6 +43,8 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
 it('登録があるときは更新とすべて再スキャンを出す', () => {
     openBrowser();
     expect(screen.getByRole('button', { name: '更新' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '読み込めなかったものも含める' })).toBeInTheDocument();
+    expect(screen.getByText('オフのときは、前回読み込めなかったファイルは再スキャンしません。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'すべて再スキャン' })).toBeInTheDocument();
 });
 
@@ -51,6 +55,7 @@ it('読み取れなかった候補がある空一覧は件数と再スキャン�
     expect(screen.getByRole('heading', { name: 'VSTを読み取れませんでした' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'まだVSTが登録されていません' })).not.toBeInTheDocument();
     expect(screen.getByText('読み取れなかったプラグイン：1 件')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '読み込めなかったものも含める' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
 });

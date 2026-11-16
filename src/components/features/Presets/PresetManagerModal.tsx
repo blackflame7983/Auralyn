@@ -13,7 +13,6 @@ import { notice, renderNotice, type SettingsNotice } from '@/components/features
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
-import { SaveScopeSummary } from './SaveScopeSummary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from '../../ui/modal';
 import {
@@ -465,7 +464,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         <h3 className="text-ui-heading font-semibold">{t('presets.copy.059')}</h3>
                         <SavePurposeHelp />
                     </div>
-                    <SaveScopeSummary kind="profile" />
+                    {/* 見出しと範囲の選択で保存対象が分かる。同じ説明は重ねない（#626）。 */}
                     <SegmentedControl label={t('profilePurpose.title')} value={saveCategories.includeAudioConfig ? 'equipment' : 'sound'} onValueChange={value => setSaveCategories(c => ({ ...c, includeAudioConfig: value === 'equipment' }))} options={[{value: 'sound', label: t('profilePurpose.sound')}, {value: 'equipment', label: t('profilePurpose.equipment')}]} />
                     <p className="text-ui-support text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
                     {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
