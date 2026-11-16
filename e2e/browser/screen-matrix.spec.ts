@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { installTauriMock, type TauriMockOptions } from '../../src/dev/tauriMock';
 import { collectScreenAudit, type AuditHit } from './helpers/screenAudit';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
+import { deniedStorageOnErrorPage, retryTransientNavigation } from './helpers/transientGoto';
 import { knownViolations, purposeAllowances, type KnownViolation, type PurposeAllowance } from './screen-matrix.known';
 
 // 状態×使い方×窓×言語で画面を開き、重なり・はみ出し・折り返し・同じ文・空の枠・用途の混ざりを止める（#634）。
@@ -194,11 +195,12 @@ async function openScreen(page: Page, ctx: Context, width: number, height: numbe
     }
 }
 
-async function runMatrix(page: Page, ctx: Context, width: number, height: number, errors: string[]) {
+async function runMatrix(page: Page, retried: () => number, ctx: Context, width: number, height: number, errors: string[]) {
     errors.length = 0;
     await openScreen(page, ctx, width, height);
     const hits = await page.evaluate(collectScreenAudit, { purpose: ctx.purpose, locale: ctx.locale });
-    expect(errors, '画面の実行時例外').toEqual([]);
+    // 一時的なソケット不足で開き直したときは、エラーページの localStorage の拒否だけを除く（helpers/transientGoto.ts）。
+    expect(retried() > 0 ? errors.filter(message => message !== deniedStorageOnErrorPage) : errors, '画面の実行時例外').toEqual([]);
     return judge(hits, ctx);
 }
 
@@ -211,6 +213,7 @@ test.describe('画面の状態をまとめて開く', () => {
                 test(`ホーム ${state} ${purpose} ${locale}`, async ({ page }) => {
                     const errors: string[] = [];
                     page.on('pageerror', error => errors.push(error.message));
+                    const retried = retryTransientNavigation(page, errors);
                     const entries = Object.entries(state === 'unconfigured'
                         ? { vst_host_wizard_done: 'true', vst_host_setup_goal: 'obs', auralyn_vst_panel_open: 'false' }
                         : configured);
@@ -218,7 +221,7 @@ test.describe('画面の状態をまとめて開く', () => {
                     await page.addInitScript(applyStorage, { locale, purpose, entries });
                     const problems: string[] = [];
                     for (const size of homeSizes) {
-                        problems.push(...await runMatrix(page, { screen: 'home', state, purpose, locale, size: size.name }, size.width, size.height, errors));
+                        problems.push(...await runMatrix(page, retried, { screen: 'home', state, purpose, locale, size: size.name }, size.width, size.height, errors));
                     }
                     assertProblems(problems);
                 });
@@ -232,13 +235,14 @@ test.describe('画面の状態をまとめて開く', () => {
                 test(`${screen} ${purpose} ${locale}`, async ({ page }) => {
                     const errors: string[] = [];
                     page.on('pageerror', error => errors.push(error.message));
+                    const retried = retryTransientNavigation(page, errors);
                     const storage: Record<string, string> = { ...configured };
                     if (screen === 'stream-mix') storage.auralyn_stream_mix_panel = 'shown';
                     await page.addInitScript(installTauriMock, mockOptions('live'));
                     await page.addInitScript(applyStorage, { locale, purpose, entries: Object.entries(storage) });
                     const problems: string[] = [];
                     for (const size of pageSizes) {
-                        problems.push(...await runMatrix(page, { screen, state: 'live', purpose, locale, size: size.name }, size.width, size.height, errors));
+                        problems.push(...await runMatrix(page, retried, { screen, state: 'live', purpose, locale, size: size.name }, size.width, size.height, errors));
                     }
                     assertProblems(problems);
                 });
