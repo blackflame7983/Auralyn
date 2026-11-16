@@ -911,6 +911,19 @@ html[data-app-hidden="true"] *::after {
   gap: 0.5rem;
   max-width: 100%;
 }
+/* 中央の列に続きがある印。飾りなので動かさない。 */
+.column-scroll-more {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, hsl(var(--background) / 0.92));
+}
+@media (prefers-reduced-motion: reduce) {
+  .column-scroll-more {
+    animation: none;
+    transition: none;
+  }
+}
 /* 接続の区画は fieldset のまま、見出しを枠線の上に乗せない。 */
 .page-section {
   display: flex;

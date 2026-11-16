@@ -1,6 +1,7 @@
 import { FittingRoute } from '@/components/layout/FittingRoute';
 import { Button } from '@/components/ui/button';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
+import { useColumnScrollHint } from '@/hooks/useColumnScrollHint';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { EngineRuntimeStats } from '@/api/audio';
 import type { ReactNode, Ref } from 'react';
@@ -30,6 +31,7 @@ export function StatusBand({
 }) {
     const t = useMessages();
     const [beginner] = useBeginnerMode();
+    useColumnScrollHint();
     return (
         <div data-status-band className="shrink-0 border-b border-border bg-background">
             <div role="region" aria-label={t('band.label')} className="flex h-12 min-w-0 flex-nowrap items-center gap-2 px-3">
