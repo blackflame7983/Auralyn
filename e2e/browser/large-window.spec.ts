@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { uiScale } from '../../src/lib/largeWindow';
+import { waitForStableLayout } from './helpers/waitForStableLayout';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -110,6 +111,8 @@ test('拡大後もクリック位置・ポップアップ・スライダー・�
         expect(gap).toBeLessThan(40);
         await page.keyboard.press('Escape');
 
+        // 測る直前に区画が動いていると、スライダーの当たり判定がずれる（#634）。
+        await waitForStableLayout(page);
         const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
         const track = await slider.evaluate(element => {
             // つまみの親はつまみの位置で動くので、スライダー全体（トラック）の右端を押す。
