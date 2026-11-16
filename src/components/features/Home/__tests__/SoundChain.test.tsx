@@ -339,8 +339,8 @@ it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止
     view.rerender(content(true));
     expect(heading()).toHaveTextContent(message(locale, 'chain.vstName'));
     const section = screen.getByRole('region', { name: message(locale, 'wizard.musicSound') });
-    expect(within(section).getAllByText(message(locale, 'chain.stoppedHint'), { exact: true })).toHaveLength(1);
-    expect(screen.getByRole('listitem')).not.toHaveTextContent(message(locale, 'chain.stoppedHint'));
+    // 音楽鑑賞は停止中も追加が使える。ノイズ低減と声を整える向けの一文は出さない（#663）。
+    expect(within(section).queryByText(message(locale, 'chain.stoppedHint'), { exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole('listitem')).not.toHaveTextContent('—');
 });
 

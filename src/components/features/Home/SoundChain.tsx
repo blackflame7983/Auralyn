@@ -210,7 +210,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>
             </div>}
         </div>
-        {stopped && !unconfigured && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
+        {/* 音楽鑑賞のカードはVSTだけで、停止中も追加が使える。この一文は出さない（#663）。 */}
+        {stopped && !unconfigured && !music && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
