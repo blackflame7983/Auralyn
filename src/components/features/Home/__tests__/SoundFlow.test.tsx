@@ -43,6 +43,25 @@ it.each(['stopped', 'waiting', 'stale'] as const)('入力が %s のときは声�
     expect(container).toBeEmptyDOMElement();
 });
 
+it('一度値が届いたら、受信待ち・更新停止になっても停止まで区画を残す（#644）', () => {
+    matchMedia(false);
+    meter.state = 'live';
+    const view = render(<SoundFlow running music={false} />);
+    expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
+    for (const state of ['stale', 'waiting', 'live', 'stale'] as const) {
+        meter.state = state;
+        view.rerender(<SoundFlow running music={false} />);
+        expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
+    }
+    meter.state = 'stopped';
+    view.rerender(<SoundFlow running={false} music={false} />);
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+    // 停止のあと開き直した直後は、値が届くまで出さない。
+    meter.state = 'waiting';
+    view.rerender(<SoundFlow running music={false} />);
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+});
+
 it('無音のときは平らな波形と凡例を描き、無音の言葉は出さない（#624）', () => {
     matchMedia(false);
     meter.state = 'silent';

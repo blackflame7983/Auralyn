@@ -118,14 +118,21 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     const lastPaint = useRef<{ samples: Sample[]; flowing: boolean }>({ samples: [], flowing: false });
     const idle = flowIdleState(running, input.state, output.state);
     const live = idle === null;
-    // 無音は値が届いているので平らな波形を描く。停止・受信待ち・更新停止は区画ごと出さない（#624、#639）。
-    const shown = live || idle === 'silent';
+    const receiving = live || idle === 'silent';
+    // 無音は値が届いているので平らな波形を描く。停止中と、開始してからまだ値が届いていないあいだは
+    // 区画ごと出さない（#624、#639）。一度届いたら、受信待ち・更新停止になっても停止まで区画を残し、
+    // 最後の波形を止めて見せる。値の届き方が途切れるたびに区画が出入りして、ホームが跳ね続けるのを防ぐ（#644）。
+    const received = useRef(false);
+    received.current = running && (received.current || receiving);
+    const shown = received.current;
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!shown || !canvas) {
             history.current = [];
             return;
         }
+        // 受信待ち・更新停止のあいだは、最後に描いた波形のまま止める。
+        if (!receiving) return;
         const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
         if (document.hidden) return;
         const sample = {
@@ -139,7 +146,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         lastPaint.current = { samples, flowing };
         paint(canvas, samples, flowing);
         canvas.dataset.flow = flowing ? 'time' : live ? 'still' : 'flat';
-    }, [input, output, live, shown]);
+    }, [input, output, live, shown, receiving]);
     // 見えているときだけ、大きさが変わった最後の値で描き直す。
     useEffect(() => {
         if (!shown) return;
