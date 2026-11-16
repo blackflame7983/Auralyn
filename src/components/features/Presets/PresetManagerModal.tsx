@@ -11,6 +11,7 @@ import { TemporarySessionPanel } from './TemporarySessionPanel';
 import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
 import { SaveScopeSummary } from './SaveScopeSummary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -197,6 +198,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 }) => {
     const t = useMessages();
     const { locale } = useLocale();
+    const [purpose] = useDisplayPurpose();
     const closeButtonRef = useRef<HTMLButtonElement>(null);
     const temporaryActive = sessionMode().temporary;
     const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -437,7 +439,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                 <MdUndo className="w-4 h-4" />
                                 {t('presets.copy.053')}</Button>
                         )}
-                        {onOpenTemplateWizard && (
+                        {onOpenTemplateWizard && purpose !== 'music' && (
                             <Button variant="secondary" size="sm"
                                 onClick={onOpenTemplateWizard}
                                 className="flex items-center gap-2"

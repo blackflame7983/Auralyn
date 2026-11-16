@@ -26,6 +26,8 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     const names = unrestoredNamesText(t, unrestored);
     // 音楽鑑賞のホームには声の調整がないので、VST の効き方だけを伝える。
     const [purpose] = useDisplayPurpose();
+    // 音楽鑑賞のテンプレートは声向け（雑談・歌枠・ASMR）だけなので、入口を出さない（#627）。
+    const showTemplates = purpose !== 'music';
     return (
         <div className="w-full rounded-card border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
             <div className="space-y-1">
@@ -35,7 +37,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     {names ?? t(purpose === 'music' ? 'rack.empty.scopeMusic' : 'rack.empty.scope')}</p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            {(showTemplates || !hideAdd) && <div className="flex flex-wrap items-center gap-3">
                 {!hideAdd && <Button
                     id="add-effect-btn"
                     variant={audioReady ? 'default' : 'outline'}
@@ -45,14 +47,14 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     <MdAdd className="w-4 h-4" />
                     {t('rack.empty.addVst')}</Button>}
 
-                <Button variant="link" size="sm"
+                {showTemplates && <Button variant="link" size="sm"
                     onClick={onOpenTemplates}
                     className="gap-1.5"
                 >
                     <MdAutoFixHigh className="w-4 h-4" />
                     {t('rack.empty.templates')}
-                </Button>
-            </div>
+                </Button>}
+            </div>}
         </div>
     );
 };

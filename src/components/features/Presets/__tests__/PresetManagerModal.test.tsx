@@ -16,6 +16,19 @@ beforeEach(() => {
     });
 });
 afterEach(cleanup);
+it.each(['ja', 'en'] as const)('音楽鑑賞では見出しのVST構成テンプレートを出さず、配信では出す（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const name = message(locale, 'presets.copy.054');
+    const modal = <PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} onOpenTemplateWizard={vi.fn()} />;
+    const view = render(<LocaleProvider store={store}>{modal}</LocaleProvider>);
+    expect(await screen.findByRole('button', { name })).toBeEnabled();
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    window.dispatchEvent(new Event('auralyn-display-purpose-changed'));
+    view.rerender(<LocaleProvider store={store}>{modal}</LocaleProvider>);
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    localStorage.removeItem('auralyn_display_purpose');
+});
+
 it('開いた直後の焦点は閉じる', async () => {
     render(<PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} onOpenTemplateWizard={vi.fn()} />);
     const close = await screen.findByRole('button', { name: '閉じる' });
