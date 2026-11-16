@@ -82,7 +82,7 @@ describe('セットアップの接続チェック', () => {
         expect(music.compareDocumentPosition(choices[3]) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
         expect(music).toBeChecked();
         expect(choices[2]).not.toBeChecked();
-        expect(choices[2]).toHaveAccessibleDescription('マイクの声を加工して、ヘッドホンやスピーカーで聴きます。再生アプリの音にVSTをかけるときは、音楽を聴くを選びます。');
+        expect(choices[2]).toHaveAccessibleDescription('マイクの声を加工して手元で聴きます。アプリの音は「音楽を聴く」へ。');
         fireEvent.click(music);
         expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
