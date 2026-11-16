@@ -5027,13 +5027,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/LevelMeter/MeterVisual.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "b7478e510fa1ccf909d75f4fcc4b5809e5fb52b8eaf7cd20837807219b438935",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/PluginBrowser/__tests__/PluginBrowserModal.test.tsx",
       "rule": "auralyn/no-double-assertion",
       "hash": "aae1c670ca21f5828e5edcc5f768175bc6f89a1069f8c6737040d493cf1933a5",

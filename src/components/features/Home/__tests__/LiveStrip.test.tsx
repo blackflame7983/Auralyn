@@ -190,14 +190,23 @@ it.each(['ja', 'en'] as const)('歌・雑談を登録していないときは、
     expect(now).not.toHaveTextContent(message(locale, 'home.customAside'));
 });
 
-it('送る音の目安は、小さめと大きすぎの境目に置く', () => {
-    // #570: −30 dBFS は 50%、−6 dBFS は 90%。線は読み上げに出さない。
-    render(<LiveStrip model={fixture()} running />);
-    const meter = screen.getByRole('meter', { name: '送る音' });
-    const guides = [...meter.querySelectorAll('[data-meter-guide]')];
+it.each(['ja', 'en'] as const)('送る音の線のあいだは適正の範囲で、読み上げは判定を使う (%s)', locale => {
+    // #570: −30 dBFS は 50%、−6 dBFS は 90%。#667: そのあいだを塗り、説明はバーの title に出す。
+    meter.output = 'live';
+    meter.levels = [0.1, 0.1];
+    meter.peak = [0.2, 0.2];
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const send = screen.getByRole('meter', { name: message(locale, 'home.sendLevel') });
+    const guides = [...send.querySelectorAll('[data-meter-guide]')];
     expect(guides.map(node => (node as HTMLElement).style.left)).toEqual(['50%', '90%']);
     expect(guides.every(node => node.getAttribute('aria-hidden') === 'true')).toBe(true);
-    expect(meter.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
+    const band = send.querySelector('[data-meter-range]') as HTMLElement;
+    expect(band).toHaveClass('meter-range-band');
+    expect(band.style.left).toBe('50%');
+    expect(band.style.width).toBe('40%');
+    expect(band.parentElement).toHaveAttribute('title', message(locale, 'home.levelRange'));
+    expect(send).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'home.levelOk')));
+    expect(send.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
 });
 
 it('出力がミュートか音量ゼロのときは、その状態をカードに出す', () => {
