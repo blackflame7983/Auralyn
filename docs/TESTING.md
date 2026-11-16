@@ -133,6 +133,29 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 - Pencil へは、内蔵ブラウザで上記URLを開いて `#root` を取り込む。取り込み幅はブラウザの表示幅に従うため、幅を揃えたいときは CDP の `Emulation.setDeviceMetricsOverride` で指定してから取り込む。取り込んだものは静的な写しで、コードとは同期しない。
 - 段階 H（広い窓）の出し分けと拡大は `e2e/browser/large-window.spec.ts` で確かめる。寸法の正本は `src/lib/largeWindow.ts`。画面記録は `RENEWAL_H_SHOTS=1` のときだけ `e2e/browser/design-renewal-h-shots.spec.ts` が `docs/verification/design-renewal-h/` を上書きする。通常の `npm run test:e2e` では撮らない。`RENEWAL_SHOTS` とは別の変数にする。
 
+### 画面の状態をまとめて開く（screen-matrix）
+
+ある状態を直したときに、別の状態や別の窓で表示が崩れても次の目視まで気づけないのを、CI で止める試験です。`e2e/browser/screen-matrix.spec.ts`。`npm run test:e2e` に含まれ、CI の Browser tests（`npx vite build` のあと `npx playwright test`）でも回ります。
+
+ホームは、実行中（`?mock=live-home`）・停止中（`?mock=stopped-home`）・未設定 × 配信・音楽鑑賞 × 900×600・1024×768・1280×800 × 日本語・英語をすべて開きます。未設定の名前はプレビューの定義に無いので、URL は `?mock=unconfigured` とし、`unconfigured-live.spec.ts` と同じくセットアップ済みで機器設定が無い保存値にします。ほかのページ（音づくり、VST、接続、設定の外観・ホットキー・OBS連携・システム、配信ミックス）は実行中だけ、使い方 × 言語 × 900×600 と 1280×800 です。開発サーバーでは `html[data-auralyn-preview]` を待ちます。CI の本番ビルドにはこの印が無いので、無いときは左のレールから同じ画面を開きます。出力のミュートは `window.__e2eSetOutputMuted(false)` で外します。測る前に `e2e/browser/helpers/waitForStableLayout.ts` で、フォントと主な区画の位置が連続3フレーム動いていないことを待ちます。
+
+見えている要素だけを調べます。`aria-hidden` の中、大きさ 0、不透明度 0、`visibility: hidden`、読み上げ専用の文は除きます。違反は1件1行で、画面・状態・使い方・窓・言語・種類・短いセレクタ・文字の先頭を出します。
+
+- **重なり。** 見えている操作（ボタン、リンク、入力、選択、`role` が button / switch / slider / tab）が、直下に文字がある要素と 2×2px を超えて重なり、親子でないとき。省略で隠れている文字の範囲は、見えている箱の内側だけを見ます。
+- **はみ出し。** 文字を持つ要素で `scrollWidth` が `clientWidth + 1` より大きく、`overflow` が `hidden` か `clip` のとき。`title` に全文があるものは除きます。
+- **短いラベルの折り返し。** ボタン、見出し（`h1`〜`h4`）、`label`、`data-audit-short` の、直下の文字が3行以上のとき。名前と補足を縦に積んだものは、それぞれの塊で数えます。
+- **同じ文の重複。** 見えている文字を「。」「.」「!」「?」で分け、10文字以上で助詞か英語の機能語がある文が2回以上のとき。ボタン名や行ごとの同じ操作名は数えない。ダイアログが開いているときは、その中だけを数えます。
+- **空の枠と、何も続かない区切り。** カード（`rounded-card`、`sound-module-card`、`page-section`、ホーム直下の `section`）で、高さ 40px 以上なのに見出し以外の文字・操作・`canvas`・メーターが無いもの。`hr`、`role=separator`、枠線だけの要素で、後ろに見える中身が無いもの。
+- **用途の混ざり。** 音楽鑑賞のときだけ。日本語は「配信」「OBS」「通話」「歌」「雑談」。英語は語の先頭が Stream、Broadcast、OBS、Sing、Talk。
+
+違反が出たら、表示を直します。検査が間違っているときは `e2e/browser/helpers/screenAudit.ts` を直し、直した理由を残します。まだ直さない崩れは `e2e/browser/screen-matrix.known.ts` の `knownViolations` に、当てはまる画面・状態・使い方・窓・言語と、`match`（セレクタか文字の断片）と Issue 番号を1件足します。Issue が無いものは `issue: 'new'` にします。登録した組み合わせでその違反が出なくなると、「直ったので例外を外してください」で失敗します。その行を一覧から外します。音楽鑑賞でも正しく出る語は、Issue ではなく `purposeAllowances` に `reason` を付けて足します。その文が画面から無くなったときも、同じ失敗で外すよう知らせます。
+
+画面に足してよい印は、次の属性だけです。見た目は変えません。
+
+- `data-audit-overlay` は、切替の途中で重ねる欄など、意図した重なりです。この中の操作は重なり検査から外します。
+- `data-audit-truncate` は、省略してよい文字です。はみ出し検査から外します。
+- `data-audit-short` は、ボタン・見出し・label 以外で、3行以上の折り返しを調べたい短いラベルです。
+
 ### 変更中の確認と全体確認
 
 変更中は対象のテストファイルを `npm test -- --run <対象ファイル> --maxWorkers=4` で実行し、完了時に変更範囲に必要な全体確認を行う。
