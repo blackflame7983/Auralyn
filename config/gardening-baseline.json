@@ -300,30 +300,6 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
-      "count": 3,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
       "count": 1,
@@ -335,14 +311,6 @@
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
       "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
-      "count": 2,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -364,14 +332,6 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
-      "count": 6,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
       "count": 1,
@@ -382,14 +342,6 @@
       "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "df55871bc7e49dc2f10daf40a944392f7f0b1077df8da47fc3db9ca5c2559801",
       "count": 2,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
@@ -617,14 +569,6 @@
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "b950a4a23ba5b6868bff5d38db2e3685be597a7bf8eea624d4efe35b6e719d24",
       "count": 6,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/large-window.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "c3a3c870b8ea0988c08f08eaf5124d9a16b61a863171d66882e82d3dab9df12d",
-      "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -1639,14 +1583,6 @@
     {
       "file": "e2e/browser/settings-issues.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "9aa5c88735b90e62963f658d310e01af71387b9c9713b7fff478feb82831da08",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
       "hash": "a4d74371262f00a8529ba902bf3ba616feeda2f634ddee22389dad9bf32ab185",
       "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
@@ -1718,25 +1654,9 @@
     },
     {
       "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "9aa5c88735b90e62963f658d310e01af71387b9c9713b7fff478feb82831da08",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "92b1754b474981d55df2a17b747cfcbeeda287ed4bdf5b3d5999a8667a7bf4e4",
       "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "9aa5c88735b90e62963f658d310e01af71387b9c9713b7fff478feb82831da08",
-      "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -1761,14 +1681,6 @@
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "92b1754b474981d55df2a17b747cfcbeeda287ed4bdf5b3d5999a8667a7bf4e4",
       "count": 12,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "9aa5c88735b90e62963f658d310e01af71387b9c9713b7fff478feb82831da08",
-      "count": 4,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -1816,14 +1728,6 @@
       "file": "e2e/browser/settings-issues.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "92b1754b474981d55df2a17b747cfcbeeda287ed4bdf5b3d5999a8667a7bf4e4",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "9aa5c88735b90e62963f658d310e01af71387b9c9713b7fff478feb82831da08",
       "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
@@ -4618,22 +4522,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Guide/HowToUseModal.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "4987e6380eb57914bec8fb92e53d2fd418f9d8a07dbe5ed91aeb9affdb8807a5",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "src/components/features/Guide/HowToUseModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "9fcac7530f0320f580ed96c4fbc7f1cdeb96a2049824adc1f3408f2979815bb9",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
       "file": "src/components/features/Guide/OBSGuideModal.tsx",
       "rule": "auralyn/architecture",
       "hash": "4987e6380eb57914bec8fb92e53d2fd418f9d8a07dbe5ed91aeb9affdb8807a5",
@@ -4969,14 +4857,6 @@
       "hash": "906f8911ba9637be6016e48ec90db61d9ba7db0fac31f13fcd50a5581ee81325",
       "count": 1,
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/Home/SoundChain.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "080534e035178488cdc94cc60f1d0d4373f1c980059ef24cd826fe2e532f5e63",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
     },
     {
       "file": "src/components/features/Home/SoundFlow.tsx",
