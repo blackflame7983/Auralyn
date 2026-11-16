@@ -4881,13 +4881,6 @@
     },
     {
       "file": "src/components/features/LevelMeter/__tests__/LevelMeter.test.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "d0ad080289e7a6e2e9370b38edd1bc14711fddbdee800d1604c80a527bf52a93",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/LevelMeter/__tests__/LevelMeter.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "03c77566a3b3a16ddc091eb51bd86a444ccabea0579c1871549715a89c3b2082",
       "count": 1,
@@ -6760,13 +6753,6 @@
       "rule": "@typescript-eslint/no-floating-promises",
       "hash": "0accf566f48aee8d9ecddaebd7f45ac46fc4c97b2ee670a5710fe5d50707491f",
       "count": 5,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/__tests__/useMeterLevels.test.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "0ea9c31a30f7e3b8e612831d86ff809b8e8d88da7038233bd7b14fb700100406",
-      "count": 3,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
