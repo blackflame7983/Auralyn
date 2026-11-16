@@ -56,7 +56,7 @@ function fadeOf(): HTMLElement {
     return fade;
 }
 
-it('続きがあるときは列の下端にフェードを出し、末尾では消す', () => {
+it('続きがあるときは列の下端にフェードを出し、末尾では消す', async () => {
     function Frame() {
         const [scrollTop, setScrollTop] = useState(0);
         return <Hint><button type="button" onClick={() => setScrollTop(300)}>末尾</button><HomeColumn scrollTop={scrollTop} /></Hint>;
@@ -67,6 +67,8 @@ it('続きがあるときは列の下端にフェードを出し、末尾では�
     expect(fade).toHaveAttribute('aria-hidden', 'true');
     expect(fade.style.top).toBe('116px');
     fireEvent.click(getByRole('button', { name: '末尾' }));
+    // 描き直しからの置き直しは、次のフレームにまとめて行う（#691）。
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     expect(fadeOf().hidden).toBe(true);
 });
 

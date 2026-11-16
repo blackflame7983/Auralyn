@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
+import { afterFrame } from './internal/afterFrame';
 import { fadeBox, findColumnScroller, moreBelow, readScrollMetrics, saveBarNear } from '@/lib/columnScrollHint';
 
 function sameElements(left: Set<Element>, right: Set<Element>): boolean {
@@ -15,7 +16,10 @@ function cssPx(value: number): string {
 
 // 中央の列に続きがあるとき、下端へ静止したフェードを出す。読み上げには出さない。
 export function useColumnScrollHint() {
+    // 描き直しのたびに列を探すと、要素が多い画面では重い（列の中を全部調べることがある）。
+    // 描き直しからの置き直しは、1フレームに1回へまとめる。スクロール・大きさ・子の出入りは、その場で置き直す。
     const placeRef = useRef<(() => void) | null>(null);
+    const cancelFrameRef = useRef<(() => void) | null>(null);
     useLayoutEffect(() => {
         const fade = document.createElement('div');
         fade.className = 'column-scroll-more';
@@ -76,6 +80,8 @@ export function useColumnScrollHint() {
         place();
         return () => {
             placeRef.current = null;
+            cancelFrameRef.current?.();
+            cancelFrameRef.current = null;
             scroller?.removeEventListener('scroll', place);
             observer?.disconnect();
             children?.disconnect();
@@ -83,6 +89,10 @@ export function useColumnScrollHint() {
         };
     }, []);
     useLayoutEffect(() => {
-        placeRef.current?.();
+        if (cancelFrameRef.current || !placeRef.current) return;
+        cancelFrameRef.current = afterFrame(() => {
+            cancelFrameRef.current = null;
+            placeRef.current?.();
+        });
     });
 }

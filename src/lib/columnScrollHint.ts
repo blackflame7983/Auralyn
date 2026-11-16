@@ -25,7 +25,10 @@ export function findColumnScroller(root: ParentNode): HTMLElement | null {
     if (scrolls(main)) return main;
     let best: HTMLElement | null = null;
     let bestArea = 0;
-    for (const node of main.querySelectorAll<HTMLElement>('*')) {
+    // 列の中の全要素を調べると重いので、スクロールの指定を持つ要素だけを候補にする。
+    // スクロールする列は、どれも overflow のクラスか style で指定している（#691）。
+    const candidates = main.querySelectorAll<HTMLElement>('[class*="overflow-y-auto"], [class*="overflow-auto"], [class*="overflow-y-scroll"], [class*="overflow-scroll"], [style*="overflow"]');
+    for (const node of candidates) {
         if (!scrolls(node)) continue;
         const area = node.clientWidth * node.clientHeight;
         if (area <= bestArea) continue;
