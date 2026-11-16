@@ -27,7 +27,7 @@ for (const locale of ['ja', 'en'] as const) {
     });
 
 
-    test(`ホットキー保存欄の下端がスクロール領域と一致する（${locale}）`, async ({ page }) => {
+    test(`ホットキーの保存欄はスクロールしてもページの下に残る（${locale}）`, async ({ page }) => {
         await page.setViewportSize({ width: 960, height: 640 });
         await page.addInitScript(locale => {
             localStorage.setItem('vst_host_locale', locale);
@@ -42,13 +42,16 @@ for (const locale of ['ja', 'en'] as const) {
         await expect(save).toBeVisible();
         for (const fraction of [0, 0.5, 1]) {
             const edges = await save.evaluate((button, fraction) => {
-                const footer = button.parentElement!;
-                let scroll = footer.parentElement!;
-                while (!/(auto|scroll)/.test(getComputedStyle(scroll).overflowY)) scroll = scroll.parentElement!;
-                scroll.scrollTop = (scroll.scrollHeight - scroll.clientHeight) * fraction;
-                return { footer: footer.getBoundingClientRect().bottom, scroll: scroll.getBoundingClientRect().bottom };
+                const page = button.closest('[data-settings-page]')!;
+                const scroller = page.querySelector<HTMLElement>('.overflow-y-auto')!;
+                scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * fraction;
+                const footer = button.parentElement!.getBoundingClientRect();
+                const scrollerBox = scroller.getBoundingClientRect();
+                return { footer: footer.bottom, page: page.getBoundingClientRect().bottom, gap: footer.top - scrollerBox.bottom };
             }, fraction);
-            expect(Math.abs(edges.footer - edges.scroll)).toBeLessThanOrEqual(2);
+            // 一覧を動かしても、保存の欄はページの下に残り、スクロールの中身には被さらない。
+            expect(Math.abs(edges.footer - edges.page)).toBeLessThanOrEqual(2);
+            expect(edges.gap).toBeGreaterThanOrEqual(-1);
         }
     });
 }

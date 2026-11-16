@@ -132,8 +132,9 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
         return width > 2 && height > 2;
     };
-    // 枠の外へ完全に出た操作は見えないので数えない。一部でも見えていれば、はみ出した箱はこれまでどおり見る。
-    const seenInClip = (element: Element) => {
+    // スクロールで切り取られた部分は描かれない。保存の欄との重なりは、見えている範囲だけを見る（#640）。
+    // overflow: visible のまま枠の外へ出る部分は、切り取りが無いので箱の全体が残る。完全に隠れた操作は数えない。
+    const visibleBox = (element: Element) => {
         let current: DOMRect | null = boxOf(element);
         for (let node = element.parentElement; node && current; node = node.parentElement) {
             if (!clips(getComputedStyle(node))) continue;
@@ -144,11 +145,11 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
             const bottom = Math.min(current.bottom, limit.bottom);
             current = right - left >= 1 && bottom - top >= 1 ? new DOMRect(left, top, right - left, bottom - top) : null;
         }
-        return current !== null;
+        return current;
     };
     for (const control of interactive) {
-        if (!seenInClip(control)) continue;
-        const controlBox = boxOf(control);
+        const controlBox = visibleBox(control);
+        if (!controlBox) continue;
         for (const textElement of textElements) {
             if (control === textElement || control.contains(textElement) || textElement.contains(control)) continue;
             const targets = visibleTextRects(textElement);
