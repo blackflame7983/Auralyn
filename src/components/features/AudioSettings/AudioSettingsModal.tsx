@@ -12,10 +12,12 @@ import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { singingDraftIsDirty, SingingGuideHelp } from './SingingControls';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
+import { liveOutputApi } from '@/api/liveOutput';
+import { liveOutputConfigInUse } from '@/lib/streamingSettings';
 import { Button } from '@/components/ui/button';
 import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { MonitorTrial } from './MonitorTrial';
+import { MonitorTrial, monitorTrialInUse } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -221,6 +223,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // パネルはホームが歌・雑談の表示のときだけ出る。音楽鑑賞では押しても何も出ないため、理由を示して止める。
   const [displayPurpose] = useDisplayPurpose();
   const streamMixAvailable = displayPurpose === 'voice';
+  // 音楽鑑賞では、保存済みの配信向け設定が既定から外れているときだけ欄を残す（#642）。
+  const [liveOutputActive, setLiveOutputActive] = useState(false);
+  useEffect(() => {
+    if (displayPurpose !== 'music') return;
+    let active = true;
+    // モックや失敗で Promise 以外が返っても、接続のページ自体は開いたままにする。
+    Promise.resolve().then(() => liveOutputApi.request()).then(status => {
+      if (active) setLiveOutputActive(liveOutputConfigInUse(status?.config));
+    }).catch(() => { if (active) setLiveOutputActive(false); });
+    return () => { active = false; };
+  }, [displayPurpose]);
+  const monitorActive = displayPurpose === 'music' && monitorTrialInUse();
+  const mixActive = displayPurpose === 'music' && streamMixShown;
+  const streamingActive = liveOutputActive || monitorActive || mixActive;
   const hostSelect = useRef<HTMLSelectElement>(null);
   // 「アプリの音声」を選べない理由から、畳まれた音質調整を開いて接続方式の選択へ移す（#290）。
   const chooseConnection = () => {
@@ -311,7 +327,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       if (!el) return;
       deviceTargetShown.current = true;
       // 出力一覧は開いたときに読み込む。読み込み後に出力先の選択へ移る。
-      if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = true; setLoadOutput(true); }
+      if (el instanceof HTMLDetailsElement) {
+        el.open = true;
+        const parent = el.parentElement?.closest('details');
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+        outputFocusPending.current = true;
+        setLoadOutput(true);
+      }
       el.scrollIntoView?.({ block: 'start' });
       (el.querySelector<HTMLElement>('summary, select') ?? el).focus({ preventScroll: true });
     });
@@ -608,6 +630,23 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (onRequestTab) onRequestTab(tab);
     else requestLeave(() => setActiveTab(tab));
   };
+  const liveOutputSettings = <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-card border border-border p-4 space-y-3">
+    <summary className="cursor-pointer text-ui-heading font-semibold">{t('liveOutput.title')}</summary>
+    <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
+  </details>;
+  // 配信中に触る配信ミックスはホームのパネルへ移し、ここは機器と接続だけにする（#299）。
+  const streamMixSettings = <section aria-labelledby="stream-mix-settings-heading" className="space-y-2 rounded-card border border-border p-4">
+    <h3 id="stream-mix-settings-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h3>
+    <p className="text-ui-support text-muted-foreground">{t('streamMix.settingsHint')}</p>
+    <div className="flex flex-wrap items-center gap-3">
+      <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
+      <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => requestLeave(() => { openStreamMixPanel(); onClose(); })}>{t('streamMix.openHome')}</Button>
+    </div>
+  </section>;
+  const monitorSettings = <details className="rounded-card border border-border p-4 space-y-3">
+    <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
+    <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
+  </details>;
 
   return (
     <PagePortal>
@@ -745,20 +784,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               </div>
             )}
-            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-card border border-border p-4 space-y-3">
-              <summary className="cursor-pointer text-ui-heading font-semibold">{t('liveOutput.title')}</summary>
-              <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
-            </details>
-            {/* 配信中に触る配信ミックスはホームのパネルへ移し、ここは機器と接続だけにする（#299）。 */}
-            <section aria-labelledby="stream-mix-settings-heading" className="space-y-2 rounded-card border border-border p-4">
-              <h3 id="stream-mix-settings-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h3>
-              <p className="text-ui-support text-muted-foreground">{t('streamMix.settingsHint')}</p>
-              {!streamMixAvailable && <p id="stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
-                <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => requestLeave(() => { openStreamMixPanel(); onClose(); })}>{t('streamMix.openHome')}</Button>
+            {displayPurpose === 'music' && <p id="stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
+            {displayPurpose === 'music' && streamingActive && <details className="rounded-card border border-border p-4">
+              <summary className="cursor-pointer text-ui-heading font-semibold">{t('settings.streamingInUse')}</summary>
+              <div className="mt-3 space-y-3">
+                {liveOutputActive && liveOutputSettings}
+                {mixActive && streamMixSettings}
+                {monitorActive && monitorSettings}
               </div>
-            </section>
+            </details>}
+            {displayPurpose !== 'music' && liveOutputSettings}
+            {displayPurpose !== 'music' && streamMixSettings}
 
             {!isApplying && <div className="space-y-6">
                 <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-card border border-border p-3 space-y-3">
@@ -936,10 +972,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
 
                 </>}
-                <details className="rounded-card border border-border p-4 space-y-3">
-                  <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
-                  <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
-                </details>
+                {displayPurpose !== 'music' && monitorSettings}
                 </details>
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-card border border-border space-y-3">

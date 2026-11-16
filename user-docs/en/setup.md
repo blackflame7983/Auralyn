@@ -2,15 +2,15 @@
 title: "First setup"
 description: "Choose your purpose and devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Listen locally", "How you will use it", "I want to listen here"]
+uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here"]
 ---
 
 ## Choose a purpose {#purpose}
 
 1. Open “Connection details” and select “Open Setup”.
-2. Choose OBS, calls, “Listen locally”, other apps, or “Listen to music (apply VST to PC audio)”.
+2. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”.
 
-With “Listen locally”, the choice under “How you will use it” is “I want to listen here”. Listening locally and listening to music do not show streaming or listener wording on the review or the finished screen.
+“Hear my own voice” processes the microphone and plays it on headphones or speakers. The choice under “How you will use it” is “I want to listen here”. To apply a VST to playback from an app, choose “Listen to music (apply VST to PC audio)”. Hear my own voice and listening to music do not show streaming or listener wording on the review or the finished screen.
 
 ## Choose a microphone {#microphone}
 
@@ -19,7 +19,7 @@ With “Listen locally”, the choice under “How you will use it” is “I wa
 
 ## Choose an output {#output}
 
-1. For local listening, select headphones or speakers.
+1. For “Hear my own voice”, select headphones or speakers.
 2. For a virtual cable route, select CABLE Input as Auralyn's output and CABLE Output as the receiving app's input.
 3. Review the devices and continue setup.
 

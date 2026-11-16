@@ -11,6 +11,7 @@ import { MdFolderOpen, MdAdd, MdViewCompact, MdViewAgenda } from 'react-icons/md
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTheme } from '../../../hooks/useTheme';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 interface PluginListProps {
     plugins: Plugin[];
@@ -106,6 +107,7 @@ export const PluginList: React.FC<PluginListProps> = ({
 }) => {
     const t = useMessages();
     const { theme } = useTheme();
+    const [purpose] = useDisplayPurpose();
     // 表示形式はラックを開いた人がいつでも選べる（以前の詳細表示に限らない）。
     const [simpleMode, setSimpleMode] = useState(() => {
         const saved = localStorage.getItem('vst_host_simple_mode');
@@ -164,7 +166,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                         {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="gap-2">
                             <MdFolderOpen className="w-3.5 h-3.5" />
                             {t('rack.manageProfiles')}</Button>}
-                        {embedded && rackKind === 'voice' && plugins.length > 0 && <Button variant="outline" size="sm" type="button" onClick={onOpenTemplates} className="gap-2">
+                        {embedded && rackKind === 'voice' && purpose !== 'music' && plugins.length > 0 && <Button variant="outline" size="sm" type="button" onClick={onOpenTemplates} className="gap-2">
                             {t('rack.empty.templates')}</Button>}
                         {!embedded && headerAction}
                     </div>

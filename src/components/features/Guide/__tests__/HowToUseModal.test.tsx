@@ -6,8 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { AppRail } from '@/components/layout/AppRail';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
-import { message, type MessageKey } from '@/i18n/messages';
-import { homeGuidePoints } from '../HowToUseModal';
+import { message } from '@/i18n/messages';
+import { fillHomeGuide, homeGuideFor, homeGuideGroups, homeGuideLabels } from '../homeGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }));
@@ -114,30 +114,13 @@ it('知らない操作の割り当てが混ざっても、分かる操作の割�
     expect(within(dialog).queryByText(message('ja', 'help.keys.fallback'))).not.toBeInTheDocument();
 });
 
-function guideLabels(locale: 'ja' | 'en') {
-    const t = (key: MessageKey) => message(locale, key);
-    return {
-        compare: t('header.compare'), gain: t('master.outputGain'), mute: t('header.emergency'),
-        noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
-        basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
-        peakDetails: t('peak.details'),
-        details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
-        add: t('chain.vstAdd'), openVst: t('sound.openVst'),
-        settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
-        choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
-        mode: t('home.modeMark'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
-        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
-        musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
-        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
-    };
-}
-
-it.each(['ja', 'en'] as const)('ホームの見方は節ごとに箇条で出し、差し込みを埋める（%s）', locale => {
+it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条だけを出し、差し込みを埋める（%s）', locale => {
     open(locale);
     fireEvent.keyDown(window, { key: 'F1' });
     const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
-    const labels = guideLabels(locale);
-    const groups = ['stage', 'meters', 'sound', 'check', 'footer'] as const;
+    const labels = homeGuideLabels(locale);
+    const voice = fillHomeGuide(locale, 'voice');
+    const music = fillHomeGuide(locale, 'music');
     const headings = [
         message(locale, 'help.home.stage.title'),
         message(locale, 'help.home.meters.title'),
@@ -145,29 +128,54 @@ it.each(['ja', 'en'] as const)('ホームの見方は節ごとに箇条で出し
         message(locale, 'prep.title'),
         message(locale, 'help.home.footer.title'),
     ];
-    expect(within(dialog).getAllByRole('list')).toHaveLength(groups.length);
-    groups.forEach((group, index) => {
+    expect(within(dialog).getAllByRole('list')).toHaveLength(homeGuideGroups.length);
+    homeGuideGroups.forEach((group, index) => {
         const heading = within(dialog).getByRole('heading', { level: 3, name: headings[index] });
         const list = heading.nextElementSibling as HTMLElement;
         expect(list.tagName).toBe('UL');
         const items = within(list).getAllByRole('listitem');
-        expect(items.map(item => item.textContent)).toEqual(homeGuidePoints[group].map(key => message(locale, key, labels)));
+        expect(items.map(item => item.textContent)).toEqual(homeGuideFor('voice')[group].map(key => message(locale, key, labels)));
+        expect(items.map(item => item.textContent)).toEqual(voice[group]);
         for (const item of items) {
             expect(item.textContent).not.toMatch(/\{[A-Za-z]+\}/);
             expect((item.textContent?.match(/[。.]/g) ?? []).length).toBeLessThanOrEqual(2);
             expect((item.textContent?.match(/[。.]/g) ?? []).length).toBeGreaterThan(0);
         }
     });
+    expect(within(dialog).getByText(message(locale, 'help.home.other', labels))).toBeInTheDocument();
+    expect(within(dialog).queryByText(music.stage[0])).not.toBeInTheDocument();
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    fireEvent(window, new Event('auralyn-display-purpose-changed'));
+    const musicHeadings = [
+        message(locale, 'help.home.stage.title'),
+        message(locale, 'help.home.meters.musicTitle'),
+        message(locale, 'wizard.musicSound'),
+        message(locale, 'prep.title'),
+        message(locale, 'help.home.footer.title'),
+    ];
+    homeGuideGroups.forEach((group, index) => {
+        const heading = within(dialog).getByRole('heading', { level: 3, name: musicHeadings[index] });
+        const items = within(heading.nextElementSibling as HTMLElement).getAllByRole('listitem');
+        expect(items.map(item => item.textContent)).toEqual(music[group]);
+        for (const item of items) {
+            expect(item.textContent).not.toMatch(/\{[A-Za-z]+\}/);
+            expect((item.textContent?.match(/[。.]/g) ?? []).length).toBeLessThanOrEqual(2);
+            expect((item.textContent?.match(/[。.]/g) ?? []).length).toBeGreaterThan(0);
+        }
+    });
+    expect(within(dialog).queryByText(voice.stage[0])).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(voice.meters[0])).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.setup') }));
     expect(within(dialog).queryByRole('list')).not.toBeInTheDocument();
     expect(within(dialog).getByText(message(locale, 'help.setup.body', labels))).toBeInTheDocument();
 });
 
-it.each(['ja', 'en'] as const)('再生の状態の説明は、保存したを重ねず差し込みを埋める（%s）', locale => {
+it.each(['ja', 'en'] as const)('再生の状態の説明は、音楽鑑賞の見方で保存したを重ねず差し込みを埋める（%s）', locale => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
     open(locale);
     fireEvent.keyDown(window, { key: 'F1' });
     const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
-    const text = message(locale, 'help.home.stage.7', guideLabels(locale));
+    const text = message(locale, 'help.home.stage.7', homeGuideLabels(locale));
     expect(within(dialog).getByText(text)).toBeInTheDocument();
     expect(text).not.toMatch(/\{[A-Za-z]+\}/);
     expect(text).not.toContain(locale === 'ja' ? '保存した「保存した' : 'saved “Saved');

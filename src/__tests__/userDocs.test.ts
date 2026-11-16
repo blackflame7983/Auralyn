@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildUserDocUrl, getUserDocUrl, glossary, glossaryDocName, type UserDocName } from '../lib/userDocs';
 import { message, type MessageKey } from '../i18n/messages';
+import { fillHomeGuide } from '../components/features/Guide/homeGuide';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
@@ -97,6 +98,24 @@ describe('利用者向け原稿', () => {
             });
         }
     }
+    it('ホームの原稿は、用途の見出しごとにその見方を持ち、もう一方の切替案内では代えない', () => {
+        for (const locale of locales) {
+            const body = docs[locale].home.body;
+            const voice = body.split('{#for-voice}')[1]?.split('{#for-music}')[0] ?? '';
+            const music = body.split('{#for-music}')[1]?.split('{#related}')[0] ?? '';
+            const voiceSentences = Object.values(fillHomeGuide(locale, 'voice')).flat();
+            const musicSentences = Object.values(fillHomeGuide(locale, 'music')).flat();
+            for (const sentence of voiceSentences) expect(voice, `${locale}: ${sentence}`).toContain(sentence);
+            for (const sentence of musicSentences) expect(music, `${locale}: ${sentence}`).toContain(sentence);
+            expect(music, locale).not.toContain(voiceSentences[0]);
+            expect(voice, locale).not.toContain(musicSentences[0]);
+            expect(body, locale).not.toContain(message(locale, 'help.home.other', {
+                connect: message(locale, 'rail.connect'),
+                usage: message(locale, 'purpose.section'),
+                layout: message(locale, 'purpose.label'),
+            }));
+        }
+    });
     it('使い方の全用語に短い定義と補足がある', () => {
         for (const locale of locales) {
             const body = docs[locale].glossary.body;

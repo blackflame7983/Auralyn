@@ -438,7 +438,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 unknownLabel={t('flow.unknown')}
                                 input={{ label: t('home.input'), value: config.input ? deviceDisplayName(config.input.name) : undefined }}
                                 output={{ label: t('home.output'), value: config.output ? deviceDisplayName(config.output.name) : undefined }}
-                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'prep.local' : config.goal === 'listening' ? 'prep.local' : 'wizard.manual') }}
+                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'wizard.music' : config.goal === 'listening' ? 'prep.local' : 'wizard.manual') }}
                             />
 
                             {config.goal !== 'music' && <div className="flex flex-col items-start gap-3">

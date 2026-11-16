@@ -75,13 +75,14 @@ describe('セットアップの接続チェック', () => {
     it('送り先は共通の順序で表示し、保存済み music は音楽鑑賞のカードを選ぶ', async () => {
         localStorage.setItem('vst_host_setup_goal', 'music');
         await openWizard();
-        const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('radio', { name }));
+        const choices = ['OBSで配信', '通話（Discordなど）', '自分の声を聴く', 'その他のアプリ'].map(name => screen.getByRole('radio', { name }));
         expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-        // 音楽鑑賞は最初の画面の独立したカードになった。自分で聴くへはまとめない（#553）。
+        // 音楽鑑賞は最初の画面の独立したカードになった。自分の声を聴くへはまとめない（#553）。
         const music = screen.getByRole('radio', { name: '音楽を聴く（PCの音にVSTをかける）' });
         expect(music.compareDocumentPosition(choices[3]) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
         expect(music).toBeChecked();
         expect(choices[2]).not.toBeChecked();
+        expect(choices[2]).toHaveAccessibleDescription('マイクの声を加工して手元で聴きます。アプリの音は「音楽を聴く」へ。');
         fireEvent.click(music);
         expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
@@ -90,7 +91,7 @@ describe('セットアップの接続チェック', () => {
     it('入力がない場合は次へを無効にし、音の元に応じた理由を表示する', async () => {
         inputs = [];
         await openWizard();
-        fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
+        fireEvent.click(screen.getByRole('radio', { name: '自分の声を聴く' }));
         await screen.findByText('マイクを選ぶと次へ進めます');
         const next = screen.getByRole('button', { name: /次へ/ });
         expect(next).toBeDisabled();
@@ -126,7 +127,7 @@ describe('セットアップの接続チェック', () => {
         inputs = [];
         const store = createLocaleStore(() => 'ja', () => true);
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-        fireEvent.click(await screen.findByRole('radio', { name: '自分で聴く' }));
+        fireEvent.click(await screen.findByRole('radio', { name: '自分の声を聴く' }));
         await screen.findByText('マイクを選ぶと次へ進めます');
         act(() => { store.setLocale(locale); });
         const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
@@ -258,7 +259,7 @@ describe('セットアップの接続チェック', () => {
     const openListeningOutput = async () => {
         await openWizard();
         await screen.findByRole('radio', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
+        fireEvent.click(screen.getByRole('radio', { name: '自分の声を聴く' }));
         const next = screen.getByRole('button', { name: /次へ/ });
         await waitFor(() => expect(next).toBeEnabled());
         fireEvent.click(next);
@@ -707,7 +708,7 @@ describe('初回選択と表示設定', () => {
             expect(notified).not.toHaveBeenCalled();
         } finally { window.removeEventListener('preparation-purpose-changed', notified); }
     });
-    it.each([['listening', '自分で聴く'], ['local', '自分で聴く'], ['discord', '通話（Discordなど）'], ['music', '音楽を聴く（PCの音にVSTをかける）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
+    it.each([['listening', '自分の声を聴く'], ['local', '自分の声を聴く'], ['discord', '通話（Discordなど）'], ['music', '音楽を聴く（PCの音にVSTをかける）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
         localStorage.setItem('vst_host_setup_goal', saved);
         await openWizard();
         expect(screen.getByRole('radio', { name })).toBeChecked();
@@ -792,7 +793,17 @@ describe('入力ステップのレベル表示', () => {
 });
 
 
-describe('自分で聴くと音楽鑑賞の確認', () => {
+describe('自分の声を聴くと音楽鑑賞の確認', () => {
+    it.each(['ja', 'en'] as const)('自分の声を聴くはマイクの加工で、再生アプリの音は音楽を聴くへ案内する（%s）', async locale => {
+        const store = createLocaleStore(() => locale, () => true);
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        const card = await screen.findByRole('radio', { name: message(locale, 'prep.local') });
+        const hint = message(locale, 'wizard.listeningHint');
+        expect(card).toHaveAccessibleDescription(hint);
+        expect(hint).not.toMatch(/PCの音|PC audio/);
+        expect(screen.getByRole('radio', { name: message(locale, 'wizard.musicGoal') })).toBeEnabled();
+    });
+
     const toConfirm = async (name: string) => {
         await openWizard();
         fireEvent.click(screen.getByRole('radio', { name }));
@@ -801,8 +812,9 @@ describe('自分で聴くと音楽鑑賞の確認', () => {
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         await screen.findByRole('heading', { name: '設定と接続の確認' });
     };
-    it('自分で聴くでは、セットアップ後の使い方と完了に配信や受け側の文を出さない', async () => {
-        await toConfirm('自分で聴く');
+    it('自分の声を聴くでは、セットアップ後の使い方と完了に配信や受け側の文を出さない', async () => {
+        await toConfirm('自分の声を聴く');
+        expect(screen.getByText('自分の声を聴く')).toBeInTheDocument();
         expect(screen.getByRole('radio', { name: '手元で聴きたい' })).toBeChecked();
         expect(screen.queryByRole('radio', { name: '配信をはじめたい' })).not.toBeInTheDocument();
         expect(screen.queryByText('受け側に届いたかは、次の手順で確認します。')).not.toBeInTheDocument();
@@ -816,6 +828,8 @@ describe('自分で聴くと音楽鑑賞の確認', () => {
         inputs = [device('CABLE Output', true)];
         outputs = [device('Headphones')];
         await toConfirm('音楽を聴く（PCの音にVSTをかける）');
+        expect(screen.getByText('自分で聴く')).toBeInTheDocument();
+        expect(screen.queryByText('自分の声を聴く')).not.toBeInTheDocument();
         expect(screen.getByRole('radio', { name: '音を手軽に調整したい' })).toBeChecked();
         expect(screen.queryByText('受け側に届いたかは、次の手順で確認します。')).not.toBeInTheDocument();
         expect(screen.queryByRole('radio', { name: '配信をはじめたい' })).not.toBeInTheDocument();
@@ -826,7 +840,7 @@ describe('PC audio purpose', () => {
     const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
     const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
     const chooseMusic = async () => {
-        fireEvent.click(await screen.findByRole('radio', { name: '自分で聴く' }));
+        fireEvent.click(await screen.findByRole('radio', { name: '自分の声を聴く' }));
         fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
         await screen.findByRole('combobox', { name: '機器' });
     };
@@ -1322,7 +1336,7 @@ describe('セットアップでの ASIO（#291）', () => {
 it.each(['obs', 'listening', 'music'] as const)('マイクとPCの音の選択欄は日英で見えるラベルから読み上げ名を得る（%s）', async goal => {
     const store = createLocaleStore(() => 'ja', () => true);
     render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-    fireEvent.click(await screen.findByRole('radio', { name: goal === 'obs' ? 'OBSで配信' : '自分で聴く' }));
+    fireEvent.click(await screen.findByRole('radio', { name: goal === 'obs' ? 'OBSで配信' : '自分の声を聴く' }));
     if (goal === 'music') fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
     const select = await screen.findByRole('combobox', { name: '機器' });
     expect(screen.getByLabelText('機器', { exact: true })).toBe(select);
@@ -1356,7 +1370,7 @@ it('ASIOからPCの音へ切り替えるとWASAPIの既定出力を選ぶ', asyn
 it('PCの音の出力先は2択を2列で並べる', async () => {
     inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
     await openWizard();
-    fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
+    fireEvent.click(screen.getByRole('radio', { name: '自分の声を聴く' }));
     fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
     const next = screen.getByRole('button', { name: /次へ/ });
     await waitFor(() => expect(next).toBeEnabled());

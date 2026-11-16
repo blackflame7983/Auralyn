@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PluginList } from '../PluginList';
@@ -7,6 +8,21 @@ class ResizeObserverMock { observe() {} unobserve() {} disconnect() {} }
 vi.stubGlobal('ResizeObserver', ResizeObserverMock);
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+const onePlugin = { id: 'first', name: 'EQ', path: 'eq', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1 };
+
+it.each(['ja', 'en'] as const)('並びがあるときも、音楽鑑賞ではVST構成テンプレートを出さず、配信では出す（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const name = message(locale, 'rack.empty.templates');
+    const list = <PluginList embedded plugins={[onePlugin]} onAddClick={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={vi.fn()} onOpenPresets={vi.fn()} onOpenTemplates={vi.fn()} />;
+    const { rerender } = render(<LocaleProvider store={store}>{list}</LocaleProvider>);
+    expect(screen.getByRole('button', { name })).toBeEnabled();
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    window.dispatchEvent(new Event('auralyn-display-purpose-changed'));
+    rerender(<LocaleProvider store={store}>{list}</LocaleProvider>);
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    localStorage.removeItem('auralyn_display_purpose');
+});
+
 it.each(['true', 'false'])('並べ替えのフォーカスとキー処理が同じボタンにあり日本語で中断を通知する: simple=%s', async simple => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     localStorage.setItem('vst_host_simple_mode', simple);

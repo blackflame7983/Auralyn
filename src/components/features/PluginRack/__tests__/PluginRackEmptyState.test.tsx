@@ -60,3 +60,16 @@ it('音楽鑑賞では、ホームにない声の調整を案内しない', () =
         expect(screen.queryByText('ノイズ低減と声を整える機能は、ホームの音調整で調整できます。')).not.toBeInTheDocument();
     } finally { localStorage.removeItem('auralyn_display_purpose'); }
 });
+
+it.each(['ja', 'en'] as const)('音楽鑑賞では空の案内からVST構成テンプレートを出さず、配信では出す（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const name = message(locale, 'rack.empty.templates');
+    const { rerender } = render(<LocaleProvider store={store}><PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
+    expect(screen.getByRole('button', { name })).toBeEnabled();
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    window.dispatchEvent(new Event('auralyn-display-purpose-changed'));
+    rerender(<LocaleProvider store={store}><PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: message(locale, 'rack.empty.addVst') })).toBeEnabled();
+    localStorage.removeItem('auralyn_display_purpose');
+});
