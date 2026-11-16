@@ -46,6 +46,15 @@ it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・�
         expect(contrast(color('meter-danger'), color('card')), selector).toBeGreaterThanOrEqual(3);
         // バーの実際の背景は muted。注意域を文字色と独立して識別できるようにする。
         expect(contrast(color('meter-warning'), color('muted')), `${selector} meter-warning/muted`).toBeGreaterThanOrEqual(3);
+        // 範囲の塗りは正常域のオーロラをうすくしたもの。境目の線が塗りの上でも3:1を保つ濃さにする。
+        const rangeAlpha = Number(/\.meter-range-band\s*\{[^}]*\/\s*([\d.]+)\)/.exec(css)?.[1]);
+        expect(rangeAlpha, `${selector} range alpha`).toBeGreaterThan(0);
+        for (const token of ['aurora-green', 'aurora-teal']) {
+            const band = blend(color(token), color('muted'), rangeAlpha);
+            const line = blend(color('foreground'), band, 0.7);
+            expect(contrast(line, band), `${selector} guide on range/${token}`).toBeGreaterThanOrEqual(3);
+            expect(contrast(band, color('muted')), `${selector} range wash/${token}`).toBeGreaterThan(1.2);
+        }
         // 主ボタンの文字と、主色で示す選択中の文字
         expect(contrast(color('primary-foreground'), color('primary')), `${selector} primary button`).toBeGreaterThanOrEqual(4.5);
         for (const background of ['background', 'card']) expect(contrast(color('primary'), color(background)), `${selector} primary/${background}`).toBeGreaterThanOrEqual(4.5);

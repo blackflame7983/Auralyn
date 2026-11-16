@@ -118,7 +118,10 @@ it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操
     const custom = screen.getByRole('heading', { name: message(locale, 'liveBar.custom') });
     expect(custom).toBeVisible();
     expect(custom).toHaveAttribute('title', message(locale, 'liveBar.customHint'));
-    expect(custom).toHaveAccessibleDescription(message(locale, 'liveBar.customHint'));
+    const aside = screen.getByText(message(locale, 'home.customAside'));
+    expect(aside).toBeVisible();
+    expect(aside).not.toHaveClass('sr-only');
+    expect(custom).toHaveAccessibleDescription(message(locale, 'home.customAside'));
     expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).toBeNull();
 });
 
@@ -176,14 +179,51 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
 });
 
-it('送る音の目安は、小さめと大きすぎの境目に置く', () => {
-    // #570: −30 dBFS は 50%、−6 dBFS は 90%。線は読み上げに出さない。
-    render(<LiveStrip model={fixture()} running />);
-    const meter = screen.getByRole('meter', { name: '送る音' });
-    const guides = [...meter.querySelectorAll('[data-meter-guide]')];
+it.each(['ja', 'en'] as const)('歌・雑談を登録していないときは、モードの札といまの調整を出さず、見出しをいまの声にする (%s)', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={fixture()} running liveModeName={message(locale, 'home.currentVoice')} />
+    </LocaleProvider>);
+    const now = screen.getByRole('region', { name: message(locale, 'home.now') });
+    expect(within(now).getByRole('heading', { name: message(locale, 'home.currentVoice') })).toBeVisible();
+    expect(now).not.toHaveTextContent(message(locale, 'home.modeMark'));
+    expect(now).not.toHaveTextContent(message(locale, 'liveBar.custom'));
+    expect(now).not.toHaveTextContent(message(locale, 'home.customAside'));
+});
+
+it.each(['ja', 'en'] as const)('送る音の線のあいだは適正の範囲で、読み上げは判定を使う (%s)', locale => {
+    // #570: −30 dBFS は 50%、−6 dBFS は 90%。#667: そのあいだを塗り、説明はバーの title に出す。
+    meter.output = 'live';
+    meter.levels = [0.1, 0.1];
+    meter.peak = [0.2, 0.2];
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const send = screen.getByRole('meter', { name: message(locale, 'home.sendLevel') });
+    const guides = [...send.querySelectorAll('[data-meter-guide]')];
     expect(guides.map(node => (node as HTMLElement).style.left)).toEqual(['50%', '90%']);
     expect(guides.every(node => node.getAttribute('aria-hidden') === 'true')).toBe(true);
-    expect(meter.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
+    const band = send.querySelector('[data-meter-range]') as HTMLElement;
+    expect(band).toHaveClass('meter-range-band');
+    expect(band.style.left).toBe('50%');
+    expect(band.style.width).toBe('40%');
+    expect(band.parentElement).toHaveAttribute('title', message(locale, 'home.levelRange'));
+    expect(send).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'home.levelOk')));
+    expect(send.getAttribute('aria-valuetext')).not.toMatch(/50%|90%/);
+    expect(screen.queryByText(message(locale, 'home.levelOk'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('小さめと大きすぎは、いまの状態にも注意の色で出す (%s)', locale => {
+    meter.output = 'live';
+    meter.levels = [0.01, 0.01];
+    meter.peak = [0.2, 0.2];
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const low = screen.getByText(message(locale, 'home.levelLow'));
+    expect(low).toHaveAttribute('data-now-verdict', 'low');
+    expect(low).toHaveClass('text-warning');
+    meter.levels = [0.1, 0.1];
+    meter.peak = [0.8, 0.8];
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    const high = screen.getByText(message(locale, 'home.levelHigh'));
+    expect(high).toHaveAttribute('data-now-verdict', 'high');
+    expect(high).toHaveClass('text-warning');
 });
 
 it('出力がミュートか音量ゼロのときは、その状態をカードに出す', () => {

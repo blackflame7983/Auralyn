@@ -439,6 +439,10 @@
 .meter-fill-aurora {
   background: linear-gradient(90deg, hsl(var(--aurora-teal)), hsl(var(--aurora-green)));
 }
+/* 適正の範囲。同じ正常域を、目盛りの線がどのテーマでも3:1を保つ濃さでうすく塗る（#667）。 */
+.meter-range-band {
+  background: linear-gradient(90deg, hsl(var(--aurora-teal) / 0.35), hsl(var(--aurora-green) / 0.35));
+}
 /* ホームの見出しと操作は、設定の20px/40pxより一段細くする。舞台の題名だけ少し大きく残す。 */
 .home-title { font-size: 0.9375rem; line-height: 1.35; font-weight: 500; letter-spacing: 0.01em; }
 .home-card-name { font-size: 0.875rem; line-height: 1.35; font-weight: 500; }

@@ -30,10 +30,12 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
     const reading = useSharedMeter(running, 'output');
     const verdict = outputVerdict({ state: reading.state, smoothed: Math.max(0, ...reading.levels), peakHold: Math.max(0, ...reading.peak) });
     const verdictText = verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : verdict === 'ok' ? t('home.levelOk') : null;
+    // 適正は範囲の色で分かる。小さめと大きすぎだけ、いまの状態にも注意の色で出す（#668）。
+    const attention = verdict === 'high' || verdict === 'low';
     return <div className="flex min-w-48 flex-1 items-center gap-2">
         <span className="shrink-0 text-ui-support text-muted-foreground">{label}</span>
-        <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} />
-        {verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium">{verdictText}</span>}
+        <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} guideTitle={t('home.levelRange')} valueNote={verdictText ?? undefined} />
+        {attention && verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium text-warning">{verdictText}</span>}
     </div>;
 }
 
@@ -60,7 +62,9 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             output: deviceName(model.observation.config?.output ?? outputName, unset),
         })
         : (liveModeName ?? t('liveBar.custom'));
-    // 名前が「いまの調整」のときだけ、見出しに説明を結ぶ。上の帯の切替には出さない（#601）。
+    // 未登録の見出しは「いまの声」。モードの札は登録してから出す（#655）。
+    const currentVoice = !music && heading === t('home.currentVoice');
+    // 名前が「いまの調整」のときだけ、見出しの横に短い説明を出す。詳しい文はツールチップに残す（#601、#655）。
     const customHeading = !music && heading === t('liveBar.custom');
     const muted = model.observation.availability === 'muted';
     const startButton = !running && Boolean(onStartAudio);
@@ -71,9 +75,9 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     return <section aria-label={t('home.now')} className="now-status mb-3 rounded-card bg-card px-5 py-3">
         {/* 見出しの行に札とミュートを乗せ、行の高さは見出しに合わせる。 */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {!music && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
+            {!music && !currentVoice && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
             <h2 className="min-w-0 truncate text-ui-heading font-medium" title={customHeading ? t('liveBar.customHint') : heading} aria-describedby={customHeading ? customHintId : undefined}>{heading}</h2>
-            {customHeading && <span id={customHintId} className="sr-only">{t('liveBar.customHint')}</span>}
+            {customHeading && <span id={customHintId} data-now-custom="aside" className="text-ui-support text-muted-foreground">{t('home.customAside')}</span>}
             {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t('prep.muted')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">

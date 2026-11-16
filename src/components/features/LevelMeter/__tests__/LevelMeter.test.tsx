@@ -62,12 +62,12 @@ it('フッター用の小表示は数値とクリップがあっても固定の�
     expect(screen.getByRole('meter', { name: '出力' })).toHaveStyle({ height: '28px' });
     expect(screen.getByRole('button', { name: /クリップ表示を消す/ })).toBeInTheDocument();
 });
-it('小メーターは入力を選び、停止後は旧値を表示しない', () => {
+it('小メーターは入力を選び、停止後は旧値を表示しない', async () => {
     render(<LevelMeter running type="input" />);
-    emit('audio-level', { input: [1.2, 1.2], output: [0, 0] });
-    act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByLabelText('入力レベル：レベル表示中')).toBeInTheDocument();
-    emit('audio-stopped');
+    await emit('audio-level', { input: [1.2, 1.2], output: [0, 0] });
+    await act(() => vi.advanceTimersByTime(16));
+    expect(screen.getByLabelText('入力レベル：受信中')).toBeInTheDocument();
+    await emit('audio-stopped');
     expect(screen.getByLabelText('入力レベル：音声停止中')).toBeInTheDocument();
     expect(screen.getByTitle('左').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
 });

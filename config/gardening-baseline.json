@@ -4881,13 +4881,6 @@
     },
     {
       "file": "src/components/features/LevelMeter/__tests__/LevelMeter.test.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "d0ad080289e7a6e2e9370b38edd1bc14711fddbdee800d1604c80a527bf52a93",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/LevelMeter/__tests__/LevelMeter.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "03c77566a3b3a16ddc091eb51bd86a444ccabea0579c1871549715a89c3b2082",
       "count": 1,
@@ -5025,13 +5018,6 @@
       "hash": "f7383238052334413cce6e81db4cdad4e6f23ba5799fc094eb549c5deb32b14f",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/LevelMeter/MeterVisual.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "b7478e510fa1ccf909d75f4fcc4b5809e5fb52b8eaf7cd20837807219b438935",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/features/PluginBrowser/__tests__/PluginBrowserModal.test.tsx",
@@ -6767,13 +6753,6 @@
       "rule": "@typescript-eslint/no-floating-promises",
       "hash": "0accf566f48aee8d9ecddaebd7f45ac46fc4c97b2ee670a5710fe5d50707491f",
       "count": 5,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/__tests__/useMeterLevels.test.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "0ea9c31a30f7e3b8e612831d86ff809b8e8d88da7038233bd7b14fb700100406",
-      "count": 3,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {

@@ -32,7 +32,7 @@ While the saved chain is protected, current VST changes are not saved automatica
 2. Switch with “Sing” and “Talk” on Home.
 3. If the mode also switches VSTs, sound may pause briefly. Check before going live.
 
-“Custom sound” means no saved mode is in use. It does not mean current changes are saved.
+“Custom sound” means no saved mode is in use. It does not mean current changes are saved. When neither Sing nor Talk is saved, this label is not shown.
 
 ## Voice Check {#voice-check}
 
