@@ -36,10 +36,6 @@ export const knownViolations: KnownViolation[] = [
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'en', match: 'Choose this', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'en', match: 'Choose this', issue: '#637' },
 
-    // 実行中の英語で、声の流れと今の状態が同じ「レベル未受信」を言う。日本語は10文字未満なので対象外。
-    { check: 'duplicate', screen: 'home', state: 'live', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
-    { check: 'duplicate', screen: 'stream-mix', locale: 'en', match: 'Waiting for level updates', issue: '#639' },
-
     // 接続ページの機器選択が、下に固定した保存の欄に重なる。1280 は出力、900 の英語は名前の長い入力。
     { check: 'overlap', screen: 'connect', size: '1280x800', match: 'CABLE Output', issue: '#640' },
     { check: 'overlap', screen: 'connect', size: '900x600', locale: 'en', match: 'Microphone / virtual cable', issue: '#640' },

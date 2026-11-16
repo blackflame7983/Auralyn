@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi } from '@/api/audio';
 import { presetApi } from '@/api/presets';
@@ -9,6 +10,22 @@ import { message } from '@/i18n/messages';
 import { AppShell } from '../AppShell';
 
 vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({ busy: false, label: '更新の確認', description: '', checkUpdates: vi.fn() }), UpdateGuide: () => null }));
+// 購読は試験では届かない。声の流れを出す試験だけ live にする。既定は受信待ち（#624）。
+const meter = vi.hoisted(() => ({
+    state: 'waiting' as 'waiting' | 'live' | 'silent' | 'stale' | 'stopped',
+    levels: [0.2, 0.2],
+}));
+vi.mock('../../features/LevelMeter/MeterContext', () => ({
+    MeterProvider: ({ children }: { children: ReactNode }) => children,
+    useInputMeterState: (running: boolean) => (running ? meter.state : 'stopped'),
+    useSharedMeter: (running: boolean) => ({
+        levels: running ? meter.levels : [0, 0],
+        peak: running ? meter.levels : [0, 0],
+        clipped: false,
+        state: running ? meter.state : 'stopped',
+        resetClip: () => {},
+    }),
+}));
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { FixedClientError } from '@/lib/clientError';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
@@ -19,7 +36,13 @@ const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveStreamMixPanel(false); });
-afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
+afterEach(async () => {
+    await act(async () => {});
+    cleanup();
+    vi.restoreAllMocks();
+    meter.state = 'waiting';
+    meter.levels = [0.2, 0.2];
+});
 
 it.each([false, true])('音声停止中の入口は設定を開き、稼働中には表示しない（稼働=%s）', running => {
     const onOpenSettings = vi.fn();
@@ -36,20 +59,28 @@ currentHost="WASAPI" engineProcessReady={true} isEngineRunning={running}>
     expect(screen.queryAllByRole('button', { name: /マイクと出力先を設定する|入出力を変更/ })).toHaveLength(1);
 });
 
-it('音声停止中の音量チェックは本番帯で無効表示にし、押せない理由を画面に出す', () => {
+it('音声停止中は声の流れも音量を測るも出さない。状態はいまの状態の読み上げに残す（#624）', () => {
     render(<AppShell onOpenOBSSettings={vi.fn()}
         onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
 currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
         <p>rack</p>
     </AppShell>);
-    const button = screen.getByRole('button', { name: '音量を測る' });
-    expect(button).toHaveTextContent('音量を測る');
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '音量を測る' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '大型レベルメーターを開く' })).not.toBeInTheDocument();
-    expect(button).toBeDisabled();
-    expect(button.className).toContain('disabled:opacity-50');
-    expect(button).toHaveAccessibleDescription('音声処理中に使えます');
-    expect(screen.getByText('音声処理中に使えます')).not.toHaveClass('sr-only');
+    expect(screen.getByRole('region', { name: 'いまの状態' }).querySelector('[data-now-incoming="stopped"]')).toHaveTextContent('音声停止中');
+    expect(screen.getByRole('meter', { name: '送る音' })).toHaveAttribute('aria-valuetext', expect.stringContaining('音声停止中'));
+});
+
+it('受信待ちの英語は、いまの状態に1回だけ出て、声の流れは出さない（#639）', () => {
+    render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}>
+        <AppShell {...commonProps}><p>rack</p></AppShell>
+    </LocaleProvider>);
+    expect(screen.queryByRole('region', { name: 'Voice flow' })).not.toBeInTheDocument();
+    expect(screen.getAllByText(message('en', 'meter.state.waiting'))).toHaveLength(1);
+    expect(screen.getByText(message('en', 'meter.state.waiting'))).toHaveAttribute('data-now-incoming', 'waiting');
+    expect(screen.getByRole('meter', { name: message('en', 'home.sendLevel') })).toHaveAttribute('aria-valuetext', expect.stringContaining(message('en', 'meter.state.waiting')));
 });
 
 it('停止中の「音声停止中」は上の帯といまの状態だけに出て、音調整の一文は1回だけ出る', () => {
@@ -61,8 +92,8 @@ it('停止中の「音声停止中」は上の帯といまの状態だけに出�
     expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
     expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
     expect(screen.getAllByText('音声を開始すると表示・変更できます', { exact: true })).toHaveLength(1);
-    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('音声停止中');
-    expect(screen.getByRole('region', { name: '声の流れ' })).not.toHaveTextContent('加工前');
+    expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: '送る音' })).toHaveAttribute('aria-valuetext', expect.stringContaining('音声停止中'));
 });
 
 it('未設定時は音の流れと次の1歩だけを示し、音声を自動変更しない（#297）', () => {
@@ -214,7 +245,8 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     expect(screen.getAllByRole('switch', { name: message(locale, 'header.compare') })).toHaveLength(1);
 });
 
-it('音量チェックは本番帯のメーター横に置き、明示要求だけを送り、再描画で再要求しない', () => {
+it('音量チェックは声の流れの見出し横に置き、明示要求だけを送り、再描画で再要求しない', () => {
+    meter.state = 'live';
     const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);
     const button = screen.getByRole('button', {name: '音量を測る'});
     expect(button.closest('section[aria-label="声の流れ"]')).not.toBeNull();
@@ -407,6 +439,7 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
 });
 
 it('音楽鑑賞のホームは、いまの状態、音を整える、再生の状態、音の流れ、接続の詳細の順（#605）', async () => {
+    meter.state = 'live';
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     saveDisplayPurpose('music');
     render(<AppShell {...commonProps} currentInput="再生アプリ" currentOutput="スピーカー"><p>rack</p></AppShell>);
@@ -451,6 +484,7 @@ it('ホーム上部に表示モードの切替を常設しない', () => {
 });
 
 it('配信ミックスは表示を選んだとき本番帯の直後へ置き、大型メーターより操作領域を優先する（#355）', () => {
+    meter.state = 'live';
     const props = { ...commonProps, streamMixPanel: <section aria-label="配信ミックス">mix</section> };
     const view = render(<AppShell {...props}><p>rack</p></AppShell>);
     act(() => saveStreamMixPanel(true));

@@ -169,6 +169,7 @@ test.describe('本番中の配信ミックスの配置', () => {
                 await page.addInitScript(theme => localStorage.setItem('vst_host_theme', theme), theme);
                 await fixture(page, true, true);
                 await page.goto('/');
+                await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
                 const panel = await streamMix(page);
                 const main = page.locator('main');
                 // 起動画面の退場と区画の位置の補間（transform）が終わってから測る。

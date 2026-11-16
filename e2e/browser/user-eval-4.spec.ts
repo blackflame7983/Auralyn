@@ -26,19 +26,22 @@ test('配信のいまの状態に、モードと送る音とミュートが出�
     await expect(now.locator('[data-now-mute="muted"]')).toHaveText('出力ミュート・音量ゼロ');
 });
 
-test('無音・待機では声の流れに文字が出て、音が来ているときだけ波形を描く', async ({ page }) => {
+test('受信待ちは声の流れを出さず、無音は平らな波形、音が来ているときだけ時間の流れを描く', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.goto('/');
     await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    const now = page.getByRole('region', { name: 'いまの状態', exact: true });
+    await expect(page.getByRole('region', { name: '声の流れ', exact: true })).toHaveCount(0);
+    await expect(now.locator('[data-now-incoming="waiting"]')).toHaveText('レベル未受信');
+    await expect(now.getByRole('meter', { name: '送る音', exact: true })).toHaveAttribute('aria-valuetext', /レベル未受信/);
+    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0, 0], output: [0, 0] }));
     const flow = page.getByRole('region', { name: '声の流れ', exact: true });
     const graph = flow.getByRole('img', { name: '加工前と加工後の音量', exact: true });
-    await expect(flow.locator('[data-flow-status="waiting"]')).toHaveText('レベル未受信');
-    await expect(graph).toHaveAttribute('data-flow', 'idle');
-    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0, 0], output: [0, 0] }));
-    await expect(flow.locator('[data-flow-status="silent"]')).toHaveText('無音');
-    await expect(graph).toHaveAttribute('data-flow', 'idle');
+    await expect(graph).toHaveAttribute('data-flow', 'flat');
+    await expect(flow.getByText('無音', { exact: true })).toHaveCount(0);
+    await expect(flow.getByText('加工前', { exact: true })).toBeVisible();
+    await expect(now.locator('[data-now-incoming="silent"]')).toHaveText('無音');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await expect(flow.locator('[data-flow-status="silent"]')).toHaveCSS('animation-name', 'none');
     await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
     await expect(graph).toHaveAttribute('data-flow', 'still');
     await expect(flow.locator('[data-flow-status]')).toHaveCount(0);

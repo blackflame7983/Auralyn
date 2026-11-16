@@ -155,9 +155,10 @@ for (const locale of ['ja', 'en']) {
             expect((await live.boundingBox())!.height).toBeCloseTo(nowHeight, 1);
             expect(await column.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBeCloseTo(16, 1);
             const graph = page.getByRole('img', { name: locale === 'ja' ? '加工前と加工後の音量' : 'Level before and after processing', exact: true });
-            await expect(graph).toBeVisible();
+            await expect(graph).toHaveCount(0);
             await expect(page.locator('.live-aurora')).toHaveCount(0);
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+            await expect(graph).toBeVisible();
             await expect(graph).toHaveAttribute('data-flow', 'time');
             await page.emulateMedia({ reducedMotion: 'reduce' });
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
