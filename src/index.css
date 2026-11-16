@@ -888,8 +888,8 @@ html[data-app-hidden="true"] *::after {
   flex: 1 1 12rem;
   min-width: min(100%, 12rem);
 }
-/* ホーム下の行。送り先の1行は内容の幅を取り、足りなければボタン群を次の行へ送る（#622、#638）。
-   容器より長いときだけ、行の幅いっぱいで折り返す。細い列にはしない。 */
+/* ホーム下の行。経路の文は出さない（#669）。状態の札があるときだけ左が幅を取り、
+   足りなければボタン群を次の行へ送る（#622、#638）。細い列にはしない。 */
 .home-route-row {
   display: flex;
   flex-wrap: wrap;
@@ -910,6 +910,19 @@ html[data-app-hidden="true"] *::after {
   align-items: center;
   gap: 0.5rem;
   max-width: 100%;
+}
+/* 中央の列に続きがある印。飾りなので動かさない。 */
+.column-scroll-more {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, hsl(var(--background) / 0.92));
+}
+@media (prefers-reduced-motion: reduce) {
+  .column-scroll-more {
+    animation: none;
+    transition: none;
+  }
 }
 /* 接続の区画は fieldset のまま、見出しを枠線の上に乗せない。 */
 .page-section {

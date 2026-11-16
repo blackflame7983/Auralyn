@@ -4613,20 +4613,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Home/__tests__/PreparationPanel.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "eb1f74aaf8959909592a60b4963525125f23452e570a08d5142918e23666e54d",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Home/__tests__/PreparationPanel.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "f016195727f5e23ad2a190066bdfa531e8f0ee1bb55c67a102523ac523cc0e8f",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/Home/__tests__/RouteSummary.test.tsx",
       "rule": "@typescript-eslint/no-explicit-any",
       "hash": "a04254030da3a223cb48d213617bc19fef06b898e63f4a1a2d1d1ed011e4228e",
@@ -4797,31 +4783,10 @@
     },
     {
       "file": "src/components/features/Home/PreparationPanel.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "0db9fcece2f3472bb54fc9ce13851eb867f6f4ff92afa534135fbf6bfdc17fea",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Home/PreparationPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "0db9fcece2f3472bb54fc9ce13851eb867f6f4ff92afa534135fbf6bfdc17fea",
-      "count": 5,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/Home/PreparationPanel.tsx",
       "rule": "auralyn/owned-effects",
       "hash": "906f8911ba9637be6016e48ec90db61d9ba7db0fac31f13fcd50a5581ee81325",
       "count": 1,
       "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/Home/PreparationPanel.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "0db9fcece2f3472bb54fc9ce13851eb867f6f4ff92afa534135fbf6bfdc17fea",
-      "count": 3,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
       "file": "src/components/features/Home/PreparationPanel.tsx",
