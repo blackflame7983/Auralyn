@@ -59,12 +59,14 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         });
         for (const gap of gaps) expect(gap).toBeLessThanOrEqual(32);
         const fit = await page.evaluate(() => {
-            const shell = document.querySelector('.app-shell')!.getBoundingClientRect();
+            const shell = document.querySelector('.app-shell');
+            if (!shell) throw new Error('.app-shell がありません');
+            const box = shell.getBoundingClientRect();
             const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
             return {
                 zoom,
-                shellWidth: shell.width,
-                shellHeight: shell.height,
+                shellWidth: box.width,
+                shellHeight: box.height,
                 overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 overflowY: document.documentElement.scrollHeight - document.documentElement.clientHeight,
             };
