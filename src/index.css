@@ -946,3 +946,8 @@ html[data-app-hidden="true"] *::after {
   .page-pair > .page-pair-output:first-child { grid-column: 1; }
   .page-pair > .page-pair-span { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* 選択欄の矢印は右の余白に描く。base の padding-right は Tailwind の px-* に負けるので、層の外で取り直す（#650）。 */
+.select-chevron {
+  padding-inline-end: 2.25rem;
+}

@@ -1092,7 +1092,7 @@ describe('セットアップの見た目と動き（#294）', () => {
     });
 
     it('折り返しで前の行や現在行の高さが変わっても印の位置と高さを測り直し、監視を解除する', async () => {
-        let measure!: ResizeObserverCallback;
+        let measure: ResizeObserverCallback = () => {};
         const observe = vi.fn();
         const disconnect = vi.fn();
         vi.stubGlobal('ResizeObserver', class {
@@ -1149,10 +1149,10 @@ describe('セットアップの見た目と動き（#294）', () => {
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
         // 同じ手順のまま再描画しても、動きの途中で向きを反転させない。
-        fireEvent.change(screen.getByRole('combobox', { name: '表示言語' }), { target: { value: 'en' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'en' } });
         expect(await screen.findByText('Destination')).toBeInTheDocument();
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
-        fireEvent.change(screen.getByRole('combobox', { name: 'Display language' }), { target: { value: 'ja' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'ja' } });
         expect(await screen.findByText('送り先')).toBeInTheDocument();
     });
 

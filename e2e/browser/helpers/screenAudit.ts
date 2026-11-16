@@ -172,6 +172,37 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         push({ check: 'overflow', selector: shortSelector(element), text: head(text) });
     }
 
+    // 選択欄の文字が、右に描いた矢印へ食い込んでいないかを見る（#650）。
+    // scrollWidth は余白を含み、欄の幅と同じになることが多い。長い選択肢を省略した欄まで誤って拾う。
+    // 見えている文字の右端と、矢印画像の左端を比べる。
+    const textWidthOf = (text: string, font: string) => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) return 0;
+        context.font = font;
+        return context.measureText(text).width;
+    };
+    for (const select of document.querySelectorAll('select')) {
+        if (!(select instanceof HTMLSelectElement) || !isVisible(select)) continue;
+        const style = getComputedStyle(select);
+        if (style.backgroundImage === 'none') continue;
+        const text = select.selectedOptions[0]?.text?.trim() ?? '';
+        if (!text) continue;
+        const positionX = (part: string) => {
+            const calc = /calc\(\s*100%\s*-\s*([\d.]+)px\s*\)/.exec(part);
+            if (calc) return select.clientWidth - parseFloat(calc[1]);
+            return parseFloat(part);
+        };
+        const positions = style.backgroundPosition.split(',').map(positionX).filter(value => Number.isFinite(value));
+        const arrowLeft = positions.length > 0 ? Math.min(...positions) : Number.NaN;
+        // 矢印は欄の右にある。左端として読めない値は、誤って全部を拾わない。
+        if (!Number.isFinite(arrowLeft) || arrowLeft < select.clientWidth / 2) continue;
+        const padLeft = parseFloat(style.paddingLeft) || 0;
+        const padRight = parseFloat(style.paddingRight) || 0;
+        const textRight = Math.min(padLeft + textWidthOf(text, style.font), select.clientWidth - padRight);
+        if (textRight > arrowLeft + 1) push({ check: 'overflow', selector: shortSelector(select), text: head(text) });
+    }
+
     const lineCount = (element: Element) => {
         const style = getComputedStyle(element);
         const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) || 16;

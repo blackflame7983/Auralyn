@@ -32,6 +32,16 @@ it.each([false, true])('言語同期の応答まで処理中を公開し、失�
     else expect(screen.getByRole('alert')).toHaveTextContent('tray');
 });
 
+it.each(['ja', 'en'] as const)('表示言語の名前は日英併記で、選択肢は各言語の名前のまま（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><LanguageSelector /></LocaleProvider>);
+    const select = screen.getByRole('combobox', { name: '表示言語 / Language' });
+    expect(select).toHaveClass('select-chevron');
+    expect(select.className).not.toMatch(/(?:^|\s)px-/);
+    expect(screen.getByRole('option', { name: '日本語' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'English' })).toBeInTheDocument();
+});
+
 it('古い切替の失敗では最新の処理中・表示言語を戻さない', async () => {
     const first = deferred(); const second = deferred();
     vi.mocked(projectLocale).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
