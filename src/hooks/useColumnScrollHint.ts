@@ -26,6 +26,9 @@ export function useColumnScrollHint() {
 
         let scroller: HTMLElement | null = null;
         let observer: ResizeObserver | null = null;
+        // 区画が足されたり外れたりしても（声の流れが出るときなど）、中身の高さは変わる。
+        // 子の出入りでも置き直し、新しい子を大きさの見張りに加える。
+        let children: MutationObserver | null = null;
         let watched = new Set<Element>();
 
         const place = () => {
@@ -34,9 +37,17 @@ export function useColumnScrollHint() {
                 scroller?.removeEventListener('scroll', place);
                 observer?.disconnect();
                 observer = null;
+                children?.disconnect();
+                children = null;
                 watched = new Set();
                 scroller = next;
-                if (scroller) scroller.addEventListener('scroll', place, { passive: true });
+                if (scroller) {
+                    scroller.addEventListener('scroll', place, { passive: true });
+                    if (typeof MutationObserver !== 'undefined') {
+                        children = new MutationObserver(place);
+                        children.observe(scroller, { childList: true });
+                    }
+                }
             }
             if (scroller && typeof ResizeObserver !== 'undefined') {
                 const targets = new Set<Element>([scroller, ...scroller.children]);
@@ -67,6 +78,7 @@ export function useColumnScrollHint() {
             placeRef.current = null;
             scroller?.removeEventListener('scroll', place);
             observer?.disconnect();
+            children?.disconnect();
             fade.remove();
         };
     }, []);

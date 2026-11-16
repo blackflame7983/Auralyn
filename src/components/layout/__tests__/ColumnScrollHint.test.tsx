@@ -77,3 +77,27 @@ it('保存の欄があるページでは、欄の上端にフェードの下端�
     expect(fade.style.top).toBe('276px');
     expect(Number(fade.style.top.replace('px', '')) + Number(fade.style.height.replace('px', ''))).toBe(300);
 });
+
+it('区画があとから足されて続きができたときも、フェードを出す（声の流れが出るとき）', async () => {
+    const scroller = document.createElement('main');
+    scroller.className = 'home-main';
+    scroller.style.overflowY = 'auto';
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 200 });
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 0 });
+    let contentHeight = 100;
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => contentHeight });
+    scroller.getBoundingClientRect = () => new DOMRect(8, 40, 200, 100);
+    document.body.appendChild(scroller);
+    try {
+        render(<Hint><div /></Hint>);
+        expect(fadeOf().hidden).toBe(true);
+        // 区画が足され、中身が伸びる。列の大きさは変わらない。
+        contentHeight = 300;
+        scroller.appendChild(document.createElement('section'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(fadeOf().hidden).toBe(false);
+    } finally {
+        scroller.remove();
+    }
+});

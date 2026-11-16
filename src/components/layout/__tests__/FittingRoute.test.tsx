@@ -40,7 +40,8 @@ it('狭い帯では先頭を隠し、送り先と全文を残す', () => {
     expect(visual).toHaveAttribute('aria-hidden', 'true');
     expect(box).toHaveAttribute('title', route);
     expect(box.querySelector('.sr-only')?.textContent).toBe(route);
-    expect(visual.querySelector('.truncate')?.textContent).toBe('OBSで配信');
+    // 最後の1区切りだけは、空白を保ったまま末尾を省略する（whitespace-pre と text-ellipsis）。
+    expect(visual.querySelector('.text-ellipsis')?.textContent).toBe('OBSで配信');
 });
 
 it('中間まで残せる幅では、送り先の直前まで見せる', () => {
