@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Playback", "Saved VST setup", "Automatic backups", "Save and restore settings", "Open the VST page", "Noise reduction", "Shape voice", "Singing and talking", "Singing", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -11,7 +11,7 @@ This page separates the home overview for streaming and calls from the overview 
 
 ### Current status {#stage}
 
-Current status shows the “Mode” name, whether sound is coming in, and “Level being sent”. The mute note appears only when the output is muted or the volume is zero.
+When Sing or Talk is saved, Current status shows “Mode” and the name, and when neither is saved the heading is “Current voice”. It also shows whether sound is coming in and “Level being sent”, and the mute note appears only when the output is muted or the volume is zero.
 
 The status, elapsed time, and audio path are on the top band.
 
@@ -21,7 +21,7 @@ The “Sing” and “Talk” switch is on the top band too.
 
 Voice flow appears once sound starts coming in after you start audio. When audio is stopped or waiting, Current status shows the state.
 
-Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. The card shows “Mode” beside the name. When neither saved Sing nor Talk matches, neither is selected on the top band, and the heading is “Custom sound”. Incoming sound and “Level being sent” are on this card. When the output is muted or the volume is zero, it says “Output muted / volume zero”. When it is not muted, that note is absent. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
+Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. When Sing or Talk is saved, the card shows “Mode” beside the name. When neither is saved, the heading is “Current voice” and “Mode” is not shown. When neither saved Sing nor Talk matches, neither is selected on the top band, and the heading is “Custom sound”. Beside it, the card says “Not a saved Sing/Talk mode”. Incoming sound and “Level being sent” are on this card. When the output is muted or the volume is zero, it says “Output muted / volume zero”. When it is not muted, that note is absent. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
 
 “Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
@@ -37,9 +37,9 @@ Moving meters do not confirm that someone else can hear you.
 
 Incoming sound is shown on this bar and the voice flow at the current level, without delay.
 
-The output may also say “A bit low”, “In range”, or “Too loud”.
+The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. While sound is coming in, the word is “Receiving”.
 
-The scale runs in even steps from −60 dBFS to 0 dBFS. The right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”.
+The scale runs in even steps from −60 dBFS to 0 dBFS. The right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.”
 
 While waiting, silent, or stopped, the bars keep their size and position. Waiting and silence are written inside the bar. While stopped, the bar stays empty, and the output number in the right column becomes a dash. Stopped is still announced. The value is not delayed to look smoother.
 
@@ -119,7 +119,7 @@ The bar follows the current level, and the output number in the right column hol
 
 Incoming sound is shown on this bar and “Audio flow” at the current level, without delay.
 
-The output may also say “A bit low”, “In range”, or “Too loud”. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”.
+The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
 
 ### Sound flow {#music-flow}
 

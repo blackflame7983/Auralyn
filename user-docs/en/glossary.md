@@ -49,7 +49,7 @@ Search includes the two standard folders and any folders you add. Only VST3 plug
 
 The state when no saved singing or talking mode is in use.
 
-Current changes are not necessarily saved.
+A short note beside the heading says this is separate from a saved mode. When neither Sing nor Talk is saved, this heading is not shown. Current changes are not necessarily saved.
 
 ### Singing and Talking modes {#term-modes}
 
