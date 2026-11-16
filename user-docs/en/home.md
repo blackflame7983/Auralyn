@@ -13,7 +13,7 @@ This page separates the home overview for streaming and calls from the overview 
 
 When Sing or Talk is saved, Current status shows “Mode” and the name, and when neither is saved the heading is “Current voice”. It also shows whether sound is coming in and “Level being sent”, and the mute note appears only when the output is muted or the volume is zero.
 
-The status, elapsed time, and audio path are on the top band.
+The status, elapsed time, and audio path are on the top band. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
 
 The “Sing” and “Talk” switch is on the top band too.
 
@@ -93,7 +93,7 @@ Use “Output volume” to set the level. To silence the sound immediately, use 
 
 It shows the path from the playback source to the output and “Output level”.
 
-The status, elapsed time, and audio path are on the top band.
+The status, elapsed time, and audio path are on the top band. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
 
 “Lock controls” appears in the right column only while locked.
 
