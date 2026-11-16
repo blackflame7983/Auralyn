@@ -66,7 +66,7 @@ it('小メーターは入力を選び、停止後は旧値を表示しない', (
     render(<LevelMeter running type="input" />);
     emit('audio-level', { input: [1.2, 1.2], output: [0, 0] });
     act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByLabelText('入力レベル：レベル表示中')).toBeInTheDocument();
+    expect(screen.getByLabelText('入力レベル：受信中')).toBeInTheDocument();
     emit('audio-stopped');
     expect(screen.getByLabelText('入力レベル：音声停止中')).toBeInTheDocument();
     expect(screen.getByTitle('左').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
