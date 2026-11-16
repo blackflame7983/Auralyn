@@ -275,9 +275,9 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
             push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
             continue;
         }
-        // 名前の行に操作が付くと中身ありになる。音調整のカードは、その塊が名前の行（約6rem）に収まり、
-        // 下の空きが枠の半分以上なら空の枠にする。実行中のカードは中身が名前の行より高いので対象にしない。
-        if (!element.classList.contains('sound-module-card')) continue;
+        // 名前の行に操作が付くと中身ありになる。状態の行が無い音調整のカードだけを見る。
+        // 実行中は隣のカードに合わせて伸びるので、短い外部VSTを空の枠にしない（#673）。
+        if (!element.classList.contains('sound-module-card') || element.querySelector('.sound-card-status')) continue;
         const band = contentBand(element);
         if (!band || band.bottom - band.top > 96) continue;
         if (box.bottom - band.bottom >= half) {
