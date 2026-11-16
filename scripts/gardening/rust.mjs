@@ -5,13 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { digest, reconcile } from './baseline.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
+export function rustSuppressions(source) {
+    return [...source.matchAll(/#\s*!?\[[\s\S]*?\]/g)].filter(match => /\b(?:allow|expect)\s*\(/.test(match[0]));
+}
 export function rustFindings() {
     const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'src-tauri/src'], { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.rs'));
     const result = [];
     for (const file of [...new Set(files)]) {
         if (!fs.existsSync(path.join(root, file))) continue;
         const source = fs.readFileSync(path.join(root, file), 'utf8').replaceAll('\r\n', '\n');
-        const suppressions = [...source.matchAll(/#\s*!?\[\s*(?:allow|expect)\b[\s\S]*?\]/g)];
+        const suppressions = rustSuppressions(source);
         if (suppressions.length) result.push({ file, rule: 'rust/suppression', hash: digest(source), count: suppressions.length, line: 1, message: 'Rustの新規allow/expectは承認が必要です。対象の警告を修正し、既存例外は理由を維持してください。' });
     }
     return result;

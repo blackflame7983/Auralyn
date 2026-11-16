@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "approved": "2026-11-17: initial gardening implementation",
+  "approved": "2026-11-17: initial gardening implementation on main, conditional suppression detection",
   "files": {
     "package.json": "dec0c772e87915e8fe200e52ea4b4c69033e9b6790658b319ab4eff6418ac4c3",
     "eslint.config.mjs": "387d8eebc2ad4b55c65ae0438f0848c66eb09966912225a296ba732a5eec0742",
@@ -14,9 +14,9 @@
     "requirements-dev.txt": "ea7a3a35375c95ff012fb01931a0b252b862b304e9a1457656df4d091e732481",
     "src-tauri/Cargo.toml": "9902a3d2aee1945b45bff54373ab9307bd8826c6644d690c50339a3e6db34192",
     "src-tauri/clippy.toml": "d17e5c311153066ff9e94a78b6fcc9cd3ef168ee2e62a19f24fdcd1e652ee8f2",
-    "config/gardening-baseline.json": "6ba8a82e2e2e731eed351dc0d2ca711d7b944ff1d5ce030a48051b4fa01dd9e0",
+    "config/gardening-baseline.json": "1d92a95e4474290a6b05556168fabf7d2289ba324c54b24a056908405ccbfc7c",
     "config/gardening-python-baseline.json": "7c1051f6e2bc3943b7c1dbe4da229694455681b8875a346c99279e555edb733f",
-    "config/gardening-rust-baseline.json": "aa877181662ba7e59889e1847b921cc6d603424c318735ff262e5214f16382e1",
+    "config/gardening-rust-baseline.json": "7dc36821b2910a1cf4ee9e88fa3e52b5c5e144da03ae98c7cdd14b359cd9671c",
     "config/verification-features.json": "68a10b3f863e924cf5532daf8c6d1b71785c9e9ed355567a76d00bf0342945a3",
     ".github/workflows/frontend-quality.yml": "8cb62aead3ce008b53e03c14682d1bdbc5b9c2a1484501b168b0e7c8657e4442",
     ".github/CODEOWNERS": "c0e9d98459a15a00544a5715eef1ae895389ed286f68dd942120db113848ba30",
@@ -31,7 +31,8 @@
     "scripts/gardening/python-check.py": "c01507b842b49fd8f45652f2824b31a28f126b7e9041d32009117e7526be438e",
     "scripts/gardening/python.mjs": "f4c394cae1e0dd304b0ac110ba0c3d3e9a8b9298908dc560310d39e58d5d72ac",
     "scripts/gardening/rules.test.mjs": "0564ed4f8a3ad0883fca87609cf7fba81e78e36c26aa7645cde09e97c2949f11",
-    "scripts/gardening/rust.mjs": "234cb80f80c66c32c2d0d3ae96e1bdb08f8c4b00f703a0757ecb7d9ba5329f6f",
+    "scripts/gardening/rust.mjs": "7c38d45573dca75e98008709897e1348bb2086cb21199dcd28a5b805b6bd9193",
+    "scripts/gardening/rust.test.mjs": "5b2784c35082d769d6273c6491ca9c1bcab4139d29d0f0dd09f9cfbaef2ef560",
     "scripts/gardening/selection.mjs": "6edb989953d973339c0cf618e5766099da452426025171f70948ef8e4d8af04a",
     "scripts/gardening/selection.test.mjs": "c1567931d26e9a5b0d802cf858e0d4d873d2ae39a83212df3d5068afe6879ba2"
   }
