@@ -275,6 +275,17 @@ it.each(['ja', 'en'] as const)('停止中は開始すると表示できる一文
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
 });
 
+it('音楽鑑賞のVSTカードは、画面を開く中身があるときだけ2段目を描く（#623）', () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    expect(document.querySelector('[data-home-tier="2"]')).toBeNull();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}>
+        <SoundChain {...props()} audioReady vstEditors={<button type="button">画面を開く</button>} />
+    </RuntimeStatsContext.Provider>);
+    expect(document.querySelector('[data-home-tier="2"]')).toHaveTextContent('画面を開く');
+    expect(document.querySelector('[data-home-tier="2"]')).toHaveClass('border-t');
+});
+
 it.each(['ja', 'en'] as const)('音楽鑑賞のVSTの名前は実行中も停止中も同じ (%s)', locale => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     const content = (stopped: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stopped ? null : stats(), running: !stopped }}>

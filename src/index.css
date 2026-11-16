@@ -830,6 +830,12 @@ html[data-app-hidden="true"] *::after {
 @media (min-height: 800px) {
   [data-home-tier="2"] { display: block; }
 }
+/* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
+[data-home-tier="2"]:empty {
+  display: none;
+  border-top-width: 0;
+  padding-top: 0;
+}
 @media (min-width: 1400px) {
   .home-content:has(> .home-connect-column) {
     max-width: 1480px;

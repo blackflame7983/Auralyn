@@ -264,7 +264,9 @@ function AppContent() {
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
         vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
-        vstEditors={<VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstEditors={pluginsApi.plugins.some(plugin => plugin.hasEditor)
+          ? <VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />
+          : undefined}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.length}
         onOpenVst={ui.openVst}

@@ -30,10 +30,6 @@ export interface PurposeAllowance {
 }
 
 export const knownViolations: KnownViolation[] = [
-    // 音楽鑑賞の VST カードは、中身の無い2段目の区切りを描いたままにする。配信ミックスはパネルを出さないので、同じホームが見える。
-    { check: 'separator', screen: 'home', state: 'live', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },
-    { check: 'separator', screen: 'stream-mix', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },
-
     // 未設定の「ここを決める」は title が無く、狭いカードではみ出す。1280×800 では収まる。
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '900x600', locale: 'ja', match: 'ここを決める', issue: '#637' },
     { check: 'overflow', screen: 'home', state: 'unconfigured', size: '1024x768', locale: 'ja', match: 'ここを決める', issue: '#637' },
