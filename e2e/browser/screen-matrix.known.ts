@@ -30,8 +30,6 @@ export interface PurposeAllowance {
 }
 
 export const knownViolations: KnownViolation[] = [
-    // 停止中の外部VSTカードで、名前の上に「追加」が乗る。
-    { check: 'overlap', screen: 'home', state: 'stopped', purpose: 'voice', size: '900x600', locale: 'ja', match: '外部VST', issue: '#621' },
     // 音楽鑑賞の VST カードは、中身の無い2段目の区切りを描いたままにする。配信ミックスはパネルを出さないので、同じホームが見える。
     { check: 'separator', screen: 'home', state: 'live', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },
     { check: 'separator', screen: 'stream-mix', purpose: 'music', size: '1280x800', match: '区切りの後ろに中身がない', issue: '#623' },

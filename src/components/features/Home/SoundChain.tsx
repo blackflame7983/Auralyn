@@ -129,13 +129,13 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         const showAction = !unconfigured && (!stopped || key === 'vst') && action;
         return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || stopped ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
             {/* 見出しはアイコン・名前・説明だけ。スイッチと追加・編集は状態の行の右端（収まらなければその下）に置く。
-                停止中は名前の行だけにし、外部VSTの追加は名前の行の右に残す（#602）。 */}
+                停止中は名前の行だけにし、追加は名前を縮めずに、幅が足りなければ次の行へ送る（#621）。 */}
             <div className="flex min-w-0 flex-col gap-1">
-                <div className="flex min-w-0 items-center gap-1.5">
+                <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', stopped && showAction && 'flex-wrap')}>
                     <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className="home-card-name min-w-0 whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{name}</h3>
+                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className={cn('home-card-name whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring', !(stopped && showAction) && 'min-w-0')}>{name}</h3>
                     {!unconfigured && info}
-                    {stopped && showAction && <div className="ml-auto">{action}</div>}
+                    {stopped && showAction && <div className="ml-auto shrink-0">{action}</div>}
                 </div>
                 {!unconfigured && !stopped && <div className="sound-card-status">
                     <StatusDot tone={statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>
