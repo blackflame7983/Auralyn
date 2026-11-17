@@ -18,6 +18,7 @@
     "test": "vitest",
     "test:user-docs": "vitest run src/__tests__/userDocs.test.ts",
     "lint:terms": "node scripts/check-ui-terms.cjs",
+    "lint:preview-urls": "node scripts/check-dev-preview-urls.cjs",
     "test:release": "node --test scripts/*.test.cjs",
     "set-version": "node scripts/set-version.cjs",
     "test:unit": "vitest --run --project unit",

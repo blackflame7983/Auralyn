@@ -263,6 +263,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <StatusBand stats={runtimeStats} host={currentHost} sampleRate={currentSampleRate} bufferSize={currentBufferSize}
                     isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route}
+                    canStart={canStart} starting={starting} onStart={() => { void startAudio(); }}
                     modeSwitch={liveModeSwitch} showListen={configured}
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
                     listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
@@ -314,7 +315,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}
                             audioReady={audioReady}
-                            statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
+                            statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t(music ? 'shell.stoppedMusic' : 'shell.stopped') : t('shell.unconfigured')}
                             host={currentHost} sampleRate={currentSampleRate}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}

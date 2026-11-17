@@ -1,4 +1,5 @@
 import { FittingRoute } from '@/components/layout/FittingRoute';
+import { StatusMenu, statusSessionKind } from '@/components/layout/StatusMenu';
 import { Button } from '@/components/ui/button';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { useColumnScrollHint } from '@/hooks/useColumnScrollHint';
@@ -12,6 +13,7 @@ import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
 export function StatusBand({
     stats, host, sampleRate, bufferSize, isRunning, processReady,
     elapsed, route, modeSwitch, showListen, listenLabel, listenDisabled, onListen, listenRef, listenPanel,
+    canStart = false, starting = false, onStart = () => {},
 }: {
     stats?: EngineRuntimeStats | null;
     host: string;
@@ -28,6 +30,9 @@ export function StatusBand({
     onListen: () => void;
     listenRef?: Ref<HTMLButtonElement>;
     listenPanel?: ReactNode;
+    canStart?: boolean;
+    starting?: boolean;
+    onStart?: () => void;
 }) {
     const t = useMessages();
     const [beginner] = useBeginnerMode();
@@ -36,10 +41,9 @@ export function StatusBand({
         <div data-status-band className="shrink-0 border-b border-border bg-background">
             <div role="region" aria-label={t('band.label')} className="flex h-12 min-w-0 flex-nowrap items-center gap-2 px-3">
                 <DeviceStatus stats={stats} host={host} sampleRate={sampleRate} bufferSize={bufferSize}
-                    isRunning={isRunning} processReady={processReady} showDetails={!beginner} />
-                {elapsed && <span className="shrink-0 text-ui-control tabular-nums">
-                    <span className="sr-only">{t('band.elapsed')}</span>{elapsed}
-                </span>}
+                    isRunning={isRunning} processReady={processReady} showDetails={!beginner}
+                    trailing={elapsed ? <span className="shrink-0 text-ui-control tabular-nums"><span className="sr-only">{t('band.elapsed')}</span>{elapsed}</span> : null}
+                    wrapChip={(chip, state) => <StatusMenu kind={statusSessionKind(processReady, isRunning, host)} label={t('band.statusButton', { state })} canStart={canStart} starting={starting} onStart={onStart}>{chip}</StatusMenu>} />
                 {route ? <FittingRoute route={route} /> : <span className="min-w-0 flex-1" />}
                 {modeSwitch && <span className="shrink-0">{modeSwitch}</span>}
                 {showListen && <Button type="button" variant="outline" size="sm" ref={listenRef} onClick={onListen} disabled={listenDisabled} className="home-action shrink-0 gap-1.5">

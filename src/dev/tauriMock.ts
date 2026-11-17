@@ -79,13 +79,16 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     const modeWrites: unknown[] = [];
     let audioRunning = liveHome && !stoppedHome;
     const starts: unknown[] = [];
-    Object.assign(window, { __e2eStarts: starts });
+    const quits: unknown[] = [];
+    Object.assign(window, { __e2eStarts: starts, __e2eQuits: quits });
     let outputMuted = true;
     let outputGain = 1;
     const page = window as {
         __e2eSaveFailure?: boolean;
+        __e2eStopFailure?: boolean;
         __e2eStartFailure?: boolean;
         __e2eChannelFailure?: boolean;
+        __e2eAudioUnknown?: boolean;
         __e2eEmit?: (event: string, payload: unknown) => void;
         __TAURI_INTERNALS__?: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
     };
@@ -125,6 +128,13 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'set_display_locale': return true;
             case 'audio_frontend_bootstrap': return { outcome: 'inactive', initialPage: true, error: null };
             case 'get_saved_audio_config': return null;
+            case 'stop_audio': {
+                if (page.__e2eStopFailure) throw new Error('テスト用: 音声を止められません');
+                audioRunning = false;
+                page.__e2eEmit?.('audio-stopped', {});
+                return;
+            }
+            case 'quit_app': quits.push(0); return;
             case 'start_audio': {
                 starts.push(args);
                 if (page.__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
@@ -139,6 +149,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 if (page.__e2eChannelFailure) throw new Error('テスト用: 入力チャンネルの反映失敗');
                 return;
             case 'get_audio_state': {
+                if (page.__e2eAudioUnknown) throw new Error('テスト用: 状態を取得できません');
                 const current = audioRoute();
                 return { is_running: true, config: liveHome ? { host: 'WASAPI', input: current.input.name, output: current.output.name, sample_rate: 48000, buffer_size: 512 } : null };
             }

@@ -34,7 +34,7 @@ import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 vi.mock('../MasterBar', () => ({ MasterBar: ({ compare, input, lock }: { compare?: React.ReactNode; input?: React.ReactNode; lock?: React.ReactNode }) => <>{input}{lock}{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
-vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
+vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: { preparation: { engineEpoch: '1' } }, noiseOn: true, chainOn: true, preset: 'broadcast', noiseMode: 'low', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveStreamMixPanel(false); });
 afterEach(async () => {
     await act(async () => {});
@@ -86,12 +86,13 @@ it('受信待ちの英語は、いまの状態に1回だけ出て、声の流れ
 it('停止中の「音声停止中」は上の帯といまの状態だけに出て、音調整の一文は1回だけ出る', () => {
     // #602: メーター・声の流れ・音調整の各カードには同じ言葉を重ねない。右の列の出力は MasterBar の試験で見る。
     render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Speakers" isEngineRunning={false} onStartAudio={vi.fn()}><p>rack</p></AppShell>);
-    const stopped = screen.getAllByText('音声停止中', { exact: true });
+    const stopped = screen.getAllByText('音声停止中', { exact: true }).filter(element => element.getAttribute('role') !== 'status');
     expect(stopped).toHaveLength(2);
     expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
     expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
     expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
-    expect(screen.getAllByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveLength(1);
+    expect(screen.queryByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
     expect(screen.getByRole('meter', { name: '送る音' })).toHaveAttribute('aria-valuetext', expect.stringContaining('音声停止中'));
 });
@@ -581,4 +582,40 @@ it('広い窓でもVSTの入口はホームを覆わず、同じ入口から開�
         expect(onOpenVst).toHaveBeenNthCalledWith(1, false);
         expect(onOpenVst).toHaveBeenNthCalledWith(2, false);
     } finally { vi.unstubAllGlobals(); }
+});
+
+async function openStatusMenu(name: RegExp) {
+    const trigger = screen.getByRole('button', { name });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    await screen.findByRole('menu');
+    return trigger;
+}
+
+it('実行中の札は止めると終了を出し、止め損ねても実行中のままにする', async () => {
+    vi.spyOn(audioApi, 'stop').mockRejectedValue(new Error('device busy'));
+    render(<AppShell {...commonProps}><p>rack</p></AppShell>);
+    await openStatusMenu(/実行中/);
+    expect(screen.getByRole('menuitem', { name: /Auralyn の音を止める/ })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: /Auralyn を終了/ })).toBeEnabled();
+    expect(screen.queryByRole('menuitem', { name: '音声を開始' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Auralyn の音を止める/ }));
+    await waitFor(() => expect(audioApi.stop).toHaveBeenCalledOnce());
+    expect(within(screen.getByRole('region', { name: '状態の帯' })).getByRole('status')).toHaveTextContent('実行中');
+    expect(screen.getByText('Auralyn の音を止められませんでした。')).toBeInTheDocument();
+});
+
+it('停止中の札の開始は、いまの状態の開始と同じ処理を使う', async () => {
+    const start = vi.fn().mockResolvedValue(undefined);
+    render(<AppShell {...commonProps} isEngineRunning={false} currentInput="Mic" currentOutput="Speakers" onStartAudio={start}><p>rack</p></AppShell>);
+    await openStatusMenu(/音声停止中/);
+    fireEvent.click(screen.getByRole('menuitem', { name: '音声を開始' }));
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+});
+
+it('状態が分からない札は終了だけを出す', async () => {
+    render(<AppShell {...commonProps} engineProcessReady={null}><p>rack</p></AppShell>);
+    await openStatusMenu(/音声状態未確認/);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /Auralyn を終了/ })).toBeEnabled();
 });
