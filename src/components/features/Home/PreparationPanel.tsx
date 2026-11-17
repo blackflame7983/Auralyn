@@ -48,7 +48,8 @@ const attentionKey = (model: PreparationModel, music: boolean, stoppedInStrip: b
     if (!music && !model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
 };
-export const availabilityLabels: Record<Availability, MessageKey> = { ready: 'prep.running', unknown: 'shell.unknown', unconfigured: 'shell.unconfigured', stopped: 'shell.stopped', failed: 'prep.failed', pending: 'prep.pending', muted: 'prep.muted' };
+const availabilityLabels: Record<Availability, MessageKey> = { ready: 'prep.running', unknown: 'shell.unknown', unconfigured: 'shell.unconfigured', stopped: 'shell.stopped', failed: 'prep.failed', pending: 'prep.pending', muted: 'prep.muted' };
+export const availabilityLabel = (availability: Availability, music: boolean): MessageKey => availability === 'stopped' && music ? 'shell.stoppedMusic' : availabilityLabels[availability];
 const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unknown: 'warn', pending: 'warn', muted: 'warn', unconfigured: 'error', stopped: 'error', failed: 'error' };
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
@@ -122,7 +123,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {collapsedStatus && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-ui-support">
                     {/* 正常に実行中の札は上の帯の「実行中」と重なるので出さない。失敗・確認中・停止などは残す（#599）。 */}
-                    <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>
+                    <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabel(observation.availability, music))}</StatusDot>
                 </span>}
             </div>}
             <div className={open ? 'flex flex-wrap items-center gap-2' : 'home-route-actions'}>

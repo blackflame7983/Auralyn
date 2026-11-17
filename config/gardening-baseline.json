@@ -292,24 +292,8 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 8,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
       "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
@@ -324,25 +308,9 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 8,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
       "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 2,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -5665,27 +5633,6 @@
       "hash": "6f030a67d1c73641e9f61dfd0b60bfaaa2ffd66938d118e66f17f0f2faf6b55a",
       "count": 4,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "356eeaf8ddebbf1c80ac434420453bbc3f6ba956f40d7d166b2f533380bfff0f",
-      "count": 7,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "356eeaf8ddebbf1c80ac434420453bbc3f6ba956f40d7d166b2f533380bfff0f",
-      "count": 2,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
       "file": "src/components/layout/ModalLayer.tsx",

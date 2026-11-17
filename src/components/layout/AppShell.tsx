@@ -314,7 +314,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}
                             audioReady={audioReady}
-                            statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
+                            statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t(music ? 'shell.stoppedMusic' : 'shell.stopped') : t('shell.unconfigured')}
                             host={currentHost} sampleRate={currentSampleRate}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
