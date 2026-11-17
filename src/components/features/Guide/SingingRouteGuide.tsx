@@ -13,9 +13,9 @@ const checks = ['headphones', 'return', 'accompaniment', 'direct', 'obs'] as con
 const directChecks = ['directVoice', 'directNoDouble', 'directObsTiming'] as const;
 export type SingingRoute = 'processed' | 'direct';
 
-export function SingingRouteChoice({ value, onChange }: { value: SingingRoute; onChange: (value: SingingRoute) => void }) {
+export function SingingRouteChoice({ value, onChange, compact = false }: { value: SingingRoute; onChange: (value: SingingRoute) => void; compact?: boolean }) {
     const t = useMessages();
-    return <fieldset className="space-y-2"><legend className="font-semibold">{t('singingRoute.choose')}</legend>
+    return <fieldset className={compact ? 'space-y-1' : 'space-y-2'}><legend className="font-semibold">{t('singingRoute.choose')}</legend>
         {(['processed', 'direct'] as const).map(option => <ChoiceCard key={option} name="singing-monitor-route" checked={value === option} onChange={() => onChange(option)}>
 
             <span>{t(option === 'direct' ? 'singingRoute.optionDirect' : 'singingRoute.optionProcessed')}</span>
