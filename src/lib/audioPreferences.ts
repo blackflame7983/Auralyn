@@ -15,13 +15,18 @@ export interface AudioPreferences {
     outputId?: string;
 }
 
+/** 設定が無い状態で、画面が初期値として使う周波数とバッファ。起動時の正規化（useAudioConfig）も同じ値にする。 */
+export const UNSET_SAMPLE_RATE = 48_000;
+export const UNSET_BUFFER_SIZE = 512;
+
 /**
  * 画面の保持値を「設定が無い」状態へ戻す更新。画面の保持値の更新は省いた項目を旧値から引き継ぐため、
  * 空の値と、明示した undefined（機器ID・入力元）で、すべての項目を上書きする。
+ * 周波数とバッファは 0 にしない。0 は接続のページの初期値になり、開始要求と保存値へ流れる。
  */
 export const UNSET_AUDIO_UPDATE: Partial<AudioPreferences> & { host: string } = {
     host: '', input: '', output: '', inputId: undefined, outputId: undefined, inputSource: undefined,
-    sampleRate: 0, bufferSize: 0, outputRouting: { mode: 'legacy' },
+    sampleRate: UNSET_SAMPLE_RATE, bufferSize: UNSET_BUFFER_SIZE, outputRouting: { mode: 'legacy' },
 };
 
 // 完全な機器選択でIDが不明なら古いIDを引き継がず、ペアだけの部分更新では保持する。
