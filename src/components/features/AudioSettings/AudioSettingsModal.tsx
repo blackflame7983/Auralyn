@@ -37,16 +37,16 @@ import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
 import { OutputChannelSelector } from './OutputChannelSelector';
-import { channelRoutingFor, readOutputRouting } from '@/lib/audioChannelRouting';
+import { channelRoutingFor, readOutputRouting, type ChannelRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { MeasuredSaveBar, SaveBarScope } from './saveBarInset';
 import { NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { UsageSwitch } from './UsageSwitch';
 import { REVIEW_KEY } from '@/api/migration';
-import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
-import { usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
-import { commitDisplaySwitch, commitUsageSwitch, currentUsage, rollbackUsageSwitch, snapshotUsageStorage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
+import { readAudioPreferences, savedAudioPreferences, UNSET_BUFFER_SIZE, UNSET_SAMPLE_RATE, type AudioPreferences } from '@/lib/audioPreferences';
+import { usageRouting, type UsageDeviceRecord } from '@/lib/usageDevices';
+import { commitDisplaySwitch, commitUsageSwitch, currentUsage, rememberAppliedUsage, rollbackUsageSwitch, snapshotUsageStorage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
 import type { SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { resumableInputSource } from '@/lib/processInputRestore';
 import { audioApi } from '@/api/audio';
@@ -262,25 +262,29 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const canSaveConnection = !streamRunning || hasConnectionChanges || reviewRequired || allowConnectionRetry || connectionRetry;
   // 途切れる注意は、音声が動いていて接続の変更があるときだけ出す（#588）。
   const showSaveRestartHint = streamRunning && hasConnectionChanges;
-  const rememberAppliedUsage = () => {
-    try {
-      const saved = readAudioPreferences();
-      const purpose = saved?.inputSource?.config.purpose ?? 'voice';
-      if (!saved) return;
-      const record = usageDeviceFromPreferences(saved, purpose);
-      if (record) writeUsageDevice(purpose, record);
-    } catch { /* 接続の保存は済んでいる。機器の記憶だけが残らない。 */ }
+  // 切り替えを伴わない保存では、記録を残せなくても接続の保存は済んでいる。機器の記憶だけが残らない。
+  // 保留した切り替えの保存は、表示の確定がまとめて残し、残せなければ切り替え全体を元へ戻す。
+  const rememberSavedUsage = () => {
+    if (pendingUsage) return;
+    try { rememberAppliedUsage(readAudioPreferences()); } catch { /* 接続の保存は済んでいる。 */ }
   };
-  // 切り替えた機器を、接続の欄の選択へ映す。決定済みなら変更なし、下書きなら未保存の変更として扱う。
-  const showUsageSelection = (record: UsageDeviceRecord, draft: boolean) => {
-    const routing = usageRouting(record);
-    setSelectedHost(record.host);
-    setSelectedSampleRate(record.sampleRate);
-    setSelectedBufferSize(record.bufferSize);
-    setSelectedInputKey(record.inputId ? `id:${record.inputId}` : record.input ?? '');
-    setSelectedOutputKey(record.outputId ? `id:${record.outputId}` : record.output);
-    const inputDevice = resolveAudioDevice(devices.inputs, record.host, record.input, record.inputId);
-    if (record.host.toLowerCase() === 'asio' && inputDevice) connection.setRoutingForDevice(connectionDeviceKey(record.host, inputDevice), routing);
+  // 保存した接続・使い道の記録のどちらからでも、接続の欄の選択へ映せる形。
+  interface ConnectionSelection {
+    host: string; input?: string; inputId?: string; output?: string; outputId?: string;
+    sampleRate: number; bufferSize: number; routing: ChannelRouting;
+  }
+  const selectionOfRecord = (record: UsageDeviceRecord): ConnectionSelection => ({ ...record, routing: usageRouting(record) });
+  const selectionOfSaved = (saved: AudioPreferences): ConnectionSelection => ({
+    ...saved, sampleRate: saved.sampleRate ?? UNSET_SAMPLE_RATE, bufferSize: saved.bufferSize ?? UNSET_BUFFER_SIZE, routing: channelRoutingFor(saved) });
+  // 選んだ機器を、接続の欄の選択へ映す。決定済みなら変更なし、下書きなら未保存の変更として扱う。
+  const showConnectionSelection = (selection: ConnectionSelection, draft: boolean) => {
+    setSelectedHost(selection.host);
+    setSelectedSampleRate(selection.sampleRate);
+    setSelectedBufferSize(selection.bufferSize);
+    setSelectedInputKey(selection.inputId ? `id:${selection.inputId}` : selection.input ?? '');
+    setSelectedOutputKey(selection.outputId ? `id:${selection.outputId}` : selection.output ?? '');
+    const inputDevice = resolveAudioDevice(devices.inputs, selection.host, selection.input, selection.inputId);
+    if (selection.host.toLowerCase() === 'asio' && inputDevice) connection.setRoutingForDevice(connectionDeviceKey(selection.host, inputDevice), selection.routing);
     if (draft) editConnection('host', 'output', 'buffer', 'rate'); else setEditedFields(new Set());
   };
   // 再起動で失われた VST を戻す。移行の確認が済んでいない間は切り替えを止めているため、確認を飛ばして復元することはない。
@@ -316,7 +320,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       setInputSource({ source: withInputPurpose(record.inputSource, target) });
       setNeedsDeviceChoice(false);
       editConnection('source');
-      showUsageSelection(record, true);
+      showConnectionSelection(selectionOfRecord(record), true);
       return;
     }
     const applied = await commitUsageSwitch({
@@ -335,7 +339,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     });
     setInputSource({ source: applied.inputSource });
     setNeedsDeviceChoice(false);
-    showUsageSelection(applied, false);
+    showConnectionSelection(selectionOfRecord(applied), false);
   };
   // 失敗の通知は上のほうに出る。保存の操作でページが下へ送られていても、結果が見える所へ焦点を移す。
   const [errorFocus, setErrorFocus] = useState(0);
@@ -369,18 +373,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       : notice('purpose.commitFailed', { reason: reasons }) });
   };
   // 接続の下書き（入力元・機器・経路・変更の印）を捨てて、切り替え前の保存済みの接続を画面へ映す。
+  // 使い道ごとの記録とは照らさない。表示と入力の用途が違う既存の状態でも、保存したとおりの機器へ戻す。
   const discardConnectionDraft = (leaving: LeavingUsage) => {
     const previous = leaving.preferences;
-    const record = previous?.host ? usageDeviceFromPreferences(previous, leaving.display) : null;
     setInputSource({ source: previous?.inputSource ?? deviceInput() });
     setNeedsDeviceChoice(false);
-    if (record) showUsageSelection(record, false); else setEditedFields(new Set());
+    if (previous?.host) showConnectionSelection(selectionOfSaved(previous), false); else setEditedFields(new Set());
   };
-  // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。
+  // 接続を保存できたら、保留していた表示の切り替えと、保存した接続・離れる使い道の記録を確定する。
   const commitPendingUsage = async (): Promise<boolean> => {
     if (!pendingUsage) return true;
     try {
-      commitDisplaySwitch(pendingUsage.leaving, pendingUsage.target);
+      commitDisplaySwitch(pendingUsage.leaving, pendingUsage.target, readAudioPreferences());
       setPendingUsage(null);
       return true;
     } catch (cause) {
@@ -438,7 +442,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setLoading(true);
     try {
       await connection.apply(false);
-      rememberAppliedUsage();
+      rememberSavedUsage();
       setConnectionRetry(false);
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       if (await commitPendingUsage()) onClose();
@@ -459,7 +463,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setLoading(true);
     try {
       await connection.apply(true);
-      rememberAppliedUsage();
+      rememberSavedUsage();
 
       // The restart kills the sidecar process (plugins are lost), so restore them from session.
       // 移行確認完了時はonConfigChangeが復元を開始するため、通常再起動の復元と重ねない。

@@ -220,9 +220,37 @@ const musicPrefs: AudioPreferences = { host: 'WASAPI', input: 'CABLE Output', ou
 
 it('保留した切り替えを確定すると、離れる使い道の記録と表示を残す', () => {
     localStorage.setItem('auralyn_display_purpose', 'voice');
-    commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music');
+    commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music', musicPrefs);
     expect(readDisplayPurpose()).toBe('music');
     expect(readUsageDevices().voice).toMatchObject({ input: 'Mic', output: 'Speakers' });
+    expect(readUsageDevices().music).toMatchObject({ input: 'CABLE Output', output: 'USB Headphones' });
+});
+
+it('保留した切り替えの確定で、保存した接続の記録を残せなければ、表示も離れる使い道の記録も元へ戻して投げる', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    const before = JSON.stringify({ version: 1, voice: record('voice'), music: { ...record(), output: 'Old Speakers' } });
+    localStorage.setItem(USAGE_DEVICES_KEY, before);
+    const original = Storage.prototype.setItem;
+    let failed = false;
+    Storage.prototype.setItem = function (key, value) {
+        if (key === USAGE_DEVICES_KEY && !failed) { failed = true; throw new Error('容量不足'); }
+        return original.call(this, key, value);
+    };
+    try {
+        expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music', musicPrefs)).toThrow('容量不足');
+    } finally {
+        Storage.prototype.setItem = original;
+    }
+    expect(readDisplayPurpose()).toBe('voice');
+    expect(localStorage.getItem(USAGE_DEVICES_KEY)).toBe(before);
+});
+
+it('保留した切り替えの確定で、保存した接続が無いときや記録にできないときは、何も残さず投げる', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music', null)).toThrow('使い道の機器を保存できません');
+    expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music', { ...musicPrefs, output: undefined })).toThrow('使い道の機器を保存できません');
+    expect(readDisplayPurpose()).toBe('voice');
+    expect(localStorage.getItem(USAGE_DEVICES_KEY)).toBeNull();
 });
 
 it('保留した切り替えの確定で表示を残せなければ、離れる使い道の記録も元へ戻して投げる', () => {
@@ -233,7 +261,7 @@ it('保留した切り替えの確定で表示を残せなければ、離れる�
         return original.call(this, key, value);
     };
     try {
-        expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music')).toThrow('容量不足');
+        expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music', musicPrefs)).toThrow('容量不足');
     } finally {
         Storage.prototype.setItem = original;
     }

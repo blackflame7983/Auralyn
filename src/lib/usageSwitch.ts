@@ -76,13 +76,22 @@ export interface LeavingUsage {
 
 export const currentUsage = (): LeavingUsage => ({ display: readDisplayPurpose(), preferences: readAudioPreferences() });
 
+/** 保存した接続を、その入力の用途の記録として残す。接続が無いときや記録にできないときも含め、残せなければ投げる。 */
+export function rememberAppliedUsage(applied: AudioPreferences | null): void {
+    const purpose = applied?.inputSource?.config.purpose ?? 'voice';
+    const record = applied && usageDeviceFromPreferences(applied, purpose);
+    if (!record) throw new Error('使い道の機器を保存できません');
+    writeUsageDevice(purpose, record);
+}
+
 /**
  * 保留していた表示の切り替えを、接続の保存が済んだ時点で確定する。
- * 離れる使い道の記録と表示のどちらかを残せなければ、両方を元の文字列へ戻して例外を投げる。
+ * 保存した接続の記録、離れる使い道の記録、表示のどれかを残せなければ、すべてを元の文字列へ戻して例外を投げる。
  */
-export function commitDisplaySwitch(leaving: LeavingUsage, target: DisplayPurpose): void {
+export function commitDisplaySwitch(leaving: LeavingUsage, target: DisplayPurpose, applied: AudioPreferences | null): void {
     const rewind = snapshotStorage([DISPLAY_PURPOSE_KEY, USAGE_DEVICES_KEY]);
     try {
+        rememberAppliedUsage(applied);
         rememberLeaving(leaving.display, target, leaving.preferences);
         saveDisplayPurpose(target);
     } catch (error) {

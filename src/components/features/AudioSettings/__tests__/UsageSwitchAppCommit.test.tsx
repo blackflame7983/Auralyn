@@ -5,6 +5,7 @@ import { audioApi } from '@/api/audio';
 import { message } from '@/i18n/messages';
 import { REVIEW_KEY } from '@/api/migration';
 import { readDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import type { AudioPreferences } from '@/lib/audioPreferences';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
@@ -27,6 +28,7 @@ const devices = {
     ],
 };
 const DISPLAY_KEY = 'auralyn_display_purpose';
+const USAGE_KEY = 'auralyn_usage_devices';
 
 beforeEach(() => {
     localStorage.clear();
@@ -58,7 +60,20 @@ function failDisplayWrites(times = Infinity) {
     return () => { Storage.prototype.setItem = original; };
 }
 
-async function chooseApp() {
+// 使い道の記録の保存だけが失敗する。times 回だけ失敗し、元へ戻す書き込みは通す。
+function failUsageDeviceWrites(times = Infinity) {
+    const original = Storage.prototype.setItem;
+    let remaining = times;
+    Storage.prototype.setItem = function (key, value) {
+        if (key === USAGE_KEY && remaining > 0) { remaining -= 1; throw new Error('容量不足'); }
+        return original.call(this, key, value);
+    };
+    return () => { Storage.prototype.setItem = original; };
+}
+
+// saved を渡すと、その接続を保存済みの接続として始める。表示 voice のまま入力の用途だけ music にして、既存の不一致を作れる。
+async function chooseApp(saved: AudioPreferences = config) {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify(saved));
     vi.spyOn(audioApi, 'processInputSources').mockResolvedValue([candidate]);
     const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
     const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
@@ -69,7 +84,7 @@ async function chooseApp() {
     });
     const onEngineRestarted = vi.fn(async () => 'completed' as const);
     const before = stored();
-    const view = () => <AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={onClose} onConfigChange={onConfigChange} onEngineRestarted={onEngineRestarted} />;
+    const view = () => <AudioSettingsModal isOpen isAudioRunning currentConfig={saved} onClose={onClose} onConfigChange={onConfigChange} onEngineRestarted={onEngineRestarted} />;
     render(view());
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     fireEvent.click(screen.getByRole('button', { name: '切り替える' }));
@@ -231,5 +246,87 @@ describe('アプリの音声を保存したあと、表示の確定に失敗し�
         expect(restart).not.toHaveBeenCalled();
         expect(stop).toHaveBeenCalledOnce();
         sameAsBefore(before);
+    });
+});
+
+describe('表示と入力の用途が食い違ったまま切り替え、表示の確定に失敗したとき', () => {
+    // 表示は配信・通話、保存済みの入力の用途は音楽鑑賞。仕様が認める既存の不一致で、「そろえる」が出る。
+    const mismatched: AudioPreferences = { ...config, inputSource: { kind: 'device', config: { purpose: 'music' } } };
+
+    it('機器の欄を、元の機器・入力元・保存値のとおり戻す。保存欄は変更なしで押せない', async () => {
+        const { before, save } = await chooseApp(mismatched);
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic');
+        expect(screen.getByRole('combobox', { name: '出力先' })).toHaveValue('Headphones');
+        expect(screen.queryByRole('combobox', { name: message('ja', 'processInput.app') })).not.toBeInTheDocument();
+        expect(screen.getByText(message('ja', 'settings.connection.unchanged'))).toBeVisible();
+        expect(screen.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
+        sameAsBefore(before);
+        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ inputSource: mismatched.inputSource });
+        expect(screen.getByText(message('ja', 'purpose.mismatch'))).toBeVisible();
+    });
+});
+
+describe('保留した切り替えを保存したとき、切り替え先の使い道の記録を残せなかったとき', () => {
+    async function editOutputAndSave() {
+        const started = await chooseApp();
+        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'Headphones' } });
+        await waitFor(() => expect(started.save).toBeEnabled());
+        return started;
+    }
+
+    it('切り替え全体の失敗として、表示・音声設定・両方の使い道の記録を切り替え前へ戻す', async () => {
+        const { restart, onClose, onConfigChange, onEngineRestarted, before, save } = await editOutputAndSave();
+        const unpatch = failUsageDeviceWrites(1);
+        try {
+            fireEvent.click(save);
+            expect(await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }))).toBeVisible();
+        } finally { unpatch(); }
+        expect(restart).toHaveBeenCalledOnce();
+        expect(restart.mock.calls[0].slice(0, 5)).toEqual(['Wasapi', 'Mic', 'Headphones', 512, 48000]);
+        expect(onEngineRestarted).toHaveBeenCalledOnce();
+        expect(onConfigChange).toHaveBeenLastCalledWith(expect.objectContaining({ host: 'Wasapi', input: 'Mic', output: 'Headphones', inputSource: voiceSource }));
+        sameAsBefore(before);
+        expect(JSON.parse(localStorage.getItem(USAGE_KEY) ?? '{}')).toMatchObject({ voice: { output: 'Headphones' }, music: { output: 'USB Headphones' } });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
+        expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic');
+        expect(screen.getByText(message('ja', 'settings.connection.unchanged'))).toBeVisible();
+    });
+
+    it('保存の失敗を握りつぶさず、保留も残さない。切り替えの操作を、また押せる', async () => {
+        const { save } = await editOutputAndSave();
+        const unpatch = failUsageDeviceWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        const opener = screen.getByRole('button', { name: '切り替える' });
+        expect(opener).toBeEnabled();
+        expect(opener).not.toHaveAccessibleDescription(message('ja', 'purpose.blockedPending'));
+    });
+});
+
+describe('切り替えを伴わない普通の保存で、使い道の記録を残せなかったとき', () => {
+    it('接続の保存は済んでいるため、これまでどおり保存を成功として閉じる', async () => {
+        vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+        vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+        const onClose = vi.fn();
+        const onConfigChange = vi.fn(async (next: { host: string }) => { localStorage.setItem('vst_host_audio_config', JSON.stringify(next)); });
+        render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={onClose} onConfigChange={onConfigChange} onEngineRestarted={vi.fn(async () => 'completed' as const)} />);
+        await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
+        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'USB Headphones' } });
+        const save = screen.getByRole('button', { name: '接続を保存して再起動' });
+        await waitFor(() => expect(save).toBeEnabled());
+        const unpatch = failUsageDeviceWrites();
+        try {
+            fireEvent.click(save);
+            await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        } finally { unpatch(); }
+        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ output: 'USB Headphones' });
     });
 });
