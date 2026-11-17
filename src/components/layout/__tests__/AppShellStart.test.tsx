@@ -86,7 +86,7 @@ it('受信待ちの英語は、いまの状態に1回だけ出て、声の流れ
 it('停止中の「音声停止中」は上の帯といまの状態だけに出て、音調整の一文は1回だけ出る', () => {
     // #602: メーター・声の流れ・音調整の各カードには同じ言葉を重ねない。右の列の出力は MasterBar の試験で見る。
     render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Speakers" isEngineRunning={false} onStartAudio={vi.fn()}><p>rack</p></AppShell>);
-    const stopped = screen.getAllByText('音声停止中', { exact: true });
+    const stopped = screen.getAllByText('音声停止中', { exact: true }).filter(element => element.getAttribute('role') !== 'status');
     expect(stopped).toHaveLength(2);
     expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
     expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');

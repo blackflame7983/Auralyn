@@ -30,14 +30,18 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, sampleRate, is
     const stoppedLabel = purpose === 'music' ? t('shell.stoppedMusic') : t('shell.stopped');
     const state = processReady === null ? t('device.audioUnknown') : running ? t('device.engine') : host ? stoppedLabel : t('shell.unconfigured');
     const dot = <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />;
-    const chip = <>
-        {dot}
-        <span role="status" className="text-ui-support font-medium whitespace-nowrap text-foreground">{state}</span>
-        {trailing}
-    </>;
+    const stateText = <span className="text-ui-support font-medium whitespace-nowrap text-foreground">{state}</span>;
     return (
         <div className="flex shrink-0 items-center gap-2 text-left">
-            {wrapChip ? wrapChip(chip, state) : chip}
+            {wrapChip ? <>
+                {wrapChip(<>{dot}{stateText}</>, state)}
+                {trailing}
+                <span role="status" className="sr-only">{state}</span>
+            </> : <>
+                {dot}
+                <span role="status" className="text-ui-support font-medium whitespace-nowrap text-foreground">{state}</span>
+                {trailing}
+            </>}
             {showDetails && <span className="whitespace-nowrap text-ui-support text-muted-foreground" title={t('device.delayScope')}>
                 {running && host ? displayAudioHost(host) : '—'} · {running && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${(sampleRate / 1000).toFixed(1)} kHz` : '—'} · {t('device.internalDelay')} {observed}
             </span>}

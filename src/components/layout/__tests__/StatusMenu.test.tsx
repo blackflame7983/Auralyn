@@ -1,29 +1,31 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { exit } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { audioApi } from '@/api/audio';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { DeviceStatus } from '@/components/features/DeviceStatus/DeviceStatus';
 import { StatusMenu, type StatusSessionKind } from '../StatusMenu';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), dismiss: vi.fn() } }));
-vi.mock('@tauri-apps/plugin-process', () => ({ exit: vi.fn() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-beforeEach(() => { localStorage.clear(); vi.mocked(exit).mockReset(); vi.mocked(toast.error).mockReset(); });
+beforeEach(() => { localStorage.clear(); vi.mocked(invoke).mockReset(); vi.mocked(toast.dismiss).mockReset(); vi.mocked(toast.error).mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function open(kind: StatusSessionKind, locale: 'ja' | 'en', options: { canStart?: boolean; starting?: boolean; onStart?: () => void; music?: boolean } = {}) {
     if (options.music) saveDisplayPurpose('music');
     const onStart = options.onStart ?? vi.fn();
+    const state = message(locale, kind === 'running' ? 'device.engine' : kind === 'unknown' ? 'device.audioUnknown' : kind === 'unconfigured' ? 'shell.unconfigured' : options.music ? 'shell.stoppedMusic' : 'shell.stopped');
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
-        <StatusMenu kind={kind} canStart={options.canStart ?? false} starting={options.starting ?? false} onStart={onStart}>
-            <span>{message(locale, kind === 'running' ? 'device.engine' : kind === 'unknown' ? 'device.audioUnknown' : kind === 'unconfigured' ? 'shell.unconfigured' : options.music ? 'shell.stopped' : 'shell.stopped')}</span>
+        <StatusMenu kind={kind} label={message(locale, 'band.statusButton', { state })} canStart={options.canStart ?? false} starting={options.starting ?? false} onStart={onStart}>
+            <span>{state}</span>
         </StatusMenu>
     </LocaleProvider>);
-    const trigger = screen.getByRole('button', { name: message(locale, kind === 'running' ? 'device.engine' : kind === 'unknown' ? 'device.audioUnknown' : kind === 'unconfigured' ? 'shell.unconfigured' : 'shell.stopped') });
+    const trigger = screen.getByRole('button', { name: message(locale, 'band.statusButton', { state }) });
     expect(trigger.tabIndex).toBe(0);
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
@@ -77,9 +79,41 @@ it('止め損ねたら理由を出し、終了はトレイと同じ終了を呼�
     const [title, detail] = vi.mocked(toast.error).mock.calls[0] ?? [];
     expect(title).toBe('Auralyn の音を止められませんでした。');
     expect(detail && typeof detail === 'object' && 'description' in detail ? String(detail.description) : '').toContain('device busy');
-    fireEvent.keyDown(screen.getByRole('button', { name: '実行中' }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '状態：実行中（メニューを開く）' }), { key: 'ArrowDown' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /Auralyn を終了/ }));
-    await waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('quit_app'));
+    expect(invoke).not.toHaveBeenCalledWith(expect.stringContaining('process'), expect.anything());
+});
+
+it('止めている間は項目を押せず、止め終わると失敗の通知を消す', async () => {
+    let finish: () => void = () => {};
+    const stop = vi.spyOn(audioApi, 'stop').mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const { trigger } = open('running', 'ja');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Auralyn の音を止める/ }));
+    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const pending = await screen.findByRole('menuitem', { name: /止めています/ });
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(pending);
+    expect(stop).toHaveBeenCalledOnce();
+    finish();
+    await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith('band-stop-failed'));
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(await screen.findByRole('menuitem', { name: /Auralyn の音を止める/ })).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+it('札の読み上げ名は経過時間を含まず、状態の変化はボタンの外の status が知らせる', () => {
+    render(<LocaleProvider store={createLocaleStore(() => 'ja', () => true)}>
+        <DeviceStatus host="WASAPI" isRunning processReady
+            trailing={<span>00:12:34</span>}
+            wrapChip={(chip, state) => <StatusMenu kind="running" label={message('ja', 'band.statusButton', { state })} canStart={false} onStart={vi.fn()}>{chip}</StatusMenu>} />
+    </LocaleProvider>);
+    const button = screen.getByRole('button', { name: '状態：実行中（メニューを開く）' });
+    expect(button).toHaveTextContent('実行中');
+    expect(button).not.toHaveTextContent('00:12:34');
+    expect(button.querySelector('[role="status"]')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('実行中');
+    expect(button.contains(screen.getByRole('status'))).toBe(false);
 });
 
 it('Escape で閉じて札へ焦点を戻す', async () => {

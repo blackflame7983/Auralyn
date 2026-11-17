@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { test, expect } from './tauriFixture';
 
-const shotDir = 'test-results/ux-eval-check/722-705';
+const shotDir = 'test-results/ux-eval-check/722-705-fix';
 
 test.beforeAll(() => { mkdirSync(shotDir, { recursive: true }); });
 
@@ -24,6 +24,7 @@ test('実行中の札から音を止め、失敗したときは実行中のま�
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     const band = page.getByRole('region', { name: '状態の帯', exact: true });
     const badge = band.getByRole('button', { name: /実行中/ });
+    await expect(badge).toHaveAccessibleName('状態：実行中（メニューを開く）');
     await badge.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
@@ -51,12 +52,12 @@ test('実行中の札から音を止め、失敗したときは実行中のま�
     await badge.click();
     await page.getByRole('menuitem', { name: /Auralyn の音を止める/ }).click();
     await expect(band.getByRole('status')).toHaveText('音声停止中');
-    await band.getByRole('button', { name: '音声停止中', exact: true }).click();
+    await band.getByRole('button', { name: /音声停止中/ }).click();
     await page.getByRole('menuitem', { name: '音声を開始', exact: true }).click();
     await expect(band.getByRole('status')).toHaveText('実行中');
 });
 
-test('操作ロック中も札から止められ、終了はプロセスの終了を呼ぶ', async ({ page }) => {
+test('操作ロック中も札から止められ、終了は専用の終了コマンドを呼ぶ', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.addInitScript(readyHome, { locale: 'ja', music: false });
     await page.addInitScript(() => {
@@ -119,8 +120,8 @@ for (const locale of ['ja', 'en'] as const) {
                             await invoke('stop_audio');
                         });
                     }
-                    const runningWord = locale === 'ja' ? (stopped ? (music ? '停止中' : '音声停止中') : '実行中') : (stopped ? (music ? 'Stopped' : 'Audio stopped') : 'Running');
-                    const badge = page.getByRole('region', { name: locale === 'ja' ? '状態の帯' : 'Status band' }).getByRole('button', { name: runningWord, exact: stopped });
+                    const stateWord = locale === 'ja' ? (stopped ? (music ? '停止中' : '音声停止中') : '実行中') : (stopped ? (music ? 'Stopped' : 'Audio stopped') : 'Running');
+                    const badge = page.getByRole('region', { name: locale === 'ja' ? '状態の帯' : 'Status band' }).getByRole('button', { name: locale === 'ja' ? `状態：${stateWord}（メニューを開く）` : `Status: ${stateWord} (open menu)`, exact: true });
                     await expect(badge).toBeVisible();
                     await badge.click();
                     await expect(page.getByRole('menuitem').first()).toBeVisible();

@@ -43,7 +43,7 @@ export function StatusBand({
                 <DeviceStatus stats={stats} host={host} sampleRate={sampleRate} bufferSize={bufferSize}
                     isRunning={isRunning} processReady={processReady} showDetails={!beginner}
                     trailing={elapsed ? <span className="shrink-0 text-ui-control tabular-nums"><span className="sr-only">{t('band.elapsed')}</span>{elapsed}</span> : null}
-                    wrapChip={(chip, state) => <StatusMenu kind={statusSessionKind(processReady, isRunning, host)} label={elapsed ? `${state} ${t('band.elapsed')} ${elapsed}` : state} canStart={canStart} starting={starting} onStart={onStart}>{chip}</StatusMenu>} />
+                    wrapChip={(chip, state) => <StatusMenu kind={statusSessionKind(processReady, isRunning, host)} label={t('band.statusButton', { state })} canStart={canStart} starting={starting} onStart={onStart}>{chip}</StatusMenu>} />
                 {route ? <FittingRoute route={route} /> : <span className="min-w-0 flex-1" />}
                 {modeSwitch && <span className="shrink-0">{modeSwitch}</span>}
                 {showListen && <Button type="button" variant="outline" size="sm" ref={listenRef} onClick={onListen} disabled={listenDisabled} className="home-action shrink-0 gap-1.5">
