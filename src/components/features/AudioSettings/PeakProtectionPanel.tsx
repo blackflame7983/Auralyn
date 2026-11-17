@@ -2,11 +2,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 import { Switch } from '@/components/ui/switch';
-import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
-import { useEffect, useId, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { isAppHidden } from '@/lib/appVisibility';
+import { useId, useRef, useState } from 'react';
 import { peakProtectionApi, type PeakConfig, type PeakStatus } from '@/api/peakProtection';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { usePeakProtectionSync } from '@/hooks/usePeakProtectionSync';
 
 export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, numericDetails = false, locked = false, music = false }: {
     onPendingChange?: (pending: boolean) => void;
@@ -31,26 +31,6 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
     const version = useRef(0);
     const writing = useRef(false);
     const edited = useRef(false);
-    useEffect(() => {
-        alive.current = true; let active = true; let reading = false;
-        const read = async () => {
-            if (reading || writing.current || isAppHidden()) return;
-            reading = true; const serial = version.current;
-            try {
-                const next = await peakProtectionApi.request();
-                if (active && serial === version.current) { setStatus(next); setFailed(false); if (!edited.current) { setCeiling(next.config.ceilingDb); setRelease(next.config.releaseMs); } }
-            } catch { if (active && serial === version.current) { setStatus(null); setFailed(true); } }
-            finally { reading = false; }
-        };
-        const invalidate = () => { version.current++; setStatus(null); void read(); };
-        const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(e => listen(e, invalidate));
-        const visible = () => { if (!isAppHidden()) void read(); };
-        addAppVisibilityListener(visible);
-        void read(); const timer = setInterval(() => { void read(); }, 500);
-        return () => { active = false; alive.current = false; version.current++; clearInterval(timer); removeAppVisibilityListener(visible); subscriptions.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
-    }, []);
-    // 数値の詳細を出したときは、天井と復帰時間を開く。利用者が閉じても、設定が ON のあいだは開き直さない。
-    useEffect(() => { if (numericDetails) setDetailsOpen(true); }, [numericDetails]);
     const write = async (config: PeakConfig) => {
         if (!status || writing.current || isAppHidden()) return;
         writing.current = true; setBusy(true); setFailed(false); const serial = ++version.current;
@@ -71,10 +51,10 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
         void write({ enabled: status.config.enabled, ceilingDb: ceiling, releaseMs: release });
     };
     const pending = status != null && (ceiling !== status.config.ceilingDb || release !== status.config.releaseMs);
-    useEffect(() => {
-        onPendingChange?.(pending);
-        return () => onPendingChange?.(false);
-    }, [pending, onPendingChange]);
+    usePeakProtectionSync({
+        setStatus, setFailed, setCeiling, setRelease, alive, version, writing, edited,
+        numericDetails, setDetailsOpen, pending, onPendingChange,
+    });
     const valuesInvalid = !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000;
     const enabled = status?.config.enabled ?? false;
     const applyDisabled = !status || busy || locked || valuesInvalid;
@@ -99,13 +79,13 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
         {locked && <p id={lockReasonId} className="text-ui-support text-muted-foreground">{t('peak.liveLocked')}</p>}
         <p className="text-ui-support text-muted-foreground">{t(music ? 'peak.leadMusic' : 'peak.lead')}</p>
         <p className="text-ui-support text-muted-foreground">{t(music ? 'peak.scopeMusic' : 'peak.scope')}</p>
-        {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
         {stateNotes.length > 0 && <p role="status" className="text-ui-support">{stateNotes.join(' · ')}</p>}
         {ceilingText && <p className="text-ui-support">{ceilingText}</p>}
         {numericDetails && status && <p className="text-ui-support">{t('peak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         <details open={detailsOpen} onToggle={event => setDetailsOpen(event.currentTarget.open)} className="text-ui-support">
             <summary className="cursor-pointer text-ui-control font-semibold">{t('peak.details')}</summary>
             <div className="mt-3 space-y-3">
+                {!hideApplyNote && <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>}
                 <div className="grid sm:grid-cols-2 gap-3">
                     <Field label={t('peak.ceiling')}><Input type="number" disabled={locked} min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
                     <Field label={t('peak.release')}><Input type="number" disabled={locked} min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>

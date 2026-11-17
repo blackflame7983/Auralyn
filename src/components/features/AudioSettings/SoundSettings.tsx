@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { SliderField } from '@/components/ui/SliderField';
 import { Disclosure } from '@/components/ui/Disclosure';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSoundSectionEffects } from './useSoundSectionEffects';
 import { audioApi, type BuiltInEffectsPreset, type EngineRuntimeStats, type NoiseControlMode } from '../../../api/audio';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { refreshRuntimeStatsChecked } from '@/hooks/useRuntimeStats';
@@ -206,39 +207,12 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
   const t = useMessages();
   const shown = music ? 'peak' : place;
   const { noiseMode, showChosenMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount } = model;
-  // 基本の声の値も歌向けの下書きと同じ取得を使う。小区分を開くまで待たない。
-  useEffect(() => {
-    if (music) return;
-    const release = singingModel.activate();
-    void singingModel.refresh();
-    return release;
-  }, [music, singingModel.activate, singingModel.refresh]);
-  // 音量の保護を開いている間だけ、本番保護の状態を読む。購読は既存の activate に任せる。
-  useEffect(() => {
-    if (shown !== 'peak') return;
-    return liveModel.activate();
-  }, [shown, liveModel.activate]);
-  // 測定の欄は詳細の中にある。入口から開くときは、親の詳細と測定の両方を開いてから焦点を移す。
-  useEffect(() => {
-    if (!measurementNonce) return;
-    setNoiseAdvancedOpen(true);
-    setNoiseMeasurementOpen(true);
-  }, [measurementNonce, setNoiseAdvancedOpen, setNoiseMeasurementOpen]);
-  useEffect(() => {
-    if (!measurementNonce || !noiseAdvancedOpen || !noiseMeasurementOpen) return;
-    const frame = requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>('#noise-measurement button');
-      document.getElementById('noise-measurement')?.scrollIntoView?.({ block: 'center' });
-      target?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [measurementNonce, noiseAdvancedOpen, noiseMeasurementOpen]);
+  useSoundSectionEffects({
+    music, shown, singingModel, liveModel, measurementNonce, noiseAdvancedOpen, noiseMeasurementOpen,
+    setNoiseAdvancedOpen, setNoiseMeasurementOpen,
+  });
   const onPeak = useCallback((pending: boolean) => onPeakPending('peak', pending), [onPeakPending]);
   const onBroadcast = useCallback((pending: boolean) => onPeakPending('broadcast', pending), [onPeakPending]);
-  const lead = shown === 'basic' ? t('settings.apply.soundImmediate')
-    : shown === 'liveModes' ? t('sound.lead.liveModes')
-    : shown === 'singing' ? t('sound.lead.singing')
-    : t('settings.apply.protectionDraft');
   const sectionId = shown === 'singing' ? 'singing-settings' : shown === 'liveModes' ? 'live-mode-section' : 'sound-section';
   return (
           <div className="space-y-4">
@@ -257,11 +231,10 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             {/* タブがあるときはタブ名が区分を示す。音楽鑑賞にはタブがないので、区画の見出しを残す。 */}
             {music && <>
               <h2 id="sound-section-heading" tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t(`sound.section.${shown}`)}</h2>
-              <p className="text-ui-support text-muted-foreground">{lead}</p>
             </>}
             {shown === 'basic' && <>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
-            {/* OFFのまま選べる注意は、各カードではなく基本の先頭に1回だけ出す（#603）。使い方の音調整は別の文のまま。 */}
+            {/* OFFのまま選べる注意は、各カードではなく基本の先頭に1回だけ出す（#603）。使い方も同じ文を使う。 */}
             <p id="sound-off-until-on" className="text-ui-support text-muted-foreground">{t('settings.offUntilOn')}</p>
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
               {/* ノイズ低減と声を整える機能は、ページの幅に余裕があるときだけ横に並べる。DOM の順は変えない。 */}
@@ -297,7 +270,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     </div>
                     <Switch
                       checked={!!engineStats?.noiseReductionEnabled}
-                      onCheckedChange={(checked) => applyNoiseControlConfig({ active: checked })}
+                      onCheckedChange={(checked) => { void applyNoiseControlConfig({ active: checked }); }}
                       aria-label={t('settings.AudioSettingsModal.107')}
                     />
                   </div>
@@ -354,7 +327,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       className={engineStats?.noiseReductionEnabled ? undefined : 'data-[state=checked]:bg-muted data-[state=checked]:border-muted-foreground/50 [&_[data-state=checked]]:bg-muted-foreground'}
                       onCheckedChange={(checked) => {
                         setNoiseVoiceGuard(checked);
-                        applyNoiseControlConfig({ voiceGuard: checked });
+                        void applyNoiseControlConfig({ voiceGuard: checked });
                       }}
                       aria-label={t('settings.AudioSettingsModal.129')}
                     />
@@ -375,7 +348,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       disabled={!singingModel.snapshot || singingModel.busy}
                       checked={singingModel.snapshot?.config.active ?? builtInEffectsEnabled}
                       onCheckedChange={(checked) => {
-                        applyBuiltInEffects({ active: checked });
+                        void applyBuiltInEffects({ active: checked });
                       }}
                       aria-label={t('settings.AudioSettingsModal.097')}
                     />
@@ -437,7 +410,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => onPlace('liveModes', true)}>{t('settings.mode.return')}</Button>
             </>}
             {shown === 'peak' && <div className="flex flex-col gap-4">
-              <PeakProtectionPanel music={music} hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onPeak} locked={liveModel.snapshot?.armed === true} />
+              <PeakProtectionPanel music={music} hideApplyNote={!music} numericDetails={!isBeginnerMode} onPendingChange={onPeak} locked={liveModel.snapshot?.armed === true} />
               <BroadcastTruePeakPanel music={music} hideApplyNote numericDetails={!isBeginnerMode} onPendingChange={onBroadcast} locked={liveModel.snapshot?.armed === true} />
             </div>}
             </section>
