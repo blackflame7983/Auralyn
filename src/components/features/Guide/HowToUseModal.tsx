@@ -9,12 +9,15 @@ import type { MessageKey } from '@/i18n/messages';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useShortcutBindings } from '@/hooks/useShortcutBindings';
 import { helpSectionKey } from '@/lib/openHelp';
-import { homeGuideFor, homeGuideGroups, type HomeGuideGroup } from './homeGuide';
+import { homeGuideFor, homeGuideGroups, homeGuideLabels, type HomeGuideGroup } from './homeGuide';
+import { setupStepsFor, setupTroubleKey } from './setupGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
-const sections = ['home', 'setup', 'vst', 'trouble', 'terms', 'keys'] as const;
+// 最初に見える節は「まず何をするか」。画面の作りの説明（ホームの見方）は後ろに置く（#719）。
+const sections = ['setup', 'home', 'vst', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
+const defaultSection: Section = 'setup';
 const sectionDocs = { home: 'help.home', setup: 'help.setup', vst: 'help.vst', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
 
 interface Props {
@@ -35,8 +38,8 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     const [section, setSection] = useState<Section>(() => {
         try {
             const saved = localStorage.getItem(helpSectionKey);
-            return sections.find(value => value === saved) ?? 'home';
-        } catch { return 'home'; }
+            return sections.find(value => value === saved) ?? defaultSection;
+        } catch { return defaultSection; }
     });
     const bindings = useShortcutBindings(section === 'keys');
     const body = useRef<HTMLDivElement>(null);
@@ -46,23 +49,8 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         try { localStorage.setItem(helpSectionKey, next); } catch { /* 保存できなくても読む操作は続けられる。 */ }
     };
     const go = (open: () => void) => { onClose(); open(); };
-    const labels = {
-        compare: t('header.compare'), gain: t('master.outputGain'), mute: t('header.emergency'),
-        noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
-        basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
-        peakDetails: t('peak.details'),
-        details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
-        tierLink: t('home.tierFallback'),
-        add: t('chain.vstAdd'), openVst: t('sound.openVst'),
-        settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
-        choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
-        mode: t('home.modeMark'), currentVoice: t('home.currentVoice'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
-        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
-        musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
-        musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
-        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
-        usage: t('purpose.section'),
-    };
+    const labels = homeGuideLabels(locale);
+    const setupSteps = setupStepsFor(purpose);
     const headings = {
         stage: purpose === 'music' ? 'help.home.stage.musicTitle' : 'help.home.stage.title',
         meters: purpose === 'music' ? 'help.home.meters.musicTitle' : 'help.home.meters.title',
@@ -96,7 +84,21 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 </div>)}
                                 <p>{t('help.home.other', labels)}</p>
                             </>}
-                            {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
+                            {section === 'setup' && <>
+                                <div>
+                                    <h3 className="font-semibold">{t('help.setup.stepsTitle')}</h3>
+                                    <ol className="mt-1 list-decimal list-inside space-y-1 text-muted-foreground">
+                                        {setupSteps.map(key => <li key={key}>{t(key, labels)}</li>)}
+                                    </ol>
+                                </div>
+                                <p>{t(setupTroubleKey(purpose), labels)}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button>
+                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => select('trouble')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
+                                </div>
+                                <h3 className="font-semibold">{t('help.setup.flowTitle')}</h3>
+                                <p>{t('help.setup.body', labels)}</p>
+                            </>}
                             {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>
                                 <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />

@@ -44,6 +44,8 @@ export function homeGuideLabels(locale: Locale) {
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
         usage: t('purpose.section'),
+        startAudio: t('home.startAudio'), ownVoice: t('prep.local'),
+        trouble: t('help.section.trouble'), receiver: t('help.trouble.receiver'), silent: t('help.trouble.silent'),
     };
 }
 

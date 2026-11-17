@@ -2,8 +2,26 @@
 title: "First setup"
 description: "Choose your purpose and devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here"]
+uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "Start audio", "Start listening", "Playback source", "Bypass VST"]
 ---
+
+## What to do first {#first-steps}
+
+### For streaming and calls {#first-steps-voice}
+
+1. In the Setup that opens first, choose your destination and microphone. If you closed it, open it again from “Open Setup” in “Connection details”.
+2. Press “Start audio” on Home to begin.
+3. In OBS, the audio input capture meter moving with your voice means it arrived. In a calling app, check its input meter. With “Hear my own voice”, check by hearing your voice.
+
+If it does not arrive, see [Others cannot hear you](./troubleshooting.md#not-received).
+
+### For listening to music {#first-steps-music}
+
+1. In the Setup that opens first, choose “Listen to music (apply VST to PC audio)”, then your playback source and listening device. If you closed it, open it again from “Open Setup” in “Connection details”.
+2. Press “Start listening” on Home to begin.
+3. Play a song in your music app. If the “Playback source” bar on the right of the screen moves, sound is coming in. When you have added a VST, press “Bypass VST” to compare; if the sound changes, the VST is applied.
+
+If there is no sound, see [No sound](./troubleshooting.md#no-sound).
 
 ## Choose a purpose {#purpose}
 

@@ -9,6 +9,7 @@ import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { requestHelpSection } from '@/lib/openHelp';
 import { fillHomeGuide, homeGuideFor, homeGuideGroups, homeGuideLabels } from '../homeGuide';
+import { fillSetupGuide } from '../setupGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }));
@@ -97,7 +98,8 @@ it('localStorageも割り当て取得も使えない場合に閲覧と案内を�
 
 it.each(['setup', 'trouble', 'obs', 'discord'] as const)('既存の入口へ移る（%s）', target => {
     const { props } = open(); fireEvent.keyDown(window, { key: 'F1' });
-    fireEvent.click(screen.getByRole('button', { name: target === 'setup' ? 'はじめの設定' : '困ったとき' }));
+    const nav = within(screen.getByRole('navigation', { name: '使い方' }));
+    fireEvent.click(nav.getByRole('button', { name: target === 'setup' ? 'はじめの設定' : '困ったとき' }));
     const names = { setup: 'セットアップを開く', trouble: '音のトラブルを診断', obs: message('ja', 'header.obs'), discord: message('ja', 'header.discord') };
     fireEvent.click(screen.getAllByRole('button', { name: names[target] })[0]);
     const callbacks = { setup: props.onOpenWizard, trouble: props.onOpenTroubleshoot, obs: props.onOpenOBSGuide, discord: props.onOpenDiscordGuide };
@@ -127,6 +129,7 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
     open(locale);
     fireEvent.keyDown(window, { key: 'F1' });
     const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.home') }));
     const labels = homeGuideLabels(locale);
     const voice = fillHomeGuide(locale, 'voice');
     const music = fillHomeGuide(locale, 'music');
@@ -175,8 +178,54 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
     expect(within(dialog).queryByText(voice.stage[0])).not.toBeInTheDocument();
     expect(within(dialog).queryByText(voice.meters[0])).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.setup') }));
-    expect(within(dialog).queryByRole('list')).not.toBeInTheDocument();
+    expect(within(dialog).queryAllByRole('list').map(list => list.tagName)).toEqual(['OL']);
     expect(within(dialog).getByText(message(locale, 'help.setup.body', labels))).toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの設定」の短い手順で、画面の作りの説明は後ろの節にある（%s）', locale => {
+    open(locale);
+    fireEvent.keyDown(window, { key: 'F1' });
+    const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    const nav = within(within(dialog).getByRole('navigation', { name: message(locale, 'help.title') }));
+    const order = ['setup', 'home', 'vst', 'trouble', 'terms', 'keys'] as const;
+    expect(nav.getAllByRole('button').map(button => button.textContent)).toEqual(order.map(section => message(locale, `help.section.${section}`)));
+    expect(nav.getByRole('button', { name: message(locale, 'help.section.setup') })).toHaveAttribute('aria-current', 'page');
+    expect(within(dialog).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual([message(locale, 'help.setup.stepsTitle'), message(locale, 'help.setup.flowTitle')]);
+    const steps = within(within(dialog).getByRole('list')).getAllByRole('listitem').map(item => item.textContent);
+    expect(steps).toEqual(fillSetupGuide(locale, 'voice').steps);
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toContain(message(locale, 'header.setupOpen'));
+    expect(steps[1]).toContain(message(locale, 'home.startAudio'));
+    expect(steps[2]).toContain('OBS');
+    for (const step of steps) expect(step).not.toMatch(/\{[A-Za-z]+\}/);
+    expect(within(dialog).queryByText(message(locale, 'help.home.stage.title'))).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.receiver') }));
+    expect(nav.getByRole('button', { name: message(locale, 'help.section.trouble') })).toHaveAttribute('aria-current', 'page');
+    expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('音楽鑑賞では、最初の手順の最後が、OBSの代わりにその使い道で確かめる内容になる（%s）', locale => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    open(locale);
+    fireEvent.keyDown(window, { key: 'F1' });
+    const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    const steps = within(within(dialog).getByRole('list')).getAllByRole('listitem').map(item => item.textContent);
+    expect(steps).toEqual(fillSetupGuide(locale, 'music').steps);
+    expect(steps[0]).toContain(message(locale, 'wizard.musicGoal'));
+    expect(steps[1]).toContain(message(locale, 'home.startListening'));
+    expect(steps[2]).toContain(message(locale, 'music.source'));
+    expect(steps[2]).toContain(message(locale, 'header.compare'));
+    expect(steps.join('')).not.toContain('OBS');
+    fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.silent') }));
+    expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
+});
+
+it('前回開いた節を保存していれば、最初の節ではなく、その節で開く', () => {
+    localStorage.setItem('auralyn_help_section', 'home');
+    open();
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('button', { name: 'ホームの見方' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('heading', { level: 3, name: message('ja', 'help.setup.stepsTitle') })).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('再生の状態の説明は、音楽鑑賞の見方で保存したを重ねず差し込みを埋める（%s）', locale => {
@@ -184,6 +233,7 @@ it.each(['ja', 'en'] as const)('再生の状態の説明は、音楽鑑賞の見
     open(locale);
     fireEvent.keyDown(window, { key: 'F1' });
     const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.home') }));
     const text = message(locale, 'help.home.stage.7', homeGuideLabels(locale));
     expect(within(dialog).getByText(text)).toBeInTheDocument();
     expect(text).not.toMatch(/\{[A-Za-z]+\}/);
