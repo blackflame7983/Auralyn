@@ -108,6 +108,7 @@ const ja = {
     "help.home.check.1": "「{check}」で接続や送り先の確認へ進めます。",
     "help.home.check.2": "窓が広いときは、接続の列がホームの右に開きます。狭いときは下の「{details}」から開きます。",
     "help.home.check.3": "自分の声を聴く確認と、配信・通話側で届くことの確認は別です。",
+    "help.home.check.4": "受け側で選んでいる入力やソースの名前はホームに出さず、診断で受け側の確認リストが出たときに聞きます。空でも診断は続きます。",
     "help.home.check.music": "「{details}」で接続を確認します。",
     "help.home.check.title": "接続の確認（届いているか見る）",
     "help.home.check.musicTitle": "接続の確認（接続を確かめる）",
@@ -763,7 +764,6 @@ const ja = {
     "prep.sessionChecked": "このセッションの確認を記録済み",
     "prep.refresh": "状態を更新",
     "prep.checkReceiver": "送り先で確認する",
-    "prep.targetAction": "受け側の入力名を登録（診断用）",
     "prep.unconfirm": "再確認に戻す",
     "prep.details": "詳しい状態と履歴",
     "prep.location": "利用場所",
@@ -3567,6 +3567,9 @@ const ja = {
     "troubleshoot.savedPurpose": "セットアップまたは前回の診断で選んだ用途で確認します。",
     "troubleshoot.start": "診断を開始",
     "troubleshoot.changePurpose": "用途を変える",
+    "troubleshoot.receiverReason": "OBS や通話アプリで選んでいる入力・ソースの名前です。上の帯の送り先に添え、前回の OBS 確認が同じ名前のときだけ有効なままにします。",
+    "troubleshoot.receiverOptional": "空でも、この結果はそのまま使えます。",
+    "troubleshoot.clearReceiver": "名前を消す",
     "session.retryDetails": "保存済みの並びを読み直す",
 } as const;
 export type MessageKey = keyof typeof ja;
@@ -3678,6 +3681,7 @@ const en: Record<MessageKey, string> = {
     "help.home.check.1": "“{check}” leads to connection and destination checks.",
     "help.home.check.2": "On a wide window, the connection column opens on the right of Home. On a narrow window, open it from “{details}” below.",
     "help.home.check.3": "Hearing your own voice and confirming sound in your streaming or calling app are separate checks.",
+    "help.home.check.4": "The name of the input or source selected in the receiving app stays off Home, and diagnosis asks for it when the receiving-app checklist appears. You can leave it blank and still continue.",
     "help.home.check.music": "Use “{details}” to check the connection.",
     "help.home.check.title": "Check the connection (see whether it gets through)",
     "help.home.check.musicTitle": "Check the connection (see whether it is connected)",
@@ -4334,7 +4338,6 @@ const en: Record<MessageKey, string> = {
     "prep.sessionChecked": "Checks recorded for this session",
     "prep.refresh": "Refresh status",
     "prep.checkReceiver": "Check at the destination",
-    "prep.targetAction": "Register receiver input name (for diagnosis)",
     "prep.unconfirm": "Check again",
     "prep.details": "Status and history",
     "prep.location": "Location",
@@ -7138,6 +7141,9 @@ const en: Record<MessageKey, string> = {
     "troubleshoot.savedPurpose": "Checks for the use you chose in Setup or the last diagnosis.",
     "troubleshoot.start": "Start diagnosis",
     "troubleshoot.changePurpose": "Choose a different use",
+    "troubleshoot.receiverReason": "The name of the input or source you picked in OBS or your call app. It is shown next to the destination in the top band, and an earlier OBS check stays valid only when the names match.",
+    "troubleshoot.receiverOptional": "You can leave this blank. These results still apply.",
+    "troubleshoot.clearReceiver": "Clear the name",
     "session.retryDetails": "Reload the saved chain",
 };
 export function message(locale: Locale, key: MessageKey, args?: Record<string, string | number>): string { return (locale === 'en' ? en : ja)[key].replace(/\{(\w+)\}/g, (token, name: string) => args?.[name] === undefined ? token : String(args[name])); }

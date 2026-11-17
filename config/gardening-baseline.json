@@ -5094,13 +5094,6 @@
     },
     {
       "file": "src/components/features/Troubleshoot/TroubleshootModal.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "99e045833e51a461e6d4a3d401758f7b044628a17c00e997a7cfaa8b3e7d76e2",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Troubleshoot/TroubleshootModal.tsx",
       "rule": "auralyn/architecture",
       "hash": "b7287141144e0cf9b2dc87fd97a54e3a9685bc9885943136f6940a734cb57206",
       "count": 1,
@@ -5115,22 +5108,8 @@
     },
     {
       "file": "src/components/features/Troubleshoot/TroubleshootModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "99e045833e51a461e6d4a3d401758f7b044628a17c00e997a7cfaa8b3e7d76e2",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/Troubleshoot/TroubleshootModal.tsx",
       "rule": "auralyn/owned-timers",
       "hash": "8fb10e2f29c5359df0c9d3691beaa137151e3c6dbb07eb9bdf9044137107790e",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/Troubleshoot/TroubleshootModal.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "99e045833e51a461e6d4a3d401758f7b044628a17c00e997a7cfaa8b3e7d76e2",
       "count": 1,
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
@@ -6693,20 +6672,6 @@
       "rule": "auralyn/owned-timers",
       "hash": "387bc899086c2d5140178e5c47412319c58de567d0f8a549fca505c4ef7885aa",
       "count": 2,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/hooks/usePreparation.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "60d2a41b99f61a9294df2409b807a14f02eda0934d353c95b3805305b066ae75",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/usePreparation.ts",
-      "rule": "auralyn/owned-timers",
-      "hash": "60d2a41b99f61a9294df2409b807a14f02eda0934d353c95b3805305b066ae75",
-      "count": 1,
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {

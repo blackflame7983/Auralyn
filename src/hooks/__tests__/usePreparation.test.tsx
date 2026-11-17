@@ -7,7 +7,7 @@ import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
 import type { ObsAudioReachResult } from '@/api/obs';
 import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
-import { confirmationState, preparationReach, savePreparationContext } from '@/lib/preparation';
+import { confirmationState, editPreparationReceiver, preparationReach, readPreparationContext, savePreparationContext } from '@/lib/preparation';
 import { usePreparation } from '../usePreparation';
 
 const handlers = new Map<string, Set<() => void>>();
@@ -87,6 +87,21 @@ it('出力変更だけなら音作りを保持し、用途を変えると受け�
     act(() => handlers.get('audio-conditions-changed')!.forEach(fn => fn())); await settle();
     expect(confirmationState(result.current.records, 'sound')).toBe('confirmed');
     expect(confirmationState(result.current.records, 'listen')).toBe('stale');
+});
+it('診断で受け側の入力名を変えると保存し、受け側の確認だけを失効する', async () => {
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    for (const stage of ['sound', 'listen', 'receiver'] as const) await act(async () => result.current.confirm(stage));
+    act(() => { editPreparationReceiver('Auralyn Mic'); });
+    await settle();
+    expect(result.current.context.receiver).toBe('Auralyn Mic');
+    expect(readPreparationContext().receiver).toBe('Auralyn Mic');
+    expect(confirmationState(result.current.records, 'sound')).toBe('confirmed');
+    expect(confirmationState(result.current.records, 'listen')).toBe('confirmed');
+    expect(confirmationState(result.current.records, 'receiver')).toBe('stale');
+    act(() => { editPreparationReceiver(''); });
+    await settle();
+    expect(result.current.context.receiver).toBe('');
+    expect(readPreparationContext().receiver).toBe('');
 });
 it('診断など別画面で用途を変えたら共用通知から反映し、受け側確認と対象名だけを失効する', async () => {
     const { result } = renderHook(() => usePreparation({ running: true })); await settle();

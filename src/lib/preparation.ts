@@ -38,6 +38,16 @@ export function savePreparationContext(context: PreparationContext) {
     } catch { /* 保存できなくても、そのセッションでの準備と既存操作を妨げない。 */ }
 }
 
+// 診断から受け側の入力名を保存する。準備欄が開いていればそちらが確認の失効まで行う。
+export function editPreparationReceiver(receiver: string) {
+    const next = receiver.slice(0, 200);
+    const event = new CustomEvent('preparation-receiver-edited', { cancelable: true, detail: next });
+    if (!window.dispatchEvent(event)) return;
+    const context = readPreparationContext();
+    if (context.receiver === next) return;
+    savePreparationContext({ ...context, receiver: next });
+}
+
 export function validPreparationSnapshot(p: PreparationSnapshot | null | undefined): p is PreparationSnapshot {
     return !!p && [p.engineEpoch, p.processingRevision, p.routingRevision, p.outputRevision, p.nrBackend, p.nrModel].every(v => typeof v === 'string' && v.length > 0)
         && [p.inputGain, p.outputGain].every(v => Number.isFinite(v) && v >= 0 && v <= 2)

@@ -1,3 +1,4 @@
+import { startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -130,10 +131,10 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         window.addEventListener('preparation-external-change', external);
         window.addEventListener('profile-fx-applied', refreshConditions);
         window.addEventListener('preparation-purpose-changed', purposeChanged);
-        const timer = setInterval(() => { void refresh(); }, 2000);
+        const stopRefresh = startPreparationRefresh(() => { void refresh(); });
         return () => {
             active = false; alive.current = false; listenersReady.current = false; generation.current += 1;
-            clearInterval(timer); unsubscribe();
+            stopRefresh(); unsubscribe();
             removeAppVisibilityListener(visibility);
             window.removeEventListener('preparation-external-change', external);
             window.removeEventListener('profile-fx-applied', refreshConditions);
@@ -172,11 +173,28 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             if (!next?.keys || next.keys[stage] !== expectedKey || next.availability !== 'ready' || version !== generation.current || !ctx.usage
                 || blockedRef.current || isAppHidden()) return;
             const receiverFallback = ctx.usage === 'obs' ? 'OBS' : ctx.usage === 'discord' ? 'Discord' : ctx.usage === 'other' ? (next.config?.output ?? '') : '';
-            setRecords(old => ({ ...old, [stage]: { key: next.keys![stage], at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
+            const key = next.keys[stage];
+            setRecords(old => ({ ...old, [stage]: { key, at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
 
         } finally { if (alive.current) setConfirming(false); }
     };
-    const unconfirm = (stage: PreparationStage) => setRecords(old => old[stage] ? { ...old, [stage]: { ...old[stage]!, expired: true } } : old);
+    const unconfirm = (stage: PreparationStage) => setRecords(old => {
+        const receipt = old[stage];
+        return receipt ? { ...old, [stage]: { ...receipt, expired: true } } : old;
+    });
+    const changeContextRef = useRef(changeContext);
+    changeContextRef.current = changeContext;
+    useEffect(() => {
+        const onReceiverEdited = (event: Event) => {
+            if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+            event.preventDefault();
+            const next = event.detail.slice(0, 200);
+            if (next === currentContext.current.receiver) return;
+            changeContextRef.current({ receiver: next });
+        };
+        window.addEventListener('preparation-receiver-edited', onReceiverEdited);
+        return () => window.removeEventListener('preparation-receiver-edited', onReceiverEdited);
+    }, []);
     return { context, changeContext, observation, records, checking, confirming, confirm, unconfirm, refresh, reset: () => { expireAll(); void noiseMeasurementApi.request({ action: 'invalidate' }).catch(() => {}); } };
 }
 export type PreparationModel = ReturnType<typeof usePreparation>;
