@@ -88,6 +88,125 @@ test('900×600では送り先が見え、下の行は1行のまま。列が溢�
     await expect(fade).toBeHidden();
 });
 
+test('列の下端のフェードにかかる操作へTabで焦点を移すと、焦点の枠がフェードの上まで送られる（#671）', async ({ page }) => {
+    await openHome(page, { width: 900, height: 420 });
+    const fade = page.locator('[data-scroll-more=""]');
+    await expect(fade).toBeVisible();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // フェードの手前に並ぶ2つの操作を、列の末尾へ足す。2つ目はまるごと見えるが、枠がフェードに掛かる位置へ置く。
+    const placed = await page.locator('main.home-main').evaluate(async column => {
+        const hint = document.querySelector('[data-scroll-more=""]');
+        if (!(column instanceof HTMLElement) || !(hint instanceof HTMLElement)) return null;
+        const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        // 画面の組立が落ち着くまで待つ。列の大きさとフェードの位置が、続けて同じになったら置く。
+        const layout = () => `${column.getBoundingClientRect().height}/${column.scrollHeight}/${hint.hidden}/${hint.getBoundingClientRect().top}`;
+        let seen = layout();
+        for (let steady = 0, tries = 0; steady < 10 && tries < 300; tries += 1) {
+            await frame();
+            const now = layout();
+            steady = now === seen ? steady + 1 : 0;
+            seen = now;
+        }
+        const first = document.createElement('button');
+        const second = document.createElement('button');
+        first.id = 'fade-probe-first';
+        second.id = 'fade-probe-second';
+        for (const button of [first, second]) {
+            button.type = 'button';
+            button.textContent = button.id;
+            button.style.display = 'block';
+            button.style.height = '24px';
+        }
+        const spacer = document.createElement('div');
+        spacer.style.height = '800px';
+        column.append(first, second, spacer);
+        await frame();
+        const fadeTop = hint.getBoundingClientRect().top;
+        column.scrollTop += second.getBoundingClientRect().top - (fadeTop - 8);
+        await frame();
+        return {
+            fadeTop: hint.getBoundingClientRect().top,
+            secondBottom: second.getBoundingClientRect().bottom,
+            hidden: hint.hidden,
+        };
+    });
+    expect(placed).not.toBeNull();
+    if (!placed) return;
+    expect(placed.hidden).toBe(false);
+    // 前の送りでは、枠（下端 + 4px）はフェードに入っている。
+    expect(placed.secondBottom + 4).toBeGreaterThan(placed.fadeTop);
+
+    await page.locator('#fade-probe-first').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#fade-probe-second')).toBeFocused();
+    const after = await page.evaluate(() => {
+        const hint = document.querySelector('[data-scroll-more=""]');
+        const second = document.querySelector('#fade-probe-second');
+        const column = document.querySelector('main.home-main');
+        if (!(hint instanceof HTMLElement) || !(second instanceof HTMLElement) || !(column instanceof HTMLElement)) return null;
+        return {
+            hidden: hint.hidden,
+            ringBottom: second.getBoundingClientRect().bottom + 4,
+            fadeTop: hint.getBoundingClientRect().top,
+            ringTop: second.getBoundingClientRect().top - 4,
+            columnTop: column.getBoundingClientRect().top,
+        };
+    });
+    expect(after).not.toBeNull();
+    if (!after) return;
+    expect(after.hidden).toBe(false);
+    expect(after.ringBottom).toBeLessThanOrEqual(after.fadeTop + 0.5);
+    expect(after.ringTop).toBeGreaterThanOrEqual(after.columnTop);
+});
+test('フェードにかかる入力欄をマウスで押しても、列は動かずクリックが成立する（#671）', async ({ page }) => {
+    await openHome(page, { width: 900, height: 420 });
+    const fade = page.locator('[data-scroll-more=""]');
+    await expect(fade).toBeVisible();
+    const placed = await page.locator('main.home-main').evaluate(async column => {
+        const hint = document.querySelector('[data-scroll-more=""]');
+        if (!(column instanceof HTMLElement) || !(hint instanceof HTMLElement)) return null;
+        const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const layout = () => `${column.getBoundingClientRect().height}/${column.scrollHeight}/${hint.hidden}/${hint.getBoundingClientRect().top}`;
+        let seen = layout();
+        for (let steady = 0, tries = 0; steady < 10 && tries < 300; tries += 1) {
+            await frame();
+            const now = layout();
+            steady = now === seen ? steady + 1 : 0;
+            seen = now;
+        }
+        const input = document.createElement('input');
+        input.id = 'fade-probe-input';
+        input.style.display = 'block';
+        input.style.height = '24px';
+        const clicks = { count: 0 };
+        input.addEventListener('click', () => { clicks.count += 1; input.dataset.clicks = String(clicks.count); });
+        const spacer = document.createElement('div');
+        spacer.style.height = '800px';
+        column.append(input, spacer);
+        // 遅れて組み上がる区画で列の中身が動くことがある。入力欄の上端がフェードの 26px 上で2回続けて止まるまで置き直す。
+        const offset = () => input.getBoundingClientRect().top - (hint.getBoundingClientRect().top - 26);
+        for (let settled = 0, tries = 0; settled < 2 && tries < 60; tries += 1) {
+            await frame();
+            const miss = offset();
+            if (Math.abs(miss) < 1) settled += 1;
+            else {
+                settled = 0;
+                column.scrollTop += miss;
+            }
+        }
+        return { ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
+    });
+    expect(placed).not.toBeNull();
+    if (!placed) return;
+    expect(placed.ringBottom).toBeGreaterThan(placed.fadeTop);
+
+    const scrollTop = await page.locator('main.home-main').evaluate(column => column.scrollTop);
+    await page.locator('#fade-probe-input').click();
+    await expect(page.locator('#fade-probe-input')).toBeFocused();
+    await expect(page.locator('#fade-probe-input')).toHaveAttribute('data-clicks', '1');
+    expect(await page.locator('main.home-main').evaluate(column => column.scrollTop)).toBe(scrollTop);
+});
+
 for (const size of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }]) {
     test(`${size.width}×${size.height}の下の行は経路が無く、ボタンが左に残る`, async ({ page }) => {
         await openHome(page, size);
