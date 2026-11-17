@@ -1,6 +1,8 @@
-import { test, expect } from './tauriFixture';
+import type { Locator } from '@playwright/test';
+import { expect, test } from './tauriFixture';
 import { settleLayoutMotion } from './layoutMotion';
 import { uiScale } from '../../src/lib/largeWindow';
+import { message } from '../../src/i18n/messages';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -244,3 +246,45 @@ test('900×600 で整え具合の目安が語の途中で折り返さない', as
     });
     expect(lines).toBe(1);
 });
+
+// 英語の長いラベルでも、いまの状態のバーは 12rem より縮めない（#661）。日本語は同じ行のまま。
+const nowMeterSizes = [{ width: 900, height: 600 }, { width: 1024, height: 768 }, { width: 1280, height: 800 }];
+const boxOf = async (locator: Locator, where: string) => {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error(`${where} の寸法が取れない`);
+    return box;
+};
+for (const locale of ['ja', 'en'] as const) {
+    for (const purpose of ['voice', 'music'] as const) {
+        test(`いまの状態のメーターは 192px 以上 ${locale} ${purpose}`, async ({ page }) => {
+            await page.addInitScript(({ locale, purpose }) => {
+                localStorage.setItem('vst_host_locale', locale);
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('vst_host_setup_goal', purpose === 'music' ? 'listening' : 'obs');
+                localStorage.setItem('auralyn_display_purpose', purpose === 'music' ? 'music' : 'voice');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+            }, { locale, purpose });
+            await page.setViewportSize(nowMeterSizes[0]);
+            await page.goto('/');
+            const now = page.getByRole('region', { name: message(locale, 'home.now'), exact: true });
+            const meter = now.getByRole('meter', { name: message(locale, purpose === 'music' ? 'home.listenLevel' : 'home.sendLevel'), exact: true });
+            await expect(meter).toBeVisible();
+            for (const size of nowMeterSizes) {
+                await page.setViewportSize(size);
+                await settleLayoutMotion(page);
+                const where = `${size.width}×${size.height}`;
+                const box = await boxOf(meter, where);
+                expect(box.width, where).toBeGreaterThanOrEqual(192);
+                const card = await boxOf(now, where);
+                expect(box.x + box.width, where).toBeLessThanOrEqual(card.x + card.width + 1);
+                if (locale === 'ja') {
+                    const incoming = await boxOf(now.locator('[data-now-incoming]'), where);
+                    const meterMid = box.y + box.height / 2;
+                    const incomingMid = incoming.y + incoming.height / 2;
+                    expect(Math.abs(meterMid - incomingMid), where).toBeLessThanOrEqual(8);
+                }
+            }
+        });
+    }
+}
