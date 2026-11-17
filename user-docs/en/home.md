@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -27,25 +27,25 @@ Check “Running” or “Audio stopped”, the elapsed time, and the audio path
 
 ### Microphone and output meters (check the level) {#meters}
 
-On the right side of the screen, “Microphone” shows incoming sound and “Output” shows sound after processing.
+On the right side of the screen, “Microphone” is the bar for incoming sound. “Output” is the peak number.
 
-“Level being sent” on Current status shows the same output on a wider bar.
+The level sent onward is the “Level being sent” bar on Current status.
 
 The bar follows the current level, and the output number on the right side of the screen holds a recent peak.
 
 Moving meters do not confirm that someone else can hear you.
 
-Incoming sound is shown on this bar and the voice flow at the current level, without delay.
+Incoming sound is shown on the input bar at the right, at the current level and without delay. Voice flow compares the sound before and after processing.
 
 The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. While sound is coming in, the word is “Receiving”.
 
-The scale runs in even steps from −60 dBFS to 0 dBFS. The right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.”
+The scale runs in even steps from −60 dBFS to 0 dBFS. The input in the right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.”
 
-While waiting, silent, or stopped, the bars keep their size and position. Waiting and silence are written inside the bar. While stopped, the bar stays empty, and the output number in the right column becomes a dash. Stopped is still announced. The value is not delayed to look smoother.
+While waiting, silent, or stopped, the incoming bar and the bar in Current status keep their size and position. Waiting and silence are written inside those bars. While stopped, the bars stay empty, and the output number in the right column becomes a dash. Stopped is still announced. The value is not delayed to look smoother.
 
 ### Sound flow {#flow}
 
-One band stacks the level before processing and the level after. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure level” starts from the heading of this band.
 
 ### Sound adjustments (shape noise and voice) {#sound}
 
@@ -111,19 +111,19 @@ While locked, it shows “Locked”. Stop and “Emergency mute” stay availabl
 
 ### Playback source and output meters (check the level) {#music-meters}
 
-On the right side of the screen, “Playback source” shows incoming sound and “Output” shows sound after processing.
+On the right side of the screen, “Playback source” is the bar for incoming sound. “Output” is the peak number.
 
-“Output level” on Current status shows the same output on a wider bar.
+The level you hear is the “Output level” bar on Current status.
 
 The bar follows the current level, and the output number on the right side of the screen holds a recent peak.
 
-Incoming sound is shown on this bar and “Audio flow” at the current level, without delay.
+Incoming sound is shown on the input bar at the right, at the current level and without delay. “Audio flow” compares the sound before and after processing.
 
 The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
 
 ### Sound flow {#music-flow}
 
-One band stacks the level before processing and the level after. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure playback level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure playback level” starts from the heading of this band.
 
 ### Shape the sound (process with a VST) {#music-sound}
 

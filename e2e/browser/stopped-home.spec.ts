@@ -25,7 +25,8 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(send.locator('[data-meter-status]')).toHaveCount(0);
         const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
         await expect(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
-        await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
+        await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
+        await expect(column.getByLabel('出力のピーク（音声停止中）')).toHaveText('—');
         await expect(column.locator('[role="meter"] [data-meter-status]')).toHaveCount(0);
         await expect(column.getByText('—', { exact: true })).toBeVisible();
         await expect(column.getByText('−∞ dBFS', { exact: true })).toHaveCount(0);

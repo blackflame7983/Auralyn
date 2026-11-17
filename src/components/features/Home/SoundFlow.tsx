@@ -163,7 +163,10 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
         className="mb-3 rounded-card bg-card px-4 py-2">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
+                <p className="text-ui-support text-muted-foreground">{t('home.flowCompare')}</p>
+            </div>
             {action}
         </div>
         {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。

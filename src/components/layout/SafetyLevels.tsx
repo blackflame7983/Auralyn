@@ -33,7 +33,7 @@ export function SafetyInput({ running, music, name }: { running: boolean; music:
     </div>;
 }
 
-/** 右の列の出力。一言、ミュート、機器名、横メーター、ピークの dBFS。音量スライダーは続けて置く。 */
+/** 右の列の出力。一言、ミュート、機器名、ピークの dBFS。横メーターは置かない（#724）。音量スライダーは続けて置く。 */
 export function SafetyOutput({ running, name, muted, onCheckOutput }: {
     running: boolean;
     name?: string;
@@ -63,8 +63,7 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
             </span>}
         </div>
         <DeviceName name={name} />
-        <MeterVisual reading={reading} label={t('meter.output')} orientation="horizontal" height={16} fill="aurora" showValues statusOverlay numbers={false} />
-        {/* 停止中のピークは数字にせず、横線だけにする。停止であることはメーターの読み上げに残す（#602）。 */}
+        {/* 停止中のピークは数字にせず、横線だけにする。停止であることは読み上げに残す（#602）。大きさのバーはいまの状態に1本（#724）。 */}
         <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground" aria-label={reading.state === 'stopped' ? `${t('home.outputPeak')}（${t('meter.state.stopped')}）` : t('home.outputPeak')}>{reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}</p>
     </div>;
 }

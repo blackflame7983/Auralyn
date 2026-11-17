@@ -33,12 +33,14 @@ for (const theme of ['light', 'dark', 'gaming']) {
             const vstPage = page.locator('[data-vst-page]');
             await expect(vstPage).toBeVisible();
             await expect(page.locator('.home-content')).toHaveCount(0);
-            const meter = page.getByRole('meter', { name: '出力', exact: true });
-            await expect(meter).toBeVisible();
+            const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+            const peak = column.getByLabel(/出力のピーク/);
+            await expect(peak).toBeVisible();
+            await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
             await expect.poll(async () => {
-                const p = (await vstPage.boundingBox())!, m = (await meter.boundingBox())!;
-                // 出力メーターは右の列にあり、VSTのページとは重ならない。
+                const p = (await vstPage.boundingBox())!, m = (await peak.boundingBox())!;
+                // 出力の数字は右の列にあり、VSTのページとは重ならない。
                 return m.x >= p.x + p.width - 1 || p.x >= m.x + m.width - 1;
             }).toBe(true);
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -76,7 +78,7 @@ test('接続のページは見出しへ移り、Escでは閉じず、未保存�
     await expect(heading).toBeFocused();
 });
 
-test('縦横を切り替えても右の列の出力メーターが残り、大型メーターは出さない', async ({ page }) => {
+test('縦横を切り替えても右の列の出力の数字が残り、横メーターと大型メーターは出さない', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 1600 });
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -85,11 +87,14 @@ test('縦横を切り替えても右の列の出力メーターが残り、大�
     });
     await page.goto('/');
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
-    const meter = page.getByRole('meter', { name: '出力', exact: true });
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    const peak = column.getByLabel(/出力のピーク/);
+    const input = column.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
+    await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     for (const size of [{ width: 1200, height: 1600 }, { width: 1920, height: 1080 }, { width: 1200, height: 1600 }]) {
         await page.setViewportSize(size);
-        await expect(meter).toBeVisible();
-        expect((await meter.boundingBox())!.height).toBeCloseTo(16 * uiScale(size.width, size.height), 1);
+        await expect(peak).toBeVisible();
+        expect((await input.boundingBox())!.height).toBeCloseTo(16 * uiScale(size.width, size.height), 1);
     }
 });
 
@@ -166,7 +171,8 @@ for (const locale of ['ja', 'en']) {
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
             await expect(graph).toHaveAttribute('data-flow', 'still');
             await page.screenshot({ path: testInfo.outputPath('stage.png') });
-            await expect(column.getByRole('meter', { name: locale === 'ja' ? '出力' : 'Output', exact: true })).toBeVisible();
+            await expect(column.getByRole('meter', { name: locale === 'ja' ? '出力' : 'Output', exact: true })).toHaveCount(0);
+            await expect(column.getByLabel(locale === 'ja' ? /出力のピーク/ : /Output peak/)).toBeVisible();
         });
     }
 }

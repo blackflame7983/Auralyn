@@ -23,24 +23,26 @@ test.describe('出力の見出しとメーター', () => {
             const gap = await heading.evaluate(element => {
                 const row = element.parentElement as HTMLElement;
                 const name = row.nextElementSibling as HTMLElement;
-                const meter = element.closest('aside')!.querySelector('[role="meter"][aria-label="出力"]') as HTMLElement;
+                const peak = name.nextElementSibling as HTMLElement;
                 const rowBox = row.getBoundingClientRect();
                 const nameBox = name.getBoundingClientRect();
-                const meterBox = meter.getBoundingClientRect();
+                const peakBox = peak.getBoundingClientRect();
                 return {
                     status: Boolean(row.querySelector('[role="status"]')),
+                    meter: Boolean(element.closest('aside')!.querySelector('[role="meter"][aria-label="出力"]')),
                     rowExtra: rowBox.height - element.getBoundingClientRect().height,
                     beforeName: nameBox.top - rowBox.bottom,
-                    nameToMeter: meterBox.top - nameBox.bottom,
+                    nameToPeak: peakBox.top - nameBox.bottom,
                 };
             });
             // #580: 札の行を残さない。見出しの行の下は、機器名までの間隔だけ。
             expect(gap.status).toBe(false);
+            expect(gap.meter).toBe(false);
             expect(gap.rowExtra).toBeLessThan(8);
             expect(gap.beforeName).toBeGreaterThan(0);
             expect(gap.beforeName).toBeLessThan(12);
-            expect(gap.nameToMeter).toBeGreaterThan(0);
-            expect(gap.nameToMeter).toBeLessThan(12);
+            expect(gap.nameToPeak).toBeGreaterThan(0);
+            expect(gap.nameToPeak).toBeLessThan(12);
         });
     }
 });
