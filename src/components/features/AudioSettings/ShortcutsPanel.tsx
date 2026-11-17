@@ -193,7 +193,7 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : t('shortcuts.enterKeys')}
                 </Button>
                 <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
-                <Button type="button" variant="ghost" className="h-auto min-h-9 whitespace-nowrap text-ui-support"
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 shrink-0 whitespace-nowrap"
                     aria-label={t('shortcuts.chooseFromListNamed', { action: label })} aria-expanded={!!listOpen[action]} aria-controls={`${headingId}-${action}-list`}
                     onClick={() => setListOpen(previous => ({ ...previous, [action]: !previous[action] }))}>{t('shortcuts.chooseFromList')}</Button>
                 {values[action] && <Button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} variant="ghost" className="h-auto min-h-9 whitespace-nowrap text-ui-support" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</Button>}
