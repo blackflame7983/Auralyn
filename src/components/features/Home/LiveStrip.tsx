@@ -26,11 +26,15 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
     const verdictText = verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : verdict === 'ok' ? t('home.levelOk') : null;
     // 適正は範囲の色で分かる。小さめと大きすぎだけ、いまの状態にも注意の色で出す（#668）。
     const attention = verdict === 'high' || verdict === 'low';
-    return <div className="flex min-w-48 flex-1 items-center gap-2">
+    // ラベルはメーターの前に残す。バーは 12rem より縮めず、入りきらなければ次の行でカード幅まで伸びる（#661）。
+    // 共有メーターの min-w-0 は、この行の最小幅にならないので上書きする。
+    return <>
         <span className="shrink-0 text-ui-support text-muted-foreground">{label}</span>
-        <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} guideTitle={t('home.levelRange')} valueNote={verdictText ?? undefined} />
-        {attention && verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium text-warning">{verdictText}</span>}
-    </div>;
+        <div className="flex min-w-min flex-1 items-center gap-2 [&>div]:min-w-min [&_.meter-visual]:min-w-48">
+            <MeterVisual reading={reading} label={label} orientation="horizontal" height={24} fill="aurora" showValues statusOverlay numbers={false} guides={[OUTPUT_QUIET_DB, OUTPUT_LOUD_DB]} guideTitle={t('home.levelRange')} valueNote={verdictText ?? undefined} />
+            {attention && verdictText && <span data-now-verdict={verdict} className="shrink-0 text-ui-support font-medium text-warning">{verdictText}</span>}
+        </div>
+    </>;
 }
 
 // ホーム先頭の「いまの状態」。右の列のメーターは残し、ここでは状態と送る音の大きさを横長に置く。主ボタンは多くて1つ。
