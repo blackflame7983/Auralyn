@@ -87,7 +87,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                             {section === 'setup' && <>
                                 <div>
                                     <h3 className="font-semibold">{t('help.setup.stepsTitle')}</h3>
-                                    <ol className="mt-1 list-decimal list-inside space-y-1 text-muted-foreground">
+                                    <ol className="mt-1 list-decimal pl-5 space-y-1 [word-break:auto-phrase]">
                                         {setupSteps.map(key => <li key={key}>{t(key, labels)}</li>)}
                                     </ol>
                                 </div>
