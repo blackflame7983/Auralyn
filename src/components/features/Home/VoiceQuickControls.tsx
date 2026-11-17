@@ -1,20 +1,22 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { SliderField } from '@/components/ui/SliderField';
 import { Switch } from '@/components/ui/switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
-import { builtinApi } from '@/api/builtinEffects';
+import { builtinApi, type BuiltinRequest } from '@/api/builtinEffects';
 import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
 
 const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 
 // チェーン列のノイズ低減・内蔵ボイスチェーンの段で、よく使う声の調整だけを直接操作する。
 // 学習・会場・声を守る・歌向けなどの細かい調整は、設定の音づくりで行う。
-// enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。
-export function useVoiceQuick(_running: boolean, enabled = true) {
+// enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。停止中でも、音声の準備ができていれば同じ取得を使う。
+// stopped のあいだの操作は、音声エンジンが居るときだけ届ける。居なければ起こさず失敗にして、状態の読取りへ戻す。
+export function useVoiceQuick(_running: boolean, enabled = true, stopped = false) {
     const t = useMessages();
     const stats = useRuntimeStats(enabled);
     const [busy, setBusy] = useState(false);
@@ -22,8 +24,10 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
     const active = useRef(enabled);
     active.current = enabled;
     const refresh = async () => { if (active.current) await refreshRuntimeStats(true); };
+    const delivery = stopped ? { requireRunning: true } : {};
+    const request = (req: BuiltinRequest) => stopped ? builtinApi.request(req, { requireRunning: true }) : builtinApi.request(req);
 
-    const run = async (action: () => Promise<unknown>, success: string) => {
+    const run = async (action: () => Promise<unknown>, success: string, held: string) => {
         if (busy) return;
         setBusy(true);
         try {
@@ -31,10 +35,12 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             await refresh();
             // 音づくりタブや歌向けの下書きへ、外部で値が変わったことを知らせる。
             window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { runtimeStatsRefreshed: active.current } }));
-            toast.success(success);
+            if (stopped) toast.success(success, { description: held });
+            else toast.success(success);
         } catch (error) {
             console.error('Failed to apply quick voice setting', error);
             toast.error(t('home.applyFailed'));
+            if (stopped) await refresh();
         } finally {
             setBusy(false);
         }
@@ -53,7 +59,8 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             mode,
             strength: stats.noiseControlStrength > 0 ? stats.noiseControlStrength : 0.8,
             voiceGuard: stats.noiseVoiceGuard ?? true,
-        }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
+            ...delivery,
+        }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'), t('home.stoppedHeldNoise'));
     };
 
     const chainOn = !!stats?.builtInEffectsEnabled;
@@ -61,15 +68,15 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
     const shownAmount = amount ?? Math.round((stats?.builtInEffectsAmount ?? 0.7) * 100);
     // ON/OFFは適用済みの設定（歌向けの値・残響）を保持したまま切り替える。
     const toggleChain = (active: boolean) => run(async () => {
-        const current = await builtinApi.request({ action: 'snapshot' });
-        await builtinApi.request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
-    }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
+        const current = await request({ action: 'snapshot' });
+        await request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
+    }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'), t('home.stoppedHeldVoice'));
     const applyChain = (next: { preset?: BuiltInEffectsPreset; amount?: number }) => run(async () => {
         const amount = Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100;
         // OFF のときは builtin の適用で種類と整え具合だけを残す。ON にはせず、歌向けや残響も消さない。
         if (!chainOn) {
-            const current = await builtinApi.request({ action: 'snapshot' });
-            await builtinApi.request({
+            const current = await request({ action: 'snapshot' });
+            await request({
                 action: 'apply',
                 epoch: current.epoch,
                 expectedRevision: current.revision,
@@ -77,8 +84,8 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             });
             return;
         }
-        await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount });
-    }, t('settings.AudioSettingsModal.008'));
+        await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount, ...delivery });
+    }, t('settings.AudioSettingsModal.008'), t('home.stoppedHeldVoice'));
     const commitAmount = (value: number) => { setAmount(null); void applyChain({ amount: value }); };
 
     return { stats, disabled: !stats || busy, noiseOn, noiseMode, applyNoise, chainOn, preset, shownAmount, setAmount, commitAmount, toggleChain, applyChain };
@@ -96,11 +103,13 @@ export function NoiseSwitch({ q }: { q: VoiceQuick }) {
 export function NoiseQuick({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
-        return <p className="text-ui-support text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
+        return <p className={cn('text-ui-support text-muted-foreground', !q.noiseOn && 'home-held')}>{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
-    return <SegmentedControl label={t('structure.noise.standard')}
-        options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
-        value={q.noiseMode === 'low' || q.noiseMode === 'high' ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />;
+    return <div className={cn(!q.noiseOn && 'home-held')}>
+        <SegmentedControl label={t('structure.noise.standard')}
+            options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
+            value={q.noiseMode === 'low' || q.noiseMode === 'high' ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />
+    </div>;
 }
 
 export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
@@ -118,11 +127,15 @@ function presetOptions(q: VoiceQuick, t: ReturnType<typeof useMessages>) {
 /** 1段目。整え具合のスライダー。割合はスライダーと同じ語で示す。 */
 export function BuiltinAmount({ q }: { q: VoiceQuick }) {
     const t = useMessages();
+    const atZero = q.shownAmount === 0;
     if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
     return <div className="min-w-0 w-full max-w-[15rem]">
-        <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
-            disabled={q.disabled} formatValue={value => `${value}%`}
-            onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
+        <div className={cn(!q.chainOn && 'home-held')}>
+            <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
+                disabled={q.disabled} formatValue={value => `${value}%`}
+                onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
+        </div>
+        {atZero && <p className="mt-1 text-ui-support text-muted-foreground">{t('home.amountAtZero')}</p>}
     </div>;
 }
 
@@ -130,7 +143,7 @@ export function BuiltinAmount({ q }: { q: VoiceQuick }) {
 export function BuiltinPresets({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.preset === 'singing') return null;
-    return <div className="min-w-0">
+    return <div className={cn('min-w-0', !q.chainOn && 'home-held')}>
         <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
             value={q.stats ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
     </div>;
@@ -143,15 +156,15 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     </div>;
 }
 
-/** 整え具合の目安。効果の保証ではなく、設定の形を見せる。語の途中では折り返さない。 */
+/** 整え具合の目安。効果の保証ではなく、選んだ量の形を見せる。OFFでも形は残し、無彩色で未適用と分ける。 */
 export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const t = useMessages();
-    const factor = on ? amount / 100 : 0;
+    const factor = Math.max(0, Math.min(100, amount)) / 100;
     const yLow = Math.round(42 - factor * 4);
     const yMid = Math.round(36 - factor * 12);
     const yHigh = Math.round(36 - factor * 18);
     const curve = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
-    return <figure className="w-full" aria-label={t('home.toneGuide')}>
+    return <figure className={cn('w-full', !on && 'home-held')} aria-label={t('home.toneGuide')} data-applied={on ? 'true' : 'false'}>
         <figcaption className="break-keep text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
         <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
             <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />

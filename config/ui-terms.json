@@ -90,5 +90,12 @@
     { "key": "presets.copy.145", "term": "profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" },
     { "key": "presets.copy.149", "term": "Profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" },
     { "key": "presets.copy.162", "term": "Profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" }
+  ],
+  "distinct": [
+    {
+      "locale": "en",
+      "keys": ["shell.sound", "settings.AudioSettingsModal.095"],
+      "reason": "ホームの区画と声を整えるのカード（#709）"
+    }
   ]
 }

@@ -40,9 +40,12 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);
         await expect(chain.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        // #665: 一文はノイズ低減と声を整えるだけ。外部VSTの追加と「その他の操作」は対象にしない。
-        await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(1);
-        await expect(chain.getByRole('listitem').getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
+        // #726: 停止中でも読めたノイズ低減と声を整えるは変えられる。開始しないと変えられない一文は出さない。
+        await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
+        await expect(chain.getByRole('switch', { name: 'ノイズ低減', exact: true })).toBeEnabled();
+        await expect(chain.getByRole('switch', { name: '声を整える', exact: true })).toBeEnabled();
+        await expect(chain.getByText('ONにすると、この設定で効きます', { exact: true })).toHaveCount(1);
+        await expect(chain.getByText('ONにすると、この整え具合で効きます', { exact: true })).toHaveCount(1);
         await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);
@@ -82,7 +85,7 @@ test.describe('停止中のカードの高さ', () => {
         const gaps = await chain.locator('.sound-module-card').evaluateAll(cards => cards.map(card => {
             const box = card.getBoundingClientRect();
             let bottom = box.top;
-            for (const node of card.querySelectorAll('h3, button')) {
+            for (const node of card.querySelectorAll('h3, button, p, svg, [role="slider"]')) {
                 const rect = node.getBoundingClientRect();
                 if (rect.height >= 1) bottom = Math.max(bottom, rect.bottom);
             }
@@ -90,5 +93,44 @@ test.describe('停止中のカードの高さ', () => {
         }));
         expect(gaps).toHaveLength(3);
         for (const gap of gaps) expect(gap.spaceBelow).toBeLessThan(gap.height / 2);
+    });
+});
+
+test.describe('停止中のホームの細部', () => {
+    test.use({ liveHome: true, stoppedHome: true, registeredModes: true });
+    const open = async (page: import('@playwright/test').Page, width: number, height: number) => {
+        await page.setViewportSize({ width, height });
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_theme', 'dark');
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+        return page.getByRole('region', { name: '音調整', exact: true });
+    };
+
+    test('1024×768では、ONにすると効く一文の末尾だけが次の行へ残らない', async ({ page }) => {
+        const chain = await open(page, 1024, 768);
+        for (const text of ['ONにすると、この設定で効きます', 'ONにすると、この整え具合で効きます']) {
+            const lines = await chain.getByText(text, { exact: true }).evaluate(node => {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const fontSize = parseFloat(getComputedStyle(node).fontSize);
+                return { widths: [...range.getClientRects()].map(rect => rect.width / fontSize) };
+            });
+            // 最後の行が1〜2文字だけにならない。
+            expect(lines.widths[lines.widths.length - 1] ?? 0).toBeGreaterThan(3);
+        }
+    });
+
+    test('高い窓では、周囲の音を測るを2段目に出し、停止中は押せなくして理由を書く', async ({ page }) => {
+        const chain = await open(page, 1280, 900);
+        const measure = chain.getByRole('button', { name: '周囲の音を測る', exact: true });
+        await expect(measure).toBeVisible();
+        await expect(measure).toBeDisabled();
+        await expect(measure).toHaveAccessibleDescription('音声を開始すると測れます');
+        await expect(chain.getByText('音声を開始すると測れます', { exact: true })).toBeVisible();
     });
 });

@@ -48,9 +48,11 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const music = purpose === 'music';
     const { stats, running } = useRuntimeStats();
     const stage = currentStageBreakdown(stats, running);
-    const controls = audioReady && !music && !stopped;
-    const q = useVoiceQuick(isEngineRunning, controls);
-    const live = controls && q.stats !== null;
+    // 停止中も既存の統計取得で保存値を読む。audioReady はストリーム稼働なので、停止中は stopped で取る。
+    // エンジン未起動の空応答（preparation 無し）は未取得で、推測の OFF や 70% は出さない。
+    const controls = !music && !unconfigured && (audioReady || stopped);
+    const q = useVoiceQuick(isEngineRunning, controls, stopped);
+    const live = controls && q.stats?.preparation != null;
     const setting = (value: boolean | undefined) => value === undefined ? t('flow.unknown') : value ? t('flow.enabled') : t('flow.disabled');
     const validVst = stage && stage.vst.every(v => typeof v.id === 'string' && ['active', 'bypassed', 'muted', 'unavailable'].includes(v.state));
     const vstStatus = !stage || !validVst || stage.vst.some(v => v.state === 'unavailable') ? t('flow.unknown')
@@ -60,12 +62,15 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
     const voiceEnabled = stage?.builtinVoiceEnabled === true;
     const reverbEnabled = stage?.builtinReverbEnabled === true;
-    const deesserEnabled = Boolean(stage && stats?.builtInDeesser);
-    const deesserOnly = deesserEnabled && !voiceEnabled && !reverbEnabled;
+    // 停止中は段の統計が無いので、読めた値（live）を先に見る。要約と本文の歯擦音を同じ値で決める。
+    const deesser = (live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser;
+    const deesserEnabled = live ? Boolean(q.stats?.builtInDeesser) : Boolean(stage && stats?.builtInDeesser);
+    const voiceNowOn = live ? q.chainOn : voiceEnabled;
+    const reverbNowOn = live && q.stats?.builtInReverb != null ? q.stats.builtInReverb.enabled === true : reverbEnabled;
+    const deesserOnly = deesserEnabled && !voiceNowOn && !reverbNowOn;
     const partial = Boolean(stage && voiceEnabled !== reverbEnabled);
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
-    const builtinTone: StatusTone = deesserOnly || partial ? 'ok' : tone(stage?.builtinVoiceEnabled);
     const checkUnavailable = audioReady && !stopped && (!stage || !validVst || stage.vst.some(item => item.state === 'unavailable') || !music && !live);
     const voiceUnavailable = audioReady && !stopped && !music && !live;
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
@@ -80,10 +85,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {t(vstKnownEmpty ? 'chain.vstAdd' : 'sound.openVst')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </Button>;
 
-    // 停止中の一文はカードごとではなく、並びの上に1回だけ出す（#602）。
-    // 対象はノイズ低減と声を整える。外部VSTの追加と「その他の操作」は停止中も使える（#665）。
-    const stoppedHint = t('chain.stoppedHint');
-    const noiseSummary = stopped ? undefined : live
+    const noiseSummary = !live && stopped ? t('flow.unknown') : live
         ? noiseOn ? t(noiseModeLabelKey(q.noiseMode)) : t('flow.disabled')
         : setting(stage?.nr.enabled);
     // 種類の id（broadcast など）は保存のまま。画面の名前だけを出す（#656）。
@@ -91,8 +93,11 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         : q.preset === 'warm' ? t('settings.AudioSettingsModal.099')
         : q.preset === 'bright' ? t('settings.AudioSettingsModal.100')
         : t('settings.AudioSettingsModal.098');
-    const builtinSummary = stopped ? undefined : deesserOnly ? t('flow.deesserOnly')
-        : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
+    const reverbOnly = live && q.stats?.builtInReverb != null
+        ? q.stats.builtInReverb.enabled === true && !q.chainOn
+        : Boolean(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled);
+    const builtinSummary = !live && stopped ? t('flow.unknown') : deesserOnly ? t('flow.deesserOnly')
+        : reverbOnly ? t('flow.reverbOnly')
         : live ? builtinOn ? t('chain.voiceOn', { name: presetName }) : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
     const vstSummary = stopped ? undefined : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
@@ -104,25 +109,26 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         action?: ReactNode; info?: ReactNode; body?: ReactNode; tier2?: ReactNode;
     }) => {
         const Icon = key === 'noise' ? MdFilterAlt : key === 'builtin' ? MdGraphicEq : MdExtension;
-        const showBody = !unconfigured && !stopped ? body : null;
-        const showAction = !unconfigured && (!stopped || key === 'vst') && action;
-        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || stopped ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
-            {/* 見出しはアイコン・名前・説明だけ。スイッチと追加・編集は状態の行の右端（収まらなければその下）に置く。
-                停止中は名前の行だけにし、追加は名前を縮めずに、幅が足りなければ次の行へ送る（#621）。 */}
+        const nameOnly = stopped && key === 'vst';
+        const showBody = !unconfigured && !nameOnly ? body : null;
+        const showAction = !unconfigured && Boolean(action);
+        const actionInName = Boolean(nameOnly && showAction);
+        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || nameOnly || (stopped && !live) ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
+            {/* 見出しはアイコン・名前・説明だけ。スイッチは状態の行へ置く。停止中の外部VSTだけ名前の行に追加を置き、幅が足りなければ次の行へ送る（#621、#726）。 */}
             <div className="flex min-w-0 flex-col gap-1">
-                <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', stopped && showAction && 'flex-wrap')}>
+                <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', actionInName && 'flex-wrap')}>
                     <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className={cn('home-card-name whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring', !(stopped && showAction) && 'min-w-0')}>{name}</h3>
+                    <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className={cn('home-card-name whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring', !actionInName && 'min-w-0')}>{name}</h3>
                     {!unconfigured && info}
-                    {stopped && showAction && <div className="ml-auto shrink-0">{action}</div>}
+                    {actionInName && <div className="ml-auto shrink-0">{action}</div>}
                 </div>
-                {!unconfigured && !stopped && <div className="sound-card-status">
+                {!unconfigured && !nameOnly && <div className="sound-card-status">
                     <StatusDot tone={statusTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>
                     {showAction && <div className="sound-card-action">{action}</div>}
                 </div>}
             </div>
             {showBody && <div className="flex min-w-0 flex-col gap-2">{showBody}</div>}
-            {!unconfigured && !stopped && tier2 && <div data-home-tier="2" className="border-t border-border pt-3">{tier2}</div>}
+            {!unconfigured && !nameOnly && tier2 && <div data-home-tier="2" className="border-t border-border pt-3">{tier2}</div>}
             {(key === 'vst' ? checkUnavailable : voiceUnavailable && !unconfigured) && !stopped && <p className="text-ui-support text-muted-foreground" role="status">
                 <span>{t('home.checkUnavailable')}</span>
                 {music && <Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action ml-2">{t('home.moreSound')}</Button>}
@@ -137,17 +143,24 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             card({ key: 'noise', on: noiseOn, name: t('settings.AudioSettingsModal.105'), summary: noiseSummary,
                 statusTone: tone(live ? noiseOn : stage?.nr.enabled), info: noiseInfo,
                 action: live ? <NoiseSwitch q={q} /> : undefined,
-                body: live ? <NoiseQuick q={q} /> : undefined,
-                tier2: onMeasureNoise ? <Button variant="outline" size="default" type="button" onClick={onMeasureNoise} className="home-action">{t('home.measureNoise')}</Button> : undefined }),
+                body: live ? <>
+                    {!q.noiseOn && <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('home.appliesWhenOnNoise')}</p>}
+                    <NoiseQuick q={q} />
+                </> : undefined,
+                tier2: live && onMeasureNoise ? <div className="flex min-w-0 flex-col gap-1">
+                    <Button variant="outline" size="default" type="button" disabled={stopped} aria-describedby={stopped ? 'home-measure-needs-audio' : undefined} onClick={onMeasureNoise} className="home-action">{t('home.measureNoise')}</Button>
+                    {stopped && <p id="home-measure-needs-audio" className="text-ui-support text-muted-foreground">{t('home.measureNeedsAudio')}</p>}
+                </div> : undefined }),
             card({ key: 'builtin', on: builtinOn, name: t('settings.AudioSettingsModal.095'), summary: builtinSummary,
-                statusTone: live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone,
+                statusTone: reverbOnly || deesserOnly ? 'ok' : tone(live ? builtinOn : stage?.builtinVoiceEnabled),
                 info: builtinInfo, action: live ? <BuiltinSwitch q={q} /> : undefined,
-                body: <>
+                body: live || builtinBreakdown ? <>
                     {builtinBreakdown}
+                    {live && !q.chainOn && <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('home.appliesWhenOnVoice')}</p>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
-                    {stats?.builtInDeesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(stats.builtInDeesser.amount * 100) })}</span>}
-                </>,
+                    {deesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(deesser.amount * 100) })}</span>}
+                </> : undefined,
                 tier2: live ? <BuiltinPresets q={q} /> : undefined }),
         ]),
         emptyVst
@@ -172,8 +185,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {!unconfigured && !music && <div className="flex flex-wrap gap-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action home-action-icon">
+                        <Button variant="outline" size="default" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action gap-1">
                             <MdMoreHoriz aria-hidden="true" className="h-5 w-5" />
+                            {t('chain.moreVisible')}
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -183,12 +197,10 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>
             </div>}
         </div>
-        {/* 音楽鑑賞のカードはVSTだけで、停止中も追加が使える。この一文は出さない（#663）。 */}
-        {stopped && !unconfigured && !music && <p className="mt-2 text-ui-support text-muted-foreground">{stoppedHint}</p>}
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
-        {/* 停止中は名前の行だけなので、隣のカードの高さへ伸ばさない（#673）。 */}
+        {/* 停止中の外部VSTは名前の行だけなので、隣の高さへ伸ばさない（#632、#726）。 */}
         <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3', stopped && 'items-start')}>
             {rows}
         </ol>

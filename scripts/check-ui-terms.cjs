@@ -95,6 +95,19 @@ function validateTermsConfig(config) {
       errors.push(`用語定義: allow[${index}] には key、term、reason が必要です`);
     }
   });
+  if (config.distinct !== undefined) {
+    if (!Array.isArray(config.distinct)) return [...errors, '用語定義: distinct が配列ではありません'];
+    config.distinct.forEach((pair, index) => {
+      if (!pair || (pair.locale !== 'ja' && pair.locale !== 'en')
+        || !Array.isArray(pair.keys) || pair.keys.length < 2
+        || pair.keys.some(key => typeof key !== 'string' || key.trim() === '')) {
+        errors.push(`用語定義: distinct[${index}] には locale と、2つ以上の key が必要です`);
+      }
+      if (pair && pair.reason !== undefined && typeof pair.reason !== 'string') {
+        errors.push(`用語定義: distinct[${index}].reason が文字列ではありません`);
+      }
+    });
+  }
   return errors;
 }
 
@@ -183,6 +196,33 @@ function findRepeatViolations(messages, allow) {
   return errors;
 }
 
+function foldLabel(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/\b(a|an|the|your)\b/g, ' ')
+    .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findDistinctCollisions(messages, distinct) {
+  if (!Array.isArray(distinct)) return [];
+  const errors = [];
+  distinct.forEach(pair => {
+    const values = messages[pair.locale] || {};
+    const folded = pair.keys.map(key => ({ key, text: foldLabel(values[key] ?? '') }));
+    for (let left = 0; left < folded.length; left += 1) {
+      for (let right = left + 1; right < folded.length; right += 1) {
+        if (folded[left].text === '' || folded[left].text !== folded[right].text) continue;
+        const reason = pair.reason ? `（${pair.reason}）` : '';
+        errors.push(`同じ名前: ${pair.locale} ${folded[left].key} と ${folded[right].key} が「${values[folded[left].key]}」と「${values[folded[right].key]}」で重なる${reason}`);
+      }
+    }
+  });
+  return errors;
+}
+
 function findUseMismatches(terms, uses) {
   const errors = [];
   for (const term of terms) {
@@ -201,6 +241,7 @@ function checkUiTerms({ messagesSource, designSource, termsConfig }) {
   if (configErrors.length > 0) return errors;
   errors.push(...findAvoidViolations(parsed.messages, termsConfig.terms, termsConfig.allow));
   errors.push(...findRepeatViolations(parsed.messages, termsConfig.allow));
+  errors.push(...findDistinctCollisions(parsed.messages, termsConfig.distinct));
   if (glossary.errors.length === 0) {
     errors.push(...findUseMismatches(termsConfig.terms, glossary.uses));
   }
@@ -248,6 +289,8 @@ module.exports = {
   findEnRepeats,
   findRepeatViolations,
   findUseMismatches,
+  foldLabel,
+  findDistinctCollisions,
   checkUiTerms,
   runUiTermsCheck,
 };

@@ -21,7 +21,11 @@ export type BuiltinRequest = { action: 'snapshot' }
     | { action: 'redo'; epoch: string; expectedRevision: string; redoToken: string };
 export const defaultSinging: SingingParams = { lowCutHz: 80, dynamics: 0.35, brightnessDb: 0 };
 export const defaultReverb: ReverbParams = { enabled: false, mix: 0.08, decaySeconds: 1.2, damping: 0.5 };
-export const builtinApi = { request: (request: BuiltinRequest): Promise<BuiltinSnapshot> => invoke('builtin_effects', { request }) };
+/** requireRunning: 音声エンジンが居るときだけ届ける。居なければ起こさず失敗にする（停止中のホーム用）。 */
+export const builtinApi = {
+    request: (request: BuiltinRequest, options?: { requireRunning?: boolean }): Promise<BuiltinSnapshot> =>
+        invoke('builtin_effects', options?.requireRunning ? { request, requireRunning: true } : { request }),
+};
 
 export interface CandidateDraft { config: BuiltinConfig; revision: string; epoch: string; draftRevision: number }
 export interface ProposalBasis { epoch: string; revision: string; draftRevision: number }

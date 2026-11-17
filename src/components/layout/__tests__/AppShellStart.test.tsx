@@ -34,7 +34,7 @@ import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 vi.mock('../MasterBar', () => ({ MasterBar: ({ compare, input, lock }: { compare?: React.ReactNode; input?: React.ReactNode; lock?: React.ReactNode }) => <>{input}{lock}{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
-vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
+vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: { preparation: { engineEpoch: '1' } }, noiseOn: true, chainOn: true, preset: 'broadcast', noiseMode: 'low', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveStreamMixPanel(false); });
 afterEach(async () => {
     await act(async () => {});
@@ -91,7 +91,8 @@ it('停止中の「音声停止中」は上の帯といまの状態だけに出�
     expect(stopped[0].closest('[role="region"]')).toHaveAttribute('aria-label', '状態の帯');
     expect(stopped[1]).toHaveAttribute('data-now-incoming', 'stopped');
     expect(stopped[1].closest('section')).toHaveAttribute('aria-label', 'いまの状態');
-    expect(screen.getAllByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveLength(1);
+    expect(screen.queryByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '声の流れ' })).not.toBeInTheDocument();
     expect(screen.getByRole('meter', { name: '送る音' })).toHaveAttribute('aria-valuetext', expect.stringContaining('音声停止中'));
 });

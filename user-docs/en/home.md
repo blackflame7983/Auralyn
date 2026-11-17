@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "Compares before and after"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn"]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -55,7 +55,7 @@ One band stacks the level before processing and the level after. The heading sho
 
 Use “Shape voice” or VST effects to adjust your voice, then listen with Voice Check.
 
-You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on.
+You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on. At 0%, the slider says “Light compression remains even at 0%. Turn it off to stop it.” The button at the top right of “Sound controls” shows an icon and “More”.
 
 When you make the window taller, the cards also show “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the Sound page from “Detailed adjustments are on the Sound page.”
 
@@ -69,7 +69,7 @@ On and off for “Loudness protection” is the switch beside the heading. Ceili
 
 The standard folders cannot be removed. Add other places from “Folders to search”.
 
-Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. Open the “VST” page from the rail. When none are loaded, use “Add”. When the count is unknown, or at least one is loaded, use “Open VST”. While audio is stopped, one note under the heading says that noise reduction and voice shaping change after audio starts. Each card is only its name row and does not grow to the height of the card beside it. “Add” stays when no VST is loaded. Change one thing at a time and [listen](./sound.md#voice-check).
+Turn noise reduction and voice shaping on or off with the switch on each card. Strength and voice type stay on the card, without opening it. Open the “VST” page from the rail. When none are loaded, use “Add”. When the count is unknown, or at least one is loaded, use “Open VST”. While audio is stopped, noise reduction and voice shaping that could be read stay on the cards and can be changed. The values take effect when audio starts. They are kept only while the app is open and reset when you close it. To keep voice shaping, register it in Sing or Talk under “Save modes”, or save a setup. To keep noise reduction, save a setup with “Save and restore settings” on the VST page. Sing and Talk modes do not include noise reduction. When a value cannot be read, or the audio engine has ended, the card says “Status unavailable” and does not show a guessed on or off. “Measure surrounding sound” says “Start audio to measure.” External VST stays a name row and “Add”. Change one thing at a time and [listen](./sound.md#voice-check).
 
 ### Check the connection (see whether it gets through) {#audio-check}
 
