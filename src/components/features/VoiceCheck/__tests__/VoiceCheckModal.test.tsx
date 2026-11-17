@@ -55,6 +55,7 @@ it('録音前は録音に絞り、完了後に再生と必要時に開く比較�
     // 試聴先と再生は折りたたまず、録音の次に出す（#559）。
     expect(await screen.findByRole('region', { name: '試聴先と再生' })).toBeVisible();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeVisible();
+    expect(screen.getByText('試聴先：未選択')).toBeVisible();
     expect(await screen.findByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).toBeVisible();
     const comparison = screen.getByText('同じ録音でノイズ低減を比較').closest('details');
     if (!(comparison instanceof HTMLDetailsElement)) throw new Error('比較の欄がありません');
@@ -234,10 +235,12 @@ it('保存した試聴先が消えても代替せず、物理出力を選び直�
     await screen.findByRole('option', { name: 'Headphones' });
     const select = screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' });
     expect(select).toHaveValue('missing-device');
+    expect(screen.getByText('試聴先：保存した試聴先（未確認）')).toBeVisible();
     expect(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
     expect(screen.getByText(/再生するには、試聴先を選び/)).toBeVisible();
     fireEvent.change(select, { target: { value: 'hp' } });
+    expect(screen.getByText('試聴先：Headphones')).toBeVisible();
     expect(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).not.toBeChecked();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
     expect(screen.queryByText(/再生するには、試聴先を選び/)).not.toBeInTheDocument();
@@ -424,4 +427,25 @@ it('未取得・取得中・取得済み0件・取得失敗を選択欄で区別
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '試聴先を取得できません' })).toBeInTheDocument();
     expect(screen.getAllByText('試聴先を取得できません', { exact: true })).toHaveLength(1);
+});
+
+it('録音ボタンは最大の秒数を単位つきの語で書き、日英とも小数点を出さない', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    render(<LocaleProvider store={store}><VoiceCheckModal isOpen onClose={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByRole('button', { name: '録音開始（最大10秒）' })).toBeVisible();
+    act(() => { store.setLocale('en'); });
+    expect(await screen.findByRole('button', { name: 'Start recording (up to 10 seconds)' })).toBeVisible();
+});
+
+it('再生ボタンの直下に、いまの試聴先の名前を1行で出し、長い名前も全文を残す', async () => {
+    const longName = 'Speakers (Very Long Audio Interface Name With Many Channels And Vendor Words)';
+    localStorage.setItem('vst_host_voice_check_preview_device', 'long');
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { recordingId: 9, durationMs: 1000, devices: request.action === 'devices' ? [{ id: 'long', name: longName }] : [] }));
+    open();
+    expect(await screen.findByText('試聴先：保存した試聴先（未確認）')).toBeVisible();
+    fireEvent.click(await screen.findByRole('button', { name: '試聴先を取得・更新' }));
+    const target = await screen.findByText('試聴先：' + longName);
+    expect(target).toHaveAttribute('title', '試聴先：' + longName);
+    expect(target).toHaveClass('truncate');
+    expect(screen.getByRole('button', { name: '選んだ試聴先で再生' }).compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
