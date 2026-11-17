@@ -11,10 +11,10 @@ import { RuntimeStatsContext } from '@/components/layout/RuntimeStatsContext';
 import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
-const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true, chainOn: true, preset: 'broadcast', readable: true }));
+const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true, chainOn: true, preset: 'broadcast', readable: true, deesser: null as { amount: number } | null }));
 vi.mock('../VoiceQuickControls', () => ({
     useVoiceQuick: (_running: boolean, enabled: boolean) => ({
-        stats: enabled && quick.readable ? { preparation: { engineEpoch: '1' }, noiseReductionEnabled: quick.noiseOn, builtInEffectsEnabled: quick.chainOn, builtInEffectsPreset: quick.preset, builtInEffectsAmount: 0.5 } : null,
+        stats: enabled && quick.readable ? { preparation: { engineEpoch: '1' }, noiseReductionEnabled: quick.noiseOn, builtInEffectsEnabled: quick.chainOn, builtInEffectsPreset: quick.preset, builtInEffectsAmount: 0.5, ...(quick.deesser ? { builtInDeesser: quick.deesser } : {}) } : null,
         ...quick, shownAmount: 50,
     }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
@@ -48,7 +48,7 @@ const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, 
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
-beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn = true; quick.preset = 'broadcast'; quick.readable = true; });
+beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn = true; quick.preset = 'broadcast'; quick.readable = true; quick.deesser = null; });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
@@ -309,6 +309,45 @@ it('停止中に保存値を読めないときは、OFFや整え具合を推測�
     expect(screen.queryByText('70%')).not.toBeInTheDocument();
 });
 
+it('停止中に値が読めているときだけ周囲の音を測るを2段目に出し、押せなくして理由を書く', () => {
+    const measure = vi.fn();
+    render(<SoundChain {...props()} stopped audioReady isEngineRunning={false} onMeasureNoise={measure} />);
+    const button = screen.getByRole('button', { name: message('ja', 'home.measureNoise') });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(message('ja', 'home.measureNeedsAudio'));
+    fireEvent.click(button);
+    expect(measure).not.toHaveBeenCalled();
+});
+
+it('停止中に値が読めないときは、周囲の音を測るも理由も出さない', () => {
+    quick.readable = false;
+    render(<SoundChain {...props()} stopped audioReady isEngineRunning={false} onMeasureNoise={vi.fn()} />);
+    expect(within(screen.getAllByRole('listitem')[0]).getByText(message('ja', 'flow.unknown'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message('ja', 'home.measureNoise') })).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'home.measureNeedsAudio'))).not.toBeInTheDocument();
+});
+
+it('音声エンジンがまだ無い（開始前でも停止中でもない）ときは、周囲の音を測るを出さない', () => {
+    render(<SoundChain {...props()} onMeasureNoise={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: message('ja', 'home.measureNoise') })).not.toBeInTheDocument();
+});
+
+it('停止中に声を整えるがOFFで歯擦音だけONなら、要約と本文は同じ値で歯擦音のみと出す', () => {
+    quick.chainOn = false;
+    quick.deesser = { amount: 0.4 };
+    render(<SoundChain {...props()} stopped audioReady isEngineRunning={false} />);
+    const builtin = screen.getAllByRole('listitem')[1];
+    expect(builtin).toHaveTextContent(message('ja', 'flow.deesserOnly'));
+    expect(builtin).toHaveTextContent(message('ja', 'flow.deesserLine', { amount: 40 }));
+});
+
+it('停止中に声を整えるがOFFで歯擦音もOFFなら、歯擦音の行を出さない', () => {
+    quick.chainOn = false;
+    render(<SoundChain {...props()} stopped audioReady isEngineRunning={false} />);
+    const builtin = screen.getAllByRole('listitem')[1];
+    expect(builtin).not.toHaveTextContent(message('ja', 'flow.deesserOnly'));
+    expect(builtin).not.toHaveTextContent('歯擦音');
+});
 it.each(['ja', 'en'] as const)('声を整えるがONのときは種類の名前より先にONを出し、OFFのときはOFFのまま (%s)', locale => {
     const current = stats();
     const stage = current.latencyMetadata?.stageBreakdown;

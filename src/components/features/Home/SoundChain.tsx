@@ -51,7 +51,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     // 停止中も既存の統計取得で保存値を読む。audioReady はストリーム稼働なので、停止中は stopped で取る。
     // エンジン未起動の空応答（preparation 無し）は未取得で、推測の OFF や 70% は出さない。
     const controls = !music && !unconfigured && (audioReady || stopped);
-    const q = useVoiceQuick(isEngineRunning, controls);
+    const q = useVoiceQuick(isEngineRunning, controls, stopped);
     const live = controls && q.stats?.preparation != null;
     const setting = (value: boolean | undefined) => value === undefined ? t('flow.unknown') : value ? t('flow.enabled') : t('flow.disabled');
     const validVst = stage && stage.vst.every(v => typeof v.id === 'string' && ['active', 'bypassed', 'muted', 'unavailable'].includes(v.state));
@@ -62,8 +62,12 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
     const voiceEnabled = stage?.builtinVoiceEnabled === true;
     const reverbEnabled = stage?.builtinReverbEnabled === true;
-    const deesserEnabled = Boolean(stage && stats?.builtInDeesser);
-    const deesserOnly = deesserEnabled && !voiceEnabled && !reverbEnabled;
+    // 停止中は段の統計が無いので、読めた値（live）を先に見る。要約と本文の歯擦音を同じ値で決める。
+    const deesser = (live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser;
+    const deesserEnabled = live ? Boolean(q.stats?.builtInDeesser) : Boolean(stage && stats?.builtInDeesser);
+    const voiceNowOn = live ? q.chainOn : voiceEnabled;
+    const reverbNowOn = live && q.stats?.builtInReverb != null ? q.stats.builtInReverb.enabled === true : reverbEnabled;
+    const deesserOnly = deesserEnabled && !voiceNowOn && !reverbNowOn;
     const partial = Boolean(stage && voiceEnabled !== reverbEnabled);
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
@@ -134,17 +138,16 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
 
     const noiseInfo = <InfoPopover docName="home.noise-reduction" label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>;
     const builtinInfo = <InfoPopover docName="home.voice-shaping" label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>;
-    const deesser = (live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser;
     const rows = [
         ...(music ? [] : [
             card({ key: 'noise', on: noiseOn, name: t('settings.AudioSettingsModal.105'), summary: noiseSummary,
                 statusTone: tone(live ? noiseOn : stage?.nr.enabled), info: noiseInfo,
                 action: live ? <NoiseSwitch q={q} /> : undefined,
                 body: live ? <>
-                    {!q.noiseOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOnNoise')}</p>}
+                    {!q.noiseOn && <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('home.appliesWhenOnNoise')}</p>}
                     <NoiseQuick q={q} />
                 </> : undefined,
-                tier2: onMeasureNoise ? <div className="flex min-w-0 flex-col gap-1">
+                tier2: live && onMeasureNoise ? <div className="flex min-w-0 flex-col gap-1">
                     <Button variant="outline" size="default" type="button" disabled={stopped} aria-describedby={stopped ? 'home-measure-needs-audio' : undefined} onClick={onMeasureNoise} className="home-action">{t('home.measureNoise')}</Button>
                     {stopped && <p id="home-measure-needs-audio" className="text-ui-support text-muted-foreground">{t('home.measureNeedsAudio')}</p>}
                 </div> : undefined }),
@@ -153,7 +156,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 info: builtinInfo, action: live ? <BuiltinSwitch q={q} /> : undefined,
                 body: live || builtinBreakdown ? <>
                     {builtinBreakdown}
-                    {live && !q.chainOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOnVoice')}</p>}
+                    {live && !q.chainOn && <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('home.appliesWhenOnVoice')}</p>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
                     {deesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(deesser.amount * 100) })}</span>}

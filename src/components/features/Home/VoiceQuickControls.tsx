@@ -7,7 +7,7 @@ import { SliderField } from '@/components/ui/SliderField';
 import { Switch } from '@/components/ui/switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
-import { builtinApi } from '@/api/builtinEffects';
+import { builtinApi, type BuiltinRequest } from '@/api/builtinEffects';
 import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
 
 const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
@@ -15,7 +15,8 @@ const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 // チェーン列のノイズ低減・内蔵ボイスチェーンの段で、よく使う声の調整だけを直接操作する。
 // 学習・会場・声を守る・歌向けなどの細かい調整は、設定の音づくりで行う。
 // enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。停止中でも、音声の準備ができていれば同じ取得を使う。
-export function useVoiceQuick(_running: boolean, enabled = true) {
+// stopped のあいだの操作は、音声エンジンが居るときだけ届ける。居なければ起こさず失敗にして、状態の読取りへ戻す。
+export function useVoiceQuick(_running: boolean, enabled = true, stopped = false) {
     const t = useMessages();
     const stats = useRuntimeStats(enabled);
     const [busy, setBusy] = useState(false);
@@ -23,6 +24,8 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
     const active = useRef(enabled);
     active.current = enabled;
     const refresh = async () => { if (active.current) await refreshRuntimeStats(true); };
+    const delivery = stopped ? { requireRunning: true } : {};
+    const request = (req: BuiltinRequest) => stopped ? builtinApi.request(req, { requireRunning: true }) : builtinApi.request(req);
 
     const run = async (action: () => Promise<unknown>, success: string) => {
         if (busy) return;
@@ -32,10 +35,12 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             await refresh();
             // 音づくりタブや歌向けの下書きへ、外部で値が変わったことを知らせる。
             window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { runtimeStatsRefreshed: active.current } }));
-            toast.success(success);
+            if (stopped) toast.success(success, { description: t('home.stoppedHeld') });
+            else toast.success(success);
         } catch (error) {
             console.error('Failed to apply quick voice setting', error);
             toast.error(t('home.applyFailed'));
+            if (stopped) await refresh();
         } finally {
             setBusy(false);
         }
@@ -54,6 +59,7 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             mode,
             strength: stats.noiseControlStrength > 0 ? stats.noiseControlStrength : 0.8,
             voiceGuard: stats.noiseVoiceGuard ?? true,
+            ...delivery,
         }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
     };
 
@@ -63,14 +69,14 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
     // ON/OFFは適用済みの設定（歌向けの値・残響）を保持したまま切り替える。
     const toggleChain = (active: boolean) => run(async () => {
         const current = await builtinApi.request({ action: 'snapshot' });
-        await builtinApi.request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
+        await request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
     }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
     const applyChain = (next: { preset?: BuiltInEffectsPreset; amount?: number }) => run(async () => {
         const amount = Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100;
         // OFF のときは builtin の適用で種類と整え具合だけを残す。ON にはせず、歌向けや残響も消さない。
         if (!chainOn) {
             const current = await builtinApi.request({ action: 'snapshot' });
-            await builtinApi.request({
+            await request({
                 action: 'apply',
                 epoch: current.epoch,
                 expectedRevision: current.revision,
@@ -78,7 +84,7 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
             });
             return;
         }
-        await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount });
+        await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount, ...delivery });
     }, t('settings.AudioSettingsModal.008'));
     const commitAmount = (value: number) => { setAmount(null); void applyChain({ amount: value }); };
 

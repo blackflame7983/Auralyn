@@ -37,6 +37,44 @@ fn obs_reach_never_spawns_for_stopped_or_missing_stream() {
     assert!(host.child.is_none());
 }
 
+#[test]
+fn home_operation_that_requires_a_running_engine_never_spawns_one() {
+    let mut host = AudioHost::new(std::env::temp_dir());
+    let mut ran = false;
+    let result = host.when_engine_running(true, |_| {
+        ran = true;
+        Ok(())
+    });
+    assert!(result.is_err());
+    assert!(!ran);
+    assert!(host.child.is_none());
+    // 指定が無い従来の経路は、これまでどおり操作を実行する。
+    assert!(host.when_engine_running(false, |_| Ok(())).is_ok());
+}
+
+#[cfg(windows)]
+#[test]
+fn home_operation_that_requires_a_running_engine_does_not_restart_an_exited_one() {
+    let mut host = AudioHost::new(std::env::temp_dir());
+    let mut child = Command::new("cmd.exe")
+        .args(["/C", "exit", "0"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.wait().unwrap();
+    let pid = child.id();
+    host.child = Some(child);
+    let mut ran = false;
+    let result = host.when_engine_running(true, |_| {
+        ran = true;
+        Ok(())
+    });
+    assert!(result.is_err());
+    assert!(!ran);
+    assert_eq!(host.child.as_ref().map(Child::id), Some(pid));
+}
 #[cfg(windows)]
 #[test]
 fn obs_reach_ack_captures_own_stop_but_old_cleanup_never_stops_new_tone_or_user_stop() {

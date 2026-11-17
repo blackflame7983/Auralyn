@@ -190,6 +190,24 @@ impl State {
     }
 }
 
+impl super::AudioHost {
+    /// 停止中のホームからの操作用。`require_running` のとき、engine が居なければ起動せず失敗にする。
+    /// 終了済みの engine も起こし直さない。状態の読取りが先に空を返して、画面は「状態を読み取れません」へ戻る。
+    pub fn when_engine_running<T>(
+        &mut self,
+        require_running: bool,
+        operation: impl FnOnce(&mut Self) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        if require_running {
+            let alive = match self.child.as_mut() {
+                Some(child) => child.try_wait()?.is_none(),
+                None => false,
+            };
+            anyhow::ensure!(alive, "音声エンジンが動いていないため、変更できません。");
+        }
+        operation(self)
+    }
+}
 impl Operations {
     pub(super) fn begin(&self, command: &Command) {
         if let Ok(mut state) = self.0.lock() {
