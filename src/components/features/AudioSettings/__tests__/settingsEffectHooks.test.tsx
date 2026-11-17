@@ -130,6 +130,15 @@ it('保存先は、開閉や現在の設定が変わるときだけ読み直し�
     expect(result.current?.host).toBe('WASAPI');
 });
 
+it('現在値が NaN でも、同じ入力の描画で読み直しを繰り返さない', () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI' }));
+    const { result, rerender } = renderHook((props: ReturnType<typeof input>) => useSavedConnection(props),
+        { initialProps: input({ currentSampleRate: Number.NaN, currentBufferSize: Number.NaN }) });
+    const first = result.current;
+    rerender(input({ currentSampleRate: Number.NaN, currentBufferSize: Number.NaN }));
+    expect(result.current).toBe(first);
+});
+
 it('詳しい調整の表示は保存済みの選びから始め、3択に無い大きさのときは開き、選びを保存する', () => {
     localStorage.setItem('vst_host_settings_advanced', 'true');
     const saved = renderHook(() => useAdvancedModePreference(true, 512));

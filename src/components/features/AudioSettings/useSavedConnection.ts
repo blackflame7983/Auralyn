@@ -15,8 +15,9 @@ function resolveSavedConnection({ currentConfig, currentSampleRate, currentBuffe
         bufferSize: currentBufferSize ?? saved.bufferSize } : null;
 }
 
-const sameInput = (a: SavedConnectionInput, b: SavedConnectionInput) => a.isOpen === b.isOpen && a.currentConfig === b.currentConfig
-    && a.currentSampleRate === b.currentSampleRate && a.currentBufferSize === b.currentBufferSize;
+const sameInput = (a: SavedConnectionInput, b: SavedConnectionInput) => Object.is(a.isOpen, b.isOpen)
+    && Object.is(a.currentConfig, b.currentConfig)
+    && Object.is(a.currentSampleRate, b.currentSampleRate) && Object.is(a.currentBufferSize, b.currentBufferSize);
 
 /**
  * 保存済みの接続。開閉・現在の設定・現在の値が変わった描画で、保存先から読み直す。
