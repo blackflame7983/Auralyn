@@ -14,7 +14,7 @@ const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 
 // チェーン列のノイズ低減・内蔵ボイスチェーンの段で、よく使う声の調整だけを直接操作する。
 // 学習・会場・声を守る・歌向けなどの細かい調整は、設定の音づくりで行う。
-// enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。
+// enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。停止中でも、音声の準備ができていれば同じ取得を使う。
 export function useVoiceQuick(_running: boolean, enabled = true) {
     const t = useMessages();
     const stats = useRuntimeStats(enabled);

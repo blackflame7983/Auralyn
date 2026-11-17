@@ -42,7 +42,7 @@ test.describe('段階1の画面記録', () => {
                 const clipped = await badge.evaluate(element => element.scrollWidth > element.clientWidth + 1);
                 expect(clipped).toBe(false);
                 await expect(page.locator('#home-vst-open')).toHaveText('追加');
-                await expect(page.getByRole('radio', { name: '弱', exact: true }).first()).toHaveAttribute('aria-checked', 'false');
+                await expect(page.getByRole('radio', { name: '弱', exact: true }).first()).toHaveAttribute('aria-checked', 'true');
                 await expect(page.getByRole('radio', { name: '強', exact: true }).first()).toHaveAttribute('aria-checked', 'false');
             }
             if (shot.name === 'music-sound-ja-960x640') {

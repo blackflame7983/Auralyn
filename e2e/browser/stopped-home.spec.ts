@@ -35,9 +35,11 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByText('状態を読み取れません', { exact: true })).toHaveCount(0);
         await expect(chain.locator('[data-tone="warn"]')).toHaveCount(0);
         await expect(chain.getByText('音声停止中', { exact: true })).toHaveCount(0);
-        // #665: 一文はノイズ低減と声を整えるだけ。外部VSTの追加と「その他の操作」は対象にしない。
-        await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(1);
-        await expect(chain.getByRole('listitem').getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
+        // #726: 停止中でも読めたノイズ低減と声を整えるは変えられる。開始しないと変えられない一文は出さない。
+        await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
+        await expect(chain.getByRole('switch', { name: 'ノイズ低減', exact: true })).toBeEnabled();
+        await expect(chain.getByRole('switch', { name: '声を整える', exact: true })).toBeEnabled();
+        await expect(chain.getByText('ONにするとこの値で効きます', { exact: true })).toHaveCount(2);
         await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);
@@ -77,7 +79,7 @@ test.describe('停止中のカードの高さ', () => {
         const gaps = await chain.locator('.sound-module-card').evaluateAll(cards => cards.map(card => {
             const box = card.getBoundingClientRect();
             let bottom = box.top;
-            for (const node of card.querySelectorAll('h3, button')) {
+            for (const node of card.querySelectorAll('h3, button, p, svg, [role="slider"]')) {
                 const rect = node.getBoundingClientRect();
                 if (rect.height >= 1) bottom = Math.max(bottom, rect.bottom);
             }

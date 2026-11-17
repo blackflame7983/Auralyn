@@ -16,6 +16,7 @@ import { emptyObservation } from '@/lib/preparation';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 const stats = (patch: Partial<EngineRuntimeStats> = {}) => ({
+    preparation: { engineEpoch: '1' },
     noiseReductionEnabled: true, noiseReductionMode: 'low', noiseControlStrength: 0.6, noiseVoiceGuard: false,
     builtInEffectsEnabled: true, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.5, ...patch,
 } as EngineRuntimeStats);
