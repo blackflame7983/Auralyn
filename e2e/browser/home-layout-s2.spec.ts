@@ -15,7 +15,7 @@ test.describe('出力の見出しとメーター', () => {
             await page.addInitScript(readyStorage);
             await page.goto('/');
             await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-            await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+            await page.evaluate(() => window.__e2eSetOutputMuted?.(false));
             const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
             const heading = column.getByRole('heading', { name: '出力', exact: true });
             await expect(heading).toBeVisible();
@@ -23,13 +23,14 @@ test.describe('出力の見出しとメーター', () => {
             const gap = await heading.evaluate(element => {
                 const row = element.parentElement as HTMLElement;
                 const name = row.nextElementSibling as HTMLElement;
-                const peak = name.nextElementSibling as HTMLElement;
+                const peak = name.nextElementSibling;
+                if (!(peak instanceof HTMLElement)) throw new Error('出力の数字がありません');
                 const rowBox = row.getBoundingClientRect();
                 const nameBox = name.getBoundingClientRect();
                 const peakBox = peak.getBoundingClientRect();
                 return {
                     status: Boolean(row.querySelector('[role="status"]')),
-                    meter: Boolean(element.closest('aside')!.querySelector('[role="meter"][aria-label="出力"]')),
+                    meter: Boolean(element.closest('aside')?.querySelector('[role="meter"][aria-label="出力"]')),
                     rowExtra: rowBox.height - element.getBoundingClientRect().height,
                     beforeName: nameBox.top - rowBox.bottom,
                     nameToPeak: peakBox.top - nameBox.bottom,

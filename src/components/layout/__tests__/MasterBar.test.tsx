@@ -78,7 +78,8 @@ afterEach(async () => {
 
 describe('起動時の保存ゲイン復元', () => {
     it('古い要求の遅い失敗を、新しい要求の成功後の再試行として残さない', async () => {
-        const original = vi.mocked(invoke).getMockImplementation()!;
+        const original = vi.mocked(invoke).getMockImplementation();
+        if (!original) throw new Error('invoke の実装がありません');
         let rejectFirst!: (error: Error) => void;
         const firstWrite = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
         const values: number[] = [];
@@ -135,7 +136,8 @@ describe('起動時の保存ゲイン復元', () => {
         else expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
     it('手動設定の失敗は背景の状態取得が成功しても消さない', async () => {
-        const original = vi.mocked(invoke).getMockImplementation()!;
+        const original = vi.mocked(invoke).getMockImplementation();
+        if (!original) throw new Error('invoke の実装がありません');
         vi.mocked(invoke).mockImplementation(async (command, args) => {
             if (command === 'set_output_gain') throw new Error('manual request failed');
             return original(command, args);
@@ -222,7 +224,9 @@ describe('起動時の保存ゲイン復元', () => {
         expect(screen.getByText('WASAPI')).toBeInTheDocument();
         expect(screen.queryByText('48,000 Hz')).not.toBeInTheDocument();
         expect(screen.queryByText('推定 41.3 ms')).not.toBeInTheDocument();
-        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        const active = document.activeElement;
+        if (!(active instanceof Element)) throw new Error('焦点がありません');
+        fireEvent.keyDown(active, { key: 'Escape' });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(details).toHaveFocus();

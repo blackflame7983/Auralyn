@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
+import { mustBox } from './mustBox';
 import { uiScale } from '../../src/lib/largeWindow';
 import { settleLayoutMotion } from './layoutMotion';
 
@@ -26,7 +27,7 @@ test.describe('通常のホーム表示', () => {
         await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
         await expect(page.locator('[data-vst-page]')).toHaveCount(0);
         await expect(page.locator('#home-vst-open')).toBeVisible();
-        expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
+        expect(await page.evaluate(() => window.__e2eOutputGainWrites)).toEqual([]);
         await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     });
     test('狭い画面でも入出力と出力音量を保つ', async ({ page }, testInfo) => {
@@ -39,8 +40,8 @@ test.describe('通常のホーム表示', () => {
         for (const width of [960, 1280, 1920, 2560]) {
             await page.setViewportSize({ width, height: 768 });
             const column = page.getByRole('complementary', { name: '本番中の操作' });
-            const input = (await column.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
-            const output = (await column.getByLabel(/出力のピーク/).boundingBox())!;
+            const input = await mustBox(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true }));
+            const output = await mustBox(column.getByLabel(/出力のピーク/));
             expect(output.y).toBeGreaterThan(input.y);
             expect(input.width).toBeGreaterThan(40);
             await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
@@ -62,11 +63,11 @@ test.describe('通常のホーム表示', () => {
         const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
         await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toHaveCount(1);
         await expect(slider).toHaveAttribute('aria-valuenow', '100');
-        expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
+        expect(await page.evaluate(() => window.__e2eOutputGainWrites)).toEqual([]);
         await slider.focus();
         await slider.press('Home');
-        await expect.poll(() => page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([0]);
-        await page.evaluate(() => (window as any).__e2eSetOutputGain(0.5));
+        await expect.poll(() => page.evaluate(() => window.__e2eOutputGainWrites)).toEqual([0]);
+        await page.evaluate(() => window.__e2eSetOutputGain?.(0.5));
         await expect(slider).toHaveAttribute('aria-valuenow', '50');
         await page.setViewportSize({ width: 960, height: 640 });
         await expect(slider).toBeFocused();
@@ -96,7 +97,7 @@ test.describe('通常のホーム表示', () => {
             await page.setViewportSize({ width, height: 640 });
             const samples = [];
             for (const muted of [false, true, false]) {
-                await page.evaluate(muted => (window as any).__e2eSetOutputMuted(muted), muted);
+                await page.evaluate(muted => window.__e2eSetOutputMuted?.(muted), muted);
                 const badge = routing.getByRole('status', { includeHidden: true });
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
                 // 幅の変更で区画が滑って移る間（#298）は測らず、配置が落ち着いてから比べる。
@@ -106,8 +107,10 @@ test.describe('通常のホーム表示', () => {
             // #580: ミュートでないときは札の行を残さない。札が折り返すと見出し側だけ高くなってよい。中央のボタン位置は変えない。
             expect(samples[1].button).toEqual(samples[0].button);
             expect(samples[2]).toEqual(samples[0]);
-            expect(samples[0].row!.height).toBeLessThan(40);
-            await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
+            const quietRow = samples[0].row;
+            if (!quietRow) throw new Error('見出しの寸法が取れない');
+            expect(quietRow.height).toBeLessThan(40);
+            await page.evaluate(() => window.__e2eSetOutputMuted?.(true));
             const recovery = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
             await expect(recovery).toBeInViewport();
             await recovery.click();
@@ -115,7 +118,7 @@ test.describe('通常のホーム表示', () => {
             // 復旧操作へ案内するだけで、ミュートを勝手に解除しない。
             await expect(recovery).toBeVisible();
             const column = page.getByRole('complementary', { name: '本番中の操作' });
-            const box = (await column.boundingBox())!;
+            const box = await mustBox(column);
             expect(Math.round(box.x + box.width)).toBe(width);
             expect(Math.round(box.y + box.height)).toBe(640);
             expect(Math.round(box.width)).toBe(212);
@@ -296,8 +299,8 @@ test('最小〜最大: VSTのページは右の列と重ならず、Escapeでは
         await expect(peak).toBeVisible();
         await expect(main).not.toHaveAttribute('inert', '');
         await expect.poll(async () => {
-            const panel = (await vstPage.boundingBox())!;
-            const peakBox = (await peak.boundingBox())!;
+            const panel = await mustBox(vstPage);
+            const peakBox = await mustBox(peak);
             return peakBox.x >= panel.x + panel.width - 1 || panel.x >= peakBox.x + peakBox.width - 1;
         }).toBe(true);
         await reachable(page.getByRole('button', { name: '緊急ミュート', exact: true }), page);
@@ -332,8 +335,8 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
         // 窓の大きさを変えた直後は、拡大率と列の幅が落ち着くまで位置が動く。列とメーターを同じ時点で測り、収まるまで待つ。
         const expectedHeight = 16 * uiScale(width, width <= 1024 ? 640 : 1080);
         await expect.poll(async () => {
-            const columnBox = (await column.boundingBox())!;
-            const box = (await meter.boundingBox())!;
+            const columnBox = await mustBox(column);
+            const box = await mustBox(meter);
             return {
                 height: Math.abs(box.height - expectedHeight) < 0.05,
                 left: box.x >= columnBox.x - 1,
@@ -343,7 +346,9 @@ test('右の列の横メーターは列の中に収まり、状態文はバー�
         const status = meter.locator('[data-meter-status]');
         await expect(status).toBeVisible();
         expect(await status.evaluate(el => {
-            const bar = el.closest('[role="meter"]')!.getBoundingClientRect();
+            const barNode = el.closest('[role="meter"]');
+            if (!barNode) return false;
+            const bar = barNode.getBoundingClientRect();
             const text = el.getBoundingClientRect();
             return text.left >= bar.left - 1 && text.right <= bar.right + 1 && text.top >= bar.top - 1 && text.bottom <= bar.bottom + 1;
         })).toBe(true);
@@ -471,20 +476,24 @@ test.describe('メーター数値の幅', () => {
         // 実機と同様に通知を継続し、段階ごとに目標値を切り替える。
         await page.evaluate(() => {
             const state = { value: null as number | null };
-            (window as any).__layoutMeterState = state;
+            window.__layoutMeterState = state;
             setInterval(() => {
-                if (state.value !== null) (window as any).__e2eEmit('audio-level', { input: [state.value, state.value], output: [state.value, state.value] });
+                if (state.value !== null) window.__e2eEmit?.('audio-level', { input: [state.value, state.value], output: [state.value, state.value] });
             }, 100);
         });
         const emit = (value: number | null) => page.evaluate(value => {
-            (window as any).__layoutMeterState.value = value;
-            (window as any).__e2eEmit('audio-level', value === null ? { input: [], output: [] } : { input: [value, value], output: [value, value] });
+            const held = window.__layoutMeterState;
+            if (!held) throw new Error('メーター状態がありません');
+            held.value = value;
+            window.__e2eEmit?.('audio-level', value === null ? { input: [], output: [] } : { input: [value, value], output: [value, value] });
         }, value);
         {
             await expect(send).toHaveCount(1);
             for (const locator of [input, send]) {
                 await expect(locator).toBeVisible();
-                await (await locator.elementHandle())!.waitForElementState('stable');
+                const handle = await locator.elementHandle();
+                if (!handle) throw new Error('メーターがありません');
+                await handle.waitForElementState('stable');
             }
             await emit(0.1);
             await expect.poll(async () => {
@@ -495,8 +504,8 @@ test.describe('メーター数値の幅', () => {
             await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toBeVisible();
             // 状態の文言が変わるとホームの区画が位置を補間する（#298）。動きの途中ではなく、止まった位置で比べる。
             await settleLayoutMotion(page);
-            const inputBaseline = (await input.boundingBox())!;
-            const sendBaseline = (await send.boundingBox())!;
+            const inputBaseline = await mustBox(input);
+            const sendBaseline = await mustBox(send);
             await emit(1.2);
             // 出力のクリップは、いまの状態の「送る音」に出る。右の列に残るのは入力の1つ（#724）。
             const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
@@ -506,7 +515,7 @@ test.describe('メーター数値の幅', () => {
             await expect(sendReset).toBeVisible();
             await settleLayoutMotion(page);
             expect(await input.boundingBox()).toEqual(inputBaseline);
-            expect((await send.boundingBox())!.height).toBeCloseTo(sendBaseline.height, 1);
+            expect((await mustBox(send)).height).toBeCloseTo(sendBaseline.height, 1);
             await page.screenshot({ path: testInfo.outputPath('clip.png') });
             // 出力のクリップは、入力の履歴とは独立して解除する。
             await emit(0.1);
@@ -518,12 +527,12 @@ test.describe('メーター数値の幅', () => {
             await settleLayoutMotion(page);
             await expect(send.locator('[data-meter-status]')).toHaveText('無音');
             expect(await input.boundingBox()).toEqual(inputBaseline);
-            expect((await send.boundingBox())!.height).toBeCloseTo(sendBaseline.height, 1);
+            expect((await mustBox(send)).height).toBeCloseTo(sendBaseline.height, 1);
             // 不正なレベル通知は更新待ちになり、バーの寸法は変えない。
             await emit(null);
             await expect(send.locator('[data-meter-status]')).toHaveText('受信待ち');
             expect(await input.boundingBox()).toEqual(inputBaseline);
-            expect((await send.boundingBox())!.height).toBeCloseTo(sendBaseline.height, 1);
+            expect((await mustBox(send)).height).toBeCloseTo(sendBaseline.height, 1);
         }
     });
     test('数値の桁が変わっても入力メーターのバー幅と隣の操作位置は変わらない', async ({ page }) => {
@@ -543,7 +552,7 @@ test.describe('メーター数値の幅', () => {
         // 音声処理には触れず、実UIの値の欄に異なる桁数を入れてレイアウトだけを検査する。
         for (const text of ['-9.9 dBFS', '-10.0 dBFS', '-100.0 dBFS', '−∞ dBFS', '']) {
             await value.evaluate((element, text) => { element.textContent = text; }, text);
-            samples.push({ bar: (await bar.boundingBox())!.width, value: (await value.boundingBox())!.width, control: (await control.boundingBox())!.x });
+            samples.push({ bar: (await mustBox(bar)).width, value: (await mustBox(value)).width, control: (await mustBox(control)).x });
         }
         for (const sample of samples) {
             expect(sample.bar).toBeCloseTo(samples[0].bar, 3);

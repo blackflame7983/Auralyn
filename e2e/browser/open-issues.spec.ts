@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { mustBox } from './mustBox';
 
 test.use({ liveHome: true, registeredModes: true, builtinEnabled: true });
 test.beforeEach(async ({ page }) => {
@@ -21,8 +22,11 @@ for (const width of [1200, 1600, 1920, 2560]) {
         await expect(page.locator('.home-content')).toHaveCount(0);
         await expect.poll(async () => {
             const gap = await page.evaluate(() => {
-                const pageBox = document.querySelector('[data-vst-page]')!.getBoundingClientRect();
-                const column = document.querySelector('aside[aria-label="本番中の操作"]')!.getBoundingClientRect();
+                const pageNode = document.querySelector('[data-vst-page]');
+                const columnNode = document.querySelector('aside[aria-label="本番中の操作"]');
+                if (!(pageNode instanceof HTMLElement) || !(columnNode instanceof HTMLElement)) throw new Error('列かページがありません');
+                const pageBox = pageNode.getBoundingClientRect();
+                const column = columnNode.getBoundingClientRect();
                 return column.left - pageBox.right;
             });
             return gap >= -1;
@@ -69,8 +73,8 @@ test('動きを減らす設定でもVSTのページは右の列と重ならな�
     const peak = column.getByLabel(/出力のピーク/);
     await expect(peak).toBeVisible();
     await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
-    const pageBox = (await page.locator('[data-vst-page]').boundingBox())!;
-    const peakBox = (await peak.boundingBox())!;
+    const pageBox = await mustBox(page.locator('[data-vst-page]'));
+    const peakBox = await mustBox(peak);
     expect(peakBox.x).toBeGreaterThanOrEqual(pageBox.x + pageBox.width - 1);
     expect(await page.locator('.workspace-body').evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');
 });
