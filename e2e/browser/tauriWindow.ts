@@ -3,10 +3,25 @@ export interface TauriInternals {
     invoke: (command: string, args?: unknown) => Promise<unknown>;
 }
 
+/** 模擬の音声開始・再起動へ渡った要求の記録（src/dev/tauriMock.ts の __e2eStarts）。 */
+export interface StartRequest {
+    host?: string;
+    input?: string;
+    inputId?: string;
+    output?: string;
+    outputId?: string;
+    sampleRate?: number;
+    bufferSize?: number;
+    inputSource?: { source: { kind: string; config: { purpose: string } }; candidateId?: string };
+}
+
 declare global {
     interface Window {
         __TAURI_INTERNALS__?: TauriInternals;
         __e2eEmit?: (event: string, payload: unknown) => void;
+        __e2eStarts?: StartRequest[];
+        __e2eStartFailure?: boolean;
+        __e2eArmed?: boolean;
         /** 配信ラックへ送った要求の記録（mixing.spec の模擬）。 */
         __postRequests?: { action: string; ids?: string[] }[];
     }

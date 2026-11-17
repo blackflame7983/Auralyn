@@ -60,6 +60,7 @@ for (const mode of ['independent', 'insert'] as const) {
 
 // ASIO で「アプリの音声」を選べない理由から、畳まれた音質調整の接続方式へ移れる（#290）。
 test('アプリの音声を選べない理由から接続方式の選択へ移る', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();

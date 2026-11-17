@@ -61,7 +61,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
-        usage: t('purpose.section'), layout: t('purpose.label'),
+        usage: t('purpose.section'),
     };
     const headings = {
         stage: purpose === 'music' ? 'help.home.stage.musicTitle' : 'help.home.stage.title',

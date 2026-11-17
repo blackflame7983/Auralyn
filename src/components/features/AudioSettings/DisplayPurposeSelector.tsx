@@ -1,34 +1,8 @@
-import { Field } from '@/components/ui/Field';
-import { Select } from '@/components/ui/Select';
-import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { publishDisplayPurpose } from '@/hooks/useAlignInputPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { InfoPopover } from '@/components/ui/InfoPopover';
-
-// 接続のページの先頭に置く。表示はすぐ保存する。入力の用途は、合っていなければ尋ねてから下書きへ入れる。
-export function DisplayPurposeSelector({ onChanged }: { onChanged?: (purpose: DisplayPurpose) => void }) {
-    const t = useMessages();
-    const [purpose, setPurpose] = useDisplayPurpose();
-    return <div className="mb-3 space-y-1 text-ui-support">
-        <div className="flex flex-wrap items-center gap-2">
-            <Field label={t('purpose.label')} description={t('purpose.hint')}>
-                <Select value={purpose} onChange={event => {
-                    const next = event.target.value as DisplayPurpose;
-                    setPurpose(next);
-                    publishDisplayPurpose(next);
-                    onChanged?.(next);
-                }}>
-                    <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
-                </Select>
-            </Field>
-            <InfoPopover label={t('purpose.label')}>{t('purpose.hint')}</InfoPopover>
-        </div>
-        <p className="text-muted-foreground">{t('purpose.immediate')}</p>
-    </div>;
-}
 
 // 遅延などの数値は配信中に毎回見るものではないので、ホームの表示モードではなく外観の設定1つで出し分ける。
 // 保存先は以前の「かんたん／詳細」と同じキーで、詳細表示を使っていた人はそのまま数値が出る。

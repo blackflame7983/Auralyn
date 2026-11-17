@@ -1,6 +1,6 @@
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -10,13 +10,16 @@ import { useAlignInputPurpose } from '@/hooks/useAlignInputPurpose';
 import { useStaleGuard } from '@/hooks/useStaleGuard';
 import { type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 
-export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection }: {
+export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection, showKind = true }: {
     value: InputSourceRequest; onChange: (value: InputSourceRequest) => void; disabled: boolean; isAsio: boolean;
     status?: { failed: boolean; waitingForAudio: boolean };
     /** ASIO で「アプリの音声」を選べない理由から、接続方式の設定へ移す（#290）。 */
     onChooseConnection?: () => void;
+    /** 音楽鑑賞、または保存済みがアプリの音声のときだけ、入力の種類を出す。 */
+    showKind?: boolean;
 }) {
     const t = useMessages();
+    const sourceId = useId();
     const [apps, setApps] = useState<ProcessInputCandidate[]>([]);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -53,9 +56,9 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
     const aligned = pendingPurpose?.source.config.purpose;
-    return <><fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
-        <legend className="text-ui-heading font-semibold">{t('processInput.title')}</legend>
-        <Field label={t('processInput.source')}><Select  aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
+    return <>{showKind && <fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
+        <legend className="text-ui-heading font-semibold"><label htmlFor={sourceId}>{t('processInput.source')}</label></legend>
+        <Field id={sourceId} label={null}><Select aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }
             }}>
@@ -95,18 +98,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             <summary className="cursor-pointer">{t('processInput.cable')}</summary>
             <p className="mt-2">{t('processInput.cableHelp')}</p>
         </details>
-        <Field label={t('processInput.purpose')}><Select  value={value.source.config.purpose} onChange={e => {
-                const purpose = e.target.value as 'voice' | 'music';
-                onChange({ ...value, source: value.source.kind === 'process_loopback'
-                    ? { kind: 'process_loopback', config: { ...value.source.config, purpose } }
-                    : { kind: 'device', config: { purpose } } });
-            }}>
-                <option value="voice">{t('processInput.voice')}</option>
-                <option value="music">{t('processInput.music')}</option>
-            </Select>
-        </Field>
-        {(process || value.source.config.purpose === 'music') && <p className="text-ui-support text-muted-foreground">{t('processInput.purposeHelp')}</p>}
-    </fieldset>
+    </fieldset>}
     <ConfirmDialog
         isOpen={pendingPurpose !== null}
         title={t(aligned === 'voice' ? 'purpose.askVoiceTitle' : 'purpose.askMusicTitle')}

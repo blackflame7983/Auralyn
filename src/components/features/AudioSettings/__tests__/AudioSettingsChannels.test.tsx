@@ -78,6 +78,7 @@ it('設定プリセットは同名機器のIDと独立した入力・出力ペ�
     const update = vi.fn();
     render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={update} />);
     await screen.findByRole('radio', { name: '入力チャンネル 5/6' });
+    fireEvent.click(screen.getByText('入出力プリセット'));
     fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'other' } });
     expect(screen.getByRole('radio', { name: '入力チャンネル 5/6' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('2,3');

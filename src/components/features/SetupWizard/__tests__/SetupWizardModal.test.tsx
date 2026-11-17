@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { SetupWizardModal } from '../SetupWizardModal';
+import type { SetupWizardModalProps } from '../wizardModel';
 import type { AudioDevice } from '../../../../api/audio';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -1414,4 +1415,71 @@ it.each(['ja', 'en'] as const)('最初の画面の仮想ケーブルの前触れ
     render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
     expect(await screen.findByText(message(locale, 'wizard.cableLater', { step: message(locale, 'wizard.output') }))).toBeInTheDocument();
     expect(screen.queryByText(message(locale, 'wizard.troubleBefore'), { exact: false })).not.toBeInTheDocument();
+});
+
+describe('使い道の切り替えからのセットアップ（#723）', () => {
+    const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
+    const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
+    const saveLikeApp = (onApplyConfig: ReturnType<typeof vi.fn<SetupWizardModalProps['onApplyConfig']>>) => onApplyConfig.mockImplementation((host, input, output, actual, source) => {
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size,
+            inputChannels: actual.routing?.inputChannels, outputRouting: actual.routing?.outputRouting, ...(source ? { inputSource: source } : {}) }));
+        localStorage.setItem('vst_host_wizard_done', 'true');
+    });
+    const storedJson = (key: string) => JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, { inputSource?: unknown; output?: string } | undefined> & { inputSource?: unknown };
+    const advance = async () => {
+        for (let step = 0; step < 4 && !screen.queryByRole('button', { name: '設定を保存して開始' }); step += 1) {
+            const next = await screen.findByRole('button', { name: /次へ/ });
+            await waitFor(() => expect(next).toBeEnabled());
+            fireEvent.click(next);
+            await act(async () => {});
+        }
+        return screen.findByRole('button', { name: '設定を保存して開始' });
+    };
+
+    it('配信へ戻るときは目的を決めて入力から始め、声の用途で保存して機器とホームの表示を残す', async () => {
+        localStorage.setItem('auralyn_display_purpose', 'music');
+        const onApplyConfig = vi.fn<SetupWizardModalProps['onApplyConfig']>();
+        saveLikeApp(onApplyConfig);
+        render(<SetupWizardModal isOpen initialGoal="obs" onClose={vi.fn()} onSkip={vi.fn()} onApplyConfig={onApplyConfig} />);
+        fireEvent.click(await advance());
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        const purpose = { kind: 'device', config: { purpose: 'voice' } };
+        expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({ inputSource: { source: purpose } }));
+        expect(onApplyConfig.mock.calls[0][4]).toEqual(purpose);
+        expect(localStorage.getItem('auralyn_display_purpose')).toBe('voice');
+        expect(storedJson('auralyn_usage_devices').voice?.inputSource).toEqual(purpose);
+    });
+
+    it('音楽鑑賞へ初めて切り替えるときは、音楽の用途で保存して機器とホームの表示を残す', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        const original = vi.mocked(invoke).getMockImplementation();
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') return { ...snapshot, config: { ...fx, active: false, reverb: { ...fx.reverb, enabled: false } } };
+            return original?.(command, args);
+        });
+        localStorage.setItem('auralyn_display_purpose', 'voice');
+        const onApplyConfig = vi.fn<SetupWizardModalProps['onApplyConfig']>();
+        saveLikeApp(onApplyConfig);
+        render(<SetupWizardModal isOpen initialGoal="music" onClose={vi.fn()} onSkip={vi.fn()} onApplyConfig={onApplyConfig} />);
+        fireEvent.click(await advance());
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        const purpose = { kind: 'device', config: { purpose: 'music' } };
+        expect(onApplyConfig.mock.calls[0][4]).toEqual(purpose);
+        expect(storedJson('vst_host_audio_config').inputSource).toEqual(purpose);
+        expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
+        expect(storedJson('auralyn_usage_devices').music?.output).toBe('Headphones');
+    });
+
+    it('目的を決めない通常のセットアップは、使い道の記録と表示を変えない', async () => {
+        localStorage.setItem('auralyn_display_purpose', 'music');
+        const { onApplyConfig } = await openWizard();
+        saveLikeApp(onApplyConfig);
+        await chooseObsRoute();
+        fireEvent.click(await screen.findByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(onApplyConfig.mock.calls[0]).toHaveLength(4);
+        expect(localStorage.getItem('auralyn_usage_devices')).toBeNull();
+        expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
+    });
 });

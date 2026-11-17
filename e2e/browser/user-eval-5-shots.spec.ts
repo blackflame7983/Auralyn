@@ -65,12 +65,12 @@ test.describe('段階5の画面記録', () => {
             test(`connect-${locale}-1024x768`, async ({ page }) => {
                 await openConfigured(page, locale, 1024, 768, false);
                 await page.getByRole('button', { name: locale === 'ja' ? '接続（オーディオの設定）' : 'Connection (audio settings)', exact: true }).click();
-                await expect(page.getByRole('heading', { name: locale === 'ja' ? '使い方' : 'How you use it', exact: true })).toBeVisible();
+                await expect(page.getByRole('button', { name: locale === 'ja' ? '切り替える' : 'Switch', exact: true })).toBeVisible();
                 if (recordShots) await page.screenshot({ path: `${dir}/connect-${locale}-1024x768.png`, animations: 'disabled' });
                 if (locale !== 'ja') return;
                 await page.getByRole('button', { name: '設定', exact: true }).click();
                 await page.getByRole('tab', { name: '外観', exact: true }).click();
-                await expect(page.getByText('配信と音楽鑑賞の切り替えは、接続のページの「使い方」にあります。')).toBeVisible();
+                await expect(page.getByText('配信と音楽鑑賞の切り替えは、接続のページの「使い道」にあります。')).toBeVisible();
                 if (recordShots) await page.screenshot({ path: `${dir}/appearance-ja-1024x768.png`, animations: 'disabled' });
             });
         }

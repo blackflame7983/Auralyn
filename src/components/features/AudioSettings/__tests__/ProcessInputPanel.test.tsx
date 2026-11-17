@@ -36,10 +36,9 @@ it('再生先が変わっても同じアプリと新しい用途を保持し、�
     await waitFor(() => expect(screen.getByRole('option', { name: 'same.exe' })).toBeInTheDocument());
     fireEvent.change(screen.getByRole('combobox', { name: '再生中のアプリ' }), { target: { value: 'same' } });
     fireEvent.click(screen.getByRole('button', { name: 'アプリ一覧を更新' }));
-    fireEvent.change(screen.getByRole('combobox', { name: '入力の用途' }), { target: { value: 'voice' } });
     await act(async () => { finish([{ ...app('same'), routes: [{ id: 'moved', name: '移動後の出力先', muted: true }] }]); });
     expect(screen.getByRole('combobox', { name: '再生中のアプリ' })).toHaveValue('same');
-    expect(screen.getByRole('combobox', { name: '入力の用途' })).toHaveValue('voice');
+    expect(screen.getByTestId('source').textContent).toContain('"purpose":"voice"');
     expect(screen.getByRole('combobox', { name: '原音の出力先' })).toHaveValue('');
     fireEvent.change(screen.getByRole('combobox', { name: '原音の出力先' }), { target: { value: 'moved' } });
     expect(screen.getByTestId('source').textContent).toContain('"rawEndpointId":"moved"');

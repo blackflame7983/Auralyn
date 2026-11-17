@@ -33,7 +33,7 @@ export const knownViolations: KnownViolation[] = [];
 
 export const purposeAllowances: PurposeAllowance[] = [
     // 外観は、接続ページにある使い方の切替を案内する。設定のタブ名も残す。
-    { screen: 'appearance', purpose: 'music', locale: 'ja', match: '配信と音楽鑑賞の切り替え', reason: '外観のページが、接続ページの「使い方」へ案内する文' },
+    { screen: 'appearance', purpose: 'music', locale: 'ja', match: '配信と音楽鑑賞の切り替え', reason: '外観のページが、接続ページの「使い道」へ案内する文' },
     { screen: 'appearance', purpose: 'music', locale: 'ja', match: 'OBS連携', reason: '設定のタブ名。画面の切替なので音楽鑑賞でも残す' },
     { screen: 'appearance', purpose: 'music', locale: 'en', match: 'Switch between streaming', reason: '外観のページが、接続ページの「使い方」へ案内する文' },
     { screen: 'appearance', purpose: 'music', locale: 'en', match: 'OBS', reason: '設定のタブ名。画面の切替なので音楽鑑賞でも残す' },
@@ -50,6 +50,6 @@ export const purposeAllowances: PurposeAllowance[] = [
     { screen: 'obs', purpose: 'music', locale: 'en', match: 'Stop streaming and recording before applying.', reason: 'OBSの設定を適用する前に、配信と録画を止める注意' },
 
     // 接続ページは、音楽鑑賞では出さないことの説明を持つ。
-    { screen: 'connect', purpose: 'music', locale: 'ja', match: 'ホームの表示を「配信・通話向け」にすると使えます。', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
-    { screen: 'connect', purpose: 'music', locale: 'en', match: 'For streaming / calls', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
+    { screen: 'connect', purpose: 'music', locale: 'ja', match: '使い道を配信・通話にすると使えます。', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
+    { screen: 'connect', purpose: 'music', locale: 'en', match: 'Streaming & calls', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
 ];

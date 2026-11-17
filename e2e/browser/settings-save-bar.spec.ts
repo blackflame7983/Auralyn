@@ -39,15 +39,16 @@ async function openPage(page: Page, locale: 'ja' | 'en', size: { width: number; 
 
 async function lastControlClearsBar(page: Page) {
     const place = await page.evaluate(() => {
-        const settings = document.querySelector('[data-settings-page]')!;
-        const scroller = settings.querySelector<HTMLElement>('.overflow-y-auto')!;
-        const bar = settings.querySelector('[data-save-bar]')!;
+        const settings = document.querySelector('[data-settings-page]');
+        const scroller = settings?.querySelector<HTMLElement>('.overflow-y-auto');
+        const bar = settings?.querySelector('[data-save-bar]');
+        if (!scroller || !bar) return null;
         scroller.scrollTop = scroller.scrollHeight;
         const barTop = bar.getBoundingClientRect().top;
         const scrollerBox = scroller.getBoundingClientRect();
         const controls = [...scroller.querySelectorAll<HTMLElement>('button, a, input, select, textarea')]
             .filter(element => {
-                if (element.closest('[hidden]')) return false;
+                if (element.closest('[hidden]') || element.closest('details:not([open])')) return false;
                 const box = element.getBoundingClientRect();
                 return box.height > 1 && box.bottom > scrollerBox.top + 1 && box.top < scrollerBox.bottom - 1;
             });
@@ -59,6 +60,7 @@ async function lastControlClearsBar(page: Page) {
             text: (last.getAttribute('aria-label') || last.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
         };
     });
+    if (!place) throw new Error('設定のページと保存の欄が見つかりません');
     expect(place.bottom, place.text).toBeLessThanOrEqual(place.barTop + 1);
 }
 

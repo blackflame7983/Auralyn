@@ -1,5 +1,6 @@
 import type { AudioConfig, AudioDevice } from '../../../api/audio';
 import { isPlaybackInput } from '@/lib/audioDevices';
+import type { InputSource } from '@/lib/inputSource';
 
 export const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
@@ -32,12 +33,14 @@ export interface SetupWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSkip?: () => void;
-    onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig) => void | Promise<void>;
+    onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig, inputSource?: InputSource) => void | Promise<void>;
     onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
     /** セットアップを終えて閉じるとき、VST を選んでいれば true。 */
     onCompleted?: (openVstPage: boolean) => void;
+    /** 使い道の初回だけ、目的を決めた状態で入力の手順から開く。 */
+    initialGoal?: UserGoal;
 }
 
 export type WizardState = 'welcome' | 'usage_selection' | 'input_selection' | 'output_selection' | 'confirmation' | 'configuring' | 'complete';

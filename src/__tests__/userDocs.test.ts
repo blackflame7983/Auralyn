@@ -112,7 +112,6 @@ describe('利用者向け原稿', () => {
             expect(body, locale).not.toContain(message(locale, 'help.home.other', {
                 connect: message(locale, 'rail.connect'),
                 usage: message(locale, 'purpose.section'),
-                layout: message(locale, 'purpose.label'),
             }));
         }
     });

@@ -9,10 +9,12 @@ import { listen } from '@tauri-apps/api/event';
 import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
 import { readAudioPreferences } from '@/lib/audioPreferences';
+import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { usageDeviceFromPreferences, writeUsageDevice } from '@/lib/usageDevices';
 import { resolveAudioDevice } from '@/lib/audioDevices';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
-export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: SetupWizardModalProps) {
+export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, initialGoal }: SetupWizardModalProps) {
 
     const [audioStartError, setAudioStartError] = useState('');
     // 選択は、完了後に VST のページを開くかどうか。数値の詳細は VST を選んだときだけ有効にする。
@@ -23,6 +25,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
     const hasTouchedEngineRef = useRef(false);
     const operationRef = useRef(false);
     const devicesRequestRef = useRef(0);
+    const goalOnOpen = useRef<UserGoal | null>(null);
+    const selectGoalRef = useRef<(goal: UserGoal, advance?: boolean) => void>(() => {});
+    const loadDevicesRef = useRef<(forceRefresh?: boolean) => Promise<unknown>>(async () => null);
+    const autoSelectInputRef = useRef<() => void>(() => {});
     const [isBusy, setIsBusy] = useState(false);
     const [isCheckingConnection, setIsCheckingConnection] = useState(false);
     const [initialStateReady, setInitialStateReady] = useState(false);
@@ -35,7 +41,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
             setIsCloseConfirmOpen(true);
             return;
         }
-        performClose();
+        void performClose();
     };
 
     const performClose = async (next = onClose) => {
@@ -110,6 +116,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
     useEffect(() => {
         let active = true;
         if (isOpen) {
+            goalOnOpen.current = initialGoal ?? null;
             setAudioStartError('');
             try {
                 const saved = localStorage.getItem('vst_host_setup_goal');
@@ -119,7 +126,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
             setInitialStateReady(false);
             setPanelChoice(false);
             setInitialStateError(false);
-            loadDevices();
+            void loadDevicesRef.current();
             // Capture initial state
             audioApi.getAudioState().then(async s => {
                 // プロセスが常駐していてもストリームは停止している場合がある。
@@ -134,6 +141,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
                 if (active) setInitialStateError(true);
             });
         } else {
+            goalOnOpen.current = null;
             // Reset state on close
             setState('usage_selection');
             setConfig({
@@ -150,7 +158,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
             initialStateRef.current = null;
         }
         return () => { active = false; devicesRequestRef.current += 1; };
-    }, [isOpen]);
+    }, [isOpen, initialGoal]);
 
     // Meter Listener
     useEffect(() => {
@@ -167,15 +175,15 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
         }));
 
         return () => {
-            unlistenPromise.then(unlisten => unlisten());
-            errorListeners.forEach(promise => { promise.then(unlisten => unlisten()); });
+            void unlistenPromise.then(unlisten => unlisten());
+            errorListeners.forEach(promise => { void promise.then(unlisten => unlisten()); });
         };
     }, [isOpen]);
 
     // Auto-select input when devices are loaded (if not already selected)
     useEffect(() => {
         if ((!isAsioHost(config.host) || initialStateReady) && state === 'input_selection' && !config.input && availableInputs.length > 0) {
-            autoSelectInput();
+            autoSelectInputRef.current();
         }
     }, [availableInputs, state, config.host, config.input, config.goal, initialStateReady]);
 
@@ -212,6 +220,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
                         : outputs.find(d => d.name === prev.output?.name) || null,
                 };
             });
+            const goal = goalOnOpen.current;
+            goalOnOpen.current = null;
+            if (goal) selectGoalRef.current(goal);
             return { inputs, outputs };
         } catch (e) {
             if (request !== devicesRequestRef.current) return null;
@@ -222,6 +233,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
             if (request === devicesRequestRef.current) setIsLoadingDevices(false);
         }
     };
+
+    loadDevicesRef.current = loadDevices;
 
     const handleRescanVirtualDevices = async () => {
         const refreshed = await loadDevices(true);
@@ -254,6 +267,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
         const input = config.goal === 'music' ? (candidates.length === 1 ? candidates[0] : null) : current ?? recommendMicrophone(availableInputs);
         if (input) setConfig(prev => ({ ...prev, input }));
     };
+    autoSelectInputRef.current = autoSelectInput;
 
     // --- Actions ---
 
@@ -281,6 +295,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
         if (advance) setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };
+    selectGoalRef.current = selectGoal;
 
     const confirmInput = () => {
         if (!config.input) {
@@ -404,8 +419,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
                 setInputLevel(0);
             }
 
+            const directedSource = initialGoal ? { kind: 'device' as const, config: { purpose: initialGoal === 'music' ? 'music' as const : 'voice' as const } } : undefined;
             const startedConfig = await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
-                config.input.id, config.output.id, undefined, initialRouting());
+                config.input.id, config.output.id, undefined, initialRouting(), ...(directedSource ? [{ source: directedSource }] : []));
             const actualConfig = { ...startedConfig, routing: startedConfig.routing ?? initialRouting() };
             if (config.goal === 'music') {
                 const stats = await audioApi.getEngineRuntimeStats();
@@ -437,13 +453,14 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
             if (config.goal === 'music') {
                 const expected: Record<string, string> = {
                     vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size,
-                        inputChannels: actualConfig.routing.inputChannels, outputRouting: actualConfig.routing.outputRouting }),
+                        inputChannels: actualConfig.routing.inputChannels, outputRouting: actualConfig.routing.outputRouting,
+                        ...(directedSource ? { inputSource: directedSource } : {}) }),
                     vst_host_wizard_done: 'true', vst_host_setup_goal: 'music',
                     ...(panelChoice ? { vst_host_beginner_mode: 'false' } : {}),
                 };
                 const previous = Object.fromEntries(Object.keys(expected).map(key => [key, localStorage.getItem(key)]));
                 try {
-                    await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                    await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(directedSource ? [directedSource] as const : []));
                     localStorage.setItem('vst_host_setup_goal', 'music');
                     if (panelChoice) saveBeginnerMode(false);
                     if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
@@ -451,8 +468,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
                     for (const [key, value] of Object.entries(expected)) {
                         try {
                             if (localStorage.getItem(key) === value) {
-                                if (previous[key] === null) localStorage.removeItem(key);
-                                else localStorage.setItem(key, previous[key]!);
+                                const prior = previous[key];
+                                if (prior === null) localStorage.removeItem(key);
+                                else localStorage.setItem(key, prior);
                             }
                         } catch { /* ストレージ自体の障害も完了にせず知らせる */ }
                     }
@@ -461,10 +479,17 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: 
                 }
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
-                await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(directedSource ? [directedSource] as const : []));
                 if (config.goal) localStorage.setItem('vst_host_setup_goal', config.goal);
                 if (panelChoice) saveBeginnerMode(false);
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
+            }
+            if (directedSource) {
+                const purpose = directedSource.config.purpose;
+                const saved = readAudioPreferences();
+                const record = saved && usageDeviceFromPreferences(saved, purpose);
+                if (record) writeUsageDevice(purpose, record);
+                saveDisplayPurpose(purpose);
             }
             hasTouchedEngineRef.current = false;
 

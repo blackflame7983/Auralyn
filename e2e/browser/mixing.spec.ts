@@ -162,9 +162,10 @@ test('ホームの表示が音楽鑑賞向けで配信向けの設定が既定�
     await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
     await fixture(page, true, false, false);
     await page.addInitScript(() => {
-        const internal = (window as any).__TAURI_INTERNALS__;
+        const internal = window.__TAURI_INTERNALS__;
+        if (!internal) return;
         const original = internal.invoke;
-        internal.invoke = async (command: string, args: unknown) => command === 'live_output'
+        internal.invoke = async (command, args) => command === 'live_output'
             ? { config: { deviceId: null, splitProcessing: false, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null }
             : original(command, args);
     });
@@ -175,7 +176,7 @@ test('ホームの表示が音楽鑑賞向けで配信向けの設定が既定�
     await expect(dialog.getByText('自分用と配信用に分ける')).toHaveCount(0);
     await expect(dialog.getByText('歌・モニター')).toHaveCount(0);
     await expect(dialog.getByRole('heading', { name: '配信ミックス' })).toHaveCount(0);
-    await expect(dialog.getByText('ホームの表示を「配信・通話向け」にすると使えます。')).toBeVisible();
+    await expect(dialog.getByText('使い道を配信・通話にすると使えます。')).toBeVisible();
 });
 
 // DOM試験では判断できない高さ・フッターとの重なり・操作位置を実ブラウザで守る。

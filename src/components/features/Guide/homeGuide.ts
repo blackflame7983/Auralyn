@@ -43,7 +43,7 @@ export function homeGuideLabels(locale: Locale) {
         musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
         input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
-        usage: t('purpose.section'), layout: t('purpose.label'),
+        usage: t('purpose.section'),
     };
 }
 
