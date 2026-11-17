@@ -141,7 +141,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 statusTone: tone(live ? noiseOn : stage?.nr.enabled), info: noiseInfo,
                 action: live ? <NoiseSwitch q={q} /> : undefined,
                 body: live ? <>
-                    {!q.noiseOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOn')}</p>}
+                    {!q.noiseOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOnNoise')}</p>}
                     <NoiseQuick q={q} />
                 </> : undefined,
                 tier2: onMeasureNoise ? <div className="flex min-w-0 flex-col gap-1">
@@ -153,7 +153,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 info: builtinInfo, action: live ? <BuiltinSwitch q={q} /> : undefined,
                 body: live || builtinBreakdown ? <>
                     {builtinBreakdown}
-                    {live && !q.chainOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOn')}</p>}
+                    {live && !q.chainOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOnVoice')}</p>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
                     {deesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(deesser.amount * 100) })}</span>}

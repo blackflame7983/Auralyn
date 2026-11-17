@@ -249,8 +249,8 @@ it('声を整えるとノイズ低減がOFFのときは、未適用の一文を�
     quick.chainOn = false;
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     const items = screen.getAllByRole('listitem');
-    expect(within(items[0]).getAllByText(message('ja', 'home.appliesWhenOn'))).toHaveLength(1);
-    expect(within(items[1]).getAllByText(message('ja', 'home.appliesWhenOn'))).toHaveLength(1);
+    expect(within(items[0]).getAllByText(message('ja', 'home.appliesWhenOnNoise'))).toHaveLength(1);
+    expect(within(items[1]).getAllByText(message('ja', 'home.appliesWhenOnVoice'))).toHaveLength(1);
     expect(within(items[0]).getByText('noise-quick')).toBeInTheDocument();
     expect(within(items[1]).getByText('builtin-amount')).toBeInTheDocument();
 });
@@ -304,7 +304,8 @@ it('停止中に保存値を読めないときは、OFFや整え具合を推測�
     expect(within(items[1]).getByText(message('ja', 'flow.unknown'))).toBeInTheDocument();
     expect(screen.queryByText('noise-switch')).not.toBeInTheDocument();
     expect(screen.queryByText('builtin-amount')).not.toBeInTheDocument();
-    expect(screen.queryByText(message('ja', 'home.appliesWhenOn'))).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'home.appliesWhenOnNoise'))).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'home.appliesWhenOnVoice'))).not.toBeInTheDocument();
     expect(screen.queryByText('70%')).not.toBeInTheDocument();
 });
 

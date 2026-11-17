@@ -39,7 +39,8 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(chain.getByText('ノイズ低減と声を整えるは、音声を開始すると変更できます', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('switch', { name: 'ノイズ低減', exact: true })).toBeEnabled();
         await expect(chain.getByRole('switch', { name: '声を整える', exact: true })).toBeEnabled();
-        await expect(chain.getByText('ONにするとこの値で効きます', { exact: true })).toHaveCount(2);
+        await expect(chain.getByText('ONにすると、この設定で効きます', { exact: true })).toHaveCount(1);
+        await expect(chain.getByText('ONにすると、この整え具合で効きます', { exact: true })).toHaveCount(1);
         await expect(chain.getByText('—', { exact: true })).toHaveCount(0);
         await expect(chain.getByRole('heading', { level: 3, name: '外部VST', exact: true })).toBeVisible();
         await expect(chain.getByText('状態を読み取れない項目があります。設定で確認してください。', { exact: true })).toHaveCount(0);

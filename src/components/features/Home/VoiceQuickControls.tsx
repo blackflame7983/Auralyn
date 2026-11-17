@@ -150,7 +150,7 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     </div>;
 }
 
-/** 整え具合の目安。効果の保証ではなく、選んだ量の形を見せる。OFFでも形は残し、破線で未適用と分ける。 */
+/** 整え具合の目安。効果の保証ではなく、選んだ量の形を見せる。OFFでも形は残し、無彩色で未適用と分ける。 */
 export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const t = useMessages();
     const factor = Math.max(0, Math.min(100, amount)) / 100;
@@ -162,7 +162,7 @@ export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
         <figcaption className="break-keep text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
         <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
             <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />
-            <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" strokeDasharray={on ? undefined : '6 4'} />
+            <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" />
         </svg>
     </figure>;
 }
