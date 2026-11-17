@@ -130,7 +130,9 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const mark = () => { dirty.current = true; setConfirmedRoute(''); };
     const describe = (config: MixConfig | null) => !config ? t('mixing.none') : config.source.kind === 'device' ? inputs.find(d => d.id === (config.source.kind === 'device' ? config.source.config.inputId : ''))?.name ?? t('mixing.device') : config.source.config.appName;
     const outputReady = outputState.selected && outputState.split;
-    const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !outputReady ? 'mixing.notReady' : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
+    // 足りない出力側の準備に合わせて案内する。両方足りなければ、先に選ぶ出力先を案内する。
+    const outputMissing: MessageKey = !outputState.selected ? 'mixing.needOutput' : 'mixing.needSplit';
+    const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !outputReady ? outputMissing : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const notice = (key: MessageKey) => key === 'mixing.stale' ? t(key, { load: t('mixing.load') }) : t(key);
@@ -159,7 +161,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
                     ? <ol className="list-decimal space-y-3 pl-5">{preparationSteps.map(step => <li key={step.key}>{preparationStep(step)}</li>)}</ol>
                     : preparationSteps.map(step => <div key={step.key}>{preparationStep(step)}</div>)}
             </>}
-            {!preparationOnly && outputStep && <div className="space-y-2"><p>{t('mixing.notReady')}</p>{preparationStep(outputStep)}</div>}
+            {!preparationOnly && outputStep && <div className="space-y-2"><p>{t(outputMissing)}</p>{preparationStep(outputStep)}</div>}
             {!preparationOnly && !primaryIsVoiceDevice && <div className="space-y-2"><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
             {!preparationOnly && <>
             <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>

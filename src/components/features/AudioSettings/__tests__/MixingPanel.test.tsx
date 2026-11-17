@@ -151,7 +151,9 @@ it.each(['none', 'unsplit', 'ready'] as const)('オケが有効で出力が%sの
     const step = outputStep(state);
     expect(screen.queryByText(intro)).not.toBeInTheDocument();
     for (const name of [outputButton, splitButton]) expect(screen.queryByRole('button', { name }) !== null).toBe(name === step?.name);
-    expect(screen.queryAllByText('配信用の出力先と、声の処理を分ける設定が必要です。').length > 0).toBe(step !== null);
+    // 案内の文は、足りない準備だけを言う（出力先なし／分けていない）。
+    const notice = state === 'none' ? 'OBS へ送る出力先を選んでください。' : state === 'unsplit' ? '自分用と配信用に分ける設定が必要です。' : null;
+    for (const text of ['OBS へ送る出力先を選んでください。', '自分用と配信用に分ける設定が必要です。']) expect(screen.queryAllByText(text).length > 0).toBe(text === notice);
     if (step) { fireEvent.click(screen.getByRole('button', { name: step.name })); expect(navigate).toHaveBeenCalledWith(step.target); }
 });
 it('前提が無くてもオケが有効なら、無効にする操作を出す', async () => {
