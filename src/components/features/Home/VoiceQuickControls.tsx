@@ -1,5 +1,6 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { SliderField } from '@/components/ui/SliderField';
@@ -96,11 +97,13 @@ export function NoiseSwitch({ q }: { q: VoiceQuick }) {
 export function NoiseQuick({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
-        return <p className="text-ui-support text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
+        return <p className={cn('text-ui-support text-muted-foreground', !q.noiseOn && 'home-held')}>{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
-    return <SegmentedControl label={t('structure.noise.standard')}
-        options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
-        value={q.noiseMode === 'low' || q.noiseMode === 'high' ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />;
+    return <div className={cn(!q.noiseOn && 'home-held')}>
+        <SegmentedControl label={t('structure.noise.standard')}
+            options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
+            value={q.noiseMode === 'low' || q.noiseMode === 'high' ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />
+    </div>;
 }
 
 export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
@@ -119,7 +122,7 @@ function presetOptions(q: VoiceQuick, t: ReturnType<typeof useMessages>) {
 export function BuiltinAmount({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
-    return <div className="min-w-0 w-full max-w-[15rem]">
+    return <div className={cn('min-w-0 w-full max-w-[15rem]', !q.chainOn && 'home-held')}>
         <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
             disabled={q.disabled} formatValue={value => `${value}%`}
             onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
@@ -130,7 +133,7 @@ export function BuiltinAmount({ q }: { q: VoiceQuick }) {
 export function BuiltinPresets({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.preset === 'singing') return null;
-    return <div className="min-w-0">
+    return <div className={cn('min-w-0', !q.chainOn && 'home-held')}>
         <SegmentedControl label={t('home.chainPreset')} options={presetOptions(q, t)}
             value={q.stats ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
     </div>;
@@ -143,19 +146,19 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     </div>;
 }
 
-/** 整え具合の目安。効果の保証ではなく、設定の形を見せる。語の途中では折り返さない。 */
+/** 整え具合の目安。効果の保証ではなく、選んだ量の形を見せる。OFFでも形は残し、破線で未適用と分ける。 */
 export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const t = useMessages();
-    const factor = on ? amount / 100 : 0;
+    const factor = Math.max(0, Math.min(100, amount)) / 100;
     const yLow = Math.round(42 - factor * 4);
     const yMid = Math.round(36 - factor * 12);
     const yHigh = Math.round(36 - factor * 18);
     const curve = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
-    return <figure className="w-full" aria-label={t('home.toneGuide')}>
+    return <figure className={cn('w-full', !on && 'home-held')} aria-label={t('home.toneGuide')} data-applied={on ? 'true' : 'false'}>
         <figcaption className="break-keep text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
         <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
             <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />
-            <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" />
+            <path d={curve} fill="none" stroke={on ? 'hsl(var(--aurora-teal))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" strokeDasharray={on ? undefined : '6 4'} />
         </svg>
     </figure>;
 }

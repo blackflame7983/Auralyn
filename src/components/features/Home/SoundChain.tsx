@@ -137,13 +137,17 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             card({ key: 'noise', on: noiseOn, name: t('settings.AudioSettingsModal.105'), summary: noiseSummary,
                 statusTone: tone(live ? noiseOn : stage?.nr.enabled), info: noiseInfo,
                 action: live ? <NoiseSwitch q={q} /> : undefined,
-                body: live ? <NoiseQuick q={q} /> : undefined,
+                body: live ? <>
+                    {!q.noiseOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOn')}</p>}
+                    <NoiseQuick q={q} />
+                </> : undefined,
                 tier2: onMeasureNoise ? <Button variant="outline" size="default" type="button" onClick={onMeasureNoise} className="home-action">{t('home.measureNoise')}</Button> : undefined }),
             card({ key: 'builtin', on: builtinOn, name: t('settings.AudioSettingsModal.095'), summary: builtinSummary,
                 statusTone: live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone,
                 info: builtinInfo, action: live ? <BuiltinSwitch q={q} /> : undefined,
                 body: <>
                     {builtinBreakdown}
+                    {live && !q.chainOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOn')}</p>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
                     {stats?.builtInDeesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(stats.builtInDeesser.amount * 100) })}</span>}

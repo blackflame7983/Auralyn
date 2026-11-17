@@ -236,6 +236,17 @@ it('低い窓向けの一文は音づくりを開く', () => {
     expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
 });
 
+it('声を整えるとノイズ低減がOFFのときは、未適用の一文をカードに1回出す', () => {
+    quick.noiseOn = false;
+    quick.chainOn = false;
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    const items = screen.getAllByRole('listitem');
+    expect(within(items[0]).getAllByText(message('ja', 'home.appliesWhenOn'))).toHaveLength(1);
+    expect(within(items[1]).getAllByText(message('ja', 'home.appliesWhenOn'))).toHaveLength(1);
+    expect(within(items[0]).getByText('noise-quick')).toBeInTheDocument();
+    expect(within(items[1]).getByText('builtin-amount')).toBeInTheDocument();
+});
+
 it('音調整のカードは開閉せず、声の種類は2段目に常に出す', () => {
     const expanded = vi.fn();
     render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
