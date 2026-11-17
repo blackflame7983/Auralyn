@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { mustBox } from './mustBox';
 import { settleLayoutMotion } from './layoutMotion';
 import { message } from '../../src/i18n/messages';
 import type { Page } from '@playwright/test';
@@ -67,12 +68,13 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
             // 配置が落ち着く前（区画が滑って移る途中）の位置で比べない。
             await settleLayoutMotion(page);
             const column = page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true });
-            expect((await column.getByRole('meter').first().boundingBox())!.height).toBe(16);
-            const bars = await column.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; }));
-            expect(bars).toHaveLength(2);
-            expect(bars[0].top).toBeLessThan(bars[1].top);
+            expect((await mustBox(column.getByRole('meter').first())).height).toBe(16);
+            const bars = await column.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, name: el.getAttribute('aria-label') }; }));
+            expect(bars).toHaveLength(1);
+            expect(bars[0].name).toBe(message('ja', 'home.inputLevel'));
+            await expect(column.locator('p', { hasText: /出力のピーク/ })).toBeVisible();
             const statuses = column.locator('[role="meter"] [data-meter-status]');
-            await expect(statuses).toHaveCount(2);
+            await expect(statuses).toHaveCount(1);
             expect(await statuses.evaluateAll(nodes => nodes.every(el => {
                 const meter = el.closest('[role="meter"]');
                 if (!meter) return false;
