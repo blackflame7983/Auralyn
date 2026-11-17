@@ -316,20 +316,6 @@
     },
     {
       "file": "e2e/browser/how-to-use.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "bec4b1107cc428edf16ec1c5edf9d8526ff670d00daeb77be9cf7d2ce98b76d1",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/how-to-use.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "bec4b1107cc428edf16ec1c5edf9d8526ff670d00daeb77be9cf7d2ce98b76d1",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/how-to-use.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-assignment",
       "hash": "ce77e7af834d171212cdb865ce58aaf9d2e95eb3dc5be54d8cb6e1d81717936e",
       "count": 1,
@@ -344,13 +330,6 @@
     },
     {
       "file": "e2e/browser/how-to-use.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "bec4b1107cc428edf16ec1c5edf9d8526ff670d00daeb77be9cf7d2ce98b76d1",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/how-to-use.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "7dfe7f2dab11923ec49054597007be20aec59a6754188dbc89cab5e935cc4243",
       "count": 2,
@@ -358,23 +337,9 @@
     },
     {
       "file": "e2e/browser/how-to-use.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "bec4b1107cc428edf16ec1c5edf9d8526ff670d00daeb77be9cf7d2ce98b76d1",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/how-to-use.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "7dfe7f2dab11923ec49054597007be20aec59a6754188dbc89cab5e935cc4243",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/how-to-use.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "bec4b1107cc428edf16ec1c5edf9d8526ff670d00daeb77be9cf7d2ce98b76d1",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -638,13 +603,6 @@
     {
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "9383ce9d4c9fb12c39b12cf64ae1213acbb09a8c3e0753df44a933b6bd869b95",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
       "hash": "a09a771ae1b4176c95de132b99e550db42de8f67ad847f89451f57dac6e604f4",
       "count": 11,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -731,13 +689,6 @@
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "8285a8f8a5cbca94dbe45edbeaa6c331bbf645e39bcec835648d49cec38eb57c",
       "count": 6,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "9383ce9d4c9fb12c39b12cf64ae1213acbb09a8c3e0753df44a933b6bd869b95",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -3700,20 +3651,6 @@
       "rule": "auralyn/owned-timers",
       "hash": "906f8911ba9637be6016e48ec90db61d9ba7db0fac31f13fcd50a5581ee81325",
       "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/Home/StreamMixPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "cc0a8569f9cb623497cd53febf5d7e4162c3d741e8b36a8e6372659cd1cc34e9",
-      "count": 3,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/Home/StreamMixPanel.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "cc0a8569f9cb623497cd53febf5d7e4162c3d741e8b36a8e6372659cd1cc34e9",
-      "count": 2,
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {

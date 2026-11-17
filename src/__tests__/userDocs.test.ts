@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { buildUserDocUrl, getUserDocUrl, glossary, glossaryDocName, type UserDocName } from '../lib/userDocs';
 import { message, type MessageKey } from '../i18n/messages';
 import { fillHomeGuide } from '../components/features/Guide/homeGuide';
+import { fillSetupGuide } from '../components/features/Guide/setupGuide';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
@@ -114,6 +115,20 @@ describe('利用者向け原稿', () => {
                 usage: message(locale, 'purpose.section'),
             }));
         }
+    });
+    it('はじめの設定の原稿は、先頭に用途ごとの「まず何をするか」を持ち、アプリの手順と同じ文を使う', () => {
+        for (const locale of locales) {
+            const body = docs[locale].setup.body;
+            expect(body.trimStart().startsWith('## '), locale).toBe(true);
+            expect(docs[locale].setup.anchors.slice(0, 3), locale).toEqual(['first-steps', 'first-steps-voice', 'first-steps-music']);
+            const voice = body.split('{#first-steps-voice}')[1]?.split('{#first-steps-music}')[0] ?? '';
+            const music = body.split('{#first-steps-music}')[1]?.split('{#purpose}')[0] ?? '';
+            for (const [index, sentence] of fillSetupGuide(locale, 'voice').steps.entries()) expect(voice, `${locale}: ${sentence}`).toContain(`${index + 1}. ${sentence}`);
+            for (const [index, sentence] of fillSetupGuide(locale, 'music').steps.entries()) expect(music, `${locale}: ${sentence}`).toContain(`${index + 1}. ${sentence}`);
+            expect(voice, locale).toContain('./troubleshooting.md#not-received');
+            expect(music, locale).toContain('./troubleshooting.md#no-sound');
+        }
+        expect(links['help.setup']).toBe('setup#first-steps');
     });
     it('使い方の全用語に短い定義と補足がある', () => {
         for (const locale of locales) {

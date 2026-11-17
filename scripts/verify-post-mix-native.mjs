@@ -47,7 +47,7 @@ export async function exercisePostMixNative({ getPage, invoke, snapshot, token, 
         if (!await close.isVisible()) await page.getByRole('button', { name: '設定を開く', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByText('歌・モニター', { exact: true }).click();
-        await dialog.getByText('オケを追加して配信する', { exact: true }).click();
+        await dialog.getByText('伴奏・BGM を足して配信する', { exact: true }).click();
         if (!await dialog.getByText('ミックス後の配信 VST', { exact: true }).isVisible()) {
             await dialog.getByRole('button', { name: '読み込む', exact: true }).click();
             await expect(dialog.getByText('ミックス後の配信 VST', { exact: true })).toBeVisible();

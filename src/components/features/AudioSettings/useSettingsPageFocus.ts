@@ -31,23 +31,32 @@ interface DeviceTargetInput {
     settingsBody: BodyRef;
 }
 
-/** 配信ミックスのパネルから来たときは、出力先・入力元の区画を開いて操作できる所へ移す（#299）。 */
+/** 出力の区画を開いたあと、読み込みが終わってから焦点を移す欄。出力先の選択か、その直後にある処理の分離のチェック。 */
+const outputControl = { liveOutput: '#live-output-settings select:not([disabled])', liveOutputSplit: '#live-output-settings input[type="checkbox"]:not([disabled])' } as const;
+
+/** 配信ミックスのパネルから来たときは、出力先・分離・入力元の欄を開いて操作できる所へ移す（#299、#715）。 */
 export function useDeviceTargetFocus({ isOpen, initialSection, loading, hasError, activeTab, tabRequest, settingsBody }: DeviceTargetInput) {
     const [loadOutput, setLoadOutput] = useState(false);
-    const outputFocusPending = useRef(false);
+    const outputFocusPending = useRef<string | null>(null);
+    const focusPendingOutput = useCallback(() => {
+        const selector = outputFocusPending.current;
+        const control = selector ? settingsBody.current?.querySelector<HTMLElement>(selector) : null;
+        if (!control) return false;
+        outputFocusPending.current = null;
+        control.scrollIntoView?.({ block: 'center' });
+        control.focus();
+        return true;
+    }, [settingsBody]);
     useEffect(() => {
-        if (!loading && outputFocusPending.current) {
-            const control = settingsBody.current?.querySelector<HTMLElement>('#live-output-settings select');
-            if (control) { outputFocusPending.current = false; control.scrollIntoView?.({ block: 'center' }); control.focus(); }
-        }
-    }, [loading, loadOutput, settingsBody]);
+        if (!loading) focusPendingOutput();
+    }, [loading, loadOutput, focusPendingOutput]);
     const deviceTargetShown = useRef(false);
     useEffect(() => { deviceTargetShown.current = false; }, [tabRequest]);
     useEffect(() => {
         if (!isOpen) { deviceTargetShown.current = false; return; }
-        if ((initialSection !== 'liveOutput' && initialSection !== 'primaryInput') || deviceTargetShown.current || loading || hasError || activeTab !== 'audio') return;
+        if ((initialSection !== 'liveOutput' && initialSection !== 'liveOutputSplit' && initialSection !== 'primaryInput') || deviceTargetShown.current || loading || hasError || activeTab !== 'audio') return;
         return afterFrame(() => {
-            const el = settingsBody.current?.querySelector<HTMLElement>(initialSection === 'liveOutput' ? '#live-output-settings' : '#primary-input-settings');
+            const el = settingsBody.current?.querySelector<HTMLElement>(initialSection === 'primaryInput' ? '#primary-input-settings' : '#live-output-settings');
             if (!el) return;
             // 出力一覧は開いたときに読み込む。読み込み後に出力先の選択へ移る。
             if (el instanceof HTMLDetailsElement) {
@@ -55,8 +64,10 @@ export function useDeviceTargetFocus({ isOpen, initialSection, loading, hasError
                 el.open = true;
                 const parent = el.parentElement?.closest('details');
                 if (parent instanceof HTMLDetailsElement) parent.open = true;
-                outputFocusPending.current = true;
+                outputFocusPending.current = initialSection === 'liveOutputSplit' ? outputControl.liveOutputSplit : outputControl.liveOutput;
                 setLoadOutput(true);
+                // 読み込み済みなら、待たずにその欄へ移る。
+                if (focusPendingOutput()) return;
             }
             const control = el.querySelector<HTMLElement>('summary, select:not([disabled])');
             if (!control) return;
@@ -64,7 +75,7 @@ export function useDeviceTargetFocus({ isOpen, initialSection, loading, hasError
             el.scrollIntoView?.({ block: 'start' });
             control.focus({ preventScroll: true });
         });
-    }, [isOpen, initialSection, loading, hasError, activeTab, tabRequest, settingsBody]);
+    }, [isOpen, initialSection, loading, hasError, activeTab, tabRequest, settingsBody, focusPendingOutput]);
     return { loadOutput, setLoadOutput };
 }
 

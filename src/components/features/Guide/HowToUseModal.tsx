@@ -9,12 +9,16 @@ import type { MessageKey } from '@/i18n/messages';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useShortcutBindings } from '@/hooks/useShortcutBindings';
 import { helpSectionKey } from '@/lib/openHelp';
-import { homeGuideFor, homeGuideGroups, type HomeGuideGroup } from './homeGuide';
+import { homeGuideFor, homeGuideGroups, homeGuideLabels, type HomeGuideGroup } from './homeGuide';
+import { setupStepsFor, setupTroubleKey } from './setupGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
-const sections = ['home', 'setup', 'vst', 'trouble', 'terms', 'keys'] as const;
+// 最初に見える節は「まず何をするか」。画面の作りの説明（ホームの見方）は後ろに置く（#719）。
+const sections = ['setup', 'home', 'vst', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
+const defaultSection: Section = 'setup';
+type Symptom = 'silent' | 'receiver';
 const sectionDocs = { home: 'help.home', setup: 'help.setup', vst: 'help.vst', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
 
 interface Props {
@@ -35,8 +39,8 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     const [section, setSection] = useState<Section>(() => {
         try {
             const saved = localStorage.getItem(helpSectionKey);
-            return sections.find(value => value === saved) ?? 'home';
-        } catch { return 'home'; }
+            return sections.find(value => value === saved) ?? defaultSection;
+        } catch { return defaultSection; }
     });
     const bindings = useShortcutBindings(section === 'keys');
     const body = useRef<HTMLDivElement>(null);
@@ -45,24 +49,21 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         if (body.current) body.current.scrollTop = 0;
         try { localStorage.setItem(helpSectionKey, next); } catch { /* 保存できなくても読む操作は続けられる。 */ }
     };
-    const go = (open: () => void) => { onClose(); open(); };
-    const labels = {
-        compare: t('header.compare'), gain: t('master.outputGain'), mute: t('header.emergency'),
-        noise: t('settings.AudioSettingsModal.105'), voice: t('settings.AudioSettingsModal.095'),
-        basic: t('sound.section.basic'), modes: t('sound.section.liveModes'), singingSection: t('sound.section.singing'), peak: t('sound.section.peak'),
-        peakDetails: t('peak.details'),
-        details: t('prep.steps'), setup: t('header.setupOpen'), music: t('wizard.musicGoal'), connect: t('rail.connect'), check: t('prep.title'), measure: t('home.measureNoise'),
-        tierLink: t('home.tierFallback'),
-        add: t('chain.vstAdd'), openVst: t('sound.openVst'),
-        settings: t('rail.settings'), appearance: t('settings.appearance'), gaming: t('header.gaming'),
-        choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
-        mode: t('home.modeMark'), currentVoice: t('home.currentVoice'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
-        musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
-        musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
-        musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
-        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
-        usage: t('purpose.section'),
+    // 「はじめの設定」から症状へ移るときは、節を替えたあと、その見出しまでスクロールして焦点を移す。
+    const symptom = useRef<Symptom | null>(null);
+    const toSymptom = (target: Symptom) => { symptom.current = target; select('trouble'); };
+    const symptomHeading = (target: Symptom) => (element: HTMLHeadingElement | null) => {
+        if (!element || symptom.current !== target) return;
+        symptom.current = null;
+        // 見出しは本文の枠の中だけでスクロールする。scrollIntoView は上の枠まで動かし、題名と閉じるボタンが隠れる。
+        // 先頭の見出しは、節の見出しを隠さないよう、動かさずに焦点だけ移す。
+        const scroller = body.current;
+        if (target === 'receiver' && scroller) scroller.scrollTop += element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - (parseFloat(getComputedStyle(scroller).paddingTop) || 0);
+        element.focus({ preventScroll: true });
     };
+    const go = (open: () => void) => { onClose(); open(); };
+    const labels = homeGuideLabels(locale);
+    const setupSteps = setupStepsFor(purpose);
     const headings = {
         stage: purpose === 'music' ? 'help.home.stage.musicTitle' : 'help.home.stage.title',
         meters: purpose === 'music' ? 'help.home.meters.musicTitle' : 'help.home.meters.title',
@@ -80,7 +81,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                 </div>
                 <div ref={body} className="modal-body-base min-h-0 min-w-0">
                     <div className="grid min-w-0 gap-6 md:grid-cols-[11rem_minmax(0,1fr)]">
-                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 [overflow-wrap:anywhere] md:flex-col">
+                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 [overflow-wrap:anywhere] md:sticky md:top-0 md:self-start md:flex-col">
                             {sections.map(value => <Button key={value} variant={section === value ? 'secondary' : 'ghost'}
                                 className="h-auto min-w-0 max-w-full justify-start whitespace-normal text-left" aria-current={section === value ? 'page' : undefined}
                                 onClick={() => select(value)}>{t(`help.section.${value}`)}</Button>)}
@@ -96,12 +97,26 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 </div>)}
                                 <p>{t('help.home.other', labels)}</p>
                             </>}
-                            {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
+                            {section === 'setup' && <>
+                                <div>
+                                    <h3 className="font-semibold">{t('help.setup.stepsTitle')}</h3>
+                                    <ol className="mt-1 list-decimal pl-5 space-y-1 [word-break:auto-phrase]">
+                                        {setupSteps.map(key => <li key={key}>{t(key, labels)}</li>)}
+                                    </ol>
+                                </div>
+                                <p>{t(setupTroubleKey(purpose), labels)}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button>
+                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => toSymptom(purpose === 'music' ? 'silent' : 'receiver')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
+                                </div>
+                                <h3 className="font-semibold">{t('help.setup.flowTitle')}</h3>
+                                <p>{t('help.setup.body', labels)}</p>
+                            </>}
                             {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>
-                                <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
+                                <h3 ref={symptomHeading('silent')} tabIndex={-1} className="font-semibold outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
-                                <h3 className="font-semibold">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p><UserDocLink name="troubleshooting.not-received" compact />
+                                <h3 ref={symptomHeading('receiver')} tabIndex={-1} className="font-semibold outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p><UserDocLink name="troubleshooting.not-received" compact />
                                 <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
                                 <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p><UserDocLink name="troubleshooting.dropouts" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
