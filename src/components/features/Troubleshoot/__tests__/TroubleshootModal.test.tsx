@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { readPreparationContext, savePreparationContext } from '@/lib/preparation';
 import { TroubleshootModal } from '../TroubleshootModal';
 
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn(async () => 'test-version') }));
@@ -233,6 +234,114 @@ it('接続チェックの原文は詳細へ置き、手動確認の案内を残�
     expect(raw).toBeVisible();
 });
 
+
+const mockRunningCable = () => {
+    vi.useFakeTimers();
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_state') return { is_running: true, config: { ...config, output: 'CABLE Input' } };
+        if (command === 'auto_gain') return { running: true, streamFailed: false };
+        if (command === 'get_audio_devices') return { inputs: [{ name: 'CABLE Output', host: 'Wasapi' }], outputs: [] };
+        if (command === 'probe_loopback') return { detected: false, levelDb: -80 };
+    });
+};
+const finishProbe = async () => {
+    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '続行' }));
+    await act(async () => {});
+};
+
+it('受け側の確認リストが出てから入力名を聞け、入力中は保存せず、確定で保存し、消して用途へ戻れる', async () => {
+    mockRunningCable();
+    savePreparationContext({ location: 'home', usage: 'obs', signal: 'unknown', receiver: 'Auralyn Mic' });
+    render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
+    await finishProbe();
+    const field = screen.getByRole('textbox', { name: message('ja', 'troubleshoot.receiverLabel.obs') });
+    expect(field).toHaveValue('Auralyn Mic');
+    expect(field).toHaveAccessibleDescription(`${message('ja', 'troubleshoot.receiverReason.obs')} ${message('ja', 'troubleshoot.receiverOptional')}`);
+    expect(screen.getByText(/OBS のソースに/)).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: '配信マイク' } });
+    expect(readPreparationContext().receiver).toBe('Auralyn Mic');
+    fireEvent.blur(field);
+    expect(readPreparationContext().receiver).toBe('配信マイク');
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'troubleshoot.clearReceiver') }));
+    expect(field).toHaveValue('');
+    expect(field).toHaveFocus();
+    expect(readPreparationContext().receiver).toBe('');
+    expect(screen.getByText(/テスト音を検出できませんでした/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'guide.copy.417') }));
+    expect(screen.getByRole('button', { name: /OBSで配信.*診断を開始/ })).toHaveFocus();
+    expect(screen.queryByRole('textbox', { name: message('ja', 'troubleshoot.receiverLabel.obs') })).not.toBeInTheDocument();
+});
+
+it.each([
+    { purpose: /通話/, goal: 'discord', label: 'troubleshoot.receiverLabel.discord', reason: 'troubleshoot.receiverReason.discord' },
+    { purpose: /その他のアプリ/, goal: 'other', label: 'troubleshoot.receiverLabel.other', reason: 'troubleshoot.receiverReason.other' },
+] as const)('通話・その他の入力名の説明はOBSに触れず、実際の使い道だけを書く：$goal', async ({ purpose, label, reason }) => {
+    mockRunningCable();
+    render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: purpose }));
+    await finishProbe();
+    const field = screen.getByRole('textbox', { name: message('ja', label) });
+    expect(field).toHaveAccessibleDescription(`${message('ja', reason)} ${message('ja', 'troubleshoot.receiverOptional')}`);
+    expect(message('ja', reason)).not.toMatch(/OBS/);
+    expect(message('en', reason)).not.toMatch(/OBS/);
+});
+
+it('OBSの入力名の説明は、機器名ではなくOBSのソース一覧の名前だと例つきで伝え、確認との照合を書く', () => {
+    for (const locale of ['ja', 'en'] as const) {
+        expect(message(locale, 'troubleshoot.receiverReason.obs')).toMatch(/CABLE Output/);
+        expect(message(locale, 'troubleshoot.receiverReason.obs')).toMatch(/Auralyn/);
+        expect(message(locale, 'troubleshoot.receiverReason.obs')).toMatch(/OBS/);
+    }
+});
+
+it('入力中は保存せず、Enterで確定し、空白だけなら空として保存する。閉じるときも未確定の入力を保存する', async () => {
+    mockRunningCable();
+    savePreparationContext({ location: 'home', usage: 'obs', signal: 'unknown', receiver: '' });
+    const onClose = vi.fn();
+    render(<TroubleshootModal isOpen onClose={onClose} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
+    await finishProbe();
+    const field = screen.getByRole('textbox', { name: message('ja', 'troubleshoot.receiverLabel.obs') });
+    const saved: string[] = [];
+    const record = (event: Event) => { saved.push((event as CustomEvent<string>).detail); };
+    window.addEventListener('preparation-receiver-edited', record);
+    try {
+        for (const value of ['M', 'Mi', 'Mic', 'Mic ']) fireEvent.change(field, { target: { value } });
+        expect(saved).toEqual([]);
+        fireEvent.keyDown(field, { key: 'Enter' });
+        expect(saved).toEqual(['Mic']);
+        expect(readPreparationContext().receiver).toBe('Mic');
+        expect(field).toHaveValue('Mic');
+        fireEvent.change(field, { target: { value: '   ' } });
+        expect(screen.queryByRole('button', { name: message('ja', 'troubleshoot.clearReceiver') })).not.toBeInTheDocument();
+        fireEvent.blur(field);
+        expect(readPreparationContext().receiver).toBe('');
+        fireEvent.change(field, { target: { value: 'Studio' } });
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'guide.copy.407') }));
+        expect(readPreparationContext().receiver).toBe('Studio');
+        expect(onClose).toHaveBeenCalledOnce();
+    } finally { window.removeEventListener('preparation-receiver-edited', record); }
+});
+it('自分の声を聴く診断では入力名を聞かない', async () => {
+    mockRunningCable();
+    render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /自分の声を聴く/ }));
+    await finishProbe();
+    expect(screen.getByText(/ヘッドホン/)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
+
+it('音声が始まる前の診断では入力名を聞かない', async () => {
+    vi.mocked(invoke).mockResolvedValue({ is_running: false, config });
+    render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
+    await screen.findByRole('button', { name: '設定を開く' });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
 
 it.each(['ja', 'en'] as const)('診断は入口と同じ題名で、セットアップ共通の用途と説明を順に表示する（%s）', locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>

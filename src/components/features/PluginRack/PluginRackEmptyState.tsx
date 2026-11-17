@@ -1,5 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React from 'react';
+import React, { type Ref } from 'react';
 import { MdAdd, MdAutoFixHigh } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
 import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
@@ -15,6 +15,7 @@ interface PluginRackEmptyStateProps {
     hideAdd?: boolean;
     /** ページの見出しが同じ入口を持つとき、id はそちらに残す。 */
     markAddTarget?: boolean;
+    addButtonRef?: Ref<HTMLButtonElement>;
 }
 
 export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
@@ -24,6 +25,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     unrestored = [],
     hideAdd = false,
     markAddTarget = true,
+    addButtonRef,
 }) => {
     const t = useMessages();
     const names = unrestoredNamesText(t, unrestored);
@@ -42,6 +44,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
 
             {(showTemplates || !hideAdd) && <div className="flex flex-wrap items-center gap-3">
                 {!hideAdd && <Button
+                    ref={addButtonRef}
                     id={markAddTarget ? 'add-effect-btn' : undefined}
                     variant={audioReady ? 'default' : 'outline'}
                     onClick={onAddClick}

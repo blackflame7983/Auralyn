@@ -1,3 +1,4 @@
+import { startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -7,7 +8,7 @@ import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
 import {
     buildPreparationObservation, emptyObservation, expireConfirmations,
-    observationStamp, preparationReach, readPreparationContext, savePreparationContext,
+    normalizeReceiver, observationStamp, preparationReach, readPreparationContext, savePreparationContext,
     type Confirmations, type PreparationContext, type PreparationObservation, type PreparationStage,
 } from '@/lib/preparation';
 
@@ -82,7 +83,8 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
     useEffect(() => {
         alive.current = true;
         let active = true;
-        const refreshConditions = () => { if (!active) return; generation.current += 1; setChecking(true); setObservation(old => ({ ...old, availability: 'pending' })); void refresh(); };
+        // 診断などで読み取りを止めている間は、背後の画面を確認待ちにしない。再開時に読み直す。
+        const refreshConditions = () => { if (!active) return; generation.current += 1; if (blockedRef.current) return; setChecking(true); setObservation(old => ({ ...old, availability: 'pending' })); void refresh(); };
         const stop = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('stopped')); };
         const fail = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('failed')); };
         const external = () => { if (!active) return; expireAll(); void refresh(); };
@@ -130,10 +132,10 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         window.addEventListener('preparation-external-change', external);
         window.addEventListener('profile-fx-applied', refreshConditions);
         window.addEventListener('preparation-purpose-changed', purposeChanged);
-        const timer = setInterval(() => { void refresh(); }, 2000);
+        const stopRefresh = startPreparationRefresh(() => { void refresh(); });
         return () => {
             active = false; alive.current = false; listenersReady.current = false; generation.current += 1;
-            clearInterval(timer); unsubscribe();
+            stopRefresh(); unsubscribe();
             removeAppVisibilityListener(visibility);
             window.removeEventListener('preparation-external-change', external);
             window.removeEventListener('profile-fx-applied', refreshConditions);
@@ -149,14 +151,19 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
     }, [blocked, running, accept, expireAll, refresh]);
 
     const changeContext = (patch: Partial<PreparationContext>) => {
-        const next = { ...currentContext.current, ...patch };
+        const receiver = patch.receiver === undefined ? undefined : normalizeReceiver(patch.receiver);
+        const receiverOnly = receiver !== undefined && patch.location === undefined && patch.signal === undefined && patch.usage === undefined;
+        // 名前が実質変わらないなら、確認の失効も再取得もしない。
+        if (receiverOnly && receiver === currentContext.current.receiver) return;
+        const next = { ...currentContext.current, ...patch, ...(receiver === undefined ? {} : { receiver }) };
         if ((patch.location !== undefined && patch.location !== currentContext.current.location) || (patch.signal !== undefined && patch.signal !== currentContext.current.signal)) {
             void noiseMeasurementApi.request({ action: 'invalidate' }).catch(() => {});
         }
         generation.current += 1;
         currentContext.current = next; setContext(next); savePreparationContext(next);
-        setObservation(old => ({ ...old, availability: 'pending', obsCurrent: false }));
-        if (patch.location !== undefined || patch.signal !== undefined || patch.usage !== undefined || patch.receiver !== undefined) preparationReach.clear();
+        // 名前だけの変更は音の状態を変えないので、読み直しが終わるまで「確認待ち」にしない。
+        setObservation(old => ({ ...old, ...(receiverOnly ? {} : { availability: 'pending' as const }), obsCurrent: false }));
+        if (patch.location !== undefined || patch.signal !== undefined || patch.usage !== undefined || receiver !== undefined) preparationReach.clear();
         setRecords(old => Object.fromEntries(Object.entries(old).map(([stage, receipt]) => [stage,
             patch.location !== undefined || patch.signal !== undefined || stage === 'receiver' ? { ...receipt, expired: true } : receipt])));
         void refresh();
@@ -172,11 +179,28 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             if (!next?.keys || next.keys[stage] !== expectedKey || next.availability !== 'ready' || version !== generation.current || !ctx.usage
                 || blockedRef.current || isAppHidden()) return;
             const receiverFallback = ctx.usage === 'obs' ? 'OBS' : ctx.usage === 'discord' ? 'Discord' : ctx.usage === 'other' ? (next.config?.output ?? '') : '';
-            setRecords(old => ({ ...old, [stage]: { key: next.keys![stage], at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
+            const key = next.keys[stage];
+            setRecords(old => ({ ...old, [stage]: { key, at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
 
         } finally { if (alive.current) setConfirming(false); }
     };
-    const unconfirm = (stage: PreparationStage) => setRecords(old => old[stage] ? { ...old, [stage]: { ...old[stage]!, expired: true } } : old);
+    const unconfirm = (stage: PreparationStage) => setRecords(old => {
+        const receipt = old[stage];
+        return receipt ? { ...old, [stage]: { ...receipt, expired: true } } : old;
+    });
+    const changeContextRef = useRef(changeContext);
+    changeContextRef.current = changeContext;
+    useEffect(() => {
+        const onReceiverEdited = (event: Event) => {
+            if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+            event.preventDefault();
+            const next = normalizeReceiver(event.detail);
+            if (next === currentContext.current.receiver) return;
+            changeContextRef.current({ receiver: next });
+        };
+        window.addEventListener('preparation-receiver-edited', onReceiverEdited);
+        return () => window.removeEventListener('preparation-receiver-edited', onReceiverEdited);
+    }, []);
     return { context, changeContext, observation, records, checking, confirming, confirm, unconfirm, refresh, reset: () => { expireAll(); void noiseMeasurementApi.request({ action: 'invalidate' }).catch(() => {}); } };
 }
 export type PreparationModel = ReturnType<typeof usePreparation>;

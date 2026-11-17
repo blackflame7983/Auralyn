@@ -357,11 +357,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           </Button>}
         </div>
         {(!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) || !scanCatalogEmpty) && <div className="mb-3 flex flex-wrap items-center gap-2">
-          {!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) && <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
+          {!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) && <Button variant={scanCatalogEmpty ? 'default' : 'outline'} size="sm" className="h-auto min-h-9 whitespace-normal"
             disabled={isLoading || Boolean(retryingPath)}
             onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}
           >
-            {t('pluginBrowser.fullScan')}
+            {t(scanCatalogEmpty ? 'pluginBrowser.findVsts' : 'pluginBrowser.fullScan')}
           </Button>}
           {!scanCatalogEmpty && <>
             <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
@@ -443,7 +443,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
                     <button type="button" className="mt-2 text-primary underline" onClick={() => requestHelpSection('vst')}>{t('help.section.vst')}</button>
-                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.fullScan')}</Button>
+                    <Button variant="default" className="mt-3 h-auto min-h-10 whitespace-normal" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.findVsts')}</Button>
                   </>}
                 </>}
                 {activeTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}

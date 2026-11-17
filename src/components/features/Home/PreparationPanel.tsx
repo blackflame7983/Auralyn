@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Button } from '@/components/ui/button';
 import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { afterFrame } from '@/hooks/internal/afterFrame';
 import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
@@ -59,9 +60,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
     const [purpose] = useDisplayPurpose();
+    const receiverName = useReceiverDraft(context.receiver, value => model.changeContext({ receiver: value }));
     const music = purpose === 'music';
-    const detailsRef = useRef<HTMLDetailsElement>(null);
-    const targetRef = useRef<HTMLInputElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const summaryRef = useRef<HTMLElement>(null);
     const toggleRef = useRef<HTMLButtonElement>(null);
@@ -84,12 +84,9 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     const showChecking = usePreparationPanelSync({ manualChecking, problem, open, onExpandedChange, destinationRequest, usageRef, setUserOpen });
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
-    const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
-    const routeNeedsTarget = !context.usage || context.usage !== 'listening' && !context.receiver.trim();
     const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
     const action = (event: MouseEvent<HTMLButtonElement>) => {
         if (mutedOutput && onCheckOutput) { onCheckOutput(event.currentTarget); return; }
-        if (needsTarget) { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); return; }
         if (next === 'connect') {
             if (observation.availability === 'unknown' || observation.availability === 'pending') { void refreshManually(); return; }
             onSettings();
@@ -99,7 +96,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         if (next === 'listen') { onListen(); return; }
         receiver();
     };
-    const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
+    const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
@@ -112,7 +109,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         </ChoiceCard>)}
     </div>;
     // 問題がなく畳んでいる間は枠を付けず、ボタンだけにしてホームの主役を目立たせる。
-    // 経路の文は上の帯に1回だけ出す（#669）。状態の札があるときだけ左に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
+    // 経路の文は上の帯に1回だけ出す（#669）。下の行のボタンは診断と接続の詳細だけ（#725）。
+    // 状態の札があるときだけ左に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
     const collapsedStatus = !open && observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted');
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
         {!open && !collapsedStatus && <h2 className="home-title sr-only">{t('prep.title')}</h2>}
@@ -129,15 +127,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
             <div className={open ? 'flex flex-wrap items-center gap-2' : 'home-route-actions'}>
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
                 {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
-                {/* 名前の指定は入力欄を開くだけなので、音声が止まっていても押せる（#625）。受け側の確認はこれまでどおり音声が要る。 */}
-                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <Button variant="outline" size="sm" type="button" disabled={!audioReady && !routeNeedsTarget}
-                    // 受け側の確認は音声が要る。押せない理由を、ほかの無効の操作と同じ言い方で示す（#625）。
-                    title={!audioReady && !routeNeedsTarget ? t('header.compareNeedsAudio') : undefined} onClick={() => {
-                    if (routeNeedsTarget) {
-                        setUserOpen(true);
-                        afterFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });
-                    } else receiver();
-                }}>{t(routeNeedsTarget ? 'prep.targetAction' : 'prep.checkReceiver')}</Button>}
+                {/* 受け側の入力名はホームに出さない。診断で受け側の確認リストが出たときに聞く（#725）。 */}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
                 <span role="status" className="text-ui-support text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
                 <Button variant="outline" size="sm" ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => { if (!pinnedOpen) setUserOpen(!open); }}
@@ -169,7 +159,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     }));
                 }} />
         </Field>}
-        <details ref={detailsRef} className="space-y-3">
+        <details className="space-y-3">
             <summary ref={summaryRef} className="cursor-pointer text-ui-support font-medium">{t('prep.details')}</summary>
             <div className="grid gap-3 sm:grid-cols-2">
                 <Field label={t('prep.location')}>
@@ -183,7 +173,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     </Select>
                 </Field>
                 {context.usage && context.usage !== 'listening' && <Field label={t(context.usage === 'obs' ? 'prep.obsTarget' : 'prep.target')}>
-                    <Input ref={targetRef} maxLength={200} value={context.receiver} onChange={e => model.changeContext({ receiver: e.target.value })} />
+                    <Input maxLength={200} {...receiverName.inputProps} />
                 </Field>}
             </div>
             {context.usage && context.usage !== 'listening' && observation.config?.output && <p className="text-ui-support text-muted-foreground">{t('prep.receiverInput')}: {renderNotice(t, receiverDeviceNotice(observation.config.output))}</p>}

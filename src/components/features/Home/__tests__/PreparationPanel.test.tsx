@@ -80,54 +80,56 @@ it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネル
     fireEvent.click(screen.getByRole('checkbox', { name: message(locale, 'prep.ackSound') }));
     expect(model.confirm).toHaveBeenCalledWith('sound');
 });
-it('畳んだ下の行は経路を出さず、入力名の登録はボタン群に置く（#669、#622）', () => {
+it.each(['ja', 'en'] as const)('畳んだ下の行は経路を出さず、診断と接続の詳細だけにする（%s、#725、#622）', locale => {
     const model = fixture();
     model.observation.availability = 'stopped';
     model.context.usage = 'obs';
     model.context.receiver = '';
-    render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
-    const region = screen.getByRole('region', { name: message('ja', 'prep.title') });
-    expect(region).not.toHaveTextContent('配信用');
-    expect(region).not.toHaveTextContent('スピーカー');
-    expect(message('ja', 'prep.targetAction')).toBe('受け側の入力名を登録（診断用）');
-    expect(message('en', 'prep.targetAction')).toBe('Register receiver input name (for diagnosis)');
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />
+    </LocaleProvider>);
+    const region = screen.getByRole('region', { name: message(locale, 'prep.title') });
+    expect(region).not.toHaveTextContent('→');
+    expect(region).not.toHaveTextContent('受け側の入力名を登録（診断用）');
+    expect(region).not.toHaveTextContent('Register receiver input name');
     const actions = document.querySelector('.home-route-actions');
-    const button = screen.getByRole('button', { name: message('ja', 'prep.targetAction') });
-    expect(actions).toContainElement(button);
-    expect(document.querySelector('.home-route-line')).not.toContainElement(button);
+    expect(within(actions as HTMLElement).getAllByRole('button').map(button => button.textContent)).toEqual([
+        message(locale, 'header.noSound'), message(locale, 'prep.steps'),
+    ]);
 });
-it('停止中でも送り先の名前の指定は開ける。音声の稼働は要らない（#625）', () => {
-    const frames: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return 1; });
-    try {
-        const model = fixture();
-        model.observation.availability = 'stopped';
-        model.context.usage = 'obs';
-        model.context.receiver = '';
-        render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
-        const specify = screen.getByRole('button', { name: message('ja', 'prep.targetAction') });
-        expect(specify).toBeEnabled();
-        fireEvent.click(specify);
-        act(() => { frames.splice(0).forEach(callback => callback(0)); });
-        expect(screen.getByRole('textbox', { name: message('ja', 'prep.obsTarget') })).toHaveFocus();
-        // 名前が既にある受け側の確認は、停止中は押せないままにする。
-        cleanup();
-        model.context.receiver = 'Mic';
-        render(<PreparationPanel model={model} {...callbacks()} audioReady={false} stoppedInStrip />);
-        expect(screen.getByRole('button', { name: message('ja', 'prep.checkReceiver') })).toBeDisabled();
-    } finally {
-        vi.unstubAllGlobals();
-    }
+it('停止中でも診断は開け、名前の欄は接続の詳細に残る（#625、#725）', () => {
+    const model = fixture();
+    model.observation.availability = 'stopped';
+    model.context.usage = 'obs';
+    model.context.receiver = 'Mic';
+    const props = callbacks();
+    render(<PreparationPanel model={model} {...props} audioReady={false} stoppedInStrip />);
+    const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
+    expect(entry).toBeEnabled();
+    fireEvent.click(entry);
+    expect(props.onTroubleshoot).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: message('ja', 'prep.checkReceiver') })).not.toBeInTheDocument();
+    expand();
+    const field = screen.getByRole('textbox', { name: message('ja', 'prep.obsTarget') });
+    expect(field).toBeEnabled();
+    expect(field).toHaveValue('Mic');
+    fireEvent.change(field, { target: { value: '' } });
+    expect(model.changeContext).not.toHaveBeenCalled();
+    fireEvent.blur(field);
+    expect(model.changeContext).toHaveBeenCalledWith({ receiver: '' });
 });
-it('対象入力が未入力でも受け側確認をそのまま記録でき、推奨操作で任意の入力欄へもフォーカスできる（U02）', () => {
+it('対象入力が未入力でも受け側確認を記録でき、名前が無くても送り先の確認へ進める', () => {
     const model = fixture(); checked(model, 'sound'); checked(model, 'listen'); model.context.receiver = '';
-    render(<PreparationPanel model={model} {...callbacks()} />);
+    const props = callbacks();
+    render(<PreparationPanel model={model} {...props} />);
     expand();
     expect(screen.getByRole('checkbox')).toBeEnabled();
     fireEvent.click(screen.getByRole('checkbox'));
     expect(model.confirm).toHaveBeenCalledWith('receiver');
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.targetAction') }));
-    expect(screen.getByRole('textbox', { name: message('ja', 'prep.target') })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.checkReceiver') }));
+    expect(props.onCall).toHaveBeenCalledOnce();
+    expect(screen.getByRole('textbox', { name: message('ja', 'prep.target') })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '受け側の入力名を登録（診断用）' })).not.toBeInTheDocument();
 });
 it('未対応のOBS検査は成功扱いせず、手動の実マイク確認と区別する', () => {
     const model = fixture(); model.context.usage = 'obs'; model.observation.obs = { reached: 'unsupported' };
