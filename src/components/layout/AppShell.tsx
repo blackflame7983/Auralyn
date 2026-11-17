@@ -225,10 +225,11 @@ export const AppShell: React.FC<AppShellProps> = ({
     };
     const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
     const usage = preparation.context.usage;
+    const receiverName = preparation.context.receiver.trim();
     const route = configured ? formatAudioRoute(
         preparation.observation.config?.input ?? currentInput,
         preparation.observation.config?.output ?? currentOutput,
-        usage ? `${t(destinations[usage])}${usage !== 'listening' && preparation.context.receiver ? ` · ${preparation.context.receiver}` : ''}` : undefined,
+        usage ? `${t(destinations[usage])}${usage !== 'listening' && receiverName ? ` · ${receiverName}` : ''}` : undefined,
         purpose === 'music',
     ) : null;
     const elapsed = useSessionElapsed(isEngineRunning);

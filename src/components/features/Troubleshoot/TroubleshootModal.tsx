@@ -1,14 +1,20 @@
+import { delay } from '@/hooks/internal/afterFrame';
+import { useReceiverDraft } from '@/hooks/useReceiverDraft';
+import { useTroubleshootLifecycle } from '@/hooks/useTroubleshootLifecycle';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 import { destinationChoices } from '@/lib/destinationChoices';
+import { editPreparationReceiver, readPreparationContext } from '@/lib/preparation';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { message as formatMessage } from '@/i18n/messages';
+import { message as formatMessage, type MessageKey } from '@/i18n/messages';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import { deviceDisplayName, findCableReceiver, receiverDeviceNotice } from '../../../lib/audioRouting';
 import { checkRouteSampleRatesDisplay } from '../../../lib/routingSampleRates';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
     MdClose, MdCheckCircle, MdError, MdWarning, MdRefresh, MdHelpOutline,
     MdContentCopy, MdArrowBack, MdArrowForward,
@@ -48,12 +54,20 @@ interface DiagnosticItem {
 const PURPOSE_OPTIONS = destinationChoices.map(({ value, label, hint }) => ({
     id: (value === 'listening' ? 'listen' : value) as Purpose, label, hint,
 }));
+const purposeOption = (id: Purpose | null) => PURPOSE_OPTIONS.find(option => option.id === id);
 
 // セットアップや前回の診断で選んだ用途。同じ質問を繰り返さず、初期値にする。
 const savedPurpose = (): Purpose | null => {
     let goal: string | null = null;
     try { goal = localStorage.getItem('vst_host_setup_goal'); } catch { return null; }
     return goal === 'obs' || goal === 'discord' || goal === 'other' ? goal : goal === 'listening' || goal === 'local' ? 'listen' : null;
+};
+
+// 名前の使い道は用途で違う。OBSの確認と照合するのはOBSだけ。
+const RECEIVER_COPY: Record<Exclude<Purpose, 'listen'>, { label: MessageKey; reason: MessageKey }> = {
+    obs: { label: 'troubleshoot.receiverLabel.obs', reason: 'troubleshoot.receiverReason.obs' },
+    discord: { label: 'troubleshoot.receiverLabel.discord', reason: 'troubleshoot.receiverReason.discord' },
+    other: { label: 'troubleshoot.receiverLabel.other', reason: 'troubleshoot.receiverReason.other' },
 };
 
 const REPORT_STATUS: Record<CheckStatus, string> = { ok: '[OK]', warning: '[!]', error: '[x]', skipped: '[-]', checking: '[...]', pending: '[...]' };
@@ -118,10 +132,17 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const [showProbeConfirm, setShowProbeConfirm] = useState(false);
     const [copyDone, setCopyDone] = useState(false);
     const [choosePurpose, setChoosePurpose] = useState(false);
+    const purposeStartRef = useRef<HTMLButtonElement>(null);
+    const receiverInputRef = useRef<HTMLInputElement>(null);
+    const returnFocus = useRef(false);
+    const copyTimer = useRef<(() => void) | null>(null);
     const rememberedPurpose = isOpen ? savedPurpose() : null;
     const routingRef = useRef<RoutingDiagnosticsReport | null>(null);
     const abortRef = useRef(false);
     const probeConfirmRef = useRef<((ok: boolean) => void) | null>(null);
+
+    const receiverName = useReceiverDraft(readPreparationContext().receiver, editPreparationReceiver);
+    const closeAndSave = () => { receiverName.commit(); onClose(); };
 
     const askProbeConfirm = () =>
         new Promise<boolean>(resolve => {
@@ -386,6 +407,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         setIsRunning(false);
     }, [onClose, onOpenDiscordGuide, onOpenOBSGuide, openSettingsAction, updateCheck]);
 
+    const returnToPurpose = () => {
+        receiverName.commit();
+        returnFocus.current = true;
+        setPhase('purpose');
+        setChecks([]);
+    };
+
     const handleStart = (p: Purpose) => {
         setPurpose(p);
         localStorage.setItem('vst_host_setup_goal', p === 'listen' ? 'local' : p);
@@ -404,10 +432,11 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             version = await getVersion();
         } catch { /* ignore */ }
 
+        const selectedPurpose = reportPurpose ? purposeOption(reportPurpose) : undefined;
         const lines: string[] = [
             reportT('guide.copy.390'),
             reportT('guide.copy.391', { arg0: version }),
-            reportT('guide.copy.392', { arg0: reportPurpose ? reportT(PURPOSE_OPTIONS.find(option => option.id === reportPurpose)!.label) : reportT('guide.copy.393') }),
+            reportT('guide.copy.392', { arg0: selectedPurpose ? reportT(selectedPurpose.label) : reportT('guide.copy.393') }),
             reportT('guide.copy.394', { arg0: new Date().toISOString() }),
             '',
         ];
@@ -435,30 +464,17 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         try {
             await navigator.clipboard.writeText(lines.join('\n'));
             setCopyDone(true);
-            setTimeout(() => setCopyDone(false), 2000);
+            copyTimer.current?.();
+            copyTimer.current = delay(2000, () => { copyTimer.current = null; setCopyDone(false); });
         } catch {
             /* ignore */
         }
     };
 
-    useEffect(() => {
-        if (!isOpen) {
-            abortRef.current = true;
-            setPhase('purpose');
-            setPurpose(null);
-            setChecks([]);
-            setIsRunning(false);
-            setShowProbeConfirm(false);
-            setChoosePurpose(false);
-        }
-        // 条件レンダリングによるアンマウント時も診断を確実に中断し、トーンを停止する
-        return () => {
-            abortRef.current = true;
-            probeConfirmRef.current?.(false);
-            probeConfirmRef.current = null;
-            audioApi.stopTestTone().catch(() => {});
-        };
-    }, [isOpen]);
+    useTroubleshootLifecycle({
+        isOpen, phase, abortRef, probeConfirmRef, returnFocus, purposeStartRef, copyTimer,
+        setPhase, setPurpose, setCopyDone, setChecks, setIsRunning, setShowProbeConfirm, setChoosePurpose,
+    });
 
     if (!isOpen) return null;
 
@@ -473,11 +489,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         }
     };
 
+    const asksForReceiverName = phase === 'results' && purpose !== null && purpose !== 'listen'
+        && checks.some(check => check.id === 'd6' && (check.lines?.length ?? 0) > 0);
     const errorCount = checks.filter(c => c.status === 'error').length;
     const warnCount = checks.filter(c => c.status === 'warning').length;
 
     return (
-        <Modal title={t('guide.copy.404')} onClose={onClose}>
+        <Modal title={t('guide.copy.404')} onClose={closeAndSave}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-lg max-h-[calc(90vh/var(--ui-zoom))] flex flex-col">
                 <div className="modal-header-base shrink-0">
@@ -490,7 +508,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <p className="text-ui-support text-muted-foreground">{t('guide.copy.406')}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('guide.copy.407')} >
+                    <Button variant="ghost" size="icon" onClick={closeAndSave} aria-label={t('guide.copy.407')} >
                         <MdClose className="w-5 h-5" />
                     </Button>
                 </div>
@@ -527,14 +545,14 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 {phase === 'purpose' && rememberedPurpose && !choosePurpose && (
                     <div className="p-6 space-y-3 overflow-y-auto">
                         <p className="text-ui-support text-muted-foreground">{t('troubleshoot.savedPurpose')}</p>
-                        <Button variant="outline"
-                            onClick={() => handleStart(rememberedPurpose)}
+                        <Button ref={purposeStartRef} variant="outline"
+                            onClick={() => { if (rememberedPurpose) handleStart(rememberedPurpose); }}
                             disabled={isRunning}
                             className="w-full h-auto min-h-10 justify-between gap-4 whitespace-normal text-left"
                         >
                             <span className="min-w-0">
-                                <span className="block text-ui-control font-semibold">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label)}</span>
-                                <span className="block text-ui-support text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</span>
+                                <span className="block text-ui-control font-semibold">{t(purposeOption(rememberedPurpose)?.label ?? 'prep.obs')}</span>
+                                <span className="block text-ui-support text-muted-foreground mt-1">{t(purposeOption(rememberedPurpose)?.hint ?? 'wizard.obsHint')}</span>
                             </span>
                             <span className="flex shrink-0 items-center gap-1 text-ui-support">{t('troubleshoot.start')}<MdArrowForward aria-hidden="true" /></span>
                         </Button>
@@ -544,8 +562,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 {phase === 'purpose' && (!rememberedPurpose || choosePurpose) && (
                     <div className="p-6 space-y-3 overflow-y-auto">
                         <p className="text-ui-support text-muted-foreground mb-2">{t('guide.copy.412')}</p>
-                        {PURPOSE_OPTIONS.map(opt => (
-                            <Button variant="outline"
+                        {PURPOSE_OPTIONS.map((opt, index) => (
+                            <Button ref={index === 0 ? purposeStartRef : undefined} variant="outline"
                                 key={opt.id}
                                 onClick={() => handleStart(opt.id)}
                                 disabled={isRunning}
@@ -607,6 +625,12 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                             </Button>
                                         )}
                                     </div>
+                                    {check.id === 'd6' && asksForReceiverName && purpose && <div className="rounded-card border border-border p-3 mt-3 space-y-2">
+                                        <Field label={t(RECEIVER_COPY[purpose].label)} description={`${t(RECEIVER_COPY[purpose].reason)} ${t('troubleshoot.receiverOptional')}`}>
+                                            <Input ref={receiverInputRef} maxLength={200} {...receiverName.inputProps} />
+                                        </Field>
+                                        {receiverName.draft.trim() !== '' && <Button variant="outline" size="sm" type="button" onClick={() => { receiverName.commit(''); receiverInputRef.current?.focus(); }}>{t('troubleshoot.clearReceiver')}</Button>}
+                                    </div>}
                                 </div>
                             </div>
                         ))}
@@ -617,7 +641,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                     <div className="flex items-center gap-2">
                         {phase !== 'purpose' && (
                             <Button variant="ghost" size="sm"
-                                onClick={() => { setPhase('purpose'); setChecks([]); }}
+                                onClick={returnToPurpose}
                                 disabled={isRunning}
                                 className="flex items-center gap-1"
                             >
@@ -636,7 +660,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                         )}
                         {purpose && (
                             <Button variant="ghost" size="sm"
-                                onClick={() => void runDiagnostics(purpose)}
+                                onClick={() => { receiverName.commit(); void runDiagnostics(purpose); }}
                                 disabled={isRunning}
                                 className="flex items-center gap-1.5"
                             >
