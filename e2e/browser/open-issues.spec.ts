@@ -49,7 +49,7 @@ test('最小画面でVSTのページを開いても右の列の出力の数字�
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
     const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
-    const peak = column.getByLabel(/出力のピーク/);
+    const peak = column.locator('p', { hasText: /出力のピーク/ });
     await expect(peak).toBeVisible();
     await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
@@ -70,7 +70,7 @@ test('動きを減らす設定でもVSTのページは右の列と重ならな�
     await page.goto('/');
     await page.locator('#home-vst-open').click();
     const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
-    const peak = column.getByLabel(/出力のピーク/);
+    const peak = column.locator('p', { hasText: /出力のピーク/ });
     await expect(peak).toBeVisible();
     await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     const pageBox = await mustBox(page.locator('[data-vst-page]'));

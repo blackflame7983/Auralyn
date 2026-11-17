@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { setOutputMuted } from './e2eHooks';
 
 const readyStorage = () => {
     localStorage.setItem('vst_host_wizard_done', 'true');
@@ -15,7 +16,7 @@ test.describe('出力の見出しとメーター', () => {
             await page.addInitScript(readyStorage);
             await page.goto('/');
             await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-            await page.evaluate(() => window.__e2eSetOutputMuted?.(false));
+            await setOutputMuted(page, false);
             const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
             const heading = column.getByRole('heading', { name: '出力', exact: true });
             await expect(heading).toBeVisible();

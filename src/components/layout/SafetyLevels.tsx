@@ -64,6 +64,9 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
         </div>
         <DeviceName name={name} />
         {/* 停止中のピークは数字にせず、横線だけにする。停止であることは読み上げに残す（#602）。大きさのバーはいまの状態に1本（#724）。 */}
-        <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground" aria-label={reading.state === 'stopped' ? `${t('home.outputPeak')}（${t('meter.state.stopped')}）` : t('home.outputPeak')}>{reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}</p>
+        <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground">
+            <span className="sr-only">{t(reading.state === 'stopped' ? 'home.outputPeakStopped' : 'home.outputPeak')}{' '}</span>
+            {reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}
+        </p>
     </div>;
 }

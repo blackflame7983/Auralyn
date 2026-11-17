@@ -192,7 +192,7 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     await expect(page.locator('#home-vst-open')).toHaveCount(0);
     await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(2);
     const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
-    const meter = column.getByLabel(/出力のピーク/);
+    const meter = column.locator('p', { hasText: /出力のピーク/ });
     await expect(meter).toBeVisible();
     await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);

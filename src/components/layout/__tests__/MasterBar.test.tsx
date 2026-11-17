@@ -212,7 +212,7 @@ describe('起動時の保存ゲイン復元', () => {
         // #602: 右の列に停止の札は出さない。停止中のピークは横線で、読み上げに停止を残す。横メーターは置かない（#724）。
         expect(screen.queryByText('音声停止中')).not.toBeInTheDocument();
         expect(screen.queryByRole('meter', { name: '出力' })).not.toBeInTheDocument();
-        expect(screen.getByText('—')).toHaveAttribute('aria-label', expect.stringContaining('出力のピーク'));
+        expect(screen.getByText(message('ja', 'home.outputPeakStopped'), { exact: false }).closest('p')).toHaveTextContent('—');
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const details = screen.getByRole('button', { name: '音声処理の詳細' });
@@ -556,5 +556,5 @@ it.each([true, false])('右の列の出力はピークの数字で、横メー�
     render(<MasterBar isRunning={isRunning} />);
     expect(screen.queryByRole('meter', { name: message('ja', 'meter.output') })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: message('ja', 'meter.output') })).toBeInTheDocument();
-    expect(screen.getByLabelText(/出力のピーク/)).toBeInTheDocument();
+    expect(screen.getByText(/出力のピーク/)).toBeInTheDocument();
 });

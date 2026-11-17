@@ -1,6 +1,7 @@
 import type { Locator } from '@playwright/test';
 import { expect, test } from './tauriFixture';
 import { mustBox } from './mustBox';
+import { emitAudioLevel, setOutputMuted } from './e2eHooks';
 import { settleLayoutMotion } from './layoutMotion';
 import { uiScale } from '../../src/lib/largeWindow';
 import { message } from '../../src/i18n/messages';
@@ -19,7 +20,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, theme);
             await page.goto('/');
-            await page.evaluate(() => window.__e2eSetOutputMuted?.(false));
+            await setOutputMuted(page, false);
             const live = page.getByRole('region', { name: 'いまの状態', exact: true });
             await expect(live).toBeVisible();
             const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
@@ -28,14 +29,14 @@ for (const theme of ['light', 'dark', 'gaming']) {
             if (height >= 900) expect((await mustBox(input)).height).toBeCloseTo(16 * uiScale(width, height), 1);
             await expect(page.locator('.large-meter-motion')).toHaveCount(0);
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
-            await page.evaluate(() => window.__e2eEmit?.('audio-level', { input: [0.35, 0.3], output: [0.3, 0.25] }));
+            await emitAudioLevel(page, { input: [0.35, 0.3], output: [0.3, 0.25] });
             await page.screenshot({ path: testInfo.outputPath('home.png') });
             await page.locator('#home-vst-open').click();
             const vstPage = page.locator('[data-vst-page]');
             await expect(vstPage).toBeVisible();
             await expect(page.locator('.home-content')).toHaveCount(0);
             const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
-            const peak = column.getByLabel(/出力のピーク/);
+            const peak = column.locator('p', { hasText: /出力のピーク/ });
             await expect(peak).toBeVisible();
             await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
@@ -89,7 +90,7 @@ test('縦横を切り替えても右の列の出力の数字が残り、横メ�
     await page.goto('/');
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
-    const peak = column.getByLabel(/出力のピーク/);
+    const peak = column.locator('p', { hasText: /出力のピーク/ });
     const input = column.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
     await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     for (const size of [{ width: 1200, height: 1600 }, { width: 1920, height: 1080 }, { width: 1200, height: 1600 }]) {
@@ -113,7 +114,7 @@ for (const locale of ['ja', 'en']) {
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, { locale, theme });
             await page.goto('/');
-            await page.evaluate(() => window.__e2eSetOutputMuted?.(false));
+            await setOutputMuted(page, false);
             const columnName = locale === 'ja' ? '本番中の操作' : 'Live controls';
             const live = page.getByRole('region', { name: locale === 'ja' ? 'いまの状態' : 'Current status', exact: true });
             const column = page.getByRole('complementary', { name: columnName, exact: true });
@@ -143,7 +144,7 @@ for (const locale of ['ja', 'en']) {
                 await expect(control).toBeInViewport({ ratio: 1 });
                 expect(await control.evaluate(el => {
                     const r = el.getBoundingClientRect();
-                    return !el.closest('[inert]') && !el.parentElement?.closest('button')
+                    return !el.closest('[inert]') && Boolean(el.parentElement && !el.parentElement.closest('button'))
                         && el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
                 })).toBe(true);
             }
@@ -165,15 +166,15 @@ for (const locale of ['ja', 'en']) {
             const graph = page.getByRole('img', { name: locale === 'ja' ? '加工前と加工後の音量' : 'Level before and after processing', exact: true });
             await expect(graph).toHaveCount(0);
             await expect(page.locator('.live-aurora')).toHaveCount(0);
-            await page.evaluate(() => window.__e2eEmit?.('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+            await emitAudioLevel(page, { input: [0.2, 0.16], output: [0.12, 0.1] });
             await expect(graph).toBeVisible();
             await expect(graph).toHaveAttribute('data-flow', 'time');
             await page.emulateMedia({ reducedMotion: 'reduce' });
-            await page.evaluate(() => window.__e2eEmit?.('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+            await emitAudioLevel(page, { input: [0.2, 0.16], output: [0.12, 0.1] });
             await expect(graph).toHaveAttribute('data-flow', 'still');
             await page.screenshot({ path: testInfo.outputPath('stage.png') });
             await expect(column.getByRole('meter', { name: locale === 'ja' ? '出力' : 'Output', exact: true })).toHaveCount(0);
-            await expect(column.getByLabel(locale === 'ja' ? /出力のピーク/ : /Output peak/)).toBeVisible();
+            await expect(column.locator('p', { hasText: locale === 'ja' ? /出力のピーク/ : /Output peak/ })).toBeVisible();
         });
     }
 }

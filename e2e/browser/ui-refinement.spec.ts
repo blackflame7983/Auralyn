@@ -72,7 +72,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
             const bars = await column.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, name: el.getAttribute('aria-label') }; }));
             expect(bars).toHaveLength(1);
             expect(bars[0].name).toBe(message('ja', 'home.inputLevel'));
-            await expect(column.getByLabel(/出力のピーク/)).toBeVisible();
+            await expect(column.locator('p', { hasText: /出力のピーク/ })).toBeVisible();
             const statuses = column.locator('[role="meter"] [data-meter-status]');
             await expect(statuses).toHaveCount(1);
             expect(await statuses.evaluateAll(nodes => nodes.every(el => {

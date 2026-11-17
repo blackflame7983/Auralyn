@@ -37,7 +37,7 @@ Moving meters do not confirm that someone else can hear you.
 
 Incoming sound is shown on the input bar at the right, at the current level and without delay. Voice flow compares the sound before and after processing.
 
-The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. While sound is coming in, the word is “Receiving”.
+The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three only while sound is flowing and the output is not muted. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. While sound is coming in, the word is “Receiving”.
 
 The scale runs in even steps from −60 dBFS to 0 dBFS. The input in the right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”. The area between them is tinted as the in-range span only while a level is coming in. While stopped, waiting, or no longer updating, that tint stays off and the lines remain. The bar says “The area between the lines is in range.”
 
@@ -45,7 +45,7 @@ While waiting, silent, or stopped, the incoming bar and the bar in Current statu
 
 ### Sound flow {#flow}
 
-One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. While sound is coming in, the band draws the waveform and its legend. While silent, it draws a flat waveform and the legend, and shows no words. While stopped, and before the first value arrives after you start, the band is not shown at all. Once a value has arrived, the band stays until you stop, even when the meter is waiting or no longer updating, and shows the last waveform held still. “Measure level” starts from the heading of this band.
 
 ### Sound adjustments (shape noise and voice) {#sound}
 
@@ -119,11 +119,11 @@ The bar follows the current level, and the output number on the right side of th
 
 Incoming sound is shown on the input bar at the right, at the current level and without delay. “Audio flow” compares the sound before and after processing.
 
-The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”. The area between them is tinted as the in-range span only while a level is coming in. While stopped, waiting, or no longer updating, that tint stays off and the lines remain. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
+The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three only while sound is flowing and the output is not muted. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”. The area between them is tinted as the in-range span only while a level is coming in. While stopped, waiting, or no longer updating, that tint stays off and the lines remain. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
 
 ### Sound flow {#music-flow}
 
-One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. The waveform is drawn only while sound is coming in. While silent or waiting, the band shows that state in words where the waveform would be. While stopped, it shows neither those words nor the legend, and keeps the same height as while running. “Measure playback level” starts from the heading of this band.
+One band stacks the level before processing and the level after. The heading shows “Compares before and after”. This band is not where you read how loud the output is. While sound is coming in, the band draws the waveform and its legend. While silent, it draws a flat waveform and the legend, and shows no words. While stopped, and before the first value arrives after you start, the band is not shown at all. Once a value has arrived, the band stays until you stop, even when the meter is waiting or no longer updating, and shows the last waveform held still. “Measure playback level” starts from the heading of this band.
 
 ### Shape the sound (process with a VST) {#music-sound}
 

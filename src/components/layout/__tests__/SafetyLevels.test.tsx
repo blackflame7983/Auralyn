@@ -46,7 +46,7 @@ it('稼働中の一言と dBFS はピーク保持で出し、停止中は一言�
     const view = render(<SafetyOutput running name="Speakers" muted={false} />);
     expect(screen.getByText('大きすぎ')).toBeInTheDocument();
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('出力のピーク')).toHaveTextContent('0.0 dBFS');
+    expect(screen.getByText('出力のピーク', { exact: false }).closest('p')).toHaveTextContent('出力のピーク 0.0 dBFS');
     meter.state = 'stopped';
     meter.peak = [0, 0];
     view.rerender(<SafetyOutput running={false} name="Speakers" muted={false} />);
@@ -54,5 +54,5 @@ it('稼働中の一言と dBFS はピーク保持で出し、停止中は一言�
     expect(screen.queryByText('適正')).not.toBeInTheDocument();
     expect(screen.queryByText('小さめ')).not.toBeInTheDocument();
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('出力のピーク（音声停止中）')).toHaveTextContent('—');
+    expect(screen.getByText('出力のピーク（音声停止中）', { exact: false }).closest('p')).toHaveTextContent('出力のピーク（音声停止中） —');
 });
