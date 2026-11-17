@@ -114,6 +114,8 @@ it('停止中でも診断は開け、名前の欄は接続の詳細に残る（#
     expect(field).toBeEnabled();
     expect(field).toHaveValue('Mic');
     fireEvent.change(field, { target: { value: '' } });
+    expect(model.changeContext).not.toHaveBeenCalled();
+    fireEvent.blur(field);
     expect(model.changeContext).toHaveBeenCalledWith({ receiver: '' });
 });
 it('対象入力が未入力でも受け側確認を記録でき、名前が無くても送り先の確認へ進める', () => {

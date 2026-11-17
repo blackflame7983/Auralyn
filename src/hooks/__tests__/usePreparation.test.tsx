@@ -159,3 +159,36 @@ it('OBSの検査は指定ソースのwitnessを再検証し、利用者確認へ
     await act(async () => result.current.refresh());
     expect(obs).not.toHaveBeenCalled();
 });
+it('診断を開いている間（blocked）に名前を確定しても、背後を確認待ちにせず、閉じたあとの読み直しで受け側だけが失効する', async () => {
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    for (const stage of ['sound', 'listen', 'receiver'] as const) await act(async () => result.current.confirm(stage));
+    rerender({ blocked: true }); await settle();
+    act(() => { editPreparationReceiver('Auralyn Mic'); }); await settle();
+    expect(result.current.context.receiver).toBe('Auralyn Mic');
+    expect(result.current.observation.availability).toBe('ready');
+    expect(result.current.checking).toBe(false);
+    expect(confirmationState(result.current.records, 'receiver')).toBe('stale');
+    expect(confirmationState(result.current.records, 'sound')).toBe('confirmed');
+    rerender({ blocked: false }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    expect(result.current.checking).toBe(false);
+    expect(confirmationState(result.current.records, 'listen')).toBe('confirmed');
+});
+it('名前が前後の空白しか変わらないときは、確認を失効せず、OBS到達の記録も消さない', async () => {
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    for (const stage of ['sound', 'listen', 'receiver'] as const) await act(async () => result.current.confirm(stage));
+    const clear = vi.spyOn(preparationReach, 'clear');
+    act(() => { editPreparationReceiver(`  ${context.receiver}  `); }); await settle();
+    expect(clear).not.toHaveBeenCalled();
+    expect(result.current.context.receiver).toBe(context.receiver);
+    expect(confirmationState(result.current.records, 'receiver')).toBe('confirmed');
+    act(() => result.current.changeContext({ receiver: `${context.receiver} ` })); await settle();
+    expect(confirmationState(result.current.records, 'receiver')).toBe('confirmed');
+    expect(clear).not.toHaveBeenCalled();
+});
+it('空白だけの名前は空として保存する', async () => {
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    act(() => { editPreparationReceiver('   '); }); await settle();
+    expect(result.current.context.receiver).toBe('');
+    expect(readPreparationContext().receiver).toBe('');
+});

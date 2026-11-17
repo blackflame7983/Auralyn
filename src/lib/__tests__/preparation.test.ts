@@ -1,5 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
-import { buildPreparationObservation, confirmationState, editPreparationReceiver, emptyObservation, expireConfirmations, nextPreparationStage, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
+import { buildPreparationObservation, confirmationState, editPreparationReceiver, emptyObservation, expireConfirmations, nextPreparationStage, normalizeReceiver, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
 
 import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
 const observe = (stats = runtime(), ctx = context, live = liveStatus) => buildPreparationObservation(audioState, stats, live, ctx);
@@ -36,6 +36,14 @@ it('診断からの入力名は200字まで保存し、準備欄が受け取っ�
     } finally {
         window.removeEventListener('preparation-receiver-edited', listener);
     }
+});
+it('受け側の入力名は前後の空白を除き、空白だけなら空にして、200字までにする', () => {
+    expect(normalizeReceiver('  Mic  ')).toBe('Mic');
+    expect(normalizeReceiver(' 	 ')).toBe('');
+    expect(normalizeReceiver('あ'.repeat(250))).toBe('あ'.repeat(200));
+    savePreparationContext(context);
+    editPreparationReceiver('  Studio ');
+    expect(readPreparationContext().receiver).toBe('Studio');
 });
 it('用途を未選択へ戻したときは共用キーも消し、再起動で以前の用途を復活させない', () => {
     savePreparationContext({ ...context, usage: 'obs' });

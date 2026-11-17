@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Button } from '@/components/ui/button';
 import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { afterFrame } from '@/hooks/internal/afterFrame';
 import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
@@ -58,6 +59,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
     const [purpose] = useDisplayPurpose();
+    const receiverName = useReceiverDraft(context.receiver, value => model.changeContext({ receiver: value }));
     const music = purpose === 'music';
     const actionRef = useRef<HTMLButtonElement>(null);
     const summaryRef = useRef<HTMLElement>(null);
@@ -170,7 +172,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     </Select>
                 </Field>
                 {context.usage && context.usage !== 'listening' && <Field label={t(context.usage === 'obs' ? 'prep.obsTarget' : 'prep.target')}>
-                    <Input maxLength={200} value={context.receiver} onChange={e => model.changeContext({ receiver: e.target.value })} />
+                    <Input maxLength={200} {...receiverName.inputProps} />
                 </Field>}
             </div>
             {context.usage && context.usage !== 'listening' && observation.config?.output && <p className="text-ui-support text-muted-foreground">{t('prep.receiverInput')}: {renderNotice(t, receiverDeviceNotice(observation.config.output))}</p>}

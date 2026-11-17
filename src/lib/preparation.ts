@@ -38,9 +38,12 @@ export function savePreparationContext(context: PreparationContext) {
     } catch { /* 保存できなくても、そのセッションでの準備と既存操作を妨げない。 */ }
 }
 
+// 空白だけの名前や前後の空白は、名前として保存・表示・照合しない。
+export const normalizeReceiver = (receiver: string) => receiver.slice(0, 200).trim();
+
 // 診断から受け側の入力名を保存する。準備欄が開いていればそちらが確認の失効まで行う。
 export function editPreparationReceiver(receiver: string) {
-    const next = receiver.slice(0, 200);
+    const next = normalizeReceiver(receiver);
     const event = new CustomEvent('preparation-receiver-edited', { cancelable: true, detail: next });
     if (!window.dispatchEvent(event)) return;
     const context = readPreparationContext();

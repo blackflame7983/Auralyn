@@ -8,7 +8,7 @@ interface ProbeConfirm {
 // 診断を閉じたときの中断と、用途へ戻ったあとの焦点。表示の中に Effect を置かない。
 export function useTroubleshootLifecycle({
     isOpen, phase, abortRef, probeConfirmRef, returnFocus, purposeStartRef, copyTimer,
-    setPhase, setPurpose, setChecks, setIsRunning, setShowProbeConfirm, setChoosePurpose,
+    setPhase, setPurpose, setCopyDone, setChecks, setIsRunning, setShowProbeConfirm, setChoosePurpose,
 }: {
     isOpen: boolean;
     phase: string;
@@ -19,6 +19,7 @@ export function useTroubleshootLifecycle({
     copyTimer: { current: (() => void) | null };
     setPhase: (phase: 'purpose') => void;
     setPurpose: (purpose: null) => void;
+    setCopyDone: (done: boolean) => void;
     setChecks: (checks: []) => void;
     setIsRunning: (running: boolean) => void;
     setShowProbeConfirm: (open: boolean) => void;
@@ -35,6 +36,7 @@ export function useTroubleshootLifecycle({
             abortRef.current = true;
             setPhase('purpose');
             setPurpose(null);
+            setCopyDone(false);
             setChecks([]);
             setIsRunning(false);
             setShowProbeConfirm(false);
@@ -49,5 +51,5 @@ export function useTroubleshootLifecycle({
             copyTimer.current = null;
             audioApi.stopTestTone().catch(() => {});
         };
-    }, [abortRef, copyTimer, isOpen, probeConfirmRef, setChecks, setChoosePurpose, setIsRunning, setPhase, setPurpose, setShowProbeConfirm]);
+    }, [abortRef, copyTimer, isOpen, probeConfirmRef, setChecks, setChoosePurpose, setCopyDone, setIsRunning, setPhase, setPurpose, setShowProbeConfirm]);
 }

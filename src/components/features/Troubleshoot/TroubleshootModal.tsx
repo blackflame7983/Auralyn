@@ -1,4 +1,5 @@
 import { delay } from '@/hooks/internal/afterFrame';
+import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { useTroubleshootLifecycle } from '@/hooks/useTroubleshootLifecycle';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/Field';
@@ -7,7 +8,7 @@ import { destinationChoices } from '@/lib/destinationChoices';
 import { editPreparationReceiver, readPreparationContext } from '@/lib/preparation';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { message as formatMessage } from '@/i18n/messages';
+import { message as formatMessage, type MessageKey } from '@/i18n/messages';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
@@ -60,6 +61,13 @@ const savedPurpose = (): Purpose | null => {
     let goal: string | null = null;
     try { goal = localStorage.getItem('vst_host_setup_goal'); } catch { return null; }
     return goal === 'obs' || goal === 'discord' || goal === 'other' ? goal : goal === 'listening' || goal === 'local' ? 'listen' : null;
+};
+
+// 名前の使い道は用途で違う。OBSの確認と照合するのはOBSだけ。
+const RECEIVER_COPY: Record<Exclude<Purpose, 'listen'>, { label: MessageKey; reason: MessageKey }> = {
+    obs: { label: 'troubleshoot.receiverLabel.obs', reason: 'troubleshoot.receiverReason.obs' },
+    discord: { label: 'troubleshoot.receiverLabel.discord', reason: 'troubleshoot.receiverReason.discord' },
+    other: { label: 'troubleshoot.receiverLabel.other', reason: 'troubleshoot.receiverReason.other' },
 };
 
 const REPORT_STATUS: Record<CheckStatus, string> = { ok: '[OK]', warning: '[!]', error: '[x]', skipped: '[-]', checking: '[...]', pending: '[...]' };
@@ -124,7 +132,6 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const [showProbeConfirm, setShowProbeConfirm] = useState(false);
     const [copyDone, setCopyDone] = useState(false);
     const [choosePurpose, setChoosePurpose] = useState(false);
-    const [receiverDraft, setReceiverDraft] = useState('');
     const purposeStartRef = useRef<HTMLButtonElement>(null);
     const receiverInputRef = useRef<HTMLInputElement>(null);
     const returnFocus = useRef(false);
@@ -133,6 +140,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const routingRef = useRef<RoutingDiagnosticsReport | null>(null);
     const abortRef = useRef(false);
     const probeConfirmRef = useRef<((ok: boolean) => void) | null>(null);
+
+    const receiverName = useReceiverDraft(readPreparationContext().receiver, editPreparationReceiver);
+    const closeAndSave = () => { receiverName.commit(); onClose(); };
 
     const askProbeConfirm = () =>
         new Promise<boolean>(resolve => {
@@ -176,7 +186,6 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             ['d2', 'd3', 'd4', 'd5', 'd6', 'd7'].forEach(id =>
                 updateCheck(id, { status: 'skipped', detail: notice('guide.copy.341') })
             );
-            setReceiverDraft(readPreparationContext().receiver);
             setPhase('results');
             setIsRunning(false);
         };
@@ -394,17 +403,12 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             updateCheck('d7', { status: 'warning', detail: notice('guide.copy.389') });
         }
 
-        setReceiverDraft(readPreparationContext().receiver);
         setPhase('results');
         setIsRunning(false);
     }, [onClose, onOpenDiscordGuide, onOpenOBSGuide, openSettingsAction, updateCheck]);
 
-    const commitReceiver = (value: string) => {
-        const next = value.slice(0, 200);
-        setReceiverDraft(next);
-        editPreparationReceiver(next);
-    };
     const returnToPurpose = () => {
+        receiverName.commit();
         returnFocus.current = true;
         setPhase('purpose');
         setChecks([]);
@@ -469,7 +473,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
     useTroubleshootLifecycle({
         isOpen, phase, abortRef, probeConfirmRef, returnFocus, purposeStartRef, copyTimer,
-        setPhase, setPurpose, setChecks, setIsRunning, setShowProbeConfirm, setChoosePurpose,
+        setPhase, setPurpose, setCopyDone, setChecks, setIsRunning, setShowProbeConfirm, setChoosePurpose,
     });
 
     if (!isOpen) return null;
@@ -491,7 +495,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const warnCount = checks.filter(c => c.status === 'warning').length;
 
     return (
-        <Modal title={t('guide.copy.404')} onClose={onClose}>
+        <Modal title={t('guide.copy.404')} onClose={closeAndSave}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-lg max-h-[calc(90vh/var(--ui-zoom))] flex flex-col">
                 <div className="modal-header-base shrink-0">
@@ -504,7 +508,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <p className="text-ui-support text-muted-foreground">{t('guide.copy.406')}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('guide.copy.407')} >
+                    <Button variant="ghost" size="icon" onClick={closeAndSave} aria-label={t('guide.copy.407')} >
                         <MdClose className="w-5 h-5" />
                     </Button>
                 </div>
@@ -622,10 +626,10 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                         )}
                                     </div>
                                     {check.id === 'd6' && asksForReceiverName && purpose && <div className="rounded-card border border-border p-3 mt-3 space-y-2">
-                                        <Field label={t(purpose === 'obs' ? 'prep.obsTarget' : 'prep.target')} description={`${t('troubleshoot.receiverReason')} ${t('troubleshoot.receiverOptional')}`}>
-                                            <Input ref={receiverInputRef} maxLength={200} value={receiverDraft} onChange={event => commitReceiver(event.target.value)} />
+                                        <Field label={t(RECEIVER_COPY[purpose].label)} description={`${t(RECEIVER_COPY[purpose].reason)} ${t('troubleshoot.receiverOptional')}`}>
+                                            <Input ref={receiverInputRef} maxLength={200} {...receiverName.inputProps} />
                                         </Field>
-                                        {receiverDraft.trim() !== '' && <Button variant="outline" size="sm" type="button" onClick={() => { commitReceiver(''); receiverInputRef.current?.focus(); }}>{t('troubleshoot.clearReceiver')}</Button>}
+                                        {receiverName.draft.trim() !== '' && <Button variant="outline" size="sm" type="button" onClick={() => { receiverName.commit(''); receiverInputRef.current?.focus(); }}>{t('troubleshoot.clearReceiver')}</Button>}
                                     </div>}
                                 </div>
                             </div>
@@ -656,7 +660,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                         )}
                         {purpose && (
                             <Button variant="ghost" size="sm"
-                                onClick={() => void runDiagnostics(purpose)}
+                                onClick={() => { receiverName.commit(); void runDiagnostics(purpose); }}
                                 disabled={isRunning}
                                 className="flex items-center gap-1.5"
                             >
