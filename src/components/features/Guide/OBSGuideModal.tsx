@@ -50,7 +50,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     return (
         <Modal title={t('guide.copy.000')} onClose={onClose}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base w-full max-w-2xl flex flex-col max-h-[calc(90vh/var(--ui-zoom))]">
+            <div className="obs-guide modal-surface-base flex w-full max-w-2xl flex-col">
 
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted shrink-0">
@@ -81,17 +81,17 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 )}
 
                 {/* Content Area */}
-                <div className="modal-body-base pr-4">
+                <div className="modal-body-base">
                     {step === 0 && (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             <p className="text-ui-support text-muted-foreground">{t('guide.obs.intro')}</p>
-                            <SingingRouteChoice value={route} onChange={chooseRoute} />
+                            <SingingRouteChoice compact value={route} onChange={chooseRoute} />
                             {route === 'processed' ? <>
-                                <div className="space-y-2 text-left">
+                                <div className="space-y-1 text-left">
                                     <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
-                                    <p className="text-muted-foreground">{t('guide.copy.004')}</p>
+                                    <p className="text-ui-support text-muted-foreground">{t('guide.copy.004')}</p>
                                 </div>
-                                <div className="grid gap-2">
+                                <div className="grid gap-1.5">
                                     <DeviceChoiceCard layout="row" name="obs-device" value="true" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} />
                                     <DeviceChoiceCard layout="row" name="obs-device" value="false" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
                                 </div>
@@ -258,7 +258,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 )}
 
                 {/* Footer / Navigation */}
-                <div className="modal-footer-base flex justify-between items-center shrink-0">
+                <div className="modal-footer-base flex shrink-0 items-center justify-between gap-3">
                     <Button variant="ghost"
                         onClick={prevStep}
                         aria-label={t('guide.copy.075')}
@@ -266,8 +266,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     >
                         <MdArrowBack className="w-4 h-4" /> {t('guide.copy.076')}</Button>
 
-                    <div className="flex flex-col items-end gap-1">
-                    {nextNeedsDevice && <p id="obs-guide-next-reason" className="text-ui-support text-muted-foreground">{t('guide.obs.nextNeedsDevice')}</p>}
+                    <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                    {nextNeedsDevice && <p id="obs-guide-next-reason" className="text-right text-ui-support text-muted-foreground">{t('guide.obs.nextNeedsDevice')}</p>}
                     <Button variant="default"
                         onClick={nextStep}
                         aria-label={step === (totalSteps - 1) ? t('guide.copy.077') : t('guide.copy.078')}

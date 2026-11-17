@@ -38,6 +38,35 @@ export function findColumnScroller(root: ParentNode): HTMLElement | null {
     return best;
 }
 
+export function findDialogScroller(root: ParentNode): HTMLElement | null {
+    const surface = root instanceof HTMLElement && root.classList.contains('modal-surface-base')
+        ? root
+        : root.querySelector('.modal-surface-base');
+    if (!(surface instanceof HTMLElement)) return null;
+    let best: HTMLElement | null = null;
+    let bestArea = 0;
+    const candidates = surface.querySelectorAll<HTMLElement>('.modal-body-base, [class*="overflow-y-auto"], [class*="overflow-auto"], [class*="overflow-y-scroll"], [class*="overflow-scroll"], [style*="overflow"]');
+    for (const node of candidates) {
+        if (node === surface || node.hasAttribute('data-scroll-more') || !scrolls(node)) continue;
+        const area = node.clientWidth * node.clientHeight;
+        if (area <= bestArea) continue;
+        best = node;
+        bestArea = area;
+    }
+    if (best) return best;
+    return scrolls(surface) ? surface : null;
+}
+
+export function dialogScrollLimit(scroller: HTMLElement): HTMLElement | null {
+    const surface = scroller.closest('.modal-surface-base');
+    if (!(surface instanceof HTMLElement)) return null;
+    let limit: HTMLElement | null = null;
+    for (const node of surface.children) {
+        if (node instanceof HTMLElement && node !== scroller && node.classList.contains('modal-footer-base')) limit = node;
+    }
+    return limit;
+}
+
 export function saveBarNear(scroller: HTMLElement): HTMLElement | null {
     const root = scroller.parentElement;
     if (!root) return null;
