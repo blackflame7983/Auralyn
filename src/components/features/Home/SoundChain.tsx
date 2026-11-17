@@ -67,7 +67,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const partial = Boolean(stage && voiceEnabled !== reverbEnabled);
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
-    const builtinTone: StatusTone = deesserOnly || partial ? 'ok' : tone(stage?.builtinVoiceEnabled);
     const checkUnavailable = audioReady && !stopped && (!stage || !validVst || stage.vst.some(item => item.state === 'unavailable') || !music && !live);
     const voiceUnavailable = audioReady && !stopped && !music && !live;
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
@@ -135,6 +134,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
 
     const noiseInfo = <InfoPopover docName="home.noise-reduction" label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>;
     const builtinInfo = <InfoPopover docName="home.voice-shaping" label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>;
+    const deesser = (live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser;
     const rows = [
         ...(music ? [] : [
             card({ key: 'noise', on: noiseOn, name: t('settings.AudioSettingsModal.105'), summary: noiseSummary,
@@ -156,7 +156,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {live && !q.chainOn && <p className="text-ui-support text-muted-foreground">{t('home.appliesWhenOn')}</p>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
-                    {((live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser) && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(((live ? q.stats?.builtInDeesser : undefined) ?? stats?.builtInDeesser)!.amount * 100) })}</span>}
+                    {deesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(deesser.amount * 100) })}</span>}
                 </> : undefined,
                 tier2: live ? <BuiltinPresets q={q} /> : undefined }),
         ]),

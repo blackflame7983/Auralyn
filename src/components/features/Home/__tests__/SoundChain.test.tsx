@@ -40,7 +40,6 @@ it('一部のVST状態だけが不明でも声の操作を禁止と案内せず�
     expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
     expect(screen.getByText('noise-switch')).toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });
-    expect(more).toHaveTextContent('その他');
     fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: message('ja', 'home.moreSound') }));
     expect(settings).toHaveBeenCalledOnce();
@@ -238,6 +237,11 @@ it('低い窓向けの一文は音づくりを開く', () => {
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady /></RuntimeStatsContext.Provider>);
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.tierFallback') }));
     expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+});
+
+it('その他の操作は、見える文字「その他」を含む', () => {
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    expect(screen.getByRole('button', { name: 'その他の操作' })).toHaveTextContent('その他');
 });
 
 it('声を整えるとノイズ低減がOFFのときは、未適用の一文をカードに1回出す', () => {

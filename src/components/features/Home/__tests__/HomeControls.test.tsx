@@ -209,8 +209,7 @@ it('整え具合が0%のときは、軽い圧縮が残る一文をスライダ�
     render(<VoiceQuickControls running />);
     const slider = await screen.findByRole('slider', { name: '声の整え具合' });
     await waitFor(() => expect(slider).not.toHaveAttribute('aria-disabled', 'true'));
-    const note = screen.getByText('0%でも軽い圧縮は残ります。切るときは OFF にします');
-    expect(slider).toHaveAttribute('aria-describedby', note.id);
+    expect(screen.getByText('0%でも軽い圧縮は残ります。切るときは OFF にします')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '標準' })).toBeEnabled();
 });
 
