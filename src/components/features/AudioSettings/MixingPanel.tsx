@@ -2,7 +2,7 @@ import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { audioApi, type ActiveAudioConfig, type AudioDevice } from '@/api/audio';
 import { liveOutputApi, type LiveOutputConfig } from '@/api/liveOutput';
 import { mixingApi, type MixConfig, type MixLevels } from '@/api/mixing';
@@ -11,6 +11,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { useCancelWhenStale, useReadWhenOpened, useReportBusy } from './useMixingPanelEffects';
 import { currentOffsetContext, mixingConfigurationValue, offsetContextChanges, offsetStatus, type OffsetContextField } from '@/lib/offsetContext';
 
 const contextLabels: Record<OffsetContextField, MessageKey> = {
@@ -41,12 +42,12 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
         return mix;
     }, open, () => !!panel.current?.getClientRects().length);
     const { snapshot, busy, stale, error } = resource;
-    useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+    useReportBusy(busy, onBusyChange);
     const [kind, setKind] = useState<'device' | 'process'>('device'), [device, setDevice] = useState('');
     const [channels, setChannels] = useState<[number, number]>([0, 1]);
     const [apps, setApps] = useState<ProcessInputCandidate[]>([]), [candidate, setCandidate] = useState(''), [route, setRoute] = useState('');
     const [levels, setLevels] = useState<MixLevels>(initialLevels), levelsRef = useRef(levels); levelsRef.current = levels;
-    const dirty = useRef(false), initialized = useRef(false), attempted = useRef(false);
+    const dirty = useRef(false), initialized = useRef(false);
     const [confirmedRoute, setConfirmedRoute] = useState(''), [resetConfirmed, setResetConfirmed] = useState(false), [resetSuccess, setResetSuccess] = useState(false);
     const selected = apps.find(a => a.id === candidate), routes = selected?.routes ?? [];
     const devices = inputs.filter(d => d.host.toLowerCase() === 'wasapi' && d.id && d.id !== primaryInputId && d.channels > 0);
@@ -69,7 +70,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
         setConfirmedRoute(active && source?.kind === 'device' ? JSON.stringify([primaryInputId, 'device', [source.config.inputId, source.config.inputChannels]]) : '');
     };
     async function read() { const next = await resource.run('mixingUi.read'); if (next && !dirty.current && !initialized.current) draftFrom(next.config ?? next.savedConfig, !!next.config); }
-    useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void read(); } return () => { attempted.current = false; }; }, [open, disabled]);
+    useReadWhenOpened(open, disabled, () => { void read(); });
     async function run(action: 'reload' | 'reset' | 'configure' | 'disable' | 'levels', value = levelsRef.current, confirmOffset = false) {
         if (disabled || (action === 'reset' && (!resetConfirmed || snapshot?.running)) || ((action === 'levels' || action === 'configure') && !validMixLevels(value))) return null;
         setResetSuccess(false);
@@ -86,7 +87,9 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             if (value.offsetMs === previous?.offsetMs && (previous.offsetContext !== undefined || value.offsetContext !== undefined)) {
                 value = { ...value, offsetContext: previous.offsetContext };
             }
-            const config: MixConfig | null = action === 'disable' || action === 'levels' ? null : { version: 1, levels: value, source: kind === 'device' ? { kind: 'device', config: { host: 'WASAPI', inputId: device, inputChannels: channels } } : { kind: 'process_loopback', config: { appKey: selected!.appKey, appName: selected!.name, rawEndpointId: route, purpose: 'music' } } };
+            const processApp = kind === 'process' ? selected : null;
+            if (action !== 'disable' && action !== 'levels' && kind === 'process' && !processApp) return null;
+            const config: MixConfig | null = action === 'disable' || action === 'levels' ? null : { version: 1, levels: value, source: processApp ? { kind: 'process_loopback', config: { appKey: processApp.appKey, appName: processApp.name, rawEndpointId: route, purpose: 'music' } } : { kind: 'device', config: { host: 'WASAPI', inputId: device, inputChannels: channels } } };
             if ((action === 'levels' || action === 'configure') && (confirmOffset || value.offsetMs !== previous?.offsetMs)) {
                 const fresh = await readContext();
                 const context = currentOffsetContext(fresh.audio, action === 'levels' ? witness.config?.source : config?.source, fresh.broadcast);
@@ -109,7 +112,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
         return next?.error ? null : next;
     }
     const queue = useQueuedChange<MixLevels>(value => run('levels', value));
-    useEffect(() => { if (stale || !open) queue.cancel(); }, [stale, open]);
+    useCancelWhenStale(open, stale, () => queue.cancel());
     const changeLevels = (value: MixLevels) => {
         dirty.current = true; setLevels(value); levelsRef.current = value;
         // 時間差の編集中も下書きは保持し、不正な値を別の音量操作へ混ぜて送らない。
@@ -129,18 +132,30 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const notice = (key: MessageKey) => key === 'mixing.stale' ? t(key, { load: t('mixing.load') }) : t(key);
-    // 前提が無く、オケがまだ有効でないときは、準備の案内と復旧だけを出す。有効なオケは無効化のため残す。
+    // 前提が無く、オケがまだ有効でないときは、番号付きの準備だけを出す。有効なオケは無効化のため残す。
     const preparationOnly = !!snapshot && (!ready || !primaryIsVoiceDevice) && !snapshot.config;
+    // 保存ファイルが読めない、または外部で変わったときだけ復旧を出す（snapshot.error）。
+    const showRecovery = !preparationOnly || !!snapshot?.error;
+    const preparationSteps = [
+        !ready ? { key: 'output' as const, label: 'mixing.prepareOutput' as const, target: 'output' as const, action: 'mixingUi.openOutput' as const } : null,
+        !primaryIsVoiceDevice ? { key: 'input' as const, label: 'mixing.prepareInput' as const, target: 'input' as const, action: 'mixingUi.openInput' as const } : null,
+    ].filter(step => step !== null);
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary tabIndex={0} className="cursor-pointer text-ui-heading font-semibold">{t('mixing.title')}</summary>
-        {/* 準備だけの表示では、説明と入口のあとに更新を置く。整ったあとの並びは変えない（#611）。 */}
+        <summary tabIndex={0} className="home-card-name cursor-pointer">{t('mixing.title')}</summary>
         {!preparationOnly && <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
         {snapshot && <div className="space-y-4 text-ui-support">
-            {stale && <p role="alert">{notice('mixing.stale')}</p>}
-            {preparationOnly && <p>{t('mixing.prepare')}</p>}
-            {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
-            {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
-            {preparationOnly && <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
+            {stale && !preparationOnly && <p role="alert">{notice('mixing.stale')}</p>}
+            {preparationOnly && <>
+                <p>{t('mixing.prepare')}</p>
+                <ol className="list-decimal space-y-3 pl-5">
+                    {preparationSteps.map(step => <li key={step.key} className="space-y-2">
+                        <p>{t(step.label)}</p>
+                        <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>
+                    </li>)}
+                </ol>
+            </>}
+            {!preparationOnly && !ready && <div className="space-y-2"><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
+            {!preparationOnly && !primaryIsVoiceDevice && <div className="space-y-2"><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
             {!preparationOnly && <>
             <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
                 {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</section>
@@ -180,9 +195,9 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}
             {snapshot.pending && <p role="status">{t('mixing.pending')}</p>}{snapshot.failed && <p role="alert">{t('mixing.engineFailed')}</p>}
             </>}
-            <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('mixing.recoveryTitle')}</summary><p>{t('mixing.recoveryHelp')}</p>
+            {showRecovery && <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('mixing.recoveryTitle')}</summary><p>{t('mixing.recoveryHelp')}</p>
                 <label className="flex gap-2 text-ui-control"><Checkbox disabled={!editable || snapshot.running || stale} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('mixing.recoveryConfirm')}</label>
-                <Button variant="destructive" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale || !resetConfirmed} onClick={() => { queue.cancel(); void run('reset'); }}>{t('mixing.recoveryAction')}</Button>{resetSuccess && <p role="status">{t('mixing.recoverySuccess')}</p>}</details>
+                <Button variant="destructive" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale || !resetConfirmed} onClick={() => { queue.cancel(); void run('reset'); }}>{t('mixing.recoveryAction')}</Button>{resetSuccess && <p role="status">{t('mixing.recoverySuccess')}</p>}</details>}
         </div>}
         <MixingError error={error} />
     </details>;

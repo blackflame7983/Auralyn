@@ -3776,27 +3776,6 @@
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
-      "file": "src/components/features/AudioSettings/MixingPanel.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "6ff629fc8affe643ecc01a2f4c0fb1cbb357cc55459bc57bb37781e0ca5f0ff4",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/MixingPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "6ff629fc8affe643ecc01a2f4c0fb1cbb357cc55459bc57bb37781e0ca5f0ff4",
-      "count": 3,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/MixingPanel.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "6ff629fc8affe643ecc01a2f4c0fb1cbb357cc55459bc57bb37781e0ca5f0ff4",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/mixingUi.tsx",
       "rule": "@typescript-eslint/no-misused-promises",
       "hash": "ec42cb8e60c2c63cd5ea231ab710b12cc19fdb332f4f7c27f159536e01ab4512",
@@ -3914,20 +3893,6 @@
       "hash": "86a7f8dcd7316b7e6780d7a54afe9acd4648eacc8cc0934698c3937893e540cc",
       "count": 2,
       "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PostMixPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "df4a6da2e68c67568e97e12660e1ac3f470c1b3bf7ebdaff39405e3512286c1b",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PostMixPanel.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "df4a6da2e68c67568e97e12660e1ac3f470c1b3bf7ebdaff39405e3512286c1b",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
       "file": "src/components/features/AudioSettings/saveBarInset.tsx",

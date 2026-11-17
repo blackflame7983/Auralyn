@@ -1,5 +1,5 @@
 import { Checkbox } from '@/components/ui/Checkbox';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { audioApi, type PluginCatalog, type ScanFailure, type ScanStats, type SkippedScanRoot, type VstPlugin } from '@/api/audio';
 import { mixingApi } from '@/api/mixing';
 import { postMixApi, type PostMixRequest } from '@/api/postMix';
@@ -10,12 +10,13 @@ import { Switch } from '@/components/ui/switch';
 import { PluginList } from '@/components/features/PluginRack/PluginList';
 import { PluginBrowserModal } from '@/components/features/PluginBrowser/PluginBrowserModal';
 import { MixingError, ScopeDisclosure, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { useCancelWhenStale, useReadWhenOpened } from './useMixingPanelEffects';
 
 type Change = Exclude<PostMixRequest, { action: 'snapshot' }>;
 type Action = Change extends infer C ? C extends Change ? Omit<C, 'expectedEpoch' | 'expectedRevision'> : never : never;
 export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mainRunning: boolean; hasMixing?: boolean; disabled?: boolean }) {
     const t = useMessages(), panel = useRef<HTMLDetailsElement>(null);
-    const [open, setOpen] = useState(false), attempted = useRef(false);
+    const [open, setOpen] = useState(false);
     const [mixConfigured, setMixConfigured] = useState(hasMixing ?? false), [primaryRunning, setPrimaryRunning] = useState(mainRunning);
     const isMainRunning = mainRunning || primaryRunning;
     const resource = useRevisionedResource(async () => {
@@ -30,7 +31,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     const [catalogNotice, setCatalogNotice] = useState({ recovered: false, saveError: null as string | null });
     const [skippedRoots, setSkippedRoots] = useState<SkippedScanRoot[]>([]);
     const [gains, setGains] = useState<Record<string, number>>({});
-    useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void resource.run('mixingUi.read'); } return () => { attempted.current = false; }; }, [open, disabled]);
+    useReadWhenOpened(open, disabled, () => { void resource.run('mixingUi.read'); });
     async function run(action: Action) {
         if (disabled || (isMainRunning && ['enable', 'restore_saved', 'add', 'remove', 'reorder', 'reload', 'reset'].includes(action.action)) || (action.action === 'reset' && !resetConfirmed)) return null;
         const keys: Record<Action['action'], MessageKey> = { enable: 'postMix.enabled', restore_saved: 'postMix.restore', add: 'postMix.add', remove: 'postMix.remove', reorder: 'mixingUi.reorder', reload: 'postMix.reload', reset: 'postMix.reset', save: 'postMix.save', bypass: 'mixingUi.enablePlugin', mute: 'postMix.mute', gain: 'mixingUi.levels', editor: 'postMix.editor' };
@@ -49,7 +50,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
         return true;
     });
     const pendingGains = useRef<Record<string, number>>({});
-    useEffect(() => { if (stale || !open) { gainQueue.cancel(); pendingGains.current = {}; } }, [stale, open]);
+    useCancelWhenStale(open, stale, () => { gainQueue.cancel(); pendingGains.current = {}; });
     function applyCatalog(catalog: PluginCatalog) {
         setAvailable(catalog.plugins); setFailures(catalog.failures); setStats(catalog.stats);
         setCatalogNotice({ recovered: catalog.recoveredFromCorrupt, saveError: catalog.saveError });
@@ -71,7 +72,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const staleNotice = t('postMix.stale', { load: t('postMix.load') });
     return <details ref={panel} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary className="cursor-pointer text-ui-heading font-semibold">{t('postMix.title')}</summary>
+        <summary className="home-card-name cursor-pointer">{t('postMix.title')}</summary>
         <ScopeDisclosure settings summary="mixingUi.postScope" detail="postMix.scope" />
         <Button  variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
         {snapshot && <div className="space-y-3 text-ui-support">

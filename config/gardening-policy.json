@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "approved": "2026-11-17: initial gardening implementation on main, conditional suppression detection. Same day, removed exemptions whose declarations were fixed on codex/fix-cards-v1 (including the mixing.spec keyboard reorder test). Same day, removed exemptions for the edited native persistence and mixing-ui tests on codex/fix-setup-v5 after replacing explicit any and non-null assertions. Same day, removed exemptions for sound, peak, shortcut, system, update, and OBS declarations edited on codex/fix-text-v6 after moving their effects and fixing promise misuse. Same day, removed exemptions for the hotkey settings e2e declaration edited on codex/fix-text-v6 after opening the collapsed section and replacing its non-null assertions and explicit any.",
+  "approved": "2026-11-17: initial gardening implementation on main, conditional suppression detection. Same day, removed exemptions whose declarations were fixed on codex/fix-cards-v1 (including the mixing.spec keyboard reorder test). Same day, removed exemptions for the edited native persistence and mixing-ui tests on codex/fix-setup-v5 after replacing explicit any and non-null assertions. Same day, removed exemptions for sound, peak, shortcut, system, update, and OBS declarations edited on codex/fix-text-v6 after moving their effects and fixing promise misuse. Same day, removed exemptions for the hotkey settings e2e declaration edited on codex/fix-text-v6 after opening the collapsed section and replacing its non-null assertions and explicit any. Same day, removed exemptions for MixingPanel and PostMixPanel on codex/fix-dialogs-v8 after moving their effects into useMixingPanelEffects and dropping the non-null assertions.",
   "files": {
     "package.json": "dec0c772e87915e8fe200e52ea4b4c69033e9b6790658b319ab4eff6418ac4c3",
     "eslint.config.mjs": "387d8eebc2ad4b55c65ae0438f0848c66eb09966912225a296ba732a5eec0742",
@@ -14,7 +14,7 @@
     "requirements-dev.txt": "ea7a3a35375c95ff012fb01931a0b252b862b304e9a1457656df4d091e732481",
     "src-tauri/Cargo.toml": "9902a3d2aee1945b45bff54373ab9307bd8826c6644d690c50339a3e6db34192",
     "src-tauri/clippy.toml": "d17e5c311153066ff9e94a78b6fcc9cd3ef168ee2e62a19f24fdcd1e652ee8f2",
-    "config/gardening-baseline.json": "34b60f9efe987aa3150948d74abc3f352a04daaadbfb42e420743bc6dcccc02d",
+    "config/gardening-baseline.json": "f8b70ca047324557249efba4f461fa0e1b984f1f0a904b3cab4467dd0e558f98",
     "config/gardening-python-baseline.json": "7c1051f6e2bc3943b7c1dbe4da229694455681b8875a346c99279e555edb733f",
     "config/gardening-rust-baseline.json": "7dc36821b2910a1cf4ee9e88fa3e52b5c5e144da03ae98c7cdd14b359cd9671c",
     "config/verification-features.json": "68a10b3f863e924cf5532daf8c6d1b71785c9e9ed355567a76d00bf0342945a3",

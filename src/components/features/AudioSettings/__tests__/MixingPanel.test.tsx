@@ -66,20 +66,20 @@ const intro = 'オケを足すには、先に次の準備が要ります。';
 it('前提が無くオケが無効なら、準備の案内と入口だけを出す', async () => {
     const navigate = vi.fn();
     await setup(snapshot({ config: null, savedConfig: null }), false, false, navigate, intro);
-    const refresh = screen.getByRole('button', { name: '表示を最新にする' });
-    expect(refresh.className).toContain('text-muted-foreground');
-    const outputGuide = screen.getByText('配信用の出力先と、声の処理を分ける設定が必要です。');
-    const inputGuide = screen.getByText('主入力には声用途のマイク機器を選んでください。');
+    expect(screen.queryByRole('button', { name: '表示を最新にする' })).not.toBeInTheDocument();
+    const steps = screen.getByRole('list');
+    expect(steps.tagName).toBe('OL');
+    const outputGuide = screen.getByText('配信用の出力先を選ぶ');
+    const inputGuide = screen.getByText('声のマイクを主入力に選ぶ');
     const outputButton = screen.getByRole('button', { name: '配信用の分離出力を設定' });
     const inputButton = screen.getByRole('button', { name: '主入力と用途を設定' });
-    const recovery = screen.getByText('保存設定を復旧する');
+    expect(outputGuide.closest('li')).toHaveClass('space-y-2');
     const follows = (before: HTMLElement, after: HTMLElement) => (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     expect(follows(screen.getByText(intro), outputGuide)).toBe(true);
     expect(follows(outputGuide, outputButton)).toBe(true);
     expect(follows(outputButton, inputGuide)).toBe(true);
     expect(follows(inputGuide, inputButton)).toBe(true);
-    expect(follows(inputButton, refresh)).toBe(true);
-    expect(follows(refresh, recovery)).toBe(true);
+    expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配信用の分離出力を設定' }));
     expect(navigate).toHaveBeenCalledWith('output');
     fireEvent.click(screen.getByRole('button', { name: '主入力と用途を設定' }));
@@ -95,24 +95,30 @@ it('前提が無くオケが無効なら、準備の案内と入口だけを出�
     expect(screen.queryByRole('spinbutton', { name: '配信用の手動時間差（ms）' })).not.toBeInTheDocument();
     expect(screen.queryByText(/声の処理待ち/)).not.toBeInTheDocument();
     expect(screen.queryByText(/音量の目安/)).not.toBeInTheDocument();
-    expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
+    expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
+    expect(screen.getByText('オケを追加して配信する')).toHaveClass('home-card-name');
 });
 it('分離出力だけが無いときは、その案内だけを出す', async () => {
     await setup(snapshot({ config: null }), false, true, vi.fn(), intro);
     expect(screen.getByText(intro)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '配信用の分離出力を設定' })).toBeInTheDocument();
-    expect(screen.queryByText('主入力には声用途のマイク機器を選んでください。')).not.toBeInTheDocument();
+    expect(screen.queryByText('声のマイクを主入力に選ぶ')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '主入力と用途を設定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: '使う入力チャンネル' })).not.toBeInTheDocument();
-    expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
+    expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '表示を最新にする' })).not.toBeInTheDocument();
 });
 it('声の主入力だけが無いときは、その案内だけを出す', async () => {
     await setup(snapshot({ config: null }), true, false, vi.fn(), intro);
     expect(screen.getByText(intro)).toBeInTheDocument();
-    expect(screen.queryByText('配信用の出力先と、声の処理を分ける設定が必要です。')).not.toBeInTheDocument();
+    expect(screen.queryByText('配信用の出力先を選ぶ')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '配信用の分離出力を設定' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '主入力と用途を設定' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '入力元を適用' })).not.toBeInTheDocument();
+    expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
+});
+it('準備だけの表示でも、保存ファイルが読めないときだけ復旧を出す', async () => {
+    await setup(snapshot({ config: null, savedConfig: null, error: 'corrupt' }), false, true, vi.fn(), intro);
     expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
 });
 it('前提が無くてもオケが有効なら、無効にする操作を出す', async () => {
