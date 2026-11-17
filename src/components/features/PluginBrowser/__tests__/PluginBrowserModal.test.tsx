@@ -25,6 +25,9 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     const props = { isOpen: true, onClose: vi.fn(), plugins: [], isLoading: false, onScan: scan, onPluginSelect: vi.fn() };
     const view = render(<PluginBrowserModal {...props} />);
     expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
+    expect(screen.getByText(/下の「すべて再スキャン」を押してください/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'VSTの入れ方' }));
+    expect(localStorage.getItem('auralyn_help_section')).toBe('vst');
     scan.mockClear();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
     // 登録も失敗も無いうちは、検索横の更新を出さず、空の案内のすべて再スキャンだけにする（#583）。

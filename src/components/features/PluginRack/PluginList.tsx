@@ -151,7 +151,7 @@ export const PluginList: React.FC<PluginListProps> = ({
         <TooltipProvider>
             <div className="min-w-0 w-full space-y-4 wrap-anywhere">
                 {/* Header / Rack Ears */}
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
+                {(!embedded || plugins.length > 0 || headerAction) && <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
                     {!embedded && <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-ui-heading font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>}
                     <div className="ml-auto flex items-center gap-2">
                         {/* View Mode Toggle */}
@@ -163,14 +163,14 @@ export const PluginList: React.FC<PluginListProps> = ({
                                     { value: 'detailed', label: <><MdViewAgenda aria-hidden="true" className="h-4 w-4" />{t('rack.detailed')}</> },
                                 ]} />
                         )}
-                        {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="gap-2">
+                        {rackKind === 'voice' && !embedded && <Button variant="outline" size="sm" onClick={onOpenPresets} className="gap-2">
                             <MdFolderOpen className="w-3.5 h-3.5" />
                             {t('rack.manageProfiles')}</Button>}
                         {embedded && rackKind === 'voice' && purpose !== 'music' && plugins.length > 0 && <Button variant="outline" size="sm" type="button" onClick={onOpenTemplates} className="gap-2">
                             {t('rack.empty.templates')}</Button>}
                         {!embedded && headerAction}
                     </div>
-                </div>
+                </div>}
 
                 <DndContext
                     accessibility={{
@@ -215,7 +215,8 @@ export const PluginList: React.FC<PluginListProps> = ({
                         onAddClick={onAddClick}
                         onOpenTemplates={onOpenTemplates}
                         unrestored={unrestored}
-                        hideAdd={embedded}
+                        hideAdd={false}
+                        markAddTarget={!embedded}
                     />
                 ) : embedded ? null : (
                     <Button

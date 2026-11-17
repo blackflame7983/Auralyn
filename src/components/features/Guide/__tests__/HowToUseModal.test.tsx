@@ -7,6 +7,7 @@ import { AppRail } from '@/components/layout/AppRail';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
+import { requestHelpSection } from '@/lib/openHelp';
 import { fillHomeGuide, homeGuideFor, homeGuideGroups, homeGuideLabels } from '../homeGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 
@@ -43,6 +44,14 @@ it.each(['ja', 'en'] as const)('メニュー先頭から開き、節を保存し
     await waitFor(() => expect(trigger).toHaveFocus());
     fireEvent.keyDown(window, { key: 'F1' });
     expect(screen.getByRole('button', { name: message(locale, 'help.section.terms') })).toHaveAttribute('aria-current', 'page');
+});
+
+it.each(['ja', 'en'] as const)('VSTの入れ方の依頼で、その節を開く（%s）', locale => {
+    open(locale);
+    act(() => { requestHelpSection('vst'); });
+    const dialog = screen.getByRole('dialog', { name: message(locale, 'help.title') });
+    expect(within(dialog).getByRole('button', { name: message(locale, 'help.section.vst') })).toHaveAttribute('aria-current', 'page');
+    expect(within(dialog).getByText(message(locale, 'help.vst.body'))).toBeVisible();
 });
 
 it('入力中のF1で開き、Tabはダイアログ内に留まり、閉じると入力へ戻る', async () => {

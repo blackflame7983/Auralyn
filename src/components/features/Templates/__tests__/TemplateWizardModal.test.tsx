@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { TemplateWizardModal } from '../TemplateWizardModal';
@@ -92,4 +93,24 @@ it('localeだけでtemplate元objectと手動割当を保ち、自動割当やsc
     expect(compressor).toHaveValue('manual'); expect(scan).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Replace the VST setup' }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(expect.objectContaining({ '1': plugins[1], '2': plugins[2] })));
+});
+
+it.each(['ja', 'en'] as const)('この構成を使うが主な操作で、無いVSTでは適用が止まると知らせる（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const apply = vi.fn();
+    render(<LocaleProvider store={store}><TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={apply} onScan={vi.fn()} isScanning={false} /></LocaleProvider>);
+    expect(screen.getByText(message(locale, 'templates.missingVst'))).toBeVisible();
+    expect(screen.queryByText('雑談 (Just Chatting)')).not.toBeInTheDocument();
+    expect(screen.queryByText('歌枠 (Singing)')).not.toBeInTheDocument();
+    const use = screen.getAllByRole('button', { name: message(locale, 'templates.useThis') });
+    expect(use).toHaveLength(3);
+    fireEvent.click(use[0]);
+    const replace = screen.getByRole('button', { name: message(locale, 'presets.copy.106') });
+    expect(replace).toBeDisabled();
+    fireEvent.click(replace);
+    expect(apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'presets.copy.097') }));
+    const details = screen.getByText(message(locale, 'templates.beforeSummary')).closest('details');
+    expect(details).toHaveTextContent(message(locale, 'templates.beforeBody'));
+    expect(details?.textContent).not.toMatch(locale === 'ja' ? /別に用意/ : /Provide the VST/);
 });

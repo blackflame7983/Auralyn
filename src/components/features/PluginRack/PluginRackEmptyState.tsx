@@ -13,6 +13,8 @@ interface PluginRackEmptyStateProps {
     unrestored?: string[];
     /** ページの主ボタンが追加を持つとき、ここには出さない。 */
     hideAdd?: boolean;
+    /** ページの見出しが同じ入口を持つとき、id はそちらに残す。 */
+    markAddTarget?: boolean;
 }
 
 export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
@@ -21,6 +23,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     onOpenTemplates,
     unrestored = [],
     hideAdd = false,
+    markAddTarget = true,
 }) => {
     const t = useMessages();
     const names = unrestoredNamesText(t, unrestored);
@@ -39,7 +42,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
 
             {(showTemplates || !hideAdd) && <div className="flex flex-wrap items-center gap-3">
                 {!hideAdd && <Button
-                    id="add-effect-btn"
+                    id={markAddTarget ? 'add-effect-btn' : undefined}
                     variant={audioReady ? 'default' : 'outline'}
                     onClick={onAddClick}
                     className="gap-2"

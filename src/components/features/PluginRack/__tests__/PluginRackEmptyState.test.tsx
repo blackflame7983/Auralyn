@@ -31,7 +31,8 @@ it.each(['ja', 'en'] as const)('空状態の説明は音づくりへの経路だ
     render(<LocaleProvider store={store}><PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
     expect(screen.getByRole('heading', { name: message(locale, 'rack.empty.title') })).toBeVisible();
     expect(screen.getByRole('button', { name: message(locale, 'rack.empty.addVst') })).toBeEnabled();
-    expect(screen.getByText(locale === 'ja' ? 'ノイズ低減と声を整える機能は、ホームの音調整で調整できます。' : 'Adjust noise reduction and the built-in voice chain in Sound controls on Home.')).toBeVisible();
+    expect(screen.getByText(message(locale, 'rack.empty.scope'))).toBeVisible();
+    expect(screen.queryByText(locale === 'ja' ? 'ノイズ低減と声を整える機能は、ホームの音調整で調整できます。' : 'Adjust noise reduction and the built-in voice chain in Sound controls on Home.')).not.toBeInTheDocument();
 });
 
 
@@ -49,7 +50,7 @@ it('保存済みのVSTを読み込めていない空ラックは「まだない�
     render(<PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} unrestored={['Ozone 12 Equalizer']} />);
     expect(screen.getByRole('heading', { name: '保存済みのVSTを読み込めていません' })).toBeInTheDocument();
     expect(screen.getByText('読み込めていないVST：Ozone 12 Equalizer')).toBeInTheDocument();
-    expect(screen.queryByText('VSTエフェクトはまだありません')).toBeNull();
+    expect(screen.queryByText('VSTはまだありません')).toBeNull();
 });
 
 it('音楽鑑賞では、ホームにない声の調整を案内しない', () => {
