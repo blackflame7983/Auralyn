@@ -1,6 +1,45 @@
 // ブラウザ画面試験（e2e/browser）と開発プレビュー（?mock=）が共有する Tauri IPC の模擬応答。
 // Playwright の addInitScript は関数を文字列化して渡すため、この関数は外側の変数・import を参照しない。
 // 実接続の試験は e2e/native に分離する。本番ビルドからは参照しない。
+interface MockPage extends Window {
+    __e2eSaveFailure?: boolean;
+    __e2eStopFailure?: boolean;
+    __e2eStartFailure?: boolean;
+    __e2eChannelFailure?: boolean;
+    __e2eAudioUnknown?: boolean;
+    __TAURI_INTERNALS__?: { invoke: (command: string, args?: unknown) => Promise<unknown> };
+}
+
+interface MockBuiltin {
+    active: boolean;
+    preset: string;
+    amount: number;
+    singing: null;
+    reverb: { enabled: boolean; mix: number; decaySeconds: number; damping: number };
+}
+
+interface MockArgs {
+    code?: number;
+    value: number;
+    url: string;
+    id: number | null;
+    event: string;
+    handler: number;
+    eventId: number;
+    config?: unknown;
+    extraRoots?: unknown;
+    channelRouting?: { inputChannels?: number[] };
+    request: {
+        action: string;
+        ids: string[];
+        inputGain: number | null;
+        expectedVersion: string;
+        singing: MockBuiltin | null;
+        talk: MockBuiltin | null;
+        request: { path: string };
+    };
+}
+
 export interface TauriMockOptions {
     liveHome: boolean;
     stoppedHome: boolean;
@@ -16,11 +55,13 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     const listeners = new Map<number, { event: string; handler: number }>();
     let next = 1;
     const unexpected: string[] = [];
-    Object.assign(window, { __e2eUnexpected: unexpected, __e2eEmit: (event: string, payload: unknown) => {
+    const page = window as MockPage;
+    const emit = (event: string, payload: unknown) => {
         listeners.forEach((listener, id) => {
             if (listener.event === event) callbacks.get(listener.handler)?.({ event, id, payload });
         });
-    } });
+    };
+    Object.assign(window, { __e2eUnexpected: unexpected, __e2eEmit: emit });
     const mic = { name: liveHome ? 'CABLE Output' : 'Test microphone', host: 'WASAPI', is_input: true, index: 0, channels: 2, is_default: true, id: 'mic' };
     const output = { ...mic, name: liveHome ? 'スピーカー' : 'Test headphones', is_input: false, id: 'headphones' };
     // 登録済みモードとミュート表示を含め、実Tauriで重なった本番帯を再現する。
@@ -29,12 +70,13 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     const modeWrites: unknown[] = [];
     let audioRunning = liveHome && !stoppedHome;
     const starts: unknown[] = [];
-    Object.assign(window, { __e2eStarts: starts });
+    const quits: unknown[] = [];
+    Object.assign(window, { __e2eStarts: starts, __e2eQuits: quits });
     let outputMuted = true;
     let outputGain = 1;
     const saveItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
-        if ((window as any).__e2eSaveFailure && key === 'vst_host_audio_config') throw new Error('テスト用: 音声設定の保存失敗');
+        if (page.__e2eSaveFailure && key === 'vst_host_audio_config') throw new Error('テスト用: 音声設定の保存失敗');
         return saveItem.call(this, key, value);
     };
     const gainWrites: number[] = [];
@@ -46,10 +88,12 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     Object.assign(window, { __e2eModeWrites: modeWrites });
     const openedUrls: string[] = [];
     Object.assign(window, { __e2eOpenedUrls: openedUrls });
-    const invoke = async (command: string, args: Record<string, any> = {}) => {
+    const invoke = async (command: string, args = {} as MockArgs) => {
         // 計測Host自身の窓の観測・配置は実WebView2へ渡す。音声操作はモックのままにする。
         if (nativeMeterProfile && ['outer_position', 'inner_size', 'outer_size', 'scale_factor', 'is_maximized', 'is_minimized', 'available_monitors', 'set_position', 'set_size', 'set_min_size', 'maximize', 'unmaximize'].some(name => command === `plugin:window|${name}`)) {
-            return (window as any).__TAURI_INTERNALS__.invoke(command, args);
+            const forward = page.__TAURI_INTERNALS__?.invoke;
+            if (!forward) throw new Error('__TAURI_INTERNALS__ がありません');
+            return forward(command, args);
         }
         if (command === 'mixing' && args?.request?.action === 'snapshot') return { epoch: 'mix-empty', revision: '0', config: null, savedConfig: null, running: false, error: null, accompaniment: null, primaryClock: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [0, 0], knownVoiceProcessingFrames: null, pending: false, failed: false };
         if (command === 'post_mix' && args?.request?.action === 'snapshot') return { epoch: 'post-empty', revision: '0', enabled: false, running: false, savedPlugins: [], plugins: [], restored: false, error: null, transportLatencyFrames: 0, declaredPluginLatencyFrames: null, attached: null, ready: null, failed: null, processedPackets: null, sampleRate: null };
@@ -61,18 +105,27 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'set_display_locale': return true;
             case 'audio_frontend_bootstrap': return { outcome: 'inactive', initialPage: true, error: null };
             case 'get_saved_audio_config': return null;
+            case 'stop_audio': {
+                if (page.__e2eStopFailure) throw new Error('テスト用: 音声を止められません');
+                audioRunning = false;
+                emit('audio-stopped', {});
+                return;
+            }
+            case 'plugin:process|exit': quits.push(args.code ?? 0); return;
             case 'start_audio': {
                 starts.push(args);
-                if ((window as any).__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
+                if (page.__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
                 audioRunning = true;
-                (window as any).__e2eEmit('audio-started', { sample_rate: 48000, buffer_size: 512 });
+                emit('audio-started', { sample_rate: 48000, buffer_size: 512 });
                 return { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512,
                     routing: args.channelRouting ? { ...args.channelRouting, inputChannels: args.channelRouting.inputChannels ?? [0, 1] } : undefined };
             }
             case 'set_input_channels':
-                if ((window as any).__e2eChannelFailure) throw new Error('テスト用: 入力チャンネルの反映失敗');
+                if (page.__e2eChannelFailure) throw new Error('テスト用: 入力チャンネルの反映失敗');
                 return;
-            case 'get_audio_state': return { is_running: true, config: liveHome ? { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512 } : null };
+            case 'get_audio_state':
+                if (page.__e2eAudioUnknown) throw new Error('テスト用: 状態を取得できません');
+                return { is_running: true, config: liveHome ? { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512 } : null };
             case 'get_audio_devices': return { inputs: [mic], outputs: [output] };
             case 'session_rack': {
                 const previewPlugins = new URLSearchParams(location.search).get('previewPlugins') === '1';

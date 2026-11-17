@@ -4002,13 +4002,6 @@
     {
       "file": "src/components/features/Guide/__tests__/HowToUseModal.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "84f31f393c2b7d44e4031c012fb3611b5711b2e357e0ffe6686c2b86e63bbeb9",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Guide/__tests__/HowToUseModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "c0010cd0b87176d2d3bf40c2c34f523a4534bdcfe26bb609659342d3faca50f3",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -5555,13 +5548,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/layout/__tests__/HeaderControls.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "aee9bd9e31062f0eccdc0f180f989729f145c6831ec14885a1fc113c017725fd",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/layout/__tests__/homeChrome.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "5c0325f9de9a173db775bc1d11f033e130134cf2fbea5a46534b40fc516ef680",
@@ -5672,27 +5658,6 @@
       "hash": "8290c3bece3895ab55c3418a40d925dd38d7c9435f8de9f2669a500bc77f7d5a",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "a707c25da901d9d7e01f91816323ebe79dc9e89efdfc354c5d2d6c71a5a67484",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "a707c25da901d9d7e01f91816323ebe79dc9e89efdfc354c5d2d6c71a5a67484",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/layout/LatencyStageDetails.tsx",
@@ -5950,48 +5915,6 @@
       "file": "src/dev/__tests__/previewScreen.test.ts",
       "rule": "react-hooks/exhaustive-deps",
       "hash": "35bbaf283d4c66fd52422cff28e726b1805a4411237e0ad0f275cd5cde29b0bf",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 6,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-argument",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 9,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 25,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },

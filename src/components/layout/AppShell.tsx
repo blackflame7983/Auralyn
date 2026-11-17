@@ -262,6 +262,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <StatusBand stats={runtimeStats} host={currentHost} sampleRate={currentSampleRate} bufferSize={currentBufferSize}
                     isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route}
+                    canStart={canStart} starting={starting} onStart={() => { void startAudio(); }}
                     modeSwitch={liveModeSwitch} showListen={configured}
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
                     listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
