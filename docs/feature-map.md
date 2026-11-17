@@ -8,7 +8,7 @@ AuralynはURLルーターではなく`src/hooks/useUIState.ts`の`AppPage`で画
 | --- | --- | --- | --- |
 | ホーム・開始停止・緊急操作 | `home`／screenなし | `src/components/layout/AppShell.tsx`、`src/lib/startHomeAudio.ts` | `--feature home`、`home-actions.spec.ts`、`stopped-home.spec.ts` |
 | 入出力メーター・波形 | `home` | `src/components/features/LevelMeter/`、`Home/SoundFlow.tsx`、`src/lib/model/meter.ts` | `--feature home`、`routing.property.test.ts` |
-| 接続・ASIO・アプリの音声 | `connect`／`settings-audio` | `src/components/features/AudioSettings/`、`src/lib/audioChannelRouting.ts`、`src/api/audio.ts` | `--feature connection`、`asio-routing.spec.ts`、`process-input.spec.ts` |
+| 接続・ASIO・アプリの音声・使い道の切り替え | `connect`／`settings-audio` | `src/components/features/AudioSettings/`（`UsageSwitch.tsx`）、`src/lib/usageSwitch.ts`、`src/lib/usageDevices.ts`、`src/lib/audioChannelRouting.ts`、`src/api/audio.ts` | `--feature connection`、`asio-routing.spec.ts`、`process-input.spec.ts`、`usage-switch.spec.ts` |
 | 初回セットアップ | 初回表示／通常UIから開く | `src/components/features/SetupWizard/`、`wizardModel.ts` | `--feature connection`、`setup-asio.spec.ts`、`setup-overflow.spec.ts` |
 | 音づくり・保護・歌／雑談 | `sound`／`settings-sound` | `AudioSettings/`の各panel、`src/hooks/useLiveModes.ts`、`src-tauri/src/audio_engine/` | `--feature connection`、`safety-column.spec.ts`、関連Rust試験 |
 | VSTの追加・順序・原音比較 | `vst`／`vst`、`plugin-browser` | `PluginRack/`、`PluginBrowser/`、`src/hooks/usePlugins.ts`、`src/lib/model/plugin.ts` | `--feature vst`、`vst-scan-folders.spec.ts`、`live-mode-vst.spec.ts` |

@@ -615,8 +615,9 @@ SGMの説明書や既存runnerの成功を新経路の実機合格へ読み替�
 
 実装と確認範囲は[段階1の記録](PROCESS_LOOPBACK_STAGE1.md)を参照する。
 Rustは `cargo test --locked --all-targets --features process-loopback-probe` と同条件のClippy（`-- -D warnings`）、フロントはVitest・TypeScript・Viteで確認する。
-`e2e/browser/process-input.spec.ts` はIPCモックで、候補選択、保存時に機器入力と候補IDを混同しないこと、再選択、用途の保持、機器入力への明示切替と狭い画面を確認する。
-`ProcessInputPanel.test.tsx` は一覧更新の非同期応答中に用途を変更しても古い下書きへ戻さず、同じアプリの再生先変更では出力先だけを再選択することを確認する。
+`e2e/browser/process-input.spec.ts` はIPCモックで、候補選択、保存時に機器入力と候補IDを混同しないこと、再選択、音楽鑑賞の用途を保ったままの機器入力への明示切替と狭い画面を確認する。入力の用途は使い道で決まり、接続のページでは別に選ばない（#723）。
+`ProcessInputPanel.test.tsx` は一覧更新の非同期応答中に古い下書きへ戻さず、同じアプリの再生先変更では出力先だけを再選択することを確認する。
+`e2e/browser/usage-switch.spec.ts` は接続のページの使い道の切り替えを、模擬IPCで確認する。切り替えの小窓（記録あり・実行中の再起動・失敗時に表示と音声設定が元のまま・記録なしはセットアップ・操作ロック中）、同じ見出しの連続（#712）、900×600から1280×800・日英の最初の表示に入力の選択欄が入ること、焦点の戻りを見る。撮影は `test-results/ux-eval-check/723/` に残る。`usageDevices.test.ts` は使い道ごとの機器の記録の読み書き（不正な形式を捨てること）と、切り替えの保存・失敗時の復元を確認する（#723）。実音声の切り替えは確認していない。
 
 `scripts/verify_process_engine_input.py` は実Engine、`scripts/verify_process_audio_engine.py` は実ケーブル入力（`--purpose voice|music`）、`scripts/verify-process-input-native.mjs` は実UI→Host→Engine→保存を確認する明示実行用の入口である。
 通常の自動テストから音声を開始しない。実行時は、原音用の未使用・非既定の再生先と本人用出力を指定し、所有する小音量sourceだけを使う。

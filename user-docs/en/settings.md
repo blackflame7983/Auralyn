@@ -2,14 +2,14 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes", "Save and restore settings"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "Use", "Switch", "Align", "Open Connection", "Audio will briefly cut out", "No connection changes", "Save and restore settings"]
 ---
 
 ## Connection {#audio}
 
 In “Connection” on the left rail, choose microphone, output, connection method, sample rate and dropout settings. Split listening and broadcast outputs, whether to show stream mixing on Home, saved connections, singing and monitoring settings are also here.
 
-“How you use it” at the top of the page switches “Home layout” between voice streaming or calls and listening to music. Switching takes effect right away. If the input purpose does not match, Auralyn asks whether to set it to music or to voice. The input purpose stays as it is until you agree. “Appearance” explains that switching between streaming and listening to music is under “How you use it” on the Connection page, and keeps “Open Connection”.
+“Use” at the top of the page switches between streaming or calls and listening to music with “Switch”. The confirmation window shows the home layout, whether voice processing stays on, and the devices, then saves them together. While audio is running it says “Audio will briefly cut out”. While audio is stopped it only saves. Each use remembers its last devices. The first time you choose a use, setup asks for the devices. If the home layout and the input purpose already differ, “Align” drafts the input purpose to match the layout. “Appearance” explains that the switch is under “Use” on the Connection page, and keeps “Open Connection”.
 
 1. Check the devices and route you will change.
 2. Open “Connection and dropout settings” to adjust the connection or dropouts.
