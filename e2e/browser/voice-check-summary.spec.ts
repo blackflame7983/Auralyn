@@ -51,3 +51,32 @@ test('録音範囲の折りたたみは、枠が文字を含む', async ({ page 
     expect(narrow.box).toBeGreaterThanOrEqual(narrow.text - 1);
     expect(narrow.box).toBeLessThan(wide.box);
 });
+
+test('録音ボタンは「最大10秒」と書き、再生ボタンの下に長い試聴先の名前も1行で収める', async ({ page }) => {
+    const longName = 'Speakers (Very Long Audio Interface Name With Many Channels And Vendor Words)';
+    await page.addInitScript((name: string) => {
+        localStorage.setItem('vst_host_voice_check_preview_device', 'long');
+        const internals = window.__TAURI_INTERNALS__;
+        if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+        const previous = internals.invoke;
+        internals.invoke = async (command, args) => {
+            const result = await previous(command, args);
+            if (command !== 'voice_check_preview' || typeof result !== 'object' || result === null) return result;
+            return { ...result, recordingId: 9, durationMs: 1000, devices: [{ id: 'long', name }] };
+        };    }, longName);
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.goto('/');
+    await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'ボイスチェック', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'ボイスチェック', exact: true });
+    await expect(dialog.getByRole('button', { name: '録音開始（最大10秒）' })).toBeVisible();
+    const target = dialog.getByText('試聴先：' + longName);
+    await expect(target).toBeVisible();
+    await expect(target).toHaveAttribute('title', '試聴先：' + longName);
+    const play = dialog.getByRole('button', { name: '選んだ試聴先で再生' });
+    const [playBox, targetBox, dialogBox] = await Promise.all([play.boundingBox(), target.boundingBox(), dialog.boundingBox()]);
+    if (!playBox || !targetBox || !dialogBox) throw new Error('位置を測れない');
+    expect(targetBox.y).toBeGreaterThanOrEqual(playBox.y + playBox.height - 1);
+    expect(targetBox.height).toBeLessThan(28);
+    expect(targetBox.x + targetBox.width).toBeLessThanOrEqual(dialogBox.x + dialogBox.width + 1);
+});

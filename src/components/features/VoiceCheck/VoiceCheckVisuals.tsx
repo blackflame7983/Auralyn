@@ -9,6 +9,10 @@ export function formatMs(ms: number): string {
     const rem = Math.floor((ms % 1000) / 100);
     return `${sec}.${rem}s`;
 }
+/** 最大録音時間を、単位を付けない秒数で返す。端数が出ない値は整数で出す。 */
+export function formatSecondsLabel(ms: number): string {
+    return String(Math.round(ms / 100) / 10);
+}
 export const VERDICT_LABELS: Record<QualityVerdict, MessageKey> = {
     good: 'voice.copy.105',
     warn: 'voice.copy.106',
