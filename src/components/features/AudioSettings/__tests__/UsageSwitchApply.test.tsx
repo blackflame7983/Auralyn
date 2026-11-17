@@ -111,19 +111,35 @@ it('元の接続へ戻したあとの VST の復元も完了しないときは�
     expect(readDisplayPurpose()).toBe('voice');
 });
 
-it('移行の確認を完了する保存では、確認の通知が復元を始めるため、ここでは VST を二重に復元しない', async () => {
+it('移行の確認が終わっていない間に音声が動いていると、確認を完了する通知が結果を待てない復元を始めるため、切り替えを押せなくして理由を示す', async () => {
     localStorage.setItem('vst_host_migration_review_required', 'true');
-    vi.spyOn(audioApi, 'restart').mockResolvedValue(restartResult);
-    const onConfigChange = vi.fn(async () => { localStorage.removeItem('vst_host_migration_review_required'); });
-    const onEngineRestarted = vi.fn(async () => 'completed' as const);
-    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={onConfigChange} onEngineRestarted={onEngineRestarted} />);
+    const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue(restartResult);
+    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} onEngineRestarted={vi.fn(async () => 'completed' as const)} />);
     fireEvent.click(await screen.findByRole('checkbox', { name: message('ja', 'settings.AudioSettingsModal.030') }));
     const opener = screen.getByRole('button', { name: '切り替える' });
+    expect(opener).toBeDisabled();
+    expect(opener).toHaveAccessibleDescription(message('ja', 'purpose.blockedReviewRunning'));
+    expect(restart).not.toHaveBeenCalled();
+    expect(readDisplayPurpose()).toBe('voice');
+});
+
+it('移行の確認が終わっていなくても音声が止まっていれば、確認のチェックのあと、再起動も VST の復元もせずに切り替えを保存できる', async () => {
+    localStorage.setItem('vst_host_migration_review_required', 'true');
+    const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue(restartResult);
+    const onConfigChange = vi.fn<(config: unknown, options?: { audioStarted: true }) => Promise<void>>(async () => {});
+    const onEngineRestarted = vi.fn(async () => 'completed' as const);
+    render(<AudioSettingsModal isOpen isAudioRunning={false} currentConfig={config} onClose={vi.fn()} onConfigChange={onConfigChange} onEngineRestarted={onEngineRestarted} />);
+    const opener = await screen.findByRole('button', { name: '切り替える' });
+    expect(opener).toBeDisabled();
+    expect(opener).toHaveAccessibleDescription(message('ja', 'purpose.blockedReview'));
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'settings.AudioSettingsModal.030') }));
     await waitFor(() => expect(opener).toBeEnabled());
     fireEvent.click(opener);
     confirm(await screen.findByRole('alertdialog', { name: '使い道を切り替えます' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(onConfigChange).toHaveBeenCalledOnce();
+    expect(onConfigChange.mock.calls[0][1]).toBeUndefined();
+    expect(restart).not.toHaveBeenCalled();
     expect(onEngineRestarted).not.toHaveBeenCalled();
     expect(readDisplayPurpose()).toBe('music');
 });
@@ -269,12 +285,3 @@ describe('元の接続がアプリの音声だったとき', () => {
     });
 });
 
-it('移行の確認にチェックを入れるまで、理由を示して切り替えを押せなくする', async () => {
-    localStorage.setItem('vst_host_migration_review_required', 'true');
-    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} onEngineRestarted={vi.fn()} />);
-    const opener = await screen.findByRole('button', { name: '切り替える' });
-    expect(opener).toBeDisabled();
-    expect(opener).toHaveAccessibleDescription(message('ja', 'purpose.blockedReview'));
-    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'settings.AudioSettingsModal.030') }));
-    await waitFor(() => expect(opener).toBeEnabled());
-});

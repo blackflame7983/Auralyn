@@ -48,6 +48,7 @@ import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } fr
 import { usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
 import { commitDisplaySwitch, commitUsageSwitch, currentUsage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
 import type { SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
+import { resumableInputSource } from '@/lib/processInputRestore';
 import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -271,19 +272,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (record.host.toLowerCase() === 'asio' && inputDevice) connection.setRoutingForDevice(connectionDeviceKey(record.host, inputDevice), routing);
     if (draft) editConnection('host', 'output', 'buffer', 'rate'); else setEditedFields(new Set());
   };
-  // 再起動で失われた VST を戻す。移行の確認の完了は、確認の通知が復元を始めるため、ここでは重ねない。
-  const restoreVst = async (reviewPending: boolean) => {
-    if (reviewPending || !onEngineRestarted) return;
-    if (await onEngineRestarted() !== 'completed') throw new Error(t('purpose.vstIncomplete'));
+  // 再起動で失われた VST を戻す。移行の確認が済んでいない間は切り替えを止めているため、確認を飛ばして復元することはない。
+  const restoreVst = async () => {
+    if (onEngineRestarted && await onEngineRestarted() !== 'completed') throw new Error(t('purpose.vstIncomplete'));
   };
   // アプリの音声は、いま起動しているアプリの候補を引き直さないと再開できない。見つからなければ、戻せなかったと伝える。
   const restoreSourceRequest = async (config: AudioPreferences): Promise<InputSourceRequest | undefined> => {
     const source = config.inputSource;
     if (!source) return undefined;
-    if (source.kind !== 'process_loopback') return { source };
-    const found = (await audioApi.processInputSources()).find(candidate => candidate.appKey.toLowerCase() === source.config.appKey.toLowerCase());
-    if (!found) throw new Error(t('purpose.appNotRunning', { app: source.config.appName }));
-    return { source, candidateId: found.id };
+    const request = await resumableInputSource(source);
+    if (!request) throw new Error(t('purpose.appNotRunning', { app: source.kind === 'process_loopback' ? source.config.appName : '' }));
+    return request;
   };
   const applyUsage = async (record: UsageDeviceRecord) => {
     const target = displayPurpose === 'voice' ? 'music' : 'voice';
@@ -296,7 +295,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       showUsageSelection(record, true);
       return;
     }
-    const reviewPending = localStorage.getItem(REVIEW_KEY) === 'true';
     const applied = await commitUsageSwitch({
       target, record, running: streamRunning,
       restart: async next => {
@@ -306,7 +304,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       },
       save: async (config, options) => {
         await onConfigChange(config, options);
-        if (options?.audioStarted) await restoreVst(reviewPending);
+        if (options?.audioStarted) await restoreVst();
       },
       restore: async (config, engine) => {
         try {
@@ -318,7 +316,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         } finally {
           await onConfigChange({ ...config, outputRouting: config.outputRouting ?? { mode: 'legacy' } });
         }
-        if (engine) await restoreVst(reviewPending);
+        if (engine) await restoreVst();
       },
       engineIntact: async () => !!(await runningConnection()),
     });
@@ -326,22 +324,30 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setNeedsDeviceChoice(false);
     showUsageSelection(applied, false);
   };
-  // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。残せなければ表示を元のままにして知らせる。
+  // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。
+  // 残せなければ、表示は元のまま、保留も残す。接続は保存済みなので、次の保存は表示の確定だけをやり直す。
+  const commitOnly = useRef(false);
+  useWhenTrue(isOpen, () => { commitOnly.current = false; });
   const commitPendingUsage = (): boolean => {
     if (!pendingUsage) return true;
     try {
       commitDisplaySwitch(pendingUsage.leaving, pendingUsage.target);
       setPendingUsage(null);
+      commitOnly.current = false;
       return true;
     } catch (cause) {
-      setPendingUsage(null);
+      commitOnly.current = true;
+      setConnectionRetry(true);
       setError(notice('purpose.commitFailed', { reason: cause instanceof Error ? cause.message : String(cause) }));
       return false;
     }
   };
   const liveModel = providedLive ?? localLive;
   // 保存のボタンと同じ条件で、切り替えも止める。移行の確認を飛ばして確認済みにしない。
-  const usageBlockedReason = pendingUsage ? t('purpose.blockedPending') : reviewRequired && !migrationConfirmed ? t('purpose.blockedReview') : devicesLoading ? t('purpose.blockedLoading') : undefined;
+  // 動いている音声の再起動は、移行の確認を完了する通知を起こし、通知が始める VST の復元は結果を待てない。確認は先に通常の保存で終えてもらう。
+  const usageBlockedReason = pendingUsage ? t('purpose.blockedPending')
+    : reviewRequired && streamRunning ? t('purpose.blockedReviewRunning')
+    : reviewRequired && !migrationConfirmed ? t('purpose.blockedReview') : devicesLoading ? t('purpose.blockedLoading') : undefined;
   const { tuningOpen, setTuningOpen, tuningDetails, hostSelect, chooseConnection } = useTuningSection({
     isOpen, initialSection, loading, hasError: !!error, activeTab, tabRequest, isBeginnerMode, glitchCount: engineStats?.glitchCount });
 
@@ -380,6 +386,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (!canSaveConnection || isApplying) return;
     if (retryRestart.current) { await performRestart(); return; }
     setError(null);
+    if (commitOnly.current) {
+      if (commitPendingUsage()) { setConnectionRetry(false); onClose(); }
+      return;
+    }
     setLoading(true);
     try {
       await connection.apply(false);
