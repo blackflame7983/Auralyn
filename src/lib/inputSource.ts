@@ -5,6 +5,12 @@ export interface InputSourceRequest { source: InputSource; candidateId?: string 
 export interface ProcessInputCandidate { id: string; appKey: string; name: string; routes: { id: string; name: string; muted: boolean }[] }
 export const deviceInput = (): InputSource => ({ kind: 'device', config: { purpose: 'voice' } });
 
+export function withInputPurpose(source: InputSource, purpose: InputPurpose): InputSource {
+    return source.kind === 'process_loopback'
+        ? { kind: 'process_loopback', config: { ...source.config, purpose } }
+        : { kind: 'device', config: { purpose } };
+}
+
 // 保存設定には実行中プロセスのIDを許さない。未知の形式をマイクへ読み替えない。
 export function readInputSource(value: unknown): InputSource | undefined {
     if (!value || typeof value !== 'object') return undefined;

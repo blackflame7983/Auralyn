@@ -2857,48 +2857,6 @@
     },
     {
       "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 6,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 5,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 10,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "a9cea551e0bb9c7fba52291602a6e6eed42c7831c68583f6ea7b239d52cc81bf",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/mixing-ui.spec.ts",
       "rule": "auralyn/no-suppression",
       "hash": "3d90e06fbed6212564941bb4c98b5cb153769b722d98a38f950708381cf857c8",
       "count": 1,
@@ -2951,48 +2909,6 @@
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "1a7728a7d1187c34ebc9f7005564712c5baf3974e6baf19558310f0197c990e6",
       "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 8,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 60,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 18,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/native/persistence.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "e2027d63b4accf05e78aec541c6254ec69aa2e1f7354bcf510b130bc5f28e46a",
-      "count": 6,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -4163,13 +4079,6 @@
       "hash": "df4a6da2e68c67568e97e12660e1ac3f470c1b3bf7ebdaff39405e3512286c1b",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ProcessInputPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "301d7d2aca470ba144e849b091c551ff788673574516f53cead5a763630f91de",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/features/AudioSettings/saveBarInset.tsx",
@@ -5448,31 +5357,10 @@
     },
     {
       "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
       "rule": "auralyn/architecture",
       "hash": "4987e6380eb57914bec8fb92e53d2fd418f9d8a07dbe5ed91aeb9affdb8807a5",
       "count": 1,
       "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/SetupWizardModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "85ca8d753f41cb58224f1976b144a3ef7f9696ffce747453b24e12d4343454be",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/features/SetupWizard/useSetupWizard.ts",

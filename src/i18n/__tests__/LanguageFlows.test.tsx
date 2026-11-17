@@ -21,7 +21,7 @@ it('言語切替で入力と操作callbackのidentityを維持し、他の保存
     render(<LocaleProvider store={store}><LanguageSelector /><Draft /></LocaleProvider>);
     fireEvent.change(screen.getByLabelText('draft'), {target: {value: 'keep input'}});
     const before = callbacks.slice(-1)[0];
-    fireEvent.change(screen.getByLabelText('表示言語'), {target: {value: 'en'}});
+    fireEvent.change(screen.getByLabelText('表示言語 / Language'), {target: {value: 'en'}});
     expect(screen.getByLabelText('draft')).toHaveValue('keep input');
     expect(callbacks.slice(-1)[0]).toBe(before); expect(before?.()).toBe('Settings');
     expect(mounted).toHaveBeenCalledOnce(); expect(disposed).not.toHaveBeenCalled();
@@ -30,9 +30,9 @@ it('言語切替で入力と操作callbackのidentityを維持し、他の保存
 it('保存失敗でも当回は英語へ変わり、失敗表示も現在言語で表示する', async () => {
     const store = createLocaleStore(() => null, () => false);
     render(<LocaleProvider store={store}><LanguageSelector /></LocaleProvider>);
-    fireEvent.change(screen.getByLabelText('表示言語'), {target: {value: 'en'}});
+    fireEvent.change(screen.getByLabelText('表示言語 / Language'), {target: {value: 'en'}});
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be saved');
-    expect(screen.getByLabelText('Display language')).toHaveValue('en');
+    expect(screen.getByLabelText('表示言語 / Language')).toHaveValue('en');
 });
 it.each(['ja', 'en'] as const)('復旧%sでも同じ除外path/payloadを送り、実名を翻訳しない', async locale => {
     const path = 'C:\\VST\\日本語の実名.vst3'; localStorage.setItem('vst_host_detected_crash_plugin', path);

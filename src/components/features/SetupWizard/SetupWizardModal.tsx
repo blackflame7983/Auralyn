@@ -13,7 +13,7 @@ import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouti
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -23,6 +23,7 @@ import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
 
 import { useSetupWizard } from './useSetupWizard';
+import { useSetupRailThumb, useSetupStepScroll } from './useSetupStepMotion';
 import { asioChannelPairs, effectiveAsioChannels, isAsioHost, isVirtualOutput, type SetupWizardModalProps, type WizardState } from './wizardModel';
 
 
@@ -60,34 +61,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
     const stepIndex = state === 'configuring' || state === 'complete' ? STEPS.length : Math.max(0, (STEPS as readonly WizardState[]).indexOf(state));
-    // 折り返し・表示倍率・言語変更で行高が変わっても、印を実際の行に合わせる。
-    useLayoutEffect(() => {
-        const thumb = railThumb;
-        const current = rail?.children.item(stepIndex) as HTMLElement | null;
-        if (!rail || !thumb || !current) return;
-        const measure = () => {
-            thumb.style.height = `${current.offsetHeight}px`;
-            thumb.style.transform = `translateY(${current.offsetTop}px)`;
-        };
-        measure();
-        if (typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(measure);
-        observer.observe(rail);
-        Array.from(rail.children).forEach(row => observer.observe(row));
-        return () => observer.disconnect();
-    }, [rail, railThumb, stepIndex, config.goal, locale]);
+    useSetupRailThumb(rail, railThumb, stepIndex, config.goal, locale);
     // 入ってくる向きは手順が変わった時だけ決める。動きの途中の再描画（機器一覧の読込など）で向きを反転させない。
     const step = useRef({ index: stepIndex, direction: 1 });
     if (step.current.index !== stepIndex) step.current = { index: stepIndex, direction: stepIndex > step.current.index ? 1 : -1 };
     const direction = step.current.direction;
-    useEffect(() => {
-        if (!isOpen || !bodyRef.current) return;
-        bodyRef.current.scrollTop = 0;
-        // 短い画面では外側がスクロール主体になるため、両方を戻す。
-        if (surfaceRef.current) surfaceRef.current.scrollTop = 0;
-        const heading = bodyRef.current.querySelector('h2');
-        if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
-    }, [isOpen, state]);
+    useSetupStepScroll(isOpen, state, bodyRef, surfaceRef);
 
     if (!isOpen) return null;
 
@@ -117,7 +96,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     variant="default"
                     onConfirm={() => {
                         setIsCloseConfirmOpen(false);
-                        performClose();
+                        void performClose();
                     }}
                     onCancel={() => setIsCloseConfirmOpen(false)}
                 />
@@ -161,24 +140,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <p className="text-muted-foreground text-ui-support leading-relaxed">
                                     {t('wizard.cableBefore')}<strong className="text-foreground">{t('wizard.cable')}</strong>{t('wizard.cableAfter')}
                                 </p>
-                                <p className="text-muted-foreground text-ui-support">
-                                    {t('wizard.troubleBefore')}
-                                    {onOpenTroubleshoot ? (
-                                        <>
-                                            {' '}
-                                            <button
-                                                type="button"
-                                                onClick={() => void performClose(onOpenTroubleshoot)}
-                                                className="underline underline-offset-2 text-primary hover:text-foreground"
-                                            >
-                                                {t('wizard.diagnostics')}
-                                            </button>
-                                        </>
-                                    ) : (
-                                        t('wizard.diagnostics')
-                                    )}
-                                    {t('wizard.troubleAfter')}
-                                </p>
+                                <p className="text-muted-foreground text-ui-support">{t('wizard.cableLater', { step: t('wizard.output') })}</p>
                             </div>
 
 
@@ -402,7 +364,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
+                                                            void invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => { window.open('https://vb-audio.com/Cable/', '_blank'); });
                                                         }}
                                                         className="text-ui-support underline text-primary hover:text-foreground"
                                                     >
@@ -451,14 +413,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <div className="flex gap-4">
                                     {!isTestingSound ? (
                                         <Button variant="secondary"
-                                            onClick={startSoundTest}
+                                            onClick={() => { void startSoundTest(); }}
                                             disabled={isBusy || isCheckingConnection || !initialStateReady}
                                             className="flex items-center gap-2"
                                         >
                                             <MdPlayArrow /> {t('guide.copy.229')}</Button>
                                     ) : (
                                         <Button variant="destructive"
-                                            onClick={stopSoundTest}
+                                            onClick={() => { void stopSoundTest(); }}
                                             disabled={isBusy || isCheckingConnection}
                                             className="flex items-center gap-2"
                                         >
@@ -503,7 +465,25 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     >{t('wizard.advanced')}
                                 </ChoiceCard>
                             </fieldset>
-                            {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">{t('guide.wizard.openDiagnostics')}</button>}
+                            <p className="text-muted-foreground text-ui-support">
+                                {t('wizard.troubleBefore')}
+                                {onOpenTroubleshoot ? (
+                                    <>
+                                        {' '}
+                                        <button
+                                            type="button"
+                                            disabled={isBusy || isCheckingConnection}
+                                            onClick={() => void performClose(onOpenTroubleshoot)}
+                                            className="underline underline-offset-2 text-primary hover:text-foreground disabled:opacity-50"
+                                        >
+                                            {t('wizard.diagnostics')}
+                                        </button>
+                                    </>
+                                ) : (
+                                    t('wizard.diagnostics')
+                                )}
+                                {t('wizard.troubleAfter')}
+                            </p>
 
                         </div>
                     )}
@@ -572,7 +552,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <Button variant="ghost" disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')}>{t('common.back')}</Button>
                                 <p id={nextReasonId} className="text-ui-support text-muted-foreground">{finalReason}</p>
                                 <Button variant="default"
-                                    onClick={finalApply}
+                                    onClick={() => { void finalApply(); }}
                                     aria-describedby={finalReason ? `wizard-save-scope ${nextReasonId}` : "wizard-save-scope"}
                                     disabled={finalReason !== null}
                                     className="setup-primary ml-auto gap-2"

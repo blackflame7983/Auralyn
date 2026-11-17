@@ -14,6 +14,7 @@ it.each(['ja', 'en'] as const)('表示用途を切り替えても、セットア
     const select = screen.getByRole('combobox', { name: message(locale, 'purpose.label') });
     expect(select).toHaveValue('voice');
     expect(select).toHaveAccessibleDescription(message(locale, 'purpose.hint'));
+    expect(screen.getByText(message(locale, 'purpose.immediate'))).toBeVisible();
     fireEvent.change(select, { target: { value: 'music' } });
     expect(readDisplayPurpose()).toBe('music');
     expect(select).toHaveValue('music');

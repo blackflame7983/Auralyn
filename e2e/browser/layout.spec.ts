@@ -243,9 +243,28 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await tab.click();
     const language = surface.getByRole('combobox', { name: '表示言語' });
     await reachable(language, page);
+    const languageFits = await language.evaluate(element => {
+        if (!(element instanceof HTMLSelectElement)) return false;
+        const style = getComputedStyle(element);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) return false;
+        context.font = style.font;
+        const text = element.selectedOptions[0]?.text ?? '';
+        const positionX = (part: string) => {
+            const calc = /calc\(\s*100%\s*-\s*([\d.]+)px\s*\)/.exec(part);
+            if (calc) return element.clientWidth - parseFloat(calc[1]);
+            return parseFloat(part);
+        };
+        const positions = style.backgroundPosition.split(',').map(positionX).filter(value => Number.isFinite(value));
+        const arrowLeft = positions.length > 0 ? Math.min(...positions) : Number.NaN;
+        const textRight = (parseFloat(style.paddingLeft) || 0) + context.measureText(text).width;
+        return Number.isFinite(arrowLeft) && textRight <= arrowLeft + 1;
+    });
+    expect(languageFits).toBe(true);
     await language.focus();
     await page.keyboard.press('ArrowDown');
-    await expect(surface.getByRole('combobox', { name: 'Display language' })).toHaveValue('en');
+    await expect(surface.getByRole('combobox', { name: '表示言語 / Language', exact: true })).toHaveValue('en');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
     await expect(surface).toBeVisible();

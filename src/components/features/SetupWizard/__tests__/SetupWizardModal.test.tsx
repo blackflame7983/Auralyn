@@ -1092,7 +1092,7 @@ describe('セットアップの見た目と動き（#294）', () => {
     });
 
     it('折り返しで前の行や現在行の高さが変わっても印の位置と高さを測り直し、監視を解除する', async () => {
-        let measure!: ResizeObserverCallback;
+        let measure: ResizeObserverCallback = () => {};
         const observe = vi.fn();
         const disconnect = vi.fn();
         vi.stubGlobal('ResizeObserver', class {
@@ -1149,10 +1149,10 @@ describe('セットアップの見た目と動き（#294）', () => {
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
         // 同じ手順のまま再描画しても、動きの途中で向きを反転させない。
-        fireEvent.change(screen.getByRole('combobox', { name: '表示言語' }), { target: { value: 'en' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'en' } });
         expect(await screen.findByText('Destination')).toBeInTheDocument();
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
-        fireEvent.change(screen.getByRole('combobox', { name: 'Display language' }), { target: { value: 'ja' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'ja' } });
         expect(await screen.findByText('送り先')).toBeInTheDocument();
     });
 
@@ -1394,4 +1394,24 @@ it('戻って同じ送り先を決定でき、矢印選択では最初の手順�
     to.focus(); fireEvent.click(to); fireEvent.keyUp(to, { key: 'ArrowRight' });
     expect(to).toBeChecked(); expect(from).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+});
+
+it('最初の画面は仮想ケーブルの入手を後の手順で予告し、診断の案内は確認へ置く', async () => {
+    const openTroubleshoot = vi.fn();
+    render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} onOpenTroubleshoot={openTroubleshoot} />);
+    await screen.findByRole('radio', { name: 'OBSで配信' });
+    expect(screen.getByText('まだ入れていない場合は、OBS・Discord の「出力先」の手順で入手の案内が出ます。')).toBeInTheDocument();
+    expect(screen.queryByText(/音が届かない・設定に迷ったときは/)).not.toBeInTheDocument();
+    await chooseObsRoute();
+    await screen.findByRole('heading', { name: '設定と接続の確認' });
+    expect(screen.getByText(/音が届かない・設定に迷ったときは/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '音のトラブルを診断' }));
+    expect(openTroubleshoot).toHaveBeenCalledOnce();
+});
+
+it.each(['ja', 'en'] as const)('最初の画面の仮想ケーブルの前触れは、出力先の手順を名指しする（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText(message(locale, 'wizard.cableLater', { step: message(locale, 'wizard.output') }))).toBeInTheDocument();
+    expect(screen.queryByText(message(locale, 'wizard.troubleBefore'), { exact: false })).not.toBeInTheDocument();
 });
