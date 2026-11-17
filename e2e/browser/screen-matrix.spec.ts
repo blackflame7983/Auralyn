@@ -29,7 +29,7 @@ const pageScreens: ScreenId[] = ['sound', 'sound-singing', 'vst', 'connect', 'ap
 const previewScreen: Record<ScreenId, string | null> = {
     home: null,
     sound: 'settings-sound',
-    // 音づくりの「歌向け」タブ。下に固定した保存の欄があるので、最後まで送って重なりを見る（#645）。
+    // 音づくりの「歌の調整」タブ。下に固定した保存の欄があるので、最後まで送って重なりを見る（#645）。
     'sound-singing': 'settings-sound',
     vst: 'vst',
     connect: 'settings-audio',
@@ -41,8 +41,8 @@ const previewScreen: Record<ScreenId, string | null> = {
 };
 
 const labels = {
-    ja: { nav: '行き先', sound: '音づくり', singing: '歌向け', vst: 'VST', connect: '接続（オーディオの設定）', settings: '設定', appearance: '外観', shortcuts: 'ホットキー', obs: 'OBS連携', system: 'システム' },
-    en: { nav: 'Destinations', sound: 'Sound', singing: 'Singing', vst: 'VST', connect: 'Connection (audio settings)', settings: 'Settings', appearance: 'Appearance', shortcuts: 'Hotkeys', obs: 'OBS', system: 'System' },
+    ja: { nav: '行き先', sound: '音づくり', singing: '歌の調整', vst: 'VST', connect: '接続（オーディオの設定）', settings: '設定', appearance: '外観', shortcuts: 'ホットキー', obs: 'OBS連携', system: 'システム' },
+    en: { nav: 'Destinations', sound: 'Sound', singing: 'Singing tuning', vst: 'VST', connect: 'Connection (audio settings)', settings: 'Settings', appearance: 'Appearance', shortcuts: 'Hotkeys', obs: 'OBS', system: 'System' },
 } as const;
 
 const configured = {
@@ -247,7 +247,7 @@ test.describe('画面の状態をまとめて開く', () => {
 
     for (const screen of pageScreens) {
         for (const purpose of ['voice', 'music'] as const) {
-            // 音楽鑑賞の音づくりには「歌向け」タブが無い。
+            // 音楽鑑賞の音づくりには「歌の調整」タブが無い。
             if (screen === 'sound-singing' && purpose === 'music') continue;
             for (const locale of ['ja', 'en'] as const) {
                 test(`${screen} ${purpose} ${locale}`, async ({ page }) => {

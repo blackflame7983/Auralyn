@@ -293,7 +293,7 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     expect(builtin).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
     fireEvent.click(screen.getByRole('button', { name: '音づくりを開く' }));
-    fireEvent.keyDown(await screen.findByRole('tab', { name: '歌向け' }), { key: 'Enter' });
+    fireEvent.keyDown(await screen.findByRole('tab', { name: '歌の調整' }), { key: 'Enter' });
     const defaults = await screen.findByRole('button', { name: '歌向けの音から始める' });
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);

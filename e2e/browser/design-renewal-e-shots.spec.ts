@@ -20,7 +20,7 @@ const shots = [
     { name: 'hotkeys-ja-gaming-1920x1080', place: 'hotkeys', theme: 'gaming', locale: 'ja', width: 1920, height: 1080 },
 ] as const;
 
-const placeName = { ja: { basic: '基本', liveModes: '歌・雑談', singing: '歌向け', peak: '音量の保護' }, en: { basic: 'Basics', liveModes: 'Singing and talking', singing: 'Singing', peak: 'Loudness protection' } } as const;
+const placeName = { ja: { basic: '基本', liveModes: 'モードの登録', singing: '歌の調整', peak: '音量の保護' }, en: { basic: 'Basics', liveModes: 'Save modes', singing: 'Singing tuning', peak: 'Loudness protection' } } as const;
 
 async function openPreview(page: import('@playwright/test').Page, shot: { theme: string; locale: 'ja' | 'en'; width: number; height: number; place: 'basic' | 'liveModes' | 'singing' | 'peak' | 'music' | 'hotkeys' }) {
     await page.setViewportSize({ width: shot.width, height: shot.height });
