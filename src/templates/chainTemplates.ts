@@ -25,7 +25,7 @@ export interface ChainTemplate {
 export const CHAIN_TEMPLATES: ChainTemplate[] = [
     {
         id: "chatting",
-        name: "雑談 (Just Chatting)",
+        name: "雑談",
         description: "持続ノイズを抑え、コンプで声を聴き取りやすく整える基本セットです。",
         slots: [
             {
@@ -53,7 +53,7 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
     },
     {
         id: "singing",
-        name: "歌枠 (Singing)",
+        name: "歌枠",
         description: "歌声に艶を出し、オケに馴染ませるセットです。",
         slots: [
             {

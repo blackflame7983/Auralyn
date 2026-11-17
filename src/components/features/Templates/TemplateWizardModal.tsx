@@ -1,9 +1,11 @@
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
+import { Button } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
 import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate, TemplateRole } from '../../../templates/chainTemplates';
+import { useTemplateWizard } from '@/hooks/useTemplateWizard';
 import type { MessageKey } from '@/i18n/messages';
 
 const templateUse: Record<string, MessageKey> = {
@@ -63,58 +65,11 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
         const copy = CHAIN_TEMPLATE_COPY[template.id]?.slots[index];
         return copy ? t(copy[field]) : template.slots[index][field] ?? '';
     };
-    const [step, setStep] = useState<1 | 2>(1);
-    const [selectedTemplate, setSelectedTemplate] = useState<ChainTemplate | null>(null);
-    const [mapping, setMapping] = useState<Record<number, VstPlugin | null>>({}); // slot index -> plugin
-    const [loading, setLoading] = useState(false);
-
-    // Reset state on open
-    useEffect(() => {
-        if (isOpen) {
-            setStep(1);
-            setSelectedTemplate(null);
-            setMapping({});
-            setLoading(false);
-
-            // Auto-scan if list is empty
-            if (availablePlugins.length === 0) {
-                onScan();
-            }
-        }
-    }, [isOpen]); // Run once when opening
-
-    // Auto-match plugins when template is selected
-    useEffect(() => {
-        if (selectedTemplate && step === 2) {
-            const newMapping: Record<number, VstPlugin | null> = {};
-
-            selectedTemplate.slots.forEach((slot, index) => {
-                // Find best match
-                let match: VstPlugin | undefined;
-
-                if (slot.preferred) {
-                    for (const pref of slot.preferred) {
-                        match = availablePlugins.find(p => {
-                            const name = p.name.toLowerCase();
-                            // const vendor = p.vendor.toLowerCase(); // vendor often empty in scan result?
-                            return pref.nameIncludes && name.includes(pref.nameIncludes.toLowerCase());
-                        });
-                        if (match) break;
-                    }
-                }
-
-                // If required and no match found, maybe fallback to generic matching by role name?
-                // For now just stricter matching.
-
-                if (match) {
-                    newMapping[index] = match;
-                } else {
-                    newMapping[index] = null;
-                }
-            });
-            setMapping(newMapping);
-        }
-    }, [selectedTemplate, step, availablePlugins]);
+    const { step, setStep, selectedTemplate, setSelectedTemplate, mapping, setMapping, loading, setLoading } = useTemplateWizard(isOpen, availablePlugins, onScan);
+    const choose = (template: ChainTemplate) => {
+        setSelectedTemplate(template);
+        setStep(2);
+    };
 
     const handleApply = async () => {
         if (loading || !selectedTemplate) return;
@@ -187,6 +142,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                     <div className="mb-4 space-y-1">
                         <p className="text-ui-support font-bold text-foreground">{t('templates.applyReplaces')}</p>
                         <p className="text-ui-support text-muted-foreground">{t('templates.beforeCheck')}</p>
+                        <p className="text-ui-support text-muted-foreground">{t('templates.missingVst')}</p>
                     </div>
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -194,10 +150,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                 <div key={template.id} className="flex min-w-0 flex-col gap-2 whitespace-normal p-6 rounded-card border-2 border-border">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setSelectedTemplate(template);
-                                            setStep(2);
-                                        }}
+                                        onClick={() => choose(template)}
                                         className="flex min-w-0 w-full flex-col text-left hover:text-primary"
                                     >
                                         <span className="text-ui-heading font-bold">{templateText(template, 'name')}</span>
@@ -205,6 +158,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                         <span className="mt-2 text-ui-support text-foreground"><span className="text-muted-foreground">{t('templates.suits')}</span> {t(templateUse[template.id])}</span>
                                         <span className="mt-2 text-ui-support text-foreground">{t('templates.needsVst', { kinds: neededKinds(template) })}</span>
                                     </button>
+                                    <Button type="button" onClick={() => choose(template)}>{t('templates.useThis')}</Button>
                                     <details className="text-ui-support text-muted-foreground">
                                         <summary className="cursor-pointer">{t('templates.chainDetails')}</summary>
                                         <div className="mt-1 flex flex-wrap gap-1">
@@ -218,7 +172,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                 </div>
                             ))}
                         </div>
-                    ) : (
+                    ) : selectedTemplate ? (
                         <div className="space-y-6 max-w-3xl mx-auto">
                             {/* Step 2: Confirmation / Mapping */}
                             <div className="flex items-center gap-4 mb-6">
@@ -232,7 +186,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                             </div>
 
                             <div className="space-y-4">
-                                {selectedTemplate?.slots.map((slot, index) => {
+                                {selectedTemplate.slots.map((slot, index) => {
                                     const assigned = mapping[index];
                                     return (
                                         <div key={index} className="flex gap-4 p-4 rounded-lg border border-border bg-card/50 items-start">
@@ -242,12 +196,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                             <div className="flex-1 space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <div className="font-bold text-lg flex items-center gap-2">
-                                                        {slotText(selectedTemplate!, index, 'label')}
+                                                        {slotText(selectedTemplate, index, 'label')}
                                                         {slot.required && <span className="text-xs bg-destructive/10 text-destructive-text px-1.5 py-0.5 rounded border border-destructive-text/20">{t('presets.copy.098')}</span>}
                                                     </div>
                                                     {/* Plugin Selector */}
                                                     <select
-                                                        aria-label={t('presets.copy.099', { arg0: slotText(selectedTemplate!, index, 'label') })}
+                                                        aria-label={t('presets.copy.099', { arg0: slotText(selectedTemplate, index, 'label') })}
                                                         disabled={loading}
                                                         className={`bg-background border rounded px-3 py-1.5 text-sm focus:outline-hidden focus:border-primary max-w-[300px] w-full
                                                             ${!assigned && slot.required ? 'border-destructive-text' : 'border-input'}
@@ -269,7 +223,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
 
                                                 <details className="text-ui-support text-muted-foreground">
                                                     <summary className="cursor-pointer">{t('templates.slotNotes')}</summary>
-                                                    <p className="mt-1">{slotText(selectedTemplate!, index, 'notes')}</p>
+                                                    <p className="mt-1">{slotText(selectedTemplate, index, 'notes')}</p>
                                                 </details>
 
                                                 {assigned && (
@@ -283,7 +237,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                 })}
                             </div>
                         </div>
-                    )}
+                    ) : null}
                 </div>
 
                 {/* Footer */}
@@ -296,7 +250,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                         >
                             {t('presets.copy.104')}</button>
                         <button
-                            onClick={handleApply}
+                            onClick={() => { void handleApply(); }}
                             disabled={loading || (selectedTemplate?.slots.some((s, i) => s.required && !mapping[i]) ?? false)}
                             className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
