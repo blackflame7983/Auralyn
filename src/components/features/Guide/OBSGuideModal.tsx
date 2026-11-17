@@ -16,13 +16,14 @@ interface OBSGuideModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings: () => void;
+    onChooseConnection: () => void;
     onOpenObsSettings?: () => void;
     initialTimingOpen?: boolean;
     onOpenTroubleshoot?: () => void;
     onOpenVoiceCheck?: () => void;
 }
 
-export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenTroubleshoot, onOpenVoiceCheck, onOpenObsSettings, initialTimingOpen = false }) => {
+export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onChooseConnection, onOpenTroubleshoot, onOpenVoiceCheck, onOpenObsSettings, initialTimingOpen = false }) => {
     const t = useMessages();
     // step 0: Device Type Selection (Hardware Mixer vs Software)
     // step 1: Driver/Software Setup
@@ -113,7 +114,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                             {needsWasapi && (
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-warning/20 bg-warning/5 p-3">
                                     <p className="min-w-0 flex-1 text-ui-support text-foreground text-balance [word-break:auto-phrase]">{t('guide.obs.asioNotice')}</p>
-                                    <Button variant="outline" size="sm" type="button" onClick={onOpenAudioSettings}>{t('processInput.chooseConnection')}</Button>
+                                    <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>
                                 </div>
                             )}
 

@@ -13,7 +13,7 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     const apply = vi.spyOn(obsApi, 'applySetup');
     const status = vi.spyOn(obsApi, 'connectionStatus').mockResolvedValue(false);
     const settings = vi.fn();
-    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} />);
+    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} onChooseConnection={vi.fn()} />);
     expect(screen.queryByRole('radio', { name: /機器の直接モニターで聴く/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
@@ -38,7 +38,7 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     connect.mockRestore(); apply.mockRestore(); status.mockRestore();
 });
 it.each([OBSGuideModal, DiscordGuideModal])('機器を選ぶまで分岐を進めず、戻って選び直せる', Guide => {
-    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} />);
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
     fireEvent.click(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeEnabled();
@@ -50,7 +50,7 @@ it.each([OBSGuideModal, DiscordGuideModal])('機器を選ぶまで分岐を進�
 });
 it.each([OBSGuideModal, DiscordGuideModal])('ガイド読了を到達成功とせず、診断へ進める', Guide => {
     const onOpenTroubleshoot = vi.fn();
-    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onOpenTroubleshoot={onOpenTroubleshoot} />);
+    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} onOpenTroubleshoot={onOpenTroubleshoot} />);
     fireEvent.click(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
@@ -63,7 +63,7 @@ it.each([OBSGuideModal, DiscordGuideModal])('ガイド読了を到達成功と�
 
 it.each([OBSGuideModal, DiscordGuideModal])('localeだけでガイドの機材選択・step・dialogを作り直さない', Guide => {
     const store = createLocaleStore(() => 'ja', () => true); const close = vi.fn(); const settings = vi.fn();
-    render(<LocaleProvider store={store}><Guide isOpen onClose={close} onOpenAudioSettings={settings} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><Guide isOpen onClose={close} onOpenAudioSettings={settings} onChooseConnection={vi.fn()} /></LocaleProvider>);
     fireEvent.click(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
     const dialog = screen.getByRole('dialog');
     act(() => { store.setLocale('en'); });
@@ -79,7 +79,7 @@ it.each([OBSGuideModal, DiscordGuideModal])('localeだけでガイドの機材�
 it.each(['ja', 'en'] as const)('OBSガイドは変更したミュートキーを案内する（%s）', async locale => {
     vi.mocked(invoke).mockResolvedValue({ bindings: [{ action: 'muteToggle', shortcut: 'Control+Shift+KeyK' }], errors: [] });
     const store = createLocaleStore(() => locale, () => true);
-    render(<LocaleProvider store={store}><OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} /></LocaleProvider>);
     expect(await screen.findByText(/Ctrl \+ Shift \+ K/)).toHaveTextContent('Auralyn');
     expect(screen.queryByText(/Alt \+ M/)).not.toBeInTheDocument();
     vi.mocked(invoke).mockReset();
@@ -90,14 +90,14 @@ it.each([
     { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }], errors: [{ code: 'registerFailed', shortcut: 'Alt+KeyM' }] },
 ])('OBSガイドは未設定・登録失敗のキーを案内しない', async status => {
     vi.mocked(invoke).mockResolvedValue(status);
-    render(<OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    render(<OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} />);
     await act(async () => {});
     expect(screen.queryByText(/で Auralyn の出力をミュートできます/)).not.toBeInTheDocument();
     vi.mocked(invoke).mockReset();
 });
 
 it.each([OBSGuideModal, DiscordGuideModal])('戻って同じ機器を決定でき、矢印選択だけでは次へ進まない', Guide => {
-    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} />);
     const name = 'USBマイク・PC直結のマイクの手順を選ぶ';
     fireEvent.click(screen.getByRole('radio', { name }));
     fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
@@ -117,7 +117,7 @@ it('Discordの注意チップは警告アイコンを持ち、OBSの通常チッ
     const warning = screen.getByText('ループバックを利用（エコーに注意）');
     expect(warning.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     view.unmount();
-    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} />);
     for (const label of ['ループバック機能を利用', '仮想ケーブルを利用']) {
         const chips = screen.getAllByText(label);
         expect(chips.length).toBeGreaterThan(0);
@@ -130,7 +130,7 @@ it.each([
     { locale: 'en', unknown: 'Choose the steps if you are not sure which device you have', notice: /You chose “Not sure”, so these steps use the virtual cable method/, step1: 'Step 1: prepare a virtual cable', output: 'CABLE Output (VB-Audio virtual cable)' },
 ] as const)('OBSガイドで「分からない」を選ぶと、標準の仮想ケーブルの方法で進み、その旨を一文で示す（$locale）', ({ locale, unknown, notice, step1, output }) => {
     const store = createLocaleStore(() => locale, () => true);
-    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} /></LocaleProvider>);
     const next = () => screen.getByRole('button', { name: locale === 'ja' ? '次の手順へ進む' : 'Go to the next step' });
     expect(next()).toBeDisabled();
     fireEvent.click(screen.getByRole('radio', { name: unknown }));
@@ -149,7 +149,7 @@ it.each([
 
 it.each(['ja', 'en'] as const)('OBSガイドのミキサーの選択肢はループバックの意味を添え、アイコンは機器の中身に合わせる（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
-    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} /></LocaleProvider>);
     const names = locale === 'ja'
         ? ['ループバック対応のミキサーの手順を選ぶ', 'USBマイク・PC直結のマイクの手順を選ぶ', 'どの機器か分からない場合の手順を選ぶ']
         : ['Choose the steps for a loopback-capable mixer', 'Choose the steps for a USB or directly connected mic', 'Choose the steps if you are not sure which device you have'];
@@ -163,7 +163,7 @@ it.each(['ja', 'en'] as const)('OBSガイドのミキサーの選択肢はルー
 
 it.each(['ja', 'en'] as const)('OBSガイドは案内を先に出し、機器を選ぶまで次へ進めない理由をボタンの近くに出す（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
-    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} /></LocaleProvider>);
     const question = screen.getByRole('heading', { name: locale === 'ja' ? '使っている機器を選んでください' : 'Choose the device you use' });
     const device = screen.getByRole('radio', { name: locale === 'ja' ? 'ループバック対応のミキサーの手順を選ぶ' : 'Choose the steps for a loopback-capable mixer' });
     expect(question.compareDocumentPosition(device) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -182,14 +182,16 @@ it.each([
 ] as const)('保存された接続が ASIO のとき、仮想ケーブルの方法に WASAPI へ変える案内と接続のページを開くボタンを出す（$locale）', ({ locale, unknown, usb, mixer, notice, open }) => {
     const store = createLocaleStore(() => locale, () => true);
     const settings = vi.fn();
-    const renderGuide = () => render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} /></LocaleProvider>);
+    const chooseConnection = vi.fn();
+    const renderGuide = () => render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} onChooseConnection={chooseConnection} /></LocaleProvider>);
     try {
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Focusrite USB ASIO', output: 'Focusrite USB ASIO', sampleRate: 48000, bufferSize: 512 }));
         const view = renderGuide();
         fireEvent.click(screen.getByRole('radio', { name: unknown }));
         expect(screen.getByText(notice)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: open }));
-        expect(settings).toHaveBeenCalledOnce();
+        expect(chooseConnection).toHaveBeenCalledOnce();
+        expect(settings).not.toHaveBeenCalled();
         view.unmount();
         renderGuide();
         fireEvent.click(screen.getByRole('radio', { name: usb }));
@@ -210,7 +212,7 @@ it.each(['ja', 'en'] as const)('保存された接続が WASAPI か未保存な�
     try {
         for (const saved of [JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'Speakers', sampleRate: 48000, bufferSize: 512 }), null]) {
             if (saved) localStorage.setItem('vst_host_audio_config', saved); else localStorage.removeItem('vst_host_audio_config');
-            const view = render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+            const view = render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onChooseConnection={vi.fn()} /></LocaleProvider>);
             fireEvent.click(screen.getByRole('radio', { name: unknown }));
             expect(screen.getByRole('status')).toBeInTheDocument();
             expect(screen.queryByText(/WASAPI/)).not.toBeInTheDocument();

@@ -3,7 +3,7 @@ import { requestLeave } from '@/components/layout/pageLeave';
 import type { SoundPlace } from '@/hooks/useUIState';
 
 export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
-export type SettingsSection = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
+export type SettingsSection = 'liveModes' | 'singing' | 'audioTuning' | 'connectionType' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
 
 /** 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。 */
 export function useActiveSettingsTab(initialTab: SettingsTab, tabRequest: number) {

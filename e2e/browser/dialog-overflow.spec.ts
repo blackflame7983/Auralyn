@@ -129,6 +129,29 @@ for (const locale of ['ja', 'en'] as const) {
     }
 }
 
+for (const locale of ['ja', 'en'] as const) {
+    for (const mode of [{ name: 'かんたん表示（欄が閉じている）', beginner: true }, { name: '通常表示', beginner: false }]) {
+        test(`OBS連携ガイドの ASIO の案内から「接続方式を変える」を押すと、接続のページで音切れの設定の欄が開き、接続方式の選択へ焦点が移る ${mode.name} ${locale}`, async ({ page }) => {
+            const t = (key: MessageKey) => message(locale, key);
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            await page.addInitScript(beginner => localStorage.setItem('vst_host_beginner_mode', String(beginner)), mode.beginner);
+            await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 }, ASIO_CONFIG);
+            const dialog = page.getByRole('dialog');
+            await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+            await page.keyboard.press('ArrowDown');
+            await page.keyboard.press('ArrowDown');
+            await dialog.getByRole('button', { name: t('guide.copy.078'), exact: true }).click();
+            await dialog.getByRole('button', { name: t('processInput.chooseConnection'), exact: true }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            const tuning = page.locator('details', { has: page.locator('summary', { hasText: t('settings.audioTuning.title') }) });
+            await expect(tuning).toHaveJSProperty('open', true);
+            await expect(page.getByRole('combobox', { name: t('settings.AudioSettingsModal.035'), exact: true })).toBeFocused();
+            expect(errors).toEqual([]);
+        });
+    }
+}
+
 test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {
     await openScreen(page, 'help', 'ja', { width: 900, height: 600 });
     const dialog = page.getByRole('dialog', { name: message('ja', 'help.title'), exact: true });

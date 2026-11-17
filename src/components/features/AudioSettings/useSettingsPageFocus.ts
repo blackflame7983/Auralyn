@@ -90,11 +90,13 @@ interface TuningSectionInput {
     glitchCount: number | undefined;
 }
 
+const isTuningSection = (section: SettingsSection | undefined) => section === 'audioTuning' || section === 'connectionType';
+
 /** 畳まれた音質調整。かんたん表示でなくなったとき・途切れがあったとき・入口から指定されたときは開く。 */
 export function useTuningSection({ isOpen, initialSection, loading, hasError, activeTab, tabRequest, isBeginnerMode, glitchCount }: TuningSectionInput) {
     const tuningDetails = useRef<HTMLDetailsElement>(null);
     const hostSelect = useRef<HTMLSelectElement>(null);
-    const [tuningOpen, setTuningOpen] = useState(() => initialSection === 'audioTuning' || !getBeginnerMode()
+    const [tuningOpen, setTuningOpen] = useState(() => isTuningSection(initialSection) || !getBeginnerMode()
         || localStorage.getItem('vst_host_settings_advanced') === 'true');
     // 「アプリの音声」を選べない理由から、畳まれた音質調整を開いて接続方式の選択へ移す（#290）。
     const chooseConnection = () => {
@@ -105,12 +107,17 @@ export function useTuningSection({ isOpen, initialSection, loading, hasError, ac
         });
     };
     useEffect(() => {
-        if (!isBeginnerMode || (glitchCount ?? 0) > 0 || initialSection === 'audioTuning') setTuningOpen(true);
+        if (!isBeginnerMode || (glitchCount ?? 0) > 0 || isTuningSection(initialSection)) setTuningOpen(true);
     }, [isBeginnerMode, glitchCount, initialSection]);
     useEffect(() => {
-        if (!isOpen || initialSection !== 'audioTuning' || loading || hasError || activeTab !== 'audio') return;
+        if (!isOpen || !isTuningSection(initialSection) || loading || hasError || activeTab !== 'audio') return;
         setTuningOpen(true);
         return afterFrame(() => {
+            if (initialSection === 'connectionType') {
+                hostSelect.current?.scrollIntoView?.({ block: 'center' });
+                hostSelect.current?.focus({ preventScroll: true });
+                return;
+            }
             tuningDetails.current?.scrollIntoView?.({ block: 'start' });
             tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control] [tabindex="0"]')?.focus({ preventScroll: true });
         });
