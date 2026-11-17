@@ -82,6 +82,33 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
     });
 }
 
+for (const [locale, purpose] of [['ja', 'voice'], ['en', 'voice'], ['ja', 'music']] as const) {
+    test(`最初の手順の症状ボタンは、困ったときの該当の見出しを見せて焦点を移す ${locale} ${purpose}`, async ({ page }) => {
+        const t = (key: MessageKey) => message(locale, key);
+        await page.setViewportSize({ width: 900, height: 600 });
+        await page.addInitScript(([locale, purpose]) => {
+            localStorage.setItem('vst_host_locale', locale);
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            if (purpose === 'music') localStorage.setItem('auralyn_display_purpose', 'music');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+        }, [locale, purpose]);
+        await page.goto('/');
+        await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
+        await page.keyboard.press('F1');
+        const dialog = page.getByRole('dialog', { name: t('help.title'), exact: true });
+        await expect(dialog.getByRole('heading', { name: t('help.setup.stepsTitle'), exact: true })).toBeVisible();
+        const symptom = t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver');
+        await dialog.getByRole('button', { name: symptom, exact: true }).click();
+        await expect(dialog.getByRole('button', { name: t('help.section.trouble'), exact: true })).toHaveAttribute('aria-current', 'page');
+        const heading = dialog.getByRole('heading', { level: 3, name: symptom, exact: true });
+        await expect(heading).toBeInViewport();
+        await expect(heading).toBeFocused();
+        // 見出しへ寄せても、枠の上の題名と閉じるボタンは隠れない。
+        await expect(dialog.getByRole('button', { name: t('common.close'), exact: true })).toBeInViewport();
+        await expect(dialog.locator('.modal-surface-base')).toHaveJSProperty('scrollTop', 0);
+    });
+}
+
 for (const locale of ['ja', 'en'] as const) {
     test(`ホームの情報ボタンからドキュメントを開く ${locale}`, async ({ page }) => {
         await page.addInitScript(locale => {

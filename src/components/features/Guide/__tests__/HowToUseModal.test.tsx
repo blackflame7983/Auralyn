@@ -18,6 +18,7 @@ vi.mock('@/components/features/DeviceStatus/DeviceStatus', () => ({ DeviceStatus
 
 beforeEach(() => { localStorage.clear(); vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolvedValue({ bindings: [{ action: 'gainUp', shortcut: 'Alt+KeyG' }], errors: [] }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+const quoted = (locale: 'ja' | 'en', text: string) => locale === 'ja' ? `「${text}」` : `“${text}”`;
 function open(locale: 'ja' | 'en' = 'ja') {
     const store = createLocaleStore(() => locale, () => true);
     const props = { current: 'home' as const, onHome: vi.fn(), onSound: vi.fn(), onVst: vi.fn(), onConnect: vi.fn(), onSettings: vi.fn(), onOpenShortcuts: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(), onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn() };
@@ -195,13 +196,17 @@ it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの
     expect(steps).toEqual(fillSetupGuide(locale, 'voice').steps);
     expect(steps).toHaveLength(3);
     expect(steps[0]).toContain(message(locale, 'header.setupOpen'));
-    expect(steps[1]).toContain(message(locale, 'home.startAudio'));
+    // 手順2は、セットアップ直後の「実行中」と、止まっているときの開始ボタンを、画面の文言から組む。
+    expect(steps[1]).toContain(quoted(locale, message(locale, 'device.engine')));
+    expect(steps[1]).toContain(quoted(locale, message(locale, 'home.startAudio')));
     expect(steps[2]).toContain('OBS');
     for (const step of steps) expect(step).not.toMatch(/\{[A-Za-z]+\}/);
     expect(within(dialog).queryByText(message(locale, 'help.home.stage.title'))).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.receiver') }));
     expect(nav.getByRole('button', { name: message(locale, 'help.section.trouble') })).toHaveAttribute('aria-current', 'page');
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
+    // 症状の見出しへ焦点が移り、そこまでスクロールする。
+    expect(within(dialog).getByRole('heading', { level: 3, name: message(locale, 'help.trouble.receiver') })).toHaveFocus();
 });
 
 it.each(['ja', 'en'] as const)('音楽鑑賞では、最初の手順の最後が、OBSの代わりにその使い道で確かめる内容になる（%s）', locale => {
@@ -212,12 +217,15 @@ it.each(['ja', 'en'] as const)('音楽鑑賞では、最初の手順の最後が
     const steps = within(within(dialog).getByRole('list')).getAllByRole('listitem').map(item => item.textContent);
     expect(steps).toEqual(fillSetupGuide(locale, 'music').steps);
     expect(steps[0]).toContain(message(locale, 'wizard.musicGoal'));
-    expect(steps[1]).toContain(message(locale, 'home.startListening'));
+    expect(steps[1]).toContain(quoted(locale, message(locale, 'device.engine')));
+    expect(steps[1]).toContain(quoted(locale, message(locale, 'home.startListening')));
+    expect(steps[1]).not.toContain(message(locale, 'home.startAudio'));
     expect(steps[2]).toContain(message(locale, 'music.source'));
     expect(steps[2]).toContain(message(locale, 'header.compare'));
     expect(steps.join('')).not.toContain('OBS');
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.silent') }));
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { level: 3, name: message(locale, 'help.trouble.silent') })).toHaveFocus();
 });
 
 it('前回開いた節を保存していれば、最初の節ではなく、その節で開く', () => {

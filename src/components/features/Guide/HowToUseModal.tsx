@@ -18,6 +18,7 @@ import { formatShortcut } from '@/lib/shortcutLabel';
 const sections = ['setup', 'home', 'vst', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
 const defaultSection: Section = 'setup';
+type Symptom = 'silent' | 'receiver';
 const sectionDocs = { home: 'help.home', setup: 'help.setup', vst: 'help.vst', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
 
 interface Props {
@@ -47,6 +48,18 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         setSection(next);
         if (body.current) body.current.scrollTop = 0;
         try { localStorage.setItem(helpSectionKey, next); } catch { /* 保存できなくても読む操作は続けられる。 */ }
+    };
+    // 「はじめの設定」から症状へ移るときは、節を替えたあと、その見出しまでスクロールして焦点を移す。
+    const symptom = useRef<Symptom | null>(null);
+    const toSymptom = (target: Symptom) => { symptom.current = target; select('trouble'); };
+    const symptomHeading = (target: Symptom) => (element: HTMLHeadingElement | null) => {
+        if (!element || symptom.current !== target) return;
+        symptom.current = null;
+        // 見出しは本文の枠の中だけでスクロールする。scrollIntoView は上の枠まで動かし、題名と閉じるボタンが隠れる。
+        // 先頭の見出しは、節の見出しを隠さないよう、動かさずに焦点だけ移す。
+        const scroller = body.current;
+        if (target === 'receiver' && scroller) scroller.scrollTop += element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - (parseFloat(getComputedStyle(scroller).paddingTop) || 0);
+        element.focus({ preventScroll: true });
     };
     const go = (open: () => void) => { onClose(); open(); };
     const labels = homeGuideLabels(locale);
@@ -94,16 +107,16 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 <p>{t(setupTroubleKey(purpose), labels)}</p>
                                 <div className="flex flex-wrap gap-2">
                                     <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button>
-                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => select('trouble')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
+                                    <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => toSymptom(purpose === 'music' ? 'silent' : 'receiver')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
                                 </div>
                                 <h3 className="font-semibold">{t('help.setup.flowTitle')}</h3>
                                 <p>{t('help.setup.body', labels)}</p>
                             </>}
                             {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>
-                                <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
+                                <h3 ref={symptomHeading('silent')} tabIndex={-1} className="font-semibold outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
-                                <h3 className="font-semibold">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p><UserDocLink name="troubleshooting.not-received" compact />
+                                <h3 ref={symptomHeading('receiver')} tabIndex={-1} className="font-semibold outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p><UserDocLink name="troubleshooting.not-received" compact />
                                 <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
                                 <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p><UserDocLink name="troubleshooting.dropouts" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
