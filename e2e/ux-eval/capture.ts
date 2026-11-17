@@ -37,7 +37,7 @@ const voice = [streamInput, streamOutput];
 const music = [musicInput, musicOutput];
 
 const shots: Shot[] = [
-    { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['送り先を選んでください'] },
+    { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['何に使いますか？'] },
     { name: 'home-voice', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '未登録', expects: ['いまの声', ...voice] },
     { name: 'home-voice-registered', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
     { name: 'home-voice-builtin', mock: 'live-home-builtin', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み（声を整える ON）', expects: ['いまの調整', 'ON · 標準', ...voice] },

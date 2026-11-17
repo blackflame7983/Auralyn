@@ -43,6 +43,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
         asioAvailable, selectHost, selectAsioChannels, selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const nextReasonId = useId();
+    const skipHintId = useId();
     // 複数の条件が重なるときは、読込完了→入力→出力の順に案内する。
     const nextReason = state === 'input_selection'
         ? isLoadingDevices ? t('wizard.loadingInputs')
@@ -102,7 +103,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                 />
 
                 <div className="flex min-h-0 flex-1">
-                {/* 手順の名前はホームの音の流れと揃える（送り先・マイク・送り方・確認）。 */}
+                {/* 手順1は音楽鑑賞も選ぶので「使い道」と呼ぶ。2〜4はホームの音の流れの区間名に揃える（マイク・出力先・確認）。 */}
                 <nav aria-label={t('wizard.progress')} className="setup-rail shrink-0 overflow-y-auto border-r border-border bg-muted/30 px-3 py-5">
                     <div className="relative">
                     {stepIndex < STEPS.length && <span ref={railThumbRef} aria-hidden="true" className="setup-rail-thumb" />}
@@ -110,7 +111,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         {STEPS.map((step, idx) => {
                             const isCurrent = state === step;
                             const isPast = stepIndex > idx;
-                            const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'wizard.sourcePc' : 'wizard.input')
+                            const label = step === 'usage_selection' ? t('wizard.usage') : step === 'input_selection' ? t(config.goal === 'music' ? 'wizard.sourcePc' : 'wizard.input')
                                 : step === 'output_selection' ? t('wizard.output') : t('wizard.check');
                             const marker = <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-ui-support font-bold transition-colors duration-(--motion-base) ${isCurrent || isPast ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                                 {isPast ? <MdCheck aria-hidden="true" className="h-4 w-4" /> : idx + 1}
@@ -135,14 +136,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
                         <div className="space-y-3">
-                            <h2 className="setup-heading">{t('wizard.chooseGoal')}</h2>
-                            <div className="space-y-2">
-                                <p className="text-muted-foreground text-ui-support leading-relaxed">
-                                    {t('wizard.cableBefore')}<strong className="text-foreground">{t('wizard.cable')}</strong>{t('wizard.cableAfter')}
-                                </p>
-                                <p className="text-muted-foreground text-ui-support">{t('wizard.cableLater', { step: t('wizard.output') })}</p>
-                            </div>
-
+                            <h2 className="setup-heading text-balance [word-break:auto-phrase]">{t('wizard.chooseGoal')}</h2>
+                            <p className="text-muted-foreground text-ui-support text-balance [word-break:auto-phrase]">{t('wizard.goalHint')}</p>
 
                             <div role="radiogroup" aria-label={t('wizard.chooseGoal')} className="grid grid-cols-2 gap-3 p-1">
                                 {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard name="wizard-goal" compact
@@ -165,6 +160,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         active={(config.goal ?? savedGoal) === 'music'}
                                     />
                                 </div>
+                            </div>
+                            <div className="space-y-1 text-muted-foreground text-ui-support text-balance [word-break:auto-phrase]">
+                                <p className="leading-relaxed">
+                                    {t('wizard.cableBefore')}<strong className="text-foreground">{t('wizard.cable')}</strong>{t('wizard.cableAfter')}
+                                </p>
+                                <p>{t('wizard.cableLater', { step: t('wizard.output') })}</p>
                             </div>
                         </div>
                     )}
@@ -528,9 +529,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     </div>
                 </div>
-                {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className="setup-actions modal-footer-base shrink-0 px-6 py-4">
+                {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className={`setup-actions modal-footer-base shrink-0 px-6 ${state === 'usage_selection' ? 'py-2' : 'py-4'}`}>
                     {state === 'usage_selection' && (
-                        <Button variant="ghost" type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} >{t('wizard.skip')}</Button>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                            <Button variant="ghost" size="sm" type="button" disabled={isBusy} aria-describedby={skipHintId} onClick={() => void performClose(() => (onSkip || onClose)())}
+                                className="text-muted-foreground">{t('wizard.skip')}</Button>
+                            <p id={skipHintId} className="min-w-0 flex-1 basis-60 text-ui-support leading-snug text-muted-foreground text-balance [word-break:auto-phrase]">{t('wizard.skipHint', { action: t('unsetFlow.chooseDestination') })}</p>
+                        </div>
                     )}
                     {(state === 'input_selection' || state === 'output_selection') && (
                         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">

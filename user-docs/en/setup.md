@@ -1,14 +1,16 @@
 ---
 title: "First setup"
-description: "Choose your purpose and devices, then check the path to the receiving app."
+description: "Choose how you will use it and your devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here"]
+uiLabels: ["Connection details", "Open Setup", "Skip setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "What will you use it for?"]
 ---
 
-## Choose a purpose {#purpose}
+## Choose what to use it for {#purpose}
 
 1. Open “Connection details” and select “Open Setup”.
-2. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”.
+2. The first screen asks “What will you use it for?”. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”. Selecting a card moves to the next step.
+
+“Skip setup” on the first screen returns to Home without changing any settings. If audio is not set up yet, it stays stopped.
 
 “Hear my own voice” processes the microphone and plays it on headphones or speakers. The choice under “How you will use it” is “I want to listen here”. To apply a VST to playback from an app, choose “Listen to music (apply VST to PC audio)”. Hear my own voice and listening to music do not show streaming or listener wording on the review or the finished screen.
 
