@@ -1,6 +1,6 @@
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useState, type ReactNode } from 'react';
+import React, { useState, type ReactNode, type Ref } from 'react';
 import { Plugin, PluginCard } from './PluginCard';
 import { PluginRackEmptyState } from './PluginRackEmptyState';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, type Modifier } from '@dnd-kit/core';
@@ -34,6 +34,7 @@ interface PluginListProps {
     headerAction?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
     unrestored?: string[];
+    addButtonRef?: Ref<HTMLButtonElement>;
 }
 
 const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, simpleMode, rackKind, structureDisabled, disabled, ...props }: {
@@ -103,7 +104,8 @@ export const PluginList: React.FC<PluginListProps> = ({
     onOpenTemplates,
     embedded = false,
     headerAction,
-    unrestored = []
+    unrestored = [],
+    addButtonRef,
 }) => {
     const t = useMessages();
     const { theme } = useTheme();
@@ -216,7 +218,8 @@ export const PluginList: React.FC<PluginListProps> = ({
                         onOpenTemplates={onOpenTemplates}
                         unrestored={unrestored}
                         hideAdd={false}
-                        markAddTarget={!embedded}
+                        markAddTarget={!embedded || addButtonRef != null}
+                        addButtonRef={addButtonRef}
                     />
                 ) : embedded ? null : (
                     <Button
