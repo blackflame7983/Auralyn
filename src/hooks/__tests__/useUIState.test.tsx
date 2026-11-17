@@ -65,7 +65,7 @@ it('設定反映の再試行は音声タブに限定し、ほかの入口と終�
 });
 
 
-it.each([['input', 'primaryInput'], ['output', 'liveOutput']] as const)('機器の%s入口は音声タブの%sを指定し、再試行状態を解除する', (target, section) => {
+it.each([['input', 'primaryInput'], ['output', 'liveOutput'], ['split', 'liveOutputSplit']] as const)('機器の%s入口は音声タブの%sを指定し、再試行状態を解除する', (target, section) => {
     const { result } = renderHook(() => useUIState());
     act(() => result.current.openAudioSettingsRetry());
     act(() => result.current.openDeviceSettings(target));

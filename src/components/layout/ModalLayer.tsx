@@ -35,7 +35,7 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+    settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
     soundPlace?: SoundPlace;
     soundFocusNonce?: number;
     measurementNonce?: number;

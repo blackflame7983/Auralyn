@@ -9,16 +9,17 @@ const levels = { voice: { gain: 0, muted: false }, accompaniment: { gain: 1, mut
 const config = { version: 1 as const, source: { kind: 'device' as const, config: { host: 'WASAPI' as const, inputId: 'music', inputChannels: [0, 1] as [number, number] } }, levels };
 const snapshot = (extra: Partial<MixSnapshot> = {}): MixSnapshot => ({ epoch: 'e', revision: '1', config, savedConfig: config, running: false, accompaniment: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [1.2, 1], knownVoiceProcessingFrames: null, pending: false, failed: false, primaryClock: null, error: null, ...extra });
 const inputs = [{ name: 'Music', host: 'WASAPI', is_input: true, index: 0, is_default: false, channels: 4, id: 'music' }];
-const output = (ready = true) => ({ config: { deviceId: ready ? 'out' : null, splitProcessing: ready, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null });
+type OutputState = 'none' | 'unsplit' | 'ready';
+const output = (state: OutputState = 'ready') => ({ config: { deviceId: state === 'none' ? null : 'out', splitProcessing: state === 'ready', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null });
 const audio = { is_running: false, config: { host: 'WASAPI', input: 'Mic', input_id: 'mic', output: 'Phones', output_id: 'phones', sample_rate: 48000, buffer_size: 128, routing: { inputChannels: [0, 1] as [number, number], outputRouting: { mode: 'legacy' as const } } } };
 beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
-async function setup(value = snapshot(), ready = true, primaryIsVoiceDevice = true, onNavigate = vi.fn(), settled: RegExp | string = /いま使っているオケ/) {
+async function setup(value = snapshot(), state: OutputState = 'ready', primaryIsVoiceDevice = true, onNavigate = vi.fn(), settled: RegExp | string = /いま使っているオケ/) {
     const request = vi.spyOn(mixingApi, 'request').mockResolvedValue(value);
-    vi.spyOn(liveOutputApi, 'request').mockResolvedValue(output(ready));
+    vi.spyOn(liveOutputApi, 'request').mockResolvedValue(output(state));
     vi.spyOn(audioApi, 'getAudioState').mockResolvedValue(audio);
     render(<MixingPanel inputs={inputs} primaryIsVoiceDevice={primaryIsVoiceDevice} onNavigate={onNavigate} />);
-    expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('オケを追加して配信する'));
+    expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('伴奏・BGM を足して配信する'));
     await screen.findByText(settled); return request;
 }
 const voice = () => screen.getByRole('slider', { name: '声の音量' });
@@ -49,40 +50,40 @@ it('動作中と編集中を区別し、保存内容の明示的な読み直し�
     await waitFor(() => expect(pair).toHaveValue('0,1'));
     expect(request).toHaveBeenLastCalledWith({ action: 'reload', expectedEpoch: 'e', expectedRevision: '1' });
     expect(active).toHaveTextContent('Music');
-    expect(screen.queryByText('オケを足すには、先に次の準備が要ります。')).not.toBeInTheDocument();
+    expect(screen.queryByText('伴奏・BGM を足すには、先に次の準備が要ります。')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '表示を最新にする' }).compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('slider', { name: '声の音量' })).toBeInTheDocument();
     expect(screen.getByText(/音量の目安/)).toBeInTheDocument();
 });
 it('前提の不足から設定欄へ移動でき、準備状態を自動更新する', async () => {
-    const navigate = vi.fn(); await setup(snapshot(), false, false, navigate);
-    fireEvent.click(screen.getByRole('button', { name: '配信用の分離出力を設定' })); expect(navigate).toHaveBeenCalledWith('output');
-    fireEvent.click(screen.getByRole('button', { name: '主入力と用途を設定' })); expect(navigate).toHaveBeenCalledWith('input');
+    const navigate = vi.fn(); await setup(snapshot(), 'none', false, navigate);
+    fireEvent.click(screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' })); expect(navigate).toHaveBeenCalledWith('output');
+    fireEvent.click(screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' })); expect(navigate).toHaveBeenCalledWith('input');
     vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList);
     vi.mocked(liveOutputApi.request).mockResolvedValue(output());
-    await waitFor(() => expect(screen.queryByRole('button', { name: '配信用の分離出力を設定' })).not.toBeInTheDocument(), { timeout: 2500 });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).not.toBeInTheDocument(), { timeout: 2500 });
 });
-const intro = 'オケを足すには、先に次の準備が要ります。';
+const intro = '伴奏・BGM を足すには、先に次の準備が要ります。';
 it('前提が無くオケが無効なら、準備の案内と入口だけを出す', async () => {
     const navigate = vi.fn();
-    await setup(snapshot({ config: null, savedConfig: null }), false, false, navigate, intro);
+    await setup(snapshot({ config: null, savedConfig: null }), 'none', false, navigate, intro);
     expect(screen.queryByRole('button', { name: '表示を最新にする' })).not.toBeInTheDocument();
     const steps = screen.getByRole('list');
     expect(steps.tagName).toBe('OL');
-    const outputGuide = screen.getByText('配信用の出力先を選ぶ');
-    const inputGuide = screen.getByText('声のマイクを主入力に選ぶ');
-    const outputButton = screen.getByRole('button', { name: '配信用の分離出力を設定' });
-    const inputButton = screen.getByRole('button', { name: '主入力と用途を設定' });
-    expect(outputGuide.closest('li')).toHaveClass('space-y-2');
+    const outputButton = screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' });
+    const inputButton = screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' });
+    // 手順はボタンの名前だけで示し、同じ言葉の説明を重ねない（#715）。
+    expect(screen.getAllByText('OBS へ送る出力先を選ぶ')).toHaveLength(1);
+    expect(screen.getAllByText('声のマイクを主入力に選ぶ')).toHaveLength(1);
+    expect(outputButton.closest('li')?.parentElement).toBe(steps);
+    expect(inputButton.closest('li')?.parentElement).toBe(steps);
     const follows = (before: HTMLElement, after: HTMLElement) => (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    expect(follows(screen.getByText(intro), outputGuide)).toBe(true);
-    expect(follows(outputGuide, outputButton)).toBe(true);
-    expect(follows(outputButton, inputGuide)).toBe(true);
-    expect(follows(inputGuide, inputButton)).toBe(true);
+    expect(follows(screen.getByText(intro), outputButton)).toBe(true);
+    expect(follows(outputButton, inputButton)).toBe(true);
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '配信用の分離出力を設定' }));
+    fireEvent.click(screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' }));
     expect(navigate).toHaveBeenCalledWith('output');
-    fireEvent.click(screen.getByRole('button', { name: '主入力と用途を設定' }));
+    fireEvent.click(screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' }));
     expect(navigate).toHaveBeenCalledWith('input');
     expect(screen.queryByRole('region', { name: 'いま使っているオケ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'オケの入力元を変える' })).not.toBeInTheDocument();
@@ -96,33 +97,67 @@ it('前提が無くオケが無効なら、準備の案内と入口だけを出�
     expect(screen.queryByText(/声の処理待ち/)).not.toBeInTheDocument();
     expect(screen.queryByText(/音量の目安/)).not.toBeInTheDocument();
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
-    expect(screen.getByText('オケを追加して配信する')).toHaveClass('home-card-name');
+    expect(screen.getByText('伴奏・BGM を足して配信する')).toHaveClass('home-card-name');
 });
 it('分離出力だけが無いときは、その案内だけを出す', async () => {
-    await setup(snapshot({ config: null }), false, true, vi.fn(), intro);
+    await setup(snapshot({ config: null }), 'none', true, vi.fn(), intro);
     expect(screen.getByText(intro)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '配信用の分離出力を設定' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).toBeInTheDocument();
+    expect(screen.getAllByText('OBS へ送る出力先を選ぶ')).toHaveLength(1);
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByText('声のマイクを主入力に選ぶ')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '主入力と用途を設定' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '声のマイクを主入力に選ぶ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: '使う入力チャンネル' })).not.toBeInTheDocument();
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '表示を最新にする' })).not.toBeInTheDocument();
 });
 it('声の主入力だけが無いときは、その案内だけを出す', async () => {
-    await setup(snapshot({ config: null }), true, false, vi.fn(), intro);
+    await setup(snapshot({ config: null }), 'ready', false, vi.fn(), intro);
     expect(screen.getByText(intro)).toBeInTheDocument();
-    expect(screen.queryByText('配信用の出力先を選ぶ')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '配信用の分離出力を設定' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '主入力と用途を設定' })).toBeInTheDocument();
+    expect(screen.queryByText('OBS へ送る出力先を選ぶ')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' })).toBeInTheDocument();
+    expect(screen.getAllByText('声のマイクを主入力に選ぶ')).toHaveLength(1);
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '入力元を適用' })).not.toBeInTheDocument();
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
 });
 it('準備だけの表示でも、保存ファイルが読めないときだけ復旧を出す', async () => {
-    await setup(snapshot({ config: null, savedConfig: null, error: 'corrupt' }), false, true, vi.fn(), intro);
+    await setup(snapshot({ config: null, savedConfig: null, error: 'corrupt' }), 'none', true, vi.fn(), intro);
     expect(screen.getByText('保存設定を復旧する')).toBeInTheDocument();
 });
+const outputButton = 'OBS へ送る出力先を選ぶ', splitButton = '自分用と配信用に分ける', inputButton = '声のマイクを主入力に選ぶ';
+type Step = { name: string; target: 'output' | 'split' | 'input' };
+const outputStep = (state: OutputState): Step | null => state === 'none' ? { name: outputButton, target: 'output' } : state === 'unsplit' ? { name: splitButton, target: 'split' } : null;
+it.each([
+    ['none', true], ['none', false], ['unsplit', true], ['unsplit', false], ['ready', false],
+] as const)('出力が%s・主入力が声の機器=%s のとき、足りない準備だけをボタンで示し、2つ以上のときだけ番号を付ける', async (state, voice) => {
+    const navigate = vi.fn();
+    await setup(snapshot({ config: null, savedConfig: null }), state, voice, navigate, intro);
+    const expected = [outputStep(state), voice ? null : { name: inputButton, target: 'input' as const }].filter(step => step !== null);
+    const everyButton = [outputButton, splitButton, inputButton];
+    expect(screen.getAllByRole('button').map(b => b.textContent).filter(name => everyButton.includes(name ?? ''))).toEqual(expected.map(step => step.name));
+    expect(screen.queryByRole('list') !== null).toBe(expected.length > 1);
+    for (const step of expected) {
+        expect(screen.getAllByText(step.name)).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: step.name }));
+        expect(navigate).toHaveBeenLastCalledWith(step.target);
+    }
+    expect(navigate).toHaveBeenCalledTimes(expected.length);
+});
+it.each(['none', 'unsplit', 'ready'] as const)('オケが有効で出力が%sのとき、足りない出力側の準備だけを案内する', async state => {
+    const navigate = vi.fn();
+    await setup(snapshot(), state, true, navigate);
+    const step = outputStep(state);
+    expect(screen.queryByText(intro)).not.toBeInTheDocument();
+    for (const name of [outputButton, splitButton]) expect(screen.queryByRole('button', { name }) !== null).toBe(name === step?.name);
+    // 案内の文は、足りない準備だけを言う（出力先なし／分けていない）。
+    const notice = state === 'none' ? 'OBS へ送る出力先を選んでください。' : state === 'unsplit' ? '自分用と配信用に分ける設定が必要です。' : null;
+    for (const text of ['OBS へ送る出力先を選んでください。', '自分用と配信用に分ける設定が必要です。']) expect(screen.queryAllByText(text).length > 0).toBe(text === notice);
+    if (step) { fireEvent.click(screen.getByRole('button', { name: step.name })); expect(navigate).toHaveBeenCalledWith(step.target); }
+});
 it('前提が無くてもオケが有効なら、無効にする操作を出す', async () => {
-    await setup(snapshot(), false, false);
+    await setup(snapshot(), 'none', false);
     expect(screen.queryByText(intro)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'オケを無効にする' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'いま使っているオケ' })).toBeInTheDocument();

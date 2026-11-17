@@ -147,11 +147,11 @@ test('配信ミックスのパネルは既定で出さず、ホームの状態�
 
 test('配信ミックスのパネルから出力先の区画へ移り、音づくりタブからパネルへ戻れる（#299）', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.addInitScript(() => { (window as any).__liveOutputMissing = true; });
+    await page.addInitScript(() => { window.__liveOutputMissing = true; });
     await fixture(page); await page.goto('/');
     const panel = await streamMix(page);
     await panel.locator('#mixing-settings > summary').click();
-    await panel.getByRole('button', { name: '配信用の分離出力を設定' }).click();
+    await panel.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' }).click();
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
     await expect(dialog.locator('#live-output-settings select').first()).toBeFocused();
@@ -159,6 +159,31 @@ test('配信ミックスのパネルから出力先の区画へ移り、音づ�
     await page.locator('[data-settings-page]').getByRole('button', { name: '配信ミックスの設定' }).click();
     await expect(page.locator('[data-settings-page]')).toHaveCount(0);
     await expect(page.locator('#stream-mix-panel #mixing-settings > summary')).toBeFocused();
+});
+
+test('出力先は選んだが処理が分かれていないときは、その準備だけを出し、接続のページの分離の欄へ焦点を移す（#715）', async ({ page }, info) => {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await fixture(page, false);
+    await page.addInitScript(() => {
+        const internal = window.__TAURI_INTERNALS__;
+        if (!internal) return;
+        const original = internal.invoke;
+        internal.invoke = async (command, args) => command === 'live_output'
+            ? { config: { deviceId: 'out', splitProcessing: false, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null }
+            : original(command, args);
+    });
+    await page.goto('/');
+    const panel = await streamMix(page);
+    await panel.locator('#mixing-settings > summary').click();
+    const split = panel.getByRole('button', { name: '自分用と配信用に分ける' });
+    await expect(split).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).toHaveCount(0);
+    await expect(panel.getByRole('list')).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('mixing-prepare-unsplit.png') });
+    await split.click();
+    const dialog = page.locator('[data-settings-page]');
+    await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
+    await expect(dialog.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ })).toBeFocused();
 });
 
 test('ホームの表示が音楽鑑賞向けで配信向けの設定が既定なら、欄を隠して戻す案内だけ残す（#642）', async ({ page }) => {
