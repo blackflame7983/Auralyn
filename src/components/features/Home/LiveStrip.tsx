@@ -37,7 +37,7 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
     </>;
 }
 
-// ホーム先頭の「いまの状態」。右の列のメーターは残し、ここでは状態と送る音の大きさを横長に置く。主ボタンは多くて1つ。
+// ホーム先頭の「いまの状態」。出力の大きさはこの横バーで読む。右の列の出力に同じバーは置かない（#724）。主ボタンは多くて1つ。
 export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices }: {
     onStartAudio?: () => void; /** 札は上の帯に移した。呼び出し側の引数は残す。 */ stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;

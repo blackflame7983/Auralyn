@@ -35,6 +35,7 @@ afterEach(() => {
     meter.peak = [0, 0];
     readings.clear();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
 });
 
 function matchMedia(matches: boolean) {
@@ -105,6 +106,7 @@ it('live のときだけ波形を描き、状態の文字は出さない', () =>
     render(<SoundFlow running music={false} />);
     expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
     expect(screen.getByRole('region', { name: '声の流れ' }).querySelector('[data-flow-status]')).toBeNull();
+    expect(screen.getByRole('region', { name: '声の流れ' })).toHaveTextContent('加工の前後を比べます');
 });
 
 it('波形の高さはメーターと同じ −60〜0 dBFS の目盛りにする', () => {
@@ -166,6 +168,49 @@ it('更新が止まって最後の波形を保っているあいだに設定が�
     expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
 });
 
+function setAppHidden(hidden: boolean) {
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(hidden);
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+}
+
+it('隠れているあいだに動きを減らす設定が変わっても、表示に戻ったとき静止で描き直す', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const setReduced = switchableMatchMedia(false);
+    render(<SoundFlow running music={false} />);
+    const canvas = screen.getByRole('img') as HTMLCanvasElement;
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    setAppHidden(true);
+    setReduced(true);
+    // 隠れているあいだは描かない。メーターの参照は変わっていない。
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    setAppHidden(false);
+    expect(canvas).toHaveAttribute('data-flow', 'still');
+});
+
+it('隠れているあいだに設定が変わり、そのまま大きさが変わっても、再生ヘッドを描かない', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const resizes: (() => void)[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { resizes.push(callback); }
+        observe() {}
+        disconnect() {}
+    });
+    const setReduced = switchableMatchMedia(false);
+    render(<SoundFlow running music={false} />);
+    const canvas = screen.getByRole('img') as HTMLCanvasElement;
+    const { ctx, ops } = recordingContext();
+    Object.assign(ctx, { setTransform: vi.fn(), clearRect: vi.fn() });
+    vi.spyOn(canvas, 'getContext').mockReturnValue(ctx);
+    setAppHidden(true);
+    setReduced(true);
+    setAppHidden(false);
+    ops.length = 0;
+    resizes.forEach(resize => resize());
+    expect(ops.filter(op => op.op === 'fill')).toHaveLength(1);
+    expect(ops.some(op => op.op === 'fillRect')).toBe(false);
+});
 function recordingContext() {
     const ops: { op: string; x?: number; y?: number; strokeStyle?: string; lineWidth?: number; fillStyle?: unknown }[] = [];
     const ctx = {

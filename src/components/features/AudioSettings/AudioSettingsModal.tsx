@@ -12,8 +12,6 @@ import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { singingDraftIsDirty, SingingGuideHelp } from './SingingControls';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
-import { liveOutputApi } from '@/api/liveOutput';
-import { liveOutputConfigInUse } from '@/lib/streamingSettings';
 import { Button } from '@/components/ui/button';
 import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
@@ -25,11 +23,11 @@ import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDra
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { PagePortal } from '@/components/layout/pageSlot';
 import { PageHeading } from '@/components/layout/PageHeading';
-import { allowNextLeave, registerLeaveGuard, requestLeave, setPageLocked } from '@/components/layout/pageLeave';
+import { allowNextLeave, requestLeave } from '@/components/layout/pageLeave';
 import { requestOpenRack } from '@/components/layout/openRackBridge';
 import type { SoundPlace } from '@/hooks/useUIState';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
-import React, { useCallback, useEffect, useId, useLayoutEffect, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useId, useState, useMemo, useRef } from 'react';
 import { MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { toast } from 'sonner';
@@ -53,18 +51,25 @@ import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelecti
 import { ConnectionApplyError, ConnectionStartError, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
 import { useRuntimeStats } from '@/hooks/useRuntimeStats';
+import { useWhenTrue } from '@/hooks/useWhenTrue';
+import { useSavedConnection, useSavedRestoreAvailable } from './useSavedConnection';
+import { useLiveOutputInUse } from './useLiveOutputInUse';
+import { useAdvancedModePreference, useBeginnerModeSync, useSettingsLeaveGuard } from './useSettingsPreferences';
+import { useActiveSettingsTab, useSoundPlace, type SettingsSection, type SettingsTab } from './useSettingsNavigation';
+import { useDeviceTargetFocus, useSettingsPageFocus, useSettingsScroller, useTuningSection } from './useSettingsPageFocus';
+import { useAudioPresets } from './useAudioPresets';
 
 interface AudioSettingsModalProps {
   liveModel?: LiveModesModel;
   singingModel?: SingingDraft;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
-  initialTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
+  initialTab?: SettingsTab;
   /** 移動の依頼ごとに増える番号。同じ移動先を続けて頼まれても切り替える。 */
   tabRequest?: number;
   /** 区分の切替を、未保存の確認を通す親の入口へ渡す。無いときはこの画面の中で切り替える。 */
-  onRequestTab?: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
-  initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+  onRequestTab?: (tab: SettingsTab) => void;
+  initialSection?: SettingsSection;
   /** 音づくりの小区分。親が持つとき、ページを離れても下書きの確認を同じ規則で出す。 */
   soundPlace?: SoundPlace;
   soundFocusNonce?: number;
@@ -114,7 +119,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const localSinging = useSingingDraft();
   const localLive = useLiveModes();
   const singingModel = providedSinging ?? localSinging;
-  const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
   const [connectionRetry, setConnectionRetry] = useState(false);
@@ -128,7 +132,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, []);
   const [error, setError] = useState<SettingsNotice | null>(null);
   const [startStateUnknown, setStartStateUnknown] = useState(false);
-  useEffect(() => { if (!isOpen || !error) setStartStateUnknown(false); }, [isOpen, error]);
+  useWhenTrue(!isOpen || !error, () => setStartStateUnknown(false));
   const {
     devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput, selectedInputKey, setSelectedInputKey, selectedInputDevice,
     selectedOutput, setSelectedOutput, selectedOutputKey, setSelectedOutputKey, selectedOutputDevice: selectedOutputFromSelection, selectedBufferSize, setSelectedBufferSize,
@@ -142,9 +146,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     : selectedOutputFromSelection;
   const storedConfig = currentConfig?.host ? currentConfig : readAudioPreferences();
   const [inputSource, setInputSource] = useState<InputSourceRequest>(() => ({ source: storedConfig?.inputSource ?? deviceInput() }));
-  useEffect(() => { if (isOpen) setInputSource({ source: (currentConfig ?? readAudioPreferences())?.inputSource ?? deviceInput() }); }, [isOpen]);
+  useWhenTrue(isOpen, () => setInputSource({ source: (currentConfig ?? readAudioPreferences())?.inputSource ?? deviceInput() }));
   const [needsDeviceChoice, setNeedsDeviceChoice] = useState(false);
-  useEffect(() => { if (isOpen) setNeedsDeviceChoice(false); }, [isOpen]);
+  useWhenTrue(isOpen, () => setNeedsDeviceChoice(false));
   const processInput = inputSource.source.kind === 'process_loopback';
   const inputReady = processInput ? !isAsio && !!inputSource.candidateId && !!readInputSource(inputSource.source) : !needsDeviceChoice && !!selectedInputDevice;
   const connection = useAudioConnectionController({ isOpen, host: selectedHost, input: processInput ? undefined : selectedInputDevice, inputSource,
@@ -155,12 +159,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   type ConnectionField = 'source' | 'host' | 'input' | 'output' | 'buffer' | 'rate' | 'channels' | 'routing';
   const [editedFields, setEditedFields] = useState<ReadonlySet<ConnectionField>>(new Set());
   const editConnection = (...fields: ConnectionField[]) => setEditedFields(previous => new Set([...previous, ...fields]));
-  useEffect(() => { if (isOpen) setEditedFields(new Set()); }, [isOpen]);
-  const savedConnection = useMemo(() => {
-    const saved = currentConfig?.host ? currentConfig : readAudioPreferences();
-    return saved?.host ? { ...saved, sampleRate: currentSampleRate ?? saved.sampleRate,
-      bufferSize: currentBufferSize ?? saved.bufferSize } : null;
-  }, [isOpen, currentConfig, currentSampleRate, currentBufferSize]);
+  useWhenTrue(isOpen, () => setEditedFields(new Set()));
+  const savedConnection = useSavedConnection({ isOpen, currentConfig, currentSampleRate, currentBufferSize });
   const changedFields = !savedConnection ? [] : [
     editedFields.has('source') && JSON.stringify(inputSource.source) !== JSON.stringify(savedConnection.inputSource ?? deviceInput()) && t('processInput.changed'),
     editedFields.has('source') && processInput && inputSource.candidateId && t('processInput.appChanged'),
@@ -173,16 +173,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     editedFields.has('routing') && (isAsio && JSON.stringify(connection.outputRouting) !== JSON.stringify(savedConnection.outputRouting ?? { mode: 'legacy' })) && t('settings.routing.title'),
   ].filter((value): value is string => typeof value === 'string');
   const hasConnectionChanges = !savedConnection || changedFields.length > 0;
-  const [savedRestoreAvailable, setSavedRestoreAvailable] = useState(false);
-  const needsSavedRestore = isOpen && !savedConnection;
-  useEffect(() => {
-    let active = true;
-    setSavedRestoreAvailable(false);
-    if (needsSavedRestore) void audioApi.getSavedAudioConfig().then(saved => {
-      if (active) setSavedRestoreAvailable(!!saved && !!savedAudioPreferences(saved));
-    }).catch(() => { /* 不在・読取不能を復帰可能として案内しない。 */ });
-    return () => { active = false; };
-  }, [needsSavedRestore]);
+  const savedRestoreAvailable = useSavedRestoreAvailable(isOpen && !savedConnection);
   const [restoreNotice, setRestoreNotice] = useState('');
   const restoreSavedConnection = async () => {
     if (isApplying) return;
@@ -194,16 +185,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       const restored = savedAudioPreferences(saved);
       if (!restored) throw new Error('Invalid saved connection');
       const source = restored.inputSource ?? deviceInput();
+      const outputRouting = restored.outputRouting ?? { mode: 'legacy' as const };
       restored.inputSource = source;
-      restored.outputRouting ??= { mode: 'legacy' };
+      restored.outputRouting = outputRouting;
       // 保存済み選択の復帰だけを通知する。音声開始済みの通知やStartは送らない。
       await onConfigChange(restored);
       setInputSource({ source }); setNeedsDeviceChoice(false);
-      setSelectedSampleRate(restored.sampleRate!); setSelectedBufferSize(restored.bufferSize!);
+      if (restored.sampleRate !== undefined) setSelectedSampleRate(restored.sampleRate);
+      if (restored.bufferSize !== undefined) setSelectedBufferSize(restored.bufferSize);
       const listed = await fetchDevices(false);
       const restoredInput = listed && resolveAudioDevice(listed.inputs, saved.host, saved.input, saved.input_id);
       if (restoredInput) connection.setRoutingForDevice(connectionDeviceKey(saved.host, restoredInput), {
-        inputChannels: restored.inputChannels, outputRouting: restored.outputRouting! });
+        inputChannels: restored.inputChannels, outputRouting });
       setEditedFields(new Set());
       setRestoreNotice(t('settings.connection.restored'));
     } catch { setRestoreNotice(t('settings.connection.restoreFailed')); }
@@ -211,185 +204,31 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
 
   // Simple/Advanced Mode
-  const [isAdvancedMode, setIsAdvancedMode] = useState(() => {
-    // Initialize from localStorage
-    return localStorage.getItem('vst_host_settings_advanced') === 'true';
-  });
-  useEffect(() => {
-    if (isOpen && ![128, 512, 1024].includes(selectedBufferSize)) setIsAdvancedMode(true);
-  }, [isOpen, selectedBufferSize]);
-  const tuningDetails = useRef<HTMLDetailsElement>(null);
+  const [isAdvancedMode, setIsAdvancedMode] = useAdvancedModePreference(isOpen, selectedBufferSize);
   const streamMixShown = useStreamMixPanel();
   // パネルはホームが歌・雑談の表示のときだけ出る。音楽鑑賞では押しても何も出ないため、理由を示して止める。
   const [displayPurpose] = useDisplayPurpose();
   const streamMixAvailable = displayPurpose === 'voice';
-  // 音楽鑑賞では、保存済みの配信向け設定が既定から外れているときだけ欄を残す（#642）。
-  const [liveOutputActive, setLiveOutputActive] = useState(false);
-  useEffect(() => {
-    if (displayPurpose !== 'music') return;
-    let active = true;
-    // モックや失敗で Promise 以外が返っても、接続のページ自体は開いたままにする。
-    Promise.resolve().then(() => liveOutputApi.request()).then(status => {
-      if (active) setLiveOutputActive(liveOutputConfigInUse(status?.config));
-    }).catch(() => { if (active) setLiveOutputActive(false); });
-    return () => { active = false; };
-  }, [displayPurpose]);
+  const liveOutputActive = useLiveOutputInUse(displayPurpose);
   const monitorActive = displayPurpose === 'music' && monitorTrialInUse();
   const mixActive = displayPurpose === 'music' && streamMixShown;
   const streamingActive = liveOutputActive || monitorActive || mixActive;
-  const hostSelect = useRef<HTMLSelectElement>(null);
-  // 「アプリの音声」を選べない理由から、畳まれた音質調整を開いて接続方式の選択へ移す（#290）。
-  const chooseConnection = () => {
-    setTuningOpen(true);
-    requestAnimationFrame(() => {
-      hostSelect.current?.scrollIntoView?.({ block: 'center' });
-      hostSelect.current?.focus({ preventScroll: true });
-    });
-  };
-  const [tuningOpen, setTuningOpen] = useState(initialSection === 'audioTuning' || !getBeginnerMode()
-    || localStorage.getItem('vst_host_settings_advanced') === 'true');
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
+  const [activeTab, setActiveTab] = useActiveSettingsTab(initialTab, tabRequest);
   const [shortcutsDirty, setShortcutsDirty] = useState(false);
   const [peakPending, setPeakPending] = useState({ peak: false, broadcast: false });
   const protectionPending = peakPending.peak || peakPending.broadcast;
   const onPeakPending = useCallback((source: 'peak' | 'broadcast', pending: boolean) => {
     setPeakPending(current => current[source] === pending ? current : { ...current, [source]: pending });
   }, []);
-  useEffect(() => {
-    setPageLocked(isApplying);
-    const unregister = registerLeaveGuard(() => {
-      if (isApplying) return 'block';
-      if (activeTab === 'audio' && hasConnectionChanges) return 'confirm';
-      if (activeTab === 'shortcuts' && shortcutsDirty) return 'confirm';
-      if (activeTab === 'sound' && protectionPending) return 'confirm';
-      return 'allow';
-    });
-    return () => { unregister(); setPageLocked(false); };
-  }, [isApplying, activeTab, hasConnectionChanges, shortcutsDirty, protectionPending]);
-  // 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。
-  useEffect(() => { setActiveTab(initialTab); }, [initialTab, tabRequest]);
-  const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
-  // Persist Advanced Mode selection
-  useEffect(() => {
-    localStorage.setItem('vst_host_settings_advanced', String(isAdvancedMode));
-  }, [isAdvancedMode]);
+  useSettingsLeaveGuard({ isApplying, activeTab, hasConnectionChanges, shortcutsDirty, protectionPending });
+  const isBeginnerMode = useBeginnerModeSync();
 
-  useEffect(() => {
-    const syncBeginnerMode = (event?: Event) => {
-      const next = (event as CustomEvent<boolean> | undefined)?.detail;
-      const beginnerMode = typeof next === 'boolean' ? next : getBeginnerMode();
-      setIsBeginnerMode(beginnerMode);
-    };
-
-    window.addEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-    window.addEventListener('storage', syncBeginnerMode);
-    return () => {
-      window.removeEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-      window.removeEventListener('storage', syncBeginnerMode);
-    };
-  }, []);
-
-  const settingsBody = useRef<HTMLDivElement>(null);
-  const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
-  const [saveSlot, setSaveSlot] = useState<HTMLDivElement | null>(null);
-  const bindScroller = useCallback((node: HTMLDivElement | null) => {
-    settingsBody.current = node;
-    setScrollerEl(current => current === node ? current : node);
-  }, []);
-  const bindSlot = useCallback((node: HTMLDivElement | null) => {
-    setSaveSlot(current => current === node ? current : node);
-  }, []);
-  const pageHeading = useRef<HTMLHeadingElement>(null);
-  const [headingNode, setHeadingNode] = useState<HTMLHeadingElement | null>(null);
-  // 中央へ差し込むまでは見出しが無い。付いたときだけ焦点を移す。
-  const headingRef = useCallback((node: HTMLHeadingElement | null) => {
-    pageHeading.current = node;
-    setHeadingNode(current => current === node ? current : node);
-  }, []);
-  const [loadOutput, setLoadOutput] = useState(false);
-  const outputFocusPending = useRef(false);
-  useEffect(() => {
-    if (!loading && outputFocusPending.current) {
-      const control = settingsBody.current?.querySelector<HTMLElement>('#live-output-settings select');
-      if (control) { outputFocusPending.current = false; control.scrollIntoView?.({ block: 'center' }); control.focus(); }
-    }
-  }, [loading, loadOutput]);
-  // 配信ミックスのパネルから来たときは、出力先・入力元の区画を開いて操作できる所へ移す（#299）。
-  const deviceTargetShown = useRef(false);
-  useEffect(() => { deviceTargetShown.current = false; }, [tabRequest]);
-  useEffect(() => {
-    if (!isOpen) { deviceTargetShown.current = false; return; }
-    if ((initialSection !== 'liveOutput' && initialSection !== 'primaryInput') || deviceTargetShown.current || loading || error || activeTab !== 'audio') return;
-    const frame = requestAnimationFrame(() => {
-      const el = settingsBody.current?.querySelector<HTMLElement>(initialSection === 'liveOutput' ? '#live-output-settings' : '#primary-input-settings');
-      if (!el) return;
-      deviceTargetShown.current = true;
-      // 出力一覧は開いたときに読み込む。読み込み後に出力先の選択へ移る。
-      if (el instanceof HTMLDetailsElement) {
-        el.open = true;
-        const parent = el.parentElement?.closest('details');
-        if (parent instanceof HTMLDetailsElement) parent.open = true;
-        outputFocusPending.current = true;
-        setLoadOutput(true);
-      }
-      el.scrollIntoView?.({ block: 'start' });
-      (el.querySelector<HTMLElement>('summary, select') ?? el).focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isOpen, initialSection, loading, error, activeTab, tabRequest]);
-  const placeFromSection = (section: typeof initialSection): SoundPlace => section === 'liveModes' ? 'liveModes' : section === 'singing' ? 'singing' : 'basic';
-  const [localPlace, setLocalPlace] = useState<SoundPlace>(() => placeFromSection(initialSection));
-  const [localFocus, setLocalFocus] = useState(0);
-  const soundPlace = onSoundPlace ? (soundPlaceProp ?? 'basic') : localPlace;
-  useEffect(() => {
-    if (!onSoundPlace) setLocalPlace(placeFromSection(initialSection));
-  }, [initialSection, tabRequest, onSoundPlace]);
-  const chooseSoundPlace = (next: SoundPlace, focus = false) => {
-    if (onSoundPlace) { onSoundPlace(next, focus); return; }
-    if (next === localPlace && !focus) return;
-    requestLeave(() => {
-      setLocalPlace(next);
-      if (focus) setLocalFocus(n => n + 1);
-    });
-  };
-  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab, tabRequest, soundPlace]);
-  // 場所の指定が無いときは、開いたページの見出しへ移す。ページ内の操作からは焦点を奪わない。
-  // 確認を閉じた直後は、入口のボタンへ焦点が戻るのが見出しより後になるので、そのときだけ取り直す。
-  useLayoutEffect(() => {
-    if (!isOpen || initialSection) return;
-    const focusHeading = () => {
-      const heading = pageHeading.current;
-      if (!heading) return;
-      const active = document.activeElement;
-      if (!(active instanceof HTMLElement) || active === document.body || heading.contains(active)) {
-        if (document.activeElement !== heading) heading.focus({ preventScroll: true });
-        return;
-      }
-      if (settingsBody.current?.contains(active) || active.closest('[data-settings-page]')) return;
-      heading.focus({ preventScroll: true });
-    };
-    focusHeading();
-    const frame = requestAnimationFrame(focusHeading);
-    return () => cancelAnimationFrame(frame);
-  }, [isOpen, activeTab, tabRequest, initialSection, headingNode]);
-  const focusNonce = onSoundPlace ? soundFocusNonce : localFocus;
-  useEffect(() => {
-    if (!isOpen || activeTab !== 'sound' || !focusNonce) return;
-    const frame = requestAnimationFrame(() => {
-      // タブ名と同じ見出しはページの外へ出したので、説明の一文は本文の外にある。
-      document.getElementById('sound-section-heading')?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-    // 番号が進んだときだけ移す。小区分の変更を依存に入れると、タブに残すべき焦点が見出しへ移る。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, activeTab, focusNonce]);
-
-  // OBS State
-  // Preset State
-  const [presets, setPresets] = useState<Record<string, any>>({});
-  const [presetName, setPresetName] = useState('');
+  const { settingsBody, scrollerEl, saveSlot, bindScroller, bindSlot } = useSettingsScroller();
+  const { loadOutput, setLoadOutput } = useDeviceTargetFocus({ isOpen, initialSection, loading, hasError: !!error, activeTab, tabRequest, settingsBody });
+  const { soundPlace, chooseSoundPlace, focusNonce } = useSoundPlace({ initialSection, tabRequest, soundPlaceProp, soundFocusNonce, onSoundPlace });
+  const headingRef = useSettingsPageFocus({ isOpen, initialSection, activeTab, tabRequest, soundPlace, focusNonce, settingsBody });
 
   // Autostart State
   const engineStats = useRuntimeStats(isOpen);
@@ -398,18 +237,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const canSaveConnection = !streamRunning || hasConnectionChanges || reviewRequired || allowConnectionRetry || connectionRetry;
   // 途切れる注意は、音声が動いていて接続の変更があるときだけ出す（#588）。
   const showSaveRestartHint = streamRunning && hasConnectionChanges;
-  useEffect(() => {
-    if (!isBeginnerMode || (engineStats?.glitchCount ?? 0) > 0 || initialSection === 'audioTuning') setTuningOpen(true);
-  }, [isBeginnerMode, engineStats?.glitchCount, initialSection]);
-  useEffect(() => {
-    if (!isOpen || initialSection !== 'audioTuning' || loading || error || activeTab !== 'audio') return;
-    setTuningOpen(true);
-    const frame = requestAnimationFrame(() => {
-      tuningDetails.current?.scrollIntoView?.({ block: 'start' });
-      tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control] [tabindex="0"]')?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isOpen, initialSection, loading, error, activeTab, tabRequest]);
+  const { tuningOpen, setTuningOpen, tuningDetails, hostSelect, chooseConnection } = useTuningSection({
+    isOpen, initialSection, loading, hasError: !!error, activeTab, tabRequest, isBeginnerMode, glitchCount: engineStats?.glitchCount });
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -516,7 +345,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       description: notice('settings.AudioSettingsModal.022'),
       confirmLabel: notice('settings.AudioSettingsModal.023'),
       variant: 'default',
-      onConfirm: performRestart,
+      onConfirm: () => { void performRestart(); },
     });
   };
 
@@ -527,34 +356,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
 
   // Preset Helpers
-  useEffect(() => {
-    if (isOpen) {
-      const saved = localStorage.getItem('vst_host_audio_presets');
-      if (saved) {
-        try { setPresets(JSON.parse(saved)); } catch { }
-      }
-    }
-  }, [isOpen]);
+  const { presets, presetName, setPresetName, savePreset, deletePreset } = useAudioPresets(isOpen);
 
   const handleSavePreset = () => {
-    if (!presetName.trim()) return;
-    const newPresets = {
-      ...presets,
-      [presetName]: {
-        host: selectedHost,
-        inputSource: inputSource.source,
-        input: processInput ? undefined : selectedInput,
-        output: selectedOutput,
-        bufferSize: selectedBufferSize,
-        sampleRate: selectedSampleRate,
-        inputId: processInput ? undefined : selectedInputDevice?.id,
-        outputId: selectedOutputDevice?.id,
-        inputChannels: connection.channels,
-        outputRouting: connection.outputRouting,
-      }
-    };
-    setPresets(newPresets);
-    localStorage.setItem('vst_host_audio_presets', JSON.stringify(newPresets));
+    savePreset({
+      host: selectedHost,
+      inputSource: inputSource.source,
+      input: processInput ? undefined : selectedInput,
+      output: selectedOutput,
+      bufferSize: selectedBufferSize,
+      sampleRate: selectedSampleRate,
+      inputId: processInput ? undefined : selectedInputDevice?.id,
+      outputId: selectedOutputDevice?.id,
+      inputChannels: connection.channels,
+      outputRouting: connection.outputRouting,
+    });
   };
 
   const handleLoadPreset = (name: string) => {
@@ -592,13 +408,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       description: notice('settings.AudioSettingsModal.025'),
       confirmLabel: notice('settings.AudioSettingsModal.026'),
       variant: 'destructive',
-      onConfirm: () => {
-        const newPresets = { ...presets };
-        delete newPresets[presetName];
-        setPresets(newPresets);
-        setPresetName('');
-        localStorage.setItem('vst_host_audio_presets', JSON.stringify(newPresets));
-      },
+      onConfirm: () => deletePreset(presetName),
     });
   };
 
@@ -810,7 +620,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex justify-between items-center">
                     <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.032')}</label>
                     <Button
-                      onClick={() => fetchDevices(true)}
+                      onClick={() => void fetchDevices(true)}
                       variant="link" size="sm" className="h-auto min-h-9 whitespace-normal gap-1"
                       title={t('settings.AudioSettingsModal.033')}
                     >
@@ -1052,7 +862,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div>
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                   {t('settings.AudioSettingsModal.130')}</h3>
-                <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
+                <RadioGroup value={theme} onValueChange={(v) => { if (v === 'light' || v === 'dark' || v === 'gaming') setTheme(v); }} className="grid auto-rows-fr gap-3">
                   <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'light' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="min-w-0 cursor-pointer flex-1 text-ui-control">
@@ -1112,7 +922,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {showSaveRestartHint && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
-            <Button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
+            <Button onClick={() => void handleSave()} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
               className="shrink-0"
               aria-describedby={showSaveRestartHint ? 'settings-connection-changes settings-save-restart' : 'settings-connection-changes'}
               >
