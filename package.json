@@ -23,6 +23,7 @@
     "test:unit": "vitest --run --project unit",
     "test:dom": "vitest --run --project dom",
     "test:e2e": "playwright test",
+    "capture:ux-eval": "playwright test -c playwright.ux-eval.config.ts",
     "test:e2e:native": "node scripts/test-native-e2e.mjs",
     "verify": "node scripts/verify.mjs",
     "verify:static": "node scripts/verify.mjs --static",

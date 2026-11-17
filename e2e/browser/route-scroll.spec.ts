@@ -63,7 +63,10 @@ test('900×600では送り先が見え、下の行は1行のまま。列が溢�
     const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
     await expect(prep.locator('.home-route-line')).toHaveCount(0);
     await expect(prep).not.toContainText('→');
-    await expect(prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true })).toBeVisible();
+    await expect(prep.getByRole('button', { name: message('ja', 'header.noSound'), exact: true })).toBeVisible();
+    await expect(prep.getByRole('button', { name: message('ja', 'prep.steps'), exact: true })).toBeVisible();
+    await expect(prep.getByRole('button', { name: '受け側の入力名を登録（診断用）' })).toHaveCount(0);
+    await expect(prep.locator('.home-route-row')).toBeVisible();
     const row = await collapsedRow(prep);
     expect(row.section).toBeGreaterThan(28);
     expect(row.section).toBeLessThan(80);
@@ -90,7 +93,10 @@ for (const size of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }])
         await openHome(page, size);
         const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
         await expect(prep.locator('.home-route-line')).toHaveCount(0);
-        await expect(prep.getByRole('button', { name: message('ja', 'prep.targetAction'), exact: true })).toBeVisible();
+        await expect(prep.getByRole('button', { name: message('ja', 'header.noSound'), exact: true })).toBeVisible();
+        await expect(prep.getByRole('button', { name: message('ja', 'prep.steps'), exact: true })).toBeVisible();
+        await expect(prep.getByRole('button', { name: '受け側の入力名を登録（診断用）' })).toHaveCount(0);
+        await expect(prep.locator('.home-route-row')).toBeVisible();
         const row = await collapsedRow(prep);
         expect(row.section).toBeGreaterThan(28);
         expect(row.section).toBeLessThan(80);

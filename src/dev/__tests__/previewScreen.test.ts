@@ -4,7 +4,8 @@ import { createElement, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUIState } from '@/hooks/useUIState';
 import { applyPreviewScreen, previewScreenNames, type PreviewScreenControls } from '../previewScreen';
-import { applyPreviewStorage, previewStorageKeys } from '../previewMock';
+import { applyPreviewPurpose, applyPreviewStorage, previewStateFor, previewStorageKeys } from '../previewMock';
+import { realisticAudioConfig } from '../tauriMock';
 
 vi.mock('@/lib/streamMixPanel', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/streamMixPanel')>(), openStreamMixPanel: vi.fn() }));
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
@@ -95,5 +96,46 @@ describe('プレビューの保存値', () => {
         applyPreviewStorage({ vst_host_setup_goal: 'obs' });
         expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+
+    it('クエリが無い live-home は、登録済みと従来の機器名のまま', () => {
+        const state = previewStateFor('live-home', new URLSearchParams());
+        expect(state?.mock).toMatchObject({ liveHome: true, stoppedHome: false, registeredModes: true, builtinEnabled: false, devices: 'legacy' });
+        expect(state?.storage.vst_host_audio_config).toContain('"input":"CABLE Output"');
+        expect(state?.storage.vst_host_audio_config).toContain('"output":"スピーカー"');
+    });
+
+    it('realistic と registered=0 は未登録の配信構成にし、既定の preset は汚さない', () => {
+        const changed = previewStateFor('live-home', new URLSearchParams('devices=realistic&registered=0&purpose=voice'));
+        expect(changed?.mock.registeredModes).toBe(false);
+        expect(changed?.mock.devices).toBe('realistic');
+        expect(changed?.storage.vst_host_audio_config).toBe(realisticAudioConfig('voice'));
+        const again = previewStateFor('live-home', new URLSearchParams());
+        expect(again?.mock.registeredModes).toBe(true);
+        expect(again?.storage.vst_host_audio_config).toContain('"output":"スピーカー"');
+    });
+
+    it('音楽鑑賞の realistic は CABLE Output から USB Headphones にする', () => {
+        const state = previewStateFor('stopped-home', new URLSearchParams('devices=realistic&purpose=music'));
+        expect(state?.mock).toMatchObject({ stoppedHome: true, registeredModes: true, devices: 'realistic' });
+        expect(state?.storage.vst_host_audio_config).toBe(realisticAudioConfig('music'));
+    });
+
+    it('first-run は機器設定を足さない', () => {
+        expect(previewStateFor('first-run', new URLSearchParams())?.mock.registeredModes).toBe(false);
+        const state = previewStateFor('first-run', new URLSearchParams('devices=realistic&registered=1'));
+        expect(state?.storage).toEqual({});
+        expect(state?.mock).toMatchObject({ liveHome: false, registeredModes: true, devices: 'realistic' });
+        expect(previewStateFor('missing', new URLSearchParams())).toBeNull();
+    });
+
+    it('purpose=voice は表示用途を消し、省いたときは残す', () => {
+        localStorage.setItem('auralyn_display_purpose', 'music');
+        applyPreviewPurpose(null);
+        expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
+        applyPreviewPurpose('voice');
+        expect(localStorage.getItem('auralyn_display_purpose')).toBeNull();
+        applyPreviewPurpose('music');
+        expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
     });
 });

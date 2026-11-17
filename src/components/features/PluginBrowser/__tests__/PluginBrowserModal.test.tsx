@@ -25,22 +25,45 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     const props = { isOpen: true, onClose: vi.fn(), plugins: [], isLoading: false, onScan: scan, onPluginSelect: vi.fn() };
     const view = render(<PluginBrowserModal {...props} />);
     expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
-    expect(screen.getByText(/下の「すべて再スキャン」を押してください/)).toBeInTheDocument();
+    expect(screen.getByText(/下の「VSTを探す」を押してください/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTの入れ方' }));
     expect(localStorage.getItem('auralyn_help_section')).toBe('vst');
     scan.mockClear();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
-    // 登録も失敗も無いうちは、検索横の更新を出さず、空の案内のすべて再スキャンだけにする（#583）。
+    // 登録も失敗も無いうちは、検索横の更新を出さず、空の案内の「VSTを探す」だけを主な操作にする（#583、#706）。
     expect(screen.queryByRole('button', { name: '更新' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: '読み込めなかったものも含める' })).not.toBeInTheDocument();
     expect(screen.queryByText('オフのときは、前回読み込めなかったファイルは再スキャンしません。')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'すべて再スキャン' })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: '再スキャン' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));
+    expect(screen.queryByRole('button', { name: 'すべて再スキャン' })).not.toBeInTheDocument();
+    const find = screen.getByRole('button', { name: 'VSTを探す' });
+    expect(find).toHaveClass('bg-primary');
+    fireEvent.click(find);
     expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
     view.rerender(<PluginBrowserModal {...props} error="scan error" />);
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
+});
+
+it('登録が無いときは、最近・お気に入り・検索中でも「VSTを探す」を主な操作にする（#706）', () => {
+    const scan = vi.fn();
+    render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()} />);
+    const expectFind = () => {
+        expect(screen.queryByRole('button', { name: 'すべて再スキャン' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '更新' })).not.toBeInTheDocument();
+        const find = screen.getByRole('button', { name: 'VSTを探す' });
+        expect(find).toHaveClass('bg-primary');
+        return find;
+    };
+    for (const tab of ['最近', 'お気に入り']) {
+        fireEvent.mouseDown(screen.getByRole('tab', { name: tab }), { button: 0, ctrlKey: false });
+        scan.mockClear();
+        fireEvent.click(expectFind());
+        expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
+    }
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'すべて' }), { button: 0, ctrlKey: false });
+    fireEvent.change(screen.getByRole('textbox', { name: 'プラグイン検索' }), { target: { value: 'no-such-plugin' } });
+    expect(screen.getByRole('heading', { name: '「no-such-plugin」に一致する候補はありません。' })).toBeInTheDocument();
+    expectFind();
 });
 
 it('登録があるときは更新とすべて再スキャンを出す', () => {
@@ -48,7 +71,9 @@ it('登録があるときは更新とすべて再スキャンを出す', () => {
     expect(screen.getByRole('button', { name: '更新' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '読み込めなかったものも含める' })).toBeInTheDocument();
     expect(screen.getByText('オフのときは、前回読み込めなかったファイルは再スキャンしません。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'すべて再スキャン' })).toBeInTheDocument();
+    const rescan = screen.getByRole('button', { name: 'すべて再スキャン' });
+    expect(rescan).not.toHaveClass('bg-primary');
+    expect(screen.queryByRole('button', { name: 'VSTを探す' })).not.toBeInTheDocument();
 });
 
 it('読み取れなかった候補がある空一覧は件数と再スキャンを示す', () => {

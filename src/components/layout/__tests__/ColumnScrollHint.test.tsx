@@ -66,6 +66,7 @@ it('続きがあるときは列の下端にフェードを出し、末尾では�
     expect(fade.hidden).toBe(false);
     expect(fade).toHaveAttribute('aria-hidden', 'true');
     expect(fade.style.top).toBe('116px');
+    expect(fade.querySelector('svg.scroll-more-chevron path')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: '末尾' }));
     // 描き直しからの置き直しは、次のフレームにまとめて行う（#691）。
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
