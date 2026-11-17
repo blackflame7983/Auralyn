@@ -34,12 +34,13 @@ async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size:
     await page.getByRole('button', { name: t(opener), exact: true }).click();
 }
 for (const locale of ['ja', 'en'] as const) {
-    test(`900×600 のOBS連携ガイドは機器の選択肢がフッターの上に2つ見える ${locale}`, async ({ page }) => {
+    test(`900×600 のOBS連携ガイドは機器の選択肢がフッターの上に3つ見える ${locale}`, async ({ page }) => {
         await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 });
         const dialog = page.getByRole('dialog');
         const t = (key: MessageKey) => message(locale, key);
         await expect(dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true })).toBeVisible();
         await expect(dialog.getByRole('radio', { name: t('guide.copy.010'), exact: true })).toBeVisible();
+        await expect(dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true })).toBeVisible();
         const place = await dialog.evaluate(root => {
             const footer = root.querySelector('.modal-footer-base')?.getBoundingClientRect();
             const cards = [...root.querySelectorAll('[data-device-layout="row"]')].map(card => {
@@ -60,12 +61,40 @@ for (const locale of ['ja', 'en'] as const) {
             });
             return { footerTop: footer?.top ?? 0, cards };
         });
-        expect(place.cards).toHaveLength(2);
+        expect(place.cards).toHaveLength(3);
         for (const card of place.cards) {
             expect(card.top, card.text).toBeGreaterThanOrEqual(0);
             expect(card.bottom, card.text).toBeLessThanOrEqual(place.footerTop + 1);
             expect(card.covered, card.text).toBe(false);
         }
+    });
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    test(`OBS連携ガイドは「分からない」をキーボードで選んで決定すると、標準の仮想ケーブルの方法で進む ${locale}`, async ({ page }) => {
+        const t = (key: MessageKey) => message(locale, key);
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 });
+        const dialog = page.getByRole('dialog');
+        const next = dialog.getByRole('button', { name: t('guide.copy.078'), exact: true });
+        await expect(next).toBeDisabled();
+        await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        const unknown = dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true });
+        await expect(unknown).toBeChecked();
+        await expect(unknown).toBeFocused();
+        // 矢印は選ぶだけで、決定（Enter）まで次へ進まない。
+        await expect(next).toBeEnabled();
+        await expect(dialog.getByRole('heading', { name: t('guide.copy.003'), exact: true })).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(dialog.getByRole('heading', { name: t('guide.copy.016'), exact: true })).toBeVisible();
+        await expect(dialog.getByRole('status').filter({ hasText: t('guide.obs.unknownNotice') })).toBeVisible();
+        await next.click();
+        await next.click();
+        await expect(dialog.getByText(t('guide.copy.068'), { exact: true })).toBeVisible();
+        expect(errors).toEqual([]);
     });
 }
 

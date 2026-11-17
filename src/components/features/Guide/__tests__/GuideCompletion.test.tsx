@@ -14,9 +14,11 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     const status = vi.spyOn(obsApi, 'connectionStatus').mockResolvedValue(false);
     const settings = vi.fn();
     render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} />);
-    fireEvent.click(screen.getByRole('radio', { name: /機器の直接モニターで聴く/ }));
-    expect(screen.queryByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /機器の直接モニターで聴く/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
+    fireEvent.click(screen.getByRole('radio', { name: /機器の直接モニターで聴く/ }));
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
     expect(screen.getByText(/機器に直接モニター機能があるか/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     expect(screen.queryByText(/Auralynの通常出力を同じ機器のヘッドホンへ戻して/)).not.toBeInTheDocument();
@@ -29,8 +31,10 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     expect(connect).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
     fireEvent.click(screen.getByRole('radio', { name: '加工した声を Auralyn から聴く' }));
-    expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' })).toBeInTheDocument();
+    expect(screen.getByText(/Auralynの通常出力を同じ機器のヘッドホンへ戻して/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    expect(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' })).toBeChecked();
     connect.mockRestore(); apply.mockRestore(); status.mockRestore();
 });
 it.each([OBSGuideModal, DiscordGuideModal])('機器を選ぶまで分岐を進めず、戻って選び直せる', Guide => {
@@ -115,20 +119,56 @@ it('Discordの注意チップは警告アイコンを持ち、OBSの通常チッ
     view.unmount();
     render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
     for (const label of ['ループバック機能を利用', '仮想ケーブルを利用']) {
-        const chip = screen.getByText(label);
-        expect(chip).toBeInTheDocument();
-        expect(chip.querySelector('svg')).toBeNull();
+        const chips = screen.getAllByText(label);
+        expect(chips.length).toBeGreaterThan(0);
+        for (const chip of chips) expect(chip.querySelector('svg')).toBeNull();
     }
+});
+
+it.each([
+    { locale: 'ja', unknown: 'どの機器か分からない場合の手順を選ぶ', notice: /「分からない」を選んだため、どのマイクでも使える仮想ケーブルの方法で進めます/, step1: '手順 1：仮想ケーブルの準備', output: 'CABLE Output（VB-Audio 仮想ケーブル）' },
+    { locale: 'en', unknown: 'Choose the steps if you are not sure which device you have', notice: /You chose “Not sure”, so these steps use the virtual cable method/, step1: 'Step 1: prepare a virtual cable', output: 'CABLE Output (VB-Audio virtual cable)' },
+] as const)('OBSガイドで「分からない」を選ぶと、標準の仮想ケーブルの方法で進み、その旨を一文で示す（$locale）', ({ locale, unknown, notice, step1, output }) => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    const next = () => screen.getByRole('button', { name: locale === 'ja' ? '次の手順へ進む' : 'Go to the next step' });
+    expect(next()).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: unknown }));
+    expect(screen.getByRole('status')).toHaveTextContent(notice);
+    expect(screen.getByRole('heading', { name: step1 })).toBeInTheDocument();
+    expect(screen.queryByText(/ループバック機能|hardware loopback/i)).not.toBeInTheDocument();
+    fireEvent.click(next());
+    fireEvent.click(next());
+    expect(screen.getByText(output)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '前の手順へ戻る' : 'Go back one step' }));
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '前の手順へ戻る' : 'Go back one step' }));
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '前の手順へ戻る' : 'Go back one step' }));
+    expect(screen.getByRole('radio', { name: unknown })).toBeChecked();
+    expect(next()).toBeEnabled();
+});
+
+it.each(['ja', 'en'] as const)('OBSガイドのミキサーの選択肢はループバックの意味を添え、アイコンは機器の中身に合わせる（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    const names = locale === 'ja'
+        ? ['ループバック対応のミキサーの手順を選ぶ', 'USBマイク・PC直結のマイクの手順を選ぶ', 'どの機器か分からない場合の手順を選ぶ']
+        : ['Choose the steps for a loopback-capable mixer', 'Choose the steps for a USB or directly connected mic', 'Choose the steps if you are not sure which device you have'];
+    const cards = names.map(name => screen.getByRole('radio', { name }).closest('[data-choice-card]'));
+    expect(cards[0]).toHaveTextContent(locale === 'ja' ? 'ループバックは、PC の音を機器の中で混ぜて PC へ戻す機能です' : 'Loopback sends your PC’s sound back to the PC after mixing it inside the device');
+    // react-icons は同名でも形が違う。3つの行のアイコンは互いに別の図形にする。
+    const shapes = cards.map(card => card?.querySelector('[data-device-layout="row"] > span:first-child svg')?.innerHTML);
+    expect(shapes.every(Boolean)).toBe(true);
+    expect(new Set(shapes).size).toBe(3);
 });
 
 it.each(['ja', 'en'] as const)('OBSガイドは案内を先に出し、機器を選ぶまで次へ進めない理由をボタンの近くに出す（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
-    const intro = screen.getByText(locale === 'ja' ? 'OBS へ声を送る手順を、お使いの機器に合わせて案内します。' : 'These steps send your voice to OBS, matched to the equipment you use.');
-    const route = screen.getByRole('radio', { name: locale === 'ja' ? /加工した声を Auralyn から聴く/ : /processed voice from Auralyn/i });
+    const question = screen.getByRole('heading', { name: locale === 'ja' ? '使っている機器を選んでください' : 'Choose the device you use' });
     const device = screen.getByRole('radio', { name: locale === 'ja' ? 'ループバック対応のミキサーの手順を選ぶ' : 'Choose the steps for a loopback-capable mixer' });
-    expect(intro.compareDocumentPosition(route) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(route.compareDocumentPosition(device) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(question.compareDocumentPosition(device) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(locale === 'ja' ? '自分の声を聴く方法' : 'How to hear your voice')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
     expect(device.closest('[data-choice-card]')?.querySelector('[data-device-layout="row"]')).not.toBeNull();
     const next = screen.getByRole('button', { name: locale === 'ja' ? '次の手順へ進む' : 'Go to the next step' });
     expect(next).toBeDisabled();

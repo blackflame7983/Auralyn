@@ -29,7 +29,7 @@ export function DeviceChoiceCard({ name, value, label, title, description, badge
                     {checked && <MdCheckCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-selection" />}
                 </span>
             </span>
-            <span className="min-w-0 text-ui-support text-muted-foreground">{description}</span>
+            <span className="min-w-0 text-ui-support text-muted-foreground [word-break:auto-phrase]">{description}</span>
         </span>
     </ChoiceCard>;
     return <ChoiceCard name={name} value={value} aria-label={label} checked={checked} onChange={onChange} onActivate={onActivate}>
