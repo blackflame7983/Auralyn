@@ -176,8 +176,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {!unconfigured && !music && <div className="flex flex-wrap gap-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action home-action-icon">
+                        <Button variant="outline" size="default" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action gap-1">
                             <MdMoreHoriz aria-hidden="true" className="h-5 w-5" />
+                            {t('chain.moreVisible')}
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

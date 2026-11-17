@@ -37,6 +37,7 @@ it('一部のVST状態だけが不明でも声の操作を禁止と案内せず�
     expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
     expect(screen.getByText('noise-switch')).toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });
+    expect(more).toHaveTextContent('その他');
     fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: message('ja', 'home.moreSound') }));
     expect(settings).toHaveBeenCalledOnce();

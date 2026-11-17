@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page."]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls"]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -53,7 +53,7 @@ One band stacks the level before processing and the level after. The waveform is
 
 Use “Shape voice” or VST effects to adjust your voice, then listen with Voice Check.
 
-You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on.
+You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on. At 0%, the slider says “Light compression remains even at 0%. Turn it off to stop it.” The button at the top right of “Sound controls” shows an icon and “More”.
 
 When you make the window taller, the cards also show “Measure surrounding sound”, the voice type, and controls that open each VST. On a short window, open the Sound page from “Detailed adjustments are on the Sound page.”
 

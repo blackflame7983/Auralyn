@@ -203,6 +203,16 @@ it('ノイズ低減OFFでも現在の強さを示し、OFFを保ったまま編�
 });
 
 
+it('整え具合が0%のときは、軽い圧縮が残る一文をスライダーに結び、操作は止めない', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ builtInEffectsAmount: 0, builtInEffectsEnabled: false }));
+    render(<VoiceQuickControls running />);
+    const slider = await screen.findByRole('slider', { name: '声の整え具合' });
+    await waitFor(() => expect(slider).not.toHaveAttribute('aria-disabled', 'true'));
+    const note = screen.getByText('0%でも軽い圧縮は残ります。切るときは OFF にします');
+    expect(slider).toHaveAttribute('aria-describedby', note.id);
+    expect(screen.getByRole('radio', { name: '標準' })).toBeEnabled();
+});
+
 it.each(['keyup', 'blur'] as const)('声の量は5%刻みの編集中に送らず、%sで一度だけ確定する', async end => {
     render(<VoiceQuickControls running />);
     const slider = await screen.findByRole('slider', { name: '声の整え具合' });

@@ -1,5 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
@@ -121,11 +121,16 @@ function presetOptions(q: VoiceQuick, t: ReturnType<typeof useMessages>) {
 /** 1段目。整え具合のスライダー。割合はスライダーと同じ語で示す。 */
 export function BuiltinAmount({ q }: { q: VoiceQuick }) {
     const t = useMessages();
+    const zeroId = useId();
+    const atZero = q.shownAmount === 0;
     if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
-    return <div className={cn('min-w-0 w-full max-w-[15rem]', !q.chainOn && 'home-held')}>
-        <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
-            disabled={q.disabled} formatValue={value => `${value}%`}
-            onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
+    return <div className="min-w-0 w-full max-w-[15rem]">
+        <div className={cn(!q.chainOn && 'home-held')}>
+            <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
+                disabled={q.disabled} describedBy={atZero ? zeroId : undefined} formatValue={value => `${value}%`}
+                onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
+        </div>
+        {atZero && <p id={zeroId} className="mt-1 text-ui-support text-muted-foreground">{t('home.amountAtZero')}</p>}
     </div>;
 }
 
