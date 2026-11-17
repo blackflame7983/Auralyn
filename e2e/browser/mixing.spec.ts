@@ -147,11 +147,11 @@ test('配信ミックスのパネルは既定で出さず、ホームの状態�
 
 test('配信ミックスのパネルから出力先の区画へ移り、音づくりタブからパネルへ戻れる（#299）', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.addInitScript(() => { (window as any).__liveOutputMissing = true; });
+    await page.addInitScript(() => { window.__liveOutputMissing = true; });
     await fixture(page); await page.goto('/');
     const panel = await streamMix(page);
     await panel.locator('#mixing-settings > summary').click();
-    await panel.getByRole('button', { name: '配信用の分離出力を設定' }).click();
+    await panel.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' }).click();
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
     await expect(dialog.locator('#live-output-settings select').first()).toBeFocused();

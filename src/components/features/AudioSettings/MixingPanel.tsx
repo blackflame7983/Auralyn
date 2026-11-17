@@ -132,7 +132,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const notice = (key: MessageKey) => key === 'mixing.stale' ? t(key, { load: t('mixing.load') }) : t(key);
-    // 前提が無く、オケがまだ有効でないときは、番号付きの準備だけを出す。有効なオケは無効化のため残す。
+    // 前提が無く、オケがまだ有効でないときは、準備だけを出す（2つ以上のときだけ番号を付ける）。有効なオケは無効化のため残す。
     const preparationOnly = !!snapshot && (!ready || !primaryIsVoiceDevice) && !snapshot.config;
     // 保存ファイルが読めない、または外部で変わったときだけ復旧を出す（snapshot.error）。
     const showRecovery = !preparationOnly || !!snapshot?.error;
@@ -140,6 +140,10 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
         !ready ? { key: 'output' as const, label: 'mixing.prepareOutput' as const, target: 'output' as const, action: 'mixingUi.openOutput' as const } : null,
         !primaryIsVoiceDevice ? { key: 'input' as const, label: 'mixing.prepareInput' as const, target: 'input' as const, action: 'mixingUi.openInput' as const } : null,
     ].filter(step => step !== null);
+    const preparationStep = (step: (typeof preparationSteps)[number]) => <>
+        <p>{t(step.label)}</p>
+        <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>
+    </>;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary tabIndex={0} className="home-card-name cursor-pointer">{t('mixing.title')}</summary>
         {!preparationOnly && <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
@@ -147,12 +151,9 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             {stale && !preparationOnly && <p role="alert">{notice('mixing.stale')}</p>}
             {preparationOnly && <>
                 <p>{t('mixing.prepare')}</p>
-                <ol className="list-decimal space-y-3 pl-5">
-                    {preparationSteps.map(step => <li key={step.key} className="space-y-2">
-                        <p>{t(step.label)}</p>
-                        <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>
-                    </li>)}
-                </ol>
+                {preparationSteps.length > 1
+                    ? <ol className="list-decimal space-y-3 pl-5">{preparationSteps.map(step => <li key={step.key} className="space-y-2">{preparationStep(step)}</li>)}</ol>
+                    : preparationSteps.map(step => <div key={step.key} className="space-y-2">{preparationStep(step)}</div>)}
             </>}
             {!preparationOnly && !ready && <div className="space-y-2"><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!preparationOnly && !primaryIsVoiceDevice && <div className="space-y-2"><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}

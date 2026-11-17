@@ -37,5 +37,7 @@ declare global {
         __layoutMeterState?: { value: number | null };
         /** 配信ラックへ送った要求の記録（mixing.spec の模擬）。 */
         __postRequests?: { action: string; ids?: string[] }[];
+        /** 配信用の出力先が未選択の応答を返させる（mixing.spec の模擬）。 */
+        __liveOutputMissing?: boolean;
     }
 }
