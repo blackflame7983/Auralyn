@@ -63,20 +63,21 @@ export function VstPage({
 }: VstPageProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
+    const empty = plugins.length === 0;
     const [heading, setHeading] = useState<HTMLHeadingElement | null>(null);
     const [addButton, setAddButton] = useState<HTMLButtonElement | null>(null);
     const headingRef = useCallback((node: HTMLHeadingElement | null) => setHeading(current => current === node ? current : node), []);
     const addRef = useCallback((node: HTMLButtonElement | null) => setAddButton(current => current === node ? current : node), []);
     useVstPageFocus(focusAdd ? addButton : heading, focusNonce);
     // 空のときは空の状態の見出しが知らせるので、ここでは重ねない。
-    const missing = plugins.length > 0 ? unrestoredNamesText(t, unrestored) : null;
+    const missing = empty ? null : unrestoredNamesText(t, unrestored);
     return <PagePortal>
         <div data-vst-page className="flex h-full min-h-0 flex-col overflow-hidden">
             <PageHeading title={t('rail.vst')} lead={t('vst.lead')} headingRef={headingRef} actions={
                 <div className="flex flex-wrap items-center gap-2">
-                    <Button ref={addRef} id="add-effect-btn" type="button" variant="default" onClick={onAdd} className="h-auto min-h-10 shrink-0 gap-2 whitespace-normal">
+                    {!empty && <Button ref={addRef} id="add-effect-btn" type="button" variant="default" onClick={onAdd} className="h-auto min-h-10 shrink-0 gap-2 whitespace-normal">
                         <MdAdd aria-hidden="true" className="h-5 w-5" />{t('rack.addEffects')}
-                    </Button>
+                    </Button>}
                     <Button type="button" variant="outline" size="sm" onClick={onOpenPresets} className="h-auto min-h-10 shrink-0 gap-2 whitespace-normal">
                         <MdFolderOpen aria-hidden="true" className="h-4 w-4" />{t('rack.manageProfiles')}
                     </Button>
@@ -99,6 +100,7 @@ export function VstPage({
                     onOpenPresets={onOpenPresets}
                     onOpenTemplates={onOpenTemplates}
                     unrestored={unrestored}
+                    addButtonRef={empty ? addRef : undefined}
                 />
                 {tutorial}
             </div>
