@@ -3,13 +3,13 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { InfoPopover } from '@/components/ui/InfoPopover';
-import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
+import { isAppHidden } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
-import { useEffect, useId, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { useId, useRef, useState } from 'react';
+import { useObsConnectionSync } from '@/hooks/useObsConnectionSync';
 import { toast } from 'sonner';
 import { obsApi, type ObsAudioReachResult } from '../../../api/obs';
 import { useObsUsage } from '../../../hooks/useObsUsage';
@@ -89,86 +89,15 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     }
   };
 
-  useEffect(() => {
-    reachAlive.current = true;
-    let active = true;
-    const invalidate = () => {
-      if (!active) return;
-      reachContext.current += 1;
-      void revalidateReach();
-    };
-    const visibility = () => {
-      if (isAppHidden()) {
-        reachRequest.current += 1;
-        reachContext.current += 1;
-        reachValidation.current += 1;
-        setObsReachLoading(false);
-        setReachCurrent(false);
-        reachExpiredRef.current = true; setReachExpired(true);
-      }
-    };
-    const refreshConnection = () => {
-      const revision = connectionRevision.current;
-      void obsApi.connectionStatus().then(connected => {
-        if (!active || revision !== connectionRevision.current || typeof connected !== 'boolean') return;
-        if (isObsConnectedRef.current && !connected && connectionDetails.current) connectionDetails.current.open = true;
-        setIsObsConnected(connected);
-      }).catch(() => {});
-    };
-    const subscriptions = ['obs://timing-invalidated', 'obs://reach-invalidated', 'audio-started', 'audio-stopped', 'audio-stream-error', 'audio-error', 'global-bypass-changed', 'audio-conditions-changed']
-      .map(event => listen(event, () => { invalidate(); if (event === 'obs://timing-invalidated') refreshConnection(); }));
-    void Promise.all(subscriptions).then(() => {
-      if (active) { reachListeners.current = true; setReachListenersReady(true); }
-    }).catch(() => {
-      if (active) { reachContext.current += 1; reachListeners.current = false; setReachListenersReady(false); setReachCurrent(false); }
-    });
-    window.addEventListener('profile-fx-applied', invalidate);
-    addAppVisibilityListener(visibility);
-    return () => {
-      active = false; reachAlive.current = false; reachListeners.current = false;
-      reachRequest.current += 1; reachValidation.current += 1; reachContext.current += 1;
-      window.removeEventListener('profile-fx-applied', invalidate);
-      removeAppVisibilityListener(visibility);
-      subscriptions.forEach(subscription => { void subscription.then(stop => stop()).catch(() => {}); });
-    };
-  }, []);
-
-  // obwsが通知しない同名ソースのdevice/filter設定は表示中だけ再読取りする。
-  // localeを依存にせず、要求の完了後に次回を予約して重複pollを作らない。
-  useEffect(() => {
-    if (!obsReachResult?.verification || !obsInUse || !reachListenersReady || reachExpired) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      if (!active || isAppHidden() || reachExpiredRef.current) return;
-      await revalidateReach(reachRecord.current, false);
-      if (active && !reachExpiredRef.current) timer = setTimeout(() => { void poll(); }, 3000);
-    };
-    timer = setTimeout(() => { void poll(); }, 3000);
-    return () => { active = false; clearTimeout(timer); };
-  }, [obsReachResult, obsInUse, reachListenersReady, reachExpired]);
-
-  useEffect(() => {
-    let active = true;
-    void obsApi.savedCredentials().then(value => { if (active) setSavedCredentials(value ?? null); })
-      .catch(() => { if (active) { setCredentialReadFailed(true); setObsConnectionHint(notice('obs.credentialsUnavailable')); } })
-      .finally(() => { if (active) setCredentialStatusLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
-  useEffect(() => {
-    connectionRevision.current += 1;
-    setLoading(false);
-    if (!obsInUse) { setIsObsConnected(false); setReachCurrent(false); reachRequest.current += 1; reachValidation.current += 1; return; }
-    let active = true;
-    setObsStatusLoading(true);
-    obsApi.connectionStatus()
-      .then(connected => { if (active) { setIsObsConnected(connected); if (!connectionDetailsTouched.current && connectionDetails.current) connectionDetails.current.open = !connected; } })
-      .catch(() => { if (active) setObsConnectionHint(notice('settings.ObsConnectionSettings.266')); })
-      .finally(() => { if (active) setObsStatusLoading(false); });
-    return () => { active = false; connectionRevision.current += 1; };
-  }, [obsInUse]);
+  const revalidateReachRef = useRef(revalidateReach);
+  revalidateReachRef.current = revalidateReach;
+  useObsConnectionSync({
+    revalidateReachRef, reachAlive, reachContext, reachRequest, reachValidation, reachExpiredRef, reachRecord,
+    reachListeners, connectionRevision, connectionDetails, connectionDetailsTouched, isObsConnectedRef,
+    setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setReachListenersReady,
+    setSavedCredentials, setCredentialReadFailed, setObsConnectionHint, setCredentialStatusLoading,
+    setLoading, setObsStatusLoading, obsReachResult, obsInUse, reachListenersReady, reachExpired,
+  });
 
   const handleConnectObs = async () => {
     reachContext.current += 1;
@@ -234,7 +163,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
       title: notice('settings.ObsConnectionSettings.271'),
       description: notice('settings.ObsConnectionSettings.272'),
       confirmLabel: notice('settings.ObsConnectionSettings.273'),
-      onConfirm: async () => {
+      onConfirm: () => { void (async () => {
         if (!reachAlive.current || !reachListeners.current || isAppHidden()) return;
         if (connection !== connectionRevision.current || context !== reachContext.current) {
           toast.info(t('obsReach.stale'));
@@ -271,7 +200,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
         } finally {
           if (reachAlive.current && request === reachRequest.current) setObsReachLoading(false);
         }
-      },
+      })(); },
     });
   };
 
@@ -286,7 +215,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={handleDisconnectObs}
+                      onClick={() => { void handleDisconnectObs(); }}
                       disabled={obsSetupLoading || obsReachLoading}
                       aria-describedby={obsSetupLoading || obsReachLoading ? `${reasonId}-disconnect` : undefined}
                     >
@@ -297,7 +226,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                 )}
                 {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
                 <details ref={connectionDetails} open className="space-y-3">
-                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-heading font-semibold">{t('obs.target')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
+                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-control font-semibold">{t('obs.target')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
                   <div className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <Field label={t('settings.ObsConnectionSettings.280')}>
@@ -346,7 +275,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                 </details>
                 {!isObsConnected && (
                   <Button
-                    onClick={handleConnectObs}
+                    onClick={() => { void handleConnectObs(); }}
                     disabled={loading || obsStatusLoading || credentialStatusLoading}
                     variant="default" className="h-auto min-h-10 whitespace-normal w-fit"
                   >
