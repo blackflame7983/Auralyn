@@ -90,6 +90,7 @@ test('900×600では送り先が見え、下の行は1行のまま。列が溢�
 
 test('列の下端のフェードにかかる操作へTabで焦点を移すと、焦点の枠がフェードの上まで送られる（#671）', async ({ page }) => {
     await openHome(page, { width: 900, height: 420 });
+    await expect(page.locator('.now-action')).toHaveCount(0);
     const fade = page.locator('[data-scroll-more=""]');
     await expect(fade).toBeVisible();
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -120,10 +121,16 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
         const spacer = document.createElement('div');
         spacer.style.height = '800px';
         column.append(first, second, spacer);
-        await frame();
-        const fadeTop = hint.getBoundingClientRect().top;
-        column.scrollTop += second.getBoundingClientRect().top - (fadeTop - 8);
-        await frame();
+        const offset = () => second.getBoundingClientRect().top - (hint.getBoundingClientRect().top - 8);
+        for (let settled = 0, tries = 0; settled < 2 && tries < 60; tries += 1) {
+            await frame();
+            const miss = offset();
+            if (Math.abs(miss) < 1) settled += 1;
+            else {
+                settled = 0;
+                column.scrollTop += miss;
+            }
+        }
         return {
             fadeTop: hint.getBoundingClientRect().top,
             secondBottom: second.getBoundingClientRect().bottom,
@@ -160,6 +167,7 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
 });
 test('フェードにかかる入力欄をマウスで押しても、列は動かずクリックが成立する（#671）', async ({ page }) => {
     await openHome(page, { width: 900, height: 420 });
+    await expect(page.locator('.now-action')).toHaveCount(0);
     const fade = page.locator('[data-scroll-more=""]');
     await expect(fade).toBeVisible();
     const placed = await page.locator('main.home-main').evaluate(async column => {
