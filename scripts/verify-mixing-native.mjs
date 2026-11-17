@@ -142,9 +142,9 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
             await page.getByRole('button', { name: '設定を開く', exact: true }).click();
             const dialog = page.getByRole('dialog', { name: '設定', exact: true });
             await dialog.getByText('歌・モニター', { exact: true }).click();
-            await dialog.getByText('オケを追加して配信する', { exact: true }).click();
+            await dialog.getByText('伴奏・BGM を足して配信する', { exact: true }).click();
             await dialog.getByRole('button', { name: '読み込む', exact: true }).click();
-            await expect(dialog.getByText('配信用の分離出力を確認しました。')).toBeVisible();
+            await expect(dialog.getByText('OBS へ送る出力先を確認しました。')).toBeVisible();
             await dialog.getByRole('combobox', { name: 'オケの入力元' }).selectOption('process');
             await dialog.getByRole('button', { name: 'アプリ一覧を更新' }).click();
             const selected = dialog.getByRole('combobox', { name: '再生中のアプリを選択' });
@@ -226,7 +226,7 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         if (!await dialog.isVisible()) await page.getByRole('button', { name: '設定を開く', exact: true }).click();
         await dialog.getByText('歌・モニター', { exact: true }).click();
-        await dialog.getByText('オケを追加して配信する', { exact: true }).click();
+        await dialog.getByText('伴奏・BGM を足して配信する', { exact: true }).click();
         await dialog.getByRole('button', { name: '読み込む', exact: true }).click();
         await dialog.getByText('保存設定を復旧する', { exact: true }).click();
         await dialog.getByRole('checkbox', { name: /現在の保存状態を保管して/ }).check();
