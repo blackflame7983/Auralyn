@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { afterFrame } from './internal/afterFrame';
 import { findColumnScroller, saveBarNear } from '@/lib/columnScrollHint';
-import { attachScrollMore, cssPx } from './attachScrollMore';
+import { attachScrollMore, createScrollMoreFade, cssPx } from './attachScrollMore';
 
 // 中央の列に続きがあるとき、下端へ静止したフェードを出す。読み上げには出さない。
 export function useColumnScrollHint() {
@@ -10,11 +10,7 @@ export function useColumnScrollHint() {
     const placeRef = useRef<(() => void) | null>(null);
     const cancelFrameRef = useRef<(() => void) | null>(null);
     useLayoutEffect(() => {
-        const fade = document.createElement('div');
-        fade.className = 'column-scroll-more';
-        fade.setAttribute('aria-hidden', 'true');
-        fade.setAttribute('data-scroll-more', '');
-        fade.hidden = true;
+        const fade = createScrollMoreFade('');
         document.body.appendChild(fade);
         const attached = attachScrollMore(
             () => findColumnScroller(document),

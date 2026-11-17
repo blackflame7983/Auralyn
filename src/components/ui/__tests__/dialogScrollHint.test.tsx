@@ -49,6 +49,7 @@ it('続きがあるときは本文の下端でフッターの手前にフェー�
     const fade = fadeOf();
     expect(fade.hidden).toBe(false);
     expect(fade).toHaveAttribute('aria-hidden', 'true');
+    expect(fade.querySelector('svg.scroll-more-chevron path')).not.toBeNull();
     expect(fade.style.top).toBe('96px');
     expect(Number(fade.style.top.replace('px', '')) + Number(fade.style.height.replace('px', ''))).toBe(120);
     fireEvent.click(getByRole('button', { name: '末尾', hidden: true }));

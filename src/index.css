@@ -928,6 +928,21 @@ html[data-app-hidden="true"] *::after {
   pointer-events: none;
   background: linear-gradient(to bottom, transparent, hsl(var(--background) / 0.92));
 }
+/* 続きがある印の下向きの山形。フェードの中央に置き、動かさず、操作は通す（#699）。 */
+.scroll-more-chevron {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateX(-50%);
+  fill: hsl(var(--muted-foreground));
+  pointer-events: none;
+}
+/* ダイアログを開いている間は、背後の列の印を出さない。二重の矢印にしない（#699）。 */
+body:has(.modal-surface-base) > .column-scroll-more {
+  visibility: hidden;
+}
 /* ダイアログの本文に続きがある印。面の色に溶かし、操作は通す（#699）。 */
 .dialog-scroll-more {
   position: absolute;

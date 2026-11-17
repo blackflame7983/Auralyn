@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { afterFrame } from './internal/afterFrame';
 import { dialogScrollLimit, findDialogScroller } from '@/lib/columnScrollHint';
-import { attachScrollMore, cssPx } from './attachScrollMore';
+import { attachScrollMore, createScrollMoreFade, cssPx } from './attachScrollMore';
 
 function edge(style: CSSStyleDeclaration, side: 'borderTopWidth' | 'borderLeftWidth'): number {
     const value = Number.parseFloat(style[side]);
@@ -15,11 +15,7 @@ export function useDialogScrollHint(root: HTMLElement | null) {
     useLayoutEffect(() => {
         const host = root?.querySelector('.modal-surface-base');
         if (!root || !(host instanceof HTMLElement)) return;
-        const fade = document.createElement('div');
-        fade.className = 'column-scroll-more dialog-scroll-more';
-        fade.setAttribute('aria-hidden', 'true');
-        fade.setAttribute('data-scroll-more', 'dialog');
-        fade.hidden = true;
+        const fade = createScrollMoreFade('dialog');
         host.appendChild(fade);
         const attached = attachScrollMore(
             () => findDialogScroller(root),

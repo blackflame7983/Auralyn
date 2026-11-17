@@ -57,33 +57,59 @@ for (const locale of ['ja', 'en'] as const) {
     });
 }
 
-test('ダイアログの本文が溢れるとフェードが出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {
+test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {
     await openScreen(page, 'help', 'ja', { width: 900, height: 600 });
     const dialog = page.getByRole('dialog', { name: message('ja', 'help.title'), exact: true });
     const fade = dialog.locator('[data-scroll-more="dialog"]');
     await expect(fade).toBeVisible();
     await expect(fade).toHaveAttribute('aria-hidden', 'true');
     await expect(fade).toHaveCSS('pointer-events', 'none');
+    const chevron = fade.locator('.scroll-more-chevron');
+    await expect(chevron).toBeVisible();
+    await expect(chevron).toHaveCSS('pointer-events', 'none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(fade).toBeVisible();
     await expect(fade).toHaveCSS('animation-name', 'none');
     await expect(fade).toHaveCSS('transition-property', 'none');
+    await expect(chevron).toHaveCSS('animation-name', 'none');
 
     const focused = await dialog.evaluate(root => {
         const scroller = root.querySelector('.modal-body-base');
         const hint = root.querySelector('[data-scroll-more="dialog"]');
-        if (!(scroller instanceof HTMLElement) || !(hint instanceof HTMLElement)) return null;
+        if (!(scroller instanceof HTMLElement) || !(hint instanceof HTMLElement)) return { found: false as const };
         scroller.scrollTop = 80;
         const fadeTop = hint.getBoundingClientRect().top;
         const target = [...scroller.querySelectorAll<HTMLElement>('button, a, summary')].find(node => node.getBoundingClientRect().bottom > fadeTop - 4);
-        target?.focus();
-        if (!(document.activeElement instanceof HTMLElement)) return null;
-        const rect = document.activeElement.getBoundingClientRect();
-        return { fadeHidden: hint.hidden, outlineBottom: rect.bottom + 4, fadeTop: hint.getBoundingClientRect().top };
+        if (!target) return { found: false as const };
+        target.focus();
+        const rect = target.getBoundingClientRect();
+        return { found: true as const, focused: document.activeElement === target, fadeHidden: hint.hidden, outlineBottom: rect.bottom + 4, fadeTop: hint.getBoundingClientRect().top };
     });
-    expect(focused).not.toBeNull();
-    if (focused && !focused.fadeHidden) expect(focused.outlineBottom).toBeLessThanOrEqual(focused.fadeTop + 8);
+    expect(focused.found).toBe(true);
+    if (!focused.found) return;
+    expect(focused.focused).toBe(true);
+    if (!focused.fadeHidden) expect(focused.outlineBottom).toBeLessThanOrEqual(focused.fadeTop + 8);
 
     await dialog.locator('.modal-body-base').evaluate(element => { element.scrollTop = element.scrollHeight; });
     await expect(fade).toBeHidden();
+    await expect(chevron).toBeHidden();
 });
+
+// 設定の保存・復帰（presets）とVST構成テンプレートも、溢れるときは下向きの印を出し、末尾で消す。
+const OVERFLOWING_SCREENS = ['presets', 'template-wizard'] as const;
+for (const screen of OVERFLOWING_SCREENS) {
+    test(`900×600 の ${screen} は続きの印を出し、末尾で消す`, async ({ page }) => {
+        await openScreen(page, screen, 'ja', { width: 900, height: 600 });
+        const dialog = page.getByRole('dialog');
+        const fade = dialog.locator('[data-scroll-more="dialog"]');
+        await expect(fade).toBeVisible();
+        await expect(fade.locator('.scroll-more-chevron')).toBeVisible();
+        await expect(fade).toHaveCSS('pointer-events', 'none');
+        // 背後の列の印は隠し、矢印を二重に出さない。
+        await expect(page.locator('body > [data-scroll-more=""]')).toHaveCSS('visibility', 'hidden');
+        await dialog.evaluate(root => {
+            for (const node of root.querySelectorAll<HTMLElement>('.modal-body-base, [class*="overflow-y-auto"]')) node.scrollTop = node.scrollHeight;
+        });
+        await expect(fade).toBeHidden();
+    });
+}
