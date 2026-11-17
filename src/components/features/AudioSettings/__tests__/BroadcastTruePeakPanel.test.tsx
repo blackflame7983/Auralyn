@@ -14,7 +14,10 @@ it('読取りでは有効化せず、自分用の遅延が0である説明と保
     render(<BroadcastTruePeakPanel />); await act(async () => {});
     expect(request).toHaveBeenCalledWith();
     expect(request.mock.calls.every(args => args.length === 0)).toBe(true);
-    expect(screen.getByText(message('ja', 'peak.details')).closest('details')).not.toHaveAttribute('open');
+    const detailsSummary = screen.getByText(message('ja', 'peak.details'));
+    const limitsSummary = screen.getByText(message('ja', 'truePeak.limitsTitle'));
+    expect(detailsSummary.className).toBe(limitsSummary.className);
+    expect(detailsSummary.closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('spinbutton', { name: message('ja', 'truePeak.ceiling') })).toHaveValue(-3);
     expect(screen.getByText(message('ja', 'truePeak.lead'))).toBeInTheDocument();
     expect(screen.getByText(/自分用は 0 sample/)).toBeInTheDocument();
