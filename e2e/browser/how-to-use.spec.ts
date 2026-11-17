@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type { Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import { message, type MessageKey } from '../../src/i18n/messages';
 
@@ -6,6 +7,11 @@ import { message, type MessageKey } from '../../src/i18n/messages';
 const links: Record<string, string> = JSON.parse(readFileSync(new URL('../../user-docs/links.json', import.meta.url), 'utf8'));
 
 test.use({ liveHome: true });
+
+const lastOpenedUrl = (page: Page) => page.evaluate(() => {
+    const host = window as Window & { __e2eOpenedUrls?: string[] };
+    return host.__e2eOpenedUrls?.slice(-1)[0];
+});
 
 for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, height: 640 }, { width: 1280, height: 800 }]) for (const zoom of [1, 1.5]) {
     test(`使い方の収まりと既存画面への移動 ${locale} ${size.width}x${size.height} ${zoom}`, async ({ page }) => {
@@ -29,14 +35,20 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
             await page.keyboard.press('F1');
         }
         const dialog = page.getByRole('dialog', { name: t('help.title'), exact: true });
+        // はじめて開くと、画面の作りの説明より先に「まず何をするか」の手順が見える（#719）。
+        await expect(dialog.getByRole('button', { name: t('help.section.setup'), exact: true })).toHaveAttribute('aria-current', 'page');
+        await expect(dialog.getByRole('heading', { name: t('help.setup.stepsTitle'), exact: true })).toBeVisible();
+        await expect(dialog.getByRole('listitem')).toHaveCount(3);
+        await expect(dialog.getByRole('listitem').first()).toBeInViewport();
         for (const section of ['home', 'setup', 'trouble', 'terms', 'keys'] as const) {
             await dialog.getByRole('button', { name: t(`help.section.${section}`), exact: true }).click();
             await expect(dialog.getByRole('heading', { name: t(`help.section.${section}`), exact: true })).toBeVisible();
             await dialog.getByRole('button', { name: new RegExp(t('help.readMore')) }).click();
             const names = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const;
-            await expect.poll(() => page.evaluate(() => (window as any).__e2eOpenedUrls.at(-1))).toBe(`https://www.kuro7983.com/${locale === 'en' ? 'en/' : ''}apps/auralyn/docs/${links[names[section]]}`);
+            await expect.poll(() => lastOpenedUrl(page)).toBe(`https://www.kuro7983.com/${locale === 'en' ? 'en/' : ''}apps/auralyn/docs/${links[names[section]]}`);
             const surface = dialog.locator('.modal-surface-base');
-            const rect = (await surface.boundingBox())!;
+            const rect = await surface.boundingBox();
+            if (!rect) throw new Error('使い方の枠の位置を取得できません');
             expect(rect.x).toBeGreaterThanOrEqual(0);
             expect(rect.y).toBeGreaterThanOrEqual(0);
             expect(rect.x + rect.width).toBeLessThanOrEqual(size.width + 1);
