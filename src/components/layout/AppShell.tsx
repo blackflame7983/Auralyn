@@ -280,7 +280,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
                         input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
-                        vstBypassed={isABBypassed} compareUnavailable={compareNeedsVst} onCompareVst={() => { void handleABToggle(); }}
+                        vstBypassed={isABBypassed} compareUnavailable={compareReason} onCompareVst={() => { if (!compareDisabled) void handleABToggle(); }}
                         onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
                 />
                 <NoticeLane />
@@ -363,6 +363,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onOpenSoundSettings={onOpenSoundSettings}
                         onOpenAudioTuning={onOpenAudioTuning}
                         compare={compareInColumn && <TooltipProvider>
+                            <div className="flex min-w-0 shrink-0 flex-col gap-1">
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -395,9 +396,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <p>{isABBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
                                 </TooltipContent>
                             </Tooltip>
-                            {/* 列が狭いので理由は title と読み上げに残し、ボタンの中へは出さない。 */}
+                            {/* 列が狭いので、理由はボタンの中へ入れず、直下に置く。止まっているあいだは既存どおり title と読み上げだけにする。 */}
                             {compareStopped && <span id="safety-compare-needs-audio" className="sr-only">{t('header.compareNeedsAudio')}</span>}
-                            {compareNeedsVst && <span id="safety-compare-needs-vst" className="sr-only">{compareNeedsVst}</span>}
+                            {compareNeedsVst && <p id="safety-compare-needs-vst" className="min-w-0 whitespace-normal break-words text-ui-support text-muted-foreground">{compareNeedsVst}</p>}
+                            </div>
                         </TooltipProvider>}
                     />
                 </aside>

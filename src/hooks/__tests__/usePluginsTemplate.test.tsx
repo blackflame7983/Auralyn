@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { usePlugins } from '../usePlugins';
 import type { VstPlugin } from '../../api/audio';
+import { rackRestoreBusy } from '../../lib/liveRouting';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
@@ -56,6 +57,21 @@ it.each([
     expect(result.current.plugins.map(p => p.path)).toEqual(loaded);
     expect(result.current.isLoading).toBe(false);
     if (!expected) expect(result.current.error).toMatch(/読み込めませんでした/);
+});
+
+it('テンプレートの置き換え中は、ラックの置き換え中の状態を保ち、終わったら外す', async () => {
+    const busyWhile: Record<string, boolean> = {};
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'remove_plugin' || command === 'load_plugin') busyWhile[command] = rackRestoreBusy();
+        if (command === 'load_plugin') return (args as { path: string }).path;
+    });
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => {});
+    await act(async () => { await result.current.addPlugin(plugin('old')); });
+    expect(rackRestoreBusy()).toBe(false);
+    await act(async () => { await result.current.applyTemplate({ '0': plugin('comp') }); });
+    expect(busyWhile).toMatchObject({ remove_plugin: true });
+    expect(rackRestoreBusy()).toBe(false);
 });
 
 it('削除が途中で失敗しても削除済みVSTを表示せず、残った構成から再試行できる', async () => {

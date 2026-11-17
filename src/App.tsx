@@ -20,6 +20,7 @@ import { PageSlotProvider } from './components/layout/pageSlot';
 import { runSettingsCloser } from './components/layout/pageLeave';
 import { SessionRecoveryNotice } from './components/features/Recovery/SessionRecoveryNotice';
 import { usePlugins } from './hooks/usePlugins';
+import { useActiveVstCount } from './hooks/useActiveVstCount';
 import { usePluginHealthNotices } from './hooks/usePluginHealthNotices';
 import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
@@ -68,6 +69,7 @@ function AppContent() {
   tutorialEligible.current = audioReady && ui.page === 'vst';
 
   const pluginsApi = usePlugins();
+  const activeVstCount = useActiveVstCount(pluginsApi.plugins, pluginsApi.sessionRestoreStatus === 'pending');
   // ページを移動しても、停止の toast はここから出す。カードは表示と再開だけ。
   usePluginHealthNotices(pluginsApi.plugins);
   const liveModel = useLiveModes(pluginsApi.isLoading);
@@ -272,7 +274,7 @@ function AppContent() {
           : undefined}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.length}
-        vstActiveCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.filter(plugin => plugin.enabled).length}
+        vstActiveCount={activeVstCount}
         onOpenVst={ui.openVst}
         onLoadPreset={pluginsApi.loadPreset}
         isEngineRunning={isEngineRunning}

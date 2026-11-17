@@ -8,6 +8,8 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { AppShell } from '../AppShell';
+import { useActiveVstCount } from '@/hooks/useActiveVstCount';
+import { beginRackRestore } from '@/lib/liveRouting';
 
 vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({ busy: false, label: '更新の確認', description: '', checkUpdates: vi.fn() }), UpdateGuide: () => null }));
 // 購読は試験では届かない。声の流れを出す試験だけ live にする。既定は受信待ち（#624）。
@@ -389,6 +391,87 @@ it('比較中にVSTが無くなり、終わらせる送信が失敗しても、�
     await act(async () => { view.rerender(<AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>); });
     expect(compare).toHaveAttribute('aria-checked', 'true');
     expect(compare).toBeEnabled();
+});
+
+it.each(['ja', 'en'] as const)('VSTが無い理由は、比較スイッチの直下（ボタンの外）に見える文として出す（%s）', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>
+    </LocaleProvider>);
+    const compare = screen.getByRole('switch', { name: message(locale, 'header.compare') });
+    const reason = screen.getByText(message(locale, 'header.compareNeedsVst'));
+    expect(reason).toBeVisible();
+    expect(reason).not.toHaveClass('sr-only');
+    expect(compare).not.toContainElement(reason);
+    expect(compare.parentElement).toContainElement(reason);
+    expect(compare).toHaveAttribute('aria-describedby', reason.id);
+});
+
+it('比較できるあいだと、止まっているあいだは、VSTが無い理由の行を出さない', () => {
+    const view = render(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    expect(screen.queryByText(message('ja', 'header.compareNeedsVst'))).not.toBeInTheDocument();
+    view.rerender(<AppShell {...commonProps} isEngineRunning={false} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>);
+    expect(screen.queryByText(message('ja', 'header.compareNeedsVst'))).not.toBeInTheDocument();
+    expect(screen.getByText(message('ja', 'header.compareNeedsAudio'))).toHaveClass('sr-only');
+});
+
+it('再生の確認を開いたまま音声を止めても、比較は無効のまま理由を見せ、比較の送信をしない', async () => {
+    vi.spyOn(presetApi, 'list').mockResolvedValue([]);
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    saveDisplayPurpose('music');
+    const props = { ...commonProps, currentInput: 'CABLE Output', currentOutput: 'Speakers' };
+    const view = render(<AppShell {...props} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    fireEvent.click(screen.getAllByRole('button', { name: message('ja', 'music.listenTitle') })[0]);
+    const panel = await screen.findByRole('region', { name: message('ja', 'music.listenTitle') });
+    const compareName = message('ja', 'header.compare');
+    expect(within(panel).getByRole('switch', { name: compareName })).toBeEnabled();
+    for (const vst of [{ count: 1, active: 1 }, { count: 0, active: 0 }]) {
+        view.rerender(<AppShell {...props} isEngineRunning={false} vstCount={vst.count} vstActiveCount={vst.active}><p>rack</p></AppShell>);
+        const listening = within(screen.getByRole('region', { name: message('ja', 'music.listenTitle') })).getByRole('switch', { name: compareName });
+        expect(listening).toBeDisabled();
+        expect(listening).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        const column = document.getElementById('ab-compare-btn');
+        expect(column).toBeDisabled();
+        expect(column).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        fireEvent.click(listening);
+    }
+    expect(bypass).not.toHaveBeenCalled();
+});
+
+function RackShell({ plugins }: { plugins: readonly { enabled: boolean }[] }) {
+    const active = useActiveVstCount(plugins, false);
+    return <AppShell {...commonProps} vstCount={plugins.length} vstActiveCount={active}><p>rack</p></AppShell>;
+}
+
+it('比較中にプリセットへ置き換えても、置き換えの途中の空ラックでは比較を解除しない', async () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    const view = render(<RackShell plugins={[{ enabled: true }]} />);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    let release = () => {};
+    act(() => { release = beginRackRestore(); });
+    await act(async () => { view.rerender(<RackShell plugins={[]} />); });
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    expect(bypass).toHaveBeenCalledTimes(1);
+    await act(async () => { view.rerender(<RackShell plugins={[{ enabled: true }]} />); });
+    act(() => release());
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    expect(bypass).toHaveBeenCalledTimes(1);
+});
+
+it('置き換えが終わったラックで本当にオンのVSTが0件なら、比較を解除する', async () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    const view = render(<RackShell plugins={[{ enabled: true }]} />);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    let release = () => {};
+    act(() => { release = beginRackRestore(); });
+    await act(async () => { view.rerender(<RackShell plugins={[]} />); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+    expect(bypass).toHaveBeenCalledTimes(2);
+    expect(bypass).toHaveBeenLastCalledWith(false);
+    expect(compare).toHaveAttribute('aria-checked', 'false');
 });
 
 it('音楽鑑賞のほかのページと配信のホームでは、右の列の比較をこれまでどおり出す', () => {

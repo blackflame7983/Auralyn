@@ -5677,27 +5677,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/hooks/usePlugins.ts",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "aea6eff82bb6716f65a80db544f7e85b4bfefc0624bc60900c6442fd0f0f4adb",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/usePlugins.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "aea6eff82bb6716f65a80db544f7e85b4bfefc0624bc60900c6442fd0f0f4adb",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/usePlugins.ts",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "aea6eff82bb6716f65a80db544f7e85b4bfefc0624bc60900c6442fd0f0f4adb",
-      "count": 14,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/hooks/usePluginSessionPersistence.ts",
       "rule": "auralyn/owned-timers",
       "hash": "387bc899086c2d5140178e5c47412319c58de567d0f8a549fca505c4ef7885aa",

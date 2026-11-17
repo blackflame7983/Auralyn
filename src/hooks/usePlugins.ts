@@ -80,6 +80,8 @@ export const usePlugins = () => {
     const retryRef = useRef<(() => Promise<unknown>) | null>(null);
     const sessionState = useRef({ sessionPersistenceProtected, isSessionLoaded, sessionRestoreStatus });
     sessionState.current = { sessionPersistenceProtected, isSessionLoaded, sessionRestoreStatus };
+    const messagesRef = useRef(t);
+    messagesRef.current = t;
     const rackSync = useRef<{ source: string | null; resume: boolean; status: PluginSessionRestoreResult['status'] | 'pending'; phase: 'changing' | 'refresh' | 'failed'; retrySnapshot: boolean } | null>(null);
 
     usePluginSessionPersistence(plugins, isSessionLoaded, isLoading || isScanning, sessionPersistenceProtected);
@@ -156,13 +158,14 @@ export const usePlugins = () => {
             if (begun.status === 'ready') token = begun.token;
             if (!isCurrent()) return;
             if (!token) throw new SessionRackConflict('別の復元またはラック変更を確認しました');
+            const restoreToken = token;
             const outcome = await restorePluginSession(items, next => { if (isCurrent()) { pluginsRef.current = next; setPlugins(next); } }, excludePath, isCurrent, async request => {
                 if (!isCurrent()) throw new SessionRackConflict('復元を中断しました');
-                const added = await audioApi.sessionRack({ action: 'add', token: token!, request });
+                const added = await audioApi.sessionRack({ action: 'add', token: restoreToken, request });
                 if (added.status === 'restored') return added.plugin;
                 if (added.status === 'failed') throw new Error(added.message);
                 throw new SessionRackConflict('実ラックまたはエンジンの世代が変更されました');
-            }, t);
+            }, messagesRef.current);
             if (!isCurrent()) return;
             const finished = await audioApi.sessionRack({ action: 'finish', token });
             token = undefined;
@@ -187,7 +190,7 @@ export const usePlugins = () => {
                     ? pluginNotice('pluginNotices.excluded', undefined, true)
                     : pluginNotice('pluginNotices.partial', { failed: outcome.failed, skipped: outcome.skipped }, true);
                 setError(message);
-                if (!excludedOnly) toast.error(renderPluginNotice(t, message), { action: { label: t('pluginNotices.retrySaved'), onClick: () => void retryRef.current?.() } });
+                if (!excludedOnly) toast.error(renderPluginNotice(messagesRef.current, message), { action: { label: messagesRef.current('pluginNotices.retrySaved'), onClick: () => void retryRef.current?.() } });
             }
             return outcome;
         } catch (error) {
@@ -205,7 +208,7 @@ export const usePlugins = () => {
                     ? pluginNotice('pluginNotices.conflict', undefined, true)
                     : pluginNotice('pluginNotices.restoreFailedProtected', undefined, true);
                 setError(message);
-                toast.error(renderPluginNotice(t, message), { action: { label: t('pluginNotices.retrySaved'), onClick: () => void retryRef.current?.() } });
+                toast.error(renderPluginNotice(messagesRef.current, message), { action: { label: messagesRef.current('pluginNotices.retrySaved'), onClick: () => void retryRef.current?.() } });
             }
         } finally {
             if (token) await audioApi.sessionRack({ action: 'finish', token }).catch(() => undefined);
@@ -658,7 +661,7 @@ export const usePlugins = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [t]);
+    }, [t, rejectDuringRestore]);
 
     const removePlugin = useCallback(async (id: string) => {
         if (rejectDuringRestore()) return;
@@ -684,32 +687,33 @@ export const usePlugins = () => {
             setPlugins(prev => prev.filter(p => p.id !== id));
 
             // 4. Show Undo Toast
+            const undoRemoval = async () => {
+                if (rejectDuringRestore() || generation !== restoreGeneration.current) return;
+                const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.restoringPlugin', { name: pluginToRemove.name }, false)));
+                try {
+                    const restored = await audioApi.restorePlugin({ path: pluginToRemove.path, state: savedState ?? null,
+                        bypassed: !pluginToRemove.enabled, muted: pluginToRemove.muted, gain: pluginToRemove.gain, ...classField(pluginToRemove.classId) });
+                    const newId = restored.id;
+                    if (generation !== restoreGeneration.current) {
+                        await audioApi.removePlugin(newId);
+                        toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.cancelled')), { id: toastId });
+                        return;
+                    }
+
+                    // Add back to list (Append to end)
+                    const restoredPlugin = { ...pluginToRemove, id: newId };
+                    setPlugins(prev => [...prev, restoredPlugin]);
+
+                    toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.restored')), { id: toastId });
+                } catch (e) {
+                    console.error("Undo failed", e);
+                    toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
+                }
+            };
             toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.removed', { name: pluginToRemove.name }, false)), {
                 action: {
                     label: t('pluginNotices.undo'),
-                    onClick: async () => {
-                        if (rejectDuringRestore() || generation !== restoreGeneration.current) return;
-                        const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.restoringPlugin', { name: pluginToRemove.name }, false)));
-                        try {
-                            const restored = await audioApi.restorePlugin({ path: pluginToRemove.path, state: savedState ?? null,
-                                bypassed: !pluginToRemove.enabled, muted: pluginToRemove.muted, gain: pluginToRemove.gain, ...classField(pluginToRemove.classId) });
-                            const newId = restored.id;
-                            if (generation !== restoreGeneration.current) {
-                                await audioApi.removePlugin(newId);
-                                toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.cancelled')), { id: toastId });
-                                return;
-                            }
-
-                            // Add back to list (Append to end)
-                            const restoredPlugin = { ...pluginToRemove, id: newId };
-                            setPlugins(prev => [...prev, restoredPlugin]);
-
-                            toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.restored')), { id: toastId });
-                        } catch (e) {
-                            console.error("Undo failed", e);
-                            toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
-                        }
-                    }
+                    onClick: () => { void undoRemoval(); }
                 },
                 duration: 5000, // 5 seconds to undo
             });
@@ -718,7 +722,7 @@ export const usePlugins = () => {
             console.error("Failed to remove plugin", e);
             setError(pluginNotice('pluginNotices.removeFailed'));
         }
-    }, [plugins]);
+    }, [plugins, rejectDuringRestore, t]);
 
     const togglePlugin = useCallback(async (id: string, enabled: boolean) => {
         if (rejectDuringRestore()) return;
@@ -730,7 +734,7 @@ export const usePlugins = () => {
             // Revert
             setPlugins(prev => prev.map(p => p.id === id ? { ...p, enabled: !enabled } : p));
         }
-    }, []);
+    }, [rejectDuringRestore]);
 
     const reorderPlugins = useCallback(async (newPlugins: Plugin[]) => {
         if (rejectDuringRestore()) return;
@@ -746,7 +750,7 @@ export const usePlugins = () => {
             // Rollback
             setPlugins(previousPlugins);
         }
-    }, [plugins]);
+    }, [plugins, rejectDuringRestore]);
 
     const openEditor = useCallback(async (id: string) => {
         if (rejectDuringRestore()) return;
@@ -837,7 +841,7 @@ export const usePlugins = () => {
                 description: t('pluginNotices.rawDetail', { detail: message }),
             });
         }
-    }, [plugins]);
+    }, [plugins, rejectDuringRestore, t]);
 
     const toggleMute = useCallback(async (id: string, muted: boolean) => {
         if (rejectDuringRestore()) return;
@@ -849,7 +853,7 @@ export const usePlugins = () => {
             // Revert
             setPlugins(prev => prev.map(p => p.id === id ? { ...p, muted: !muted } : p));
         }
-    }, []);
+    }, [rejectDuringRestore]);
 
     const setPluginGain = useCallback(async (id: string, gain: number) => {
         if (rejectDuringRestore()) return;
@@ -866,32 +870,32 @@ export const usePlugins = () => {
             // Rollback
             setPlugins(prev => prev.map(p => p.id === id ? { ...p, gain: previousGain } : p));
         }
-    }, [plugins]);
+    }, [plugins, rejectDuringRestore]);
 
     const getRestoreGeneration = useCallback(() => restoreGeneration.current, []);
     const profileActions = usePluginProfiles(plugins, setPlugins, setIsLoading, setLegacyError, getRestoreGeneration, setError);
-    const { savePreset, saveProfile } = profileActions;
+    const { savePreset, saveProfile, loadPreset: loadProfilePreset, applyProfile: applyProfileSetup, restoreBackupProfile: restoreProfileBackup, runBundle: runProfileBundle } = profileActions;
     // ドロップやイベントから呼ばれても、復元途中のラックをprofileで置き換えない。
-    const loadPreset = useCallback(async (...args: Parameters<typeof profileActions.loadPreset>) => {
+    const loadPreset = useCallback(async (...args: Parameters<typeof loadProfilePreset>) => {
         if (rejectDuringRestore()) return false;
-        return profileActions.loadPreset(...args);
-    }, [profileActions.loadPreset, rejectDuringRestore]);
-    const applyProfile = useCallback(async (...args: Parameters<typeof profileActions.applyProfile>) => {
+        return loadProfilePreset(...args);
+    }, [loadProfilePreset, rejectDuringRestore]);
+    const applyProfile = useCallback(async (...args: Parameters<typeof applyProfileSetup>) => {
         if (rejectDuringRestore()) return null;
-        return profileActions.applyProfile(...args);
-    }, [profileActions.applyProfile, rejectDuringRestore]);
-    const restoreBackupProfile = useCallback(async (...args: Parameters<typeof profileActions.restoreBackupProfile>) => {
+        return applyProfileSetup(...args);
+    }, [applyProfileSetup, rejectDuringRestore]);
+    const restoreBackupProfile = useCallback(async (...args: Parameters<typeof restoreProfileBackup>) => {
         if (rejectDuringRestore()) return null;
-        return profileActions.restoreBackupProfile(...args);
-    }, [profileActions.restoreBackupProfile, rejectDuringRestore]);
-    const runBundle = useCallback(async (...args: Parameters<typeof profileActions.runBundle>) => {
+        return restoreProfileBackup(...args);
+    }, [restoreProfileBackup, rejectDuringRestore]);
+    const runBundle = useCallback(async (...args: Parameters<typeof runProfileBundle>) => {
         if (rejectDuringRestore()) return null;
         const generation = restoreGeneration.current;
         const wasProtected = sessionPersistenceProtected || localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) === 'true';
         protectPluginSession(localStorage.getItem(PLUGIN_SESSION_KEY));
         setSessionPersistenceProtected(true);
         try {
-            const result = await profileActions.runBundle(...args);
+            const result = await runProfileBundle(...args);
             if (generation !== restoreGeneration.current) return null;
             if (result?.complete && !wasProtected) {
                 localStorage.removeItem(PLUGIN_SESSION_PROTECTED_KEY);
@@ -904,7 +908,7 @@ export const usePlugins = () => {
             if (generation === restoreGeneration.current) setSessionRestoreStatus('failed');
             throw error;
         }
-    }, [profileActions.runBundle, rejectDuringRestore, sessionPersistenceProtected]);
+    }, [runProfileBundle, rejectDuringRestore, sessionPersistenceProtected]);
 
     const savePluginState = useCallback(async (id: string) => {
         try {
@@ -925,10 +929,11 @@ export const usePlugins = () => {
             console.error(`Failed to load state for ${id}`, e);
             return false;
         }
-    }, []);
+    }, [rejectDuringRestore]);
 
     const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>) => {
         if (rejectDuringRestore()) return false;
+        const releaseRestore = beginRackRestore();
         setIsLoading(true);
         setError(null);
         try {
@@ -987,9 +992,10 @@ export const usePlugins = () => {
             setError(pluginNotice('pluginNotices.applyTemplateFailed'));
             return false;
         } finally {
+            releaseRestore();
             setIsLoading(false);
         }
-    }, [plugins, t]);
+    }, [plugins, t, rejectDuringRestore]);
 
     const sessionProtectionReason = sessionPersistenceProtected && sessionRestoreStatus !== 'pending'
         ? t('pluginNotices.protected')

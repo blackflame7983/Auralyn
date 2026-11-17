@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { audioApi } from '@/api/audio';
@@ -24,18 +24,18 @@ export function useGlobalBypass(nothingToCompare = false) {
         const unlisten = listen<boolean>('global-bypass-changed', event => setBypassed(event.payload));
         return () => { void unlisten.then(stop => stop()); };
     }, []);
+    const ending = useRef(false);
     useEffect(() => {
-        if (!bypassed || !nothingToCompare) return;
-        let current = true;
+        if (!bypassed || !nothingToCompare || ending.current) return;
+        // 終わらせる送信の完了は、先に届く OFF イベントや再描画で取り消さない。進行中の間は重ねて送らない。
+        ending.current = true;
         void audioApi.setGlobalBypass(false).then(() => {
-            if (!current) return;
             setBypassed(false);
             toast.info(<LocalizedMessage id="shell.compareEndedNoVst" />);
         }).catch((error: unknown) => {
             console.error('A/B end failed', error);
             toast.error(<LocalizedMessage id="shell.compareFailed" />);
-        });
-        return () => { current = false; };
+        }).finally(() => { ending.current = false; });
     }, [bypassed, nothingToCompare]);
     return { bypassed, toggle };
 }
