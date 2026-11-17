@@ -1,6 +1,6 @@
 // 見えている要素だけを調べる。ブラウザの中で実行する。外側の変数は参照しない。
 
-export type AuditCheck = 'overlap' | 'overflow' | 'wrap' | 'duplicate' | 'empty' | 'separator' | 'purpose';
+export type AuditCheck = 'overlap' | 'overflow' | 'wrap' | 'short-line' | 'phrase-break' | 'duplicate' | 'empty' | 'separator' | 'purpose';
 
 export interface AuditHit {
     check: AuditCheck;
@@ -295,6 +295,9 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         if (!isFrame(element) || !isVisible(element)) continue;
         const box = element.getBoundingClientRect();
         if (box.height < 40) continue;
+        // アイコンだけを入れた小さな角丸の面（カードの記号の台）は、中身のある飾りで、空の枠ではない（#720）。
+        // 背景の暗幕の後ろまで枠として数えないよう、高さの上限（64px）と svg の有無で絞る。
+        if (box.height <= 64 && element.querySelector(':scope > svg') && !element.textContent?.trim()) continue;
         const half = box.height / 2;
         const heading = element.querySelector('h1, h2, h3, h4');
         if (!hasSubstance(element, true)) {

@@ -1,11 +1,11 @@
 // まだ直していない違反と、音楽鑑賞でも正しく出る語。
 // 登録した違反が出なくなると試験が失敗する。直したら、その行を外す。
 
-export type MatrixCheck = 'overlap' | 'overflow' | 'wrap' | 'duplicate' | 'empty' | 'separator' | 'purpose';
+export type MatrixCheck = 'overlap' | 'overflow' | 'wrap' | 'short-line' | 'phrase-break' | 'duplicate' | 'empty' | 'separator' | 'purpose';
 
 export interface KnownViolation {
     check: MatrixCheck;
-    /** home, sound, vst, connect, appearance, shortcuts, obs, system, stream-mix */
+    /** home, setup-first, sound, vst, connect, appearance, shortcuts, obs, system, stream-mix */
     screen: string;
     state?: 'live' | 'stopped' | 'unconfigured';
     purpose?: 'voice' | 'music';
@@ -29,7 +29,12 @@ export interface PurposeAllowance {
     reason: string;
 }
 
-export const knownViolations: KnownViolation[] = [];
+export const knownViolations: KnownViolation[] = [
+    // 1〜2文字だけの行を見つける検査（#708、#720）が、セットアップ以外の画面で見つけた既存の崩れ。
+    { check: 'short-line', screen: 'connect', purpose: 'voice', size: '900x600', locale: 'ja', match: 'Store・MSIX版は', issue: 'new' },
+    { check: 'short-line', screen: 'system', size: '900x600', locale: 'ja', match: 'すべて初期化', issue: 'new' },
+    { check: 'short-line', screen: 'system', size: '1280x800', locale: 'ja', match: '読み込みを止めたVSTをリセット', issue: 'new' },
+];
 
 export const purposeAllowances: PurposeAllowance[] = [
     // 外観は、接続ページにある使い方の切替を案内する。設定のタブ名も残す。

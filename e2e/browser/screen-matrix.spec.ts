@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installTauriMock, type TauriMockOptions } from '../../src/dev/tauriMock';
 import { collectScreenAudit, type AuditHit } from './helpers/screenAudit';
+import { shortWrappedLineDetails, unphrasedJapaneseBlocks } from './helpers/shortLines';
+import { message } from '../../src/i18n/messages';
+import { setOutputMuted } from './e2eHooks';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
 import { deniedStorageOnErrorPage, retryTransientNavigation } from './helpers/transientGoto';
 import { knownViolations, purposeAllowances, type KnownViolation, type PurposeAllowance } from './screen-matrix.known';
@@ -14,8 +17,11 @@ type Purpose = 'voice' | 'music';
 type Locale = 'ja' | 'en';
 type ScreenId = 'home' | 'sound' | 'sound-singing' | 'vst' | 'connect' | 'appearance' | 'shortcuts' | 'obs' | 'system' | 'stream-mix';
 
+// セットアップは画面の切替ではなく暗幕つきのダイアログなので、ページの一覧（ScreenId）とは分ける。
+type MatrixScreen = ScreenId | 'setup-first';
+
 interface Context {
-    screen: ScreenId;
+    screen: MatrixScreen;
     state: State;
     purpose: Purpose;
     locale: Locale;
@@ -146,7 +152,7 @@ function assertProblems(problems: string[]) {
     expect(stale, '直ったので例外を外してください').toEqual([]);
 }
 
-async function openScreen(page: Page, ctx: Context, width: number, height: number) {
+async function openScreen(page: Page, ctx: Context & { screen: ScreenId }, width: number, height: number) {
     await page.setViewportSize({ width, height });
     const screen = previewScreen[ctx.screen];
     const query = new URLSearchParams({ mock: mockName(ctx.state) });
@@ -196,7 +202,7 @@ async function openScreen(page: Page, ctx: Context, width: number, height: numbe
         // パネルを開いたときの移動（先頭へ揃える）のあとで調べる。本番ビルドは画面指定の移動を持たない。
         await panel.evaluate(element => element.scrollIntoView({ block: 'start' }));
     }
-    await page.evaluate(() => (window as unknown as { __e2eSetOutputMuted: (muted: boolean) => void }).__e2eSetOutputMuted(false));
+    await setOutputMuted(page, false);
     await waitForStableLayout(page);
     if (ctx.state === 'live') {
         // 実行中の状態は、統計が届くまで「読み取れない」と出る。届いたあとの画面を調べる。
@@ -211,10 +217,39 @@ async function openScreen(page: Page, ctx: Context, width: number, height: numbe
     }
 }
 
+// 日本語の文が語の途中で折れ、末尾に1〜2文字だけの行が残るのを止める（#708）。英語は語単位で折れるので対象にしない。
+async function shortLineHits(page: Page, locale: Locale): Promise<AuditHit[]> {
+    if (locale !== 'ja') return [];
+    const found = await shortWrappedLineDetails(page.locator('body'));
+    return found.map(item => ({ check: 'short-line', selector: '文の末尾', text: `${item.line} ← ${item.block}` }));
+}
+
+// セットアップの最初の画面は、複数行になる日本語の文をすべて文節で折り返す（#708、#720）。
+async function setupPhraseBreakHits(page: Page, locale: Locale): Promise<AuditHit[]> {
+    if (locale !== 'ja') return [];
+    const blocks = await unphrasedJapaneseBlocks(page.getByRole('dialog'));
+    return blocks.map(text => ({ check: 'phrase-break', selector: '複数行の日本語', text }));
+}
+
+async function openSetupFirst(page: Page, locale: Locale, width: number, height: number) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await expect(page.getByText(/音声エンジンを起動しています|Starting the audio engine/)).toHaveCount(0);
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: message(locale, 'wizard.chooseGoal'), exact: true })).toBeVisible();
+    // 手順の入場の動き（有限のもの）が終わってから測る。注意の波紋のような繰り返しは待たない。
+    await dialog.evaluate(element => Promise.all(element.getAnimations({ subtree: true })
+        .filter(animation => animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY)
+        .map(animation => animation.finished)));
+    await waitForStableLayout(page);
+}
+
 async function runMatrix(page: Page, retried: () => number, ctx: Context, width: number, height: number, errors: string[]) {
     errors.length = 0;
-    await openScreen(page, ctx, width, height);
-    const hits = await page.evaluate(collectScreenAudit, { purpose: ctx.purpose, locale: ctx.locale });
+    if (ctx.screen === 'setup-first') await openSetupFirst(page, ctx.locale, width, height);
+    else await openScreen(page, { ...ctx, screen: ctx.screen }, width, height);
+    const hits = [...await page.evaluate(collectScreenAudit, { purpose: ctx.purpose, locale: ctx.locale }), ...await shortLineHits(page, ctx.locale),
+        ...ctx.screen === 'setup-first' ? await setupPhraseBreakHits(page, ctx.locale) : []];
     // 一時的なソケット不足で開き直したときは、エラーページの localStorage の拒否だけを除く（helpers/transientGoto.ts）。
     expect(retried() > 0 ? errors.filter(message => message !== deniedStorageOnErrorPage) : errors, '画面の実行時例外').toEqual([]);
     return judge(hits, ctx);
@@ -243,6 +278,22 @@ test.describe('画面の状態をまとめて開く', () => {
                 });
             }
         }
+    }
+
+    // 未設定で初めて開いたときのセットアップの最初の画面（#720）。ホームは暗幕の後ろに残る。
+    for (const locale of ['ja', 'en'] as const) {
+        test(`セットアップの最初の画面 ${locale}`, async ({ page }) => {
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            const retried = retryTransientNavigation(page, errors);
+            await page.addInitScript(installTauriMock, mockOptions('unconfigured'));
+            await page.addInitScript(applyStorage, { locale, purpose: 'voice', entries: [] });
+            const problems: string[] = [];
+            for (const size of homeSizes) {
+                problems.push(...await runMatrix(page, retried, { screen: 'setup-first', state: 'unconfigured', purpose: 'voice', locale, size: size.name }, size.width, size.height, errors));
+            }
+            assertProblems(problems);
+        });
     }
 
     for (const screen of pageScreens) {
