@@ -75,6 +75,8 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
         if (disabled || (action === 'reset' && (!resetConfirmed || snapshot?.running)) || ((action === 'levels' || action === 'configure') && !validMixLevels(value))) return null;
         setResetSuccess(false);
         const operation: MessageKey = action === 'levels' ? 'mixingUi.levels' : action === 'configure' ? 'mixing.save' : action === 'disable' ? 'mixing.disable' : action === 'reset' ? 'mixing.recoveryAction' : 'mixing.reload';
+        const processApp = kind === 'process' ? selected : null;
+        if (action !== 'disable' && action !== 'levels' && kind === 'process' && !processApp) return null;
         const next = await resource.run(operation, async witness => {
             const expected = { expectedEpoch: witness.epoch, expectedRevision: witness.revision };
             if (action === 'reload' || action === 'reset') {
@@ -87,8 +89,6 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             if (value.offsetMs === previous?.offsetMs && (previous.offsetContext !== undefined || value.offsetContext !== undefined)) {
                 value = { ...value, offsetContext: previous.offsetContext };
             }
-            const processApp = kind === 'process' ? selected : null;
-            if (action !== 'disable' && action !== 'levels' && kind === 'process' && !processApp) return null;
             const config: MixConfig | null = action === 'disable' || action === 'levels' ? null : { version: 1, levels: value, source: processApp ? { kind: 'process_loopback', config: { appKey: processApp.appKey, appName: processApp.name, rawEndpointId: route, purpose: 'music' } } : { kind: 'device', config: { host: 'WASAPI', inputId: device, inputChannels: channels } } };
             if ((action === 'levels' || action === 'configure') && (confirmOffset || value.offsetMs !== previous?.offsetMs)) {
                 const fresh = await readContext();
