@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import type { StartRequest } from './tauriWindow';
 import { message } from '@/i18n/messages';
+import { settingsPage } from './settingsPage';
 
 const shots = 'test-results/ux-eval-check/723-fix2';
 const sizes = [{ width: 900, height: 600 }, { width: 1024, height: 768 }, { width: 1280, height: 800 }] as const;
@@ -52,6 +53,16 @@ async function seed(page: Page, { purpose, records, locale = 'ja', appMusic = fa
     }, { purpose, records, locale, appMusic });
 }
 
+// 開発サーバーの ?mock= / ?screen= は CI の本番ビルドに無い。ホームから、レールの接続を押して接続のページを開く。
+async function openConnectionPage(page: Page, locale: 'ja' | 'en' = 'ja') {
+    await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
+    await expect(settingsPage(page)).toBeVisible();
+}
+async function openConnection(page: Page, locale: 'ja' | 'en' = 'ja') {
+    await page.goto('/');
+    await openConnectionPage(page, locale);
+}
+
 const setFlag = (page: Page, flag: '__e2eStartFailure' | '__e2eArmed', value: boolean) =>
     page.evaluate(({ flag, value }) => { window[flag] = value; }, { flag, value });
 
@@ -64,7 +75,7 @@ for (const locale of ['ja', 'en'] as const) {
             test(`接続の使い道 ${locale} ${purpose} ${size.width}x${size.height}`, async ({ page }) => {
                 await seed(page, { purpose, records: ['voice', 'music'], locale });
                 await page.setViewportSize(size);
-                await page.goto('/?mock=live-home&screen=settings-audio');
+                await openConnection(page, locale);
                 const inputName = message(locale, purpose === 'music' ? 'music.source' : 'settings.AudioSettingsModal.038');
                 const input = page.getByRole('combobox', { name: inputName, exact: true });
                 await expect(input).toBeVisible();
@@ -91,7 +102,7 @@ test.describe('使い道の切り替え', () => {
 
     test('確認して切り替えると、表示・入力の用途・機器を保存し、実行中なら再起動して、前の機器を覚える', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice', 'music'] });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         const dialog = page.getByRole('alertdialog', { name: '使い道を切り替えます' });
         await expect(dialog).toContainText('音声が一瞬途切れます');
@@ -118,7 +129,7 @@ test.describe('使い道の切り替え', () => {
 
     test('再起動に失敗したら小窓に理由を出し、表示も音声設定も元のまま', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice', 'music'] });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         const before = await page.evaluate(() => localStorage.getItem('vst_host_audio_config'));
         await setFlag(page, '__e2eStartFailure', true);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
@@ -143,7 +154,7 @@ test.describe('使い道の切り替え', () => {
                 ? [{ id: 'app-1', appKey: 'b'.repeat(64), name: 'chrome.exe', routes: [{ id: 'endpoint', name: 'スピーカー', muted: false }] }]
                 : original(command, args);
         });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         const before = await page.evaluate(() => localStorage.getItem('vst_host_audio_config'));
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         const dialog = page.getByRole('alertdialog', { name: '使い道を切り替えます' });
@@ -174,7 +185,7 @@ test.describe('使い道の切り替え', () => {
     test('アプリの音声の下書きを捨てて移動すると、表示も保存値も元のままで、入り直しても再起動しても食い違わない', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true });
         await withAppCandidates(page);
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         await page.getByRole('alertdialog').getByRole('button', { name: '切り替える', exact: true }).click();
         await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -188,7 +199,7 @@ test.describe('使い道の切り替え', () => {
         expect(await stored()).toEqual({ display: 'voice', purpose: 'voice' });
         // 入り直し（読み直し）と、アプリの再起動を兼ねた再読み込み。保存値は利用者が残したまま。
         for (const reload of [false, true]) {
-            if (reload) await page.reload(); else await page.goto('/?mock=live-home&screen=settings-audio');
+            if (reload) { await page.reload(); await openConnectionPage(page); } else await openConnection(page);
             await expect(page.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
             await expect(page.getByText('ホームの表示と入力の用途が違います。')).toHaveCount(0);
             await expect(page.getByRole('button', { name: '切り替える', exact: true })).toBeEnabled();
@@ -199,7 +210,7 @@ test.describe('使い道の切り替え', () => {
     test('アプリの音声の下書きは、アプリを選んで保存したときに初めて表示と離れる使い道の記録を確定する', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['music'], appMusic: true });
         await withAppCandidates(page);
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         await page.getByRole('alertdialog').getByRole('button', { name: '切り替える', exact: true }).click();
         await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -229,7 +240,7 @@ test.describe('使い道の切り替え', () => {
             await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true, locale });
             await withAppCandidates(page);
             await page.setViewportSize({ width: 900, height: 600 });
-            await page.goto('/?mock=live-home&screen=settings-audio');
+            await openConnection(page, locale);
             const opener = page.getByRole('button', { name: message(locale, 'purpose.switch'), exact: true });
             await opener.click();
             await page.getByRole('alertdialog').getByRole('button', { name: message(locale, 'purpose.switch'), exact: true }).click();
@@ -265,7 +276,7 @@ test.describe('使い道の切り替え', () => {
                 return original(command, args);
             };
         });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         const dialog = page.getByRole('alertdialog', { name: '使い道を切り替えます' });
         await dialog.getByRole('button', { name: '切り替える', exact: true }).click();
@@ -296,7 +307,7 @@ test.describe('使い道の切り替え', () => {
                 return original(command, args);
             };
         });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         await page.getByRole('alertdialog').getByRole('button', { name: '切り替える', exact: true }).click();
         await expect.poll(() => page.evaluate(() => window.__e2eRestartHeld)).toBe(true);
@@ -324,7 +335,7 @@ test.describe('使い道の切り替え', () => {
                 return original(command, args);
             };
         });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         const opener = page.getByRole('button', { name: '切り替える', exact: true });
         await expect(opener).toBeEnabled();
         await opener.click();
@@ -340,7 +351,7 @@ test.describe('使い道の切り替え', () => {
 
     test('切り替え先の記録が無いときは小窓ではなく、その目的でセットアップを開く', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice'] });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await page.getByRole('button', { name: '切り替える', exact: true }).click();
         await expect(page.getByRole('alertdialog')).toHaveCount(0);
         const wizard = page.getByRole('dialog', { name: 'セットアップ' });
@@ -353,7 +364,7 @@ test.describe('使い道の切り替え', () => {
     test('操作ロック中は切り替えを押せず、理由を近くに出す', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice', 'music'] });
         await page.addInitScript(() => { window.__e2eArmed = true; });
-        await page.goto('/?mock=live-home&screen=settings-audio');
+        await openConnection(page);
         await expect(page.getByRole('button', { name: '切り替える', exact: true })).toBeDisabled();
         await expect(page.getByText('操作ロックの間は変更できません。解除すると変えられます。')).toBeVisible();
     });
@@ -361,7 +372,7 @@ test.describe('使い道の切り替え', () => {
     for (const purpose of ['voice', 'music'] as const) {
         test(`同じ見出しや欄の名前を続けて2回出さない（#712）${purpose}`, async ({ page }) => {
             await seed(page, { purpose, records: ['voice', 'music'] });
-            await page.goto('/?mock=live-home&screen=settings-audio');
+            await openConnection(page);
             await expect(page.getByRole('button', { name: '切り替える', exact: true })).toBeVisible();
             const lines = (await page.locator('[data-settings-page]').innerText()).split('\n').map(line => line.trim()).filter(Boolean);
             const repeated = lines.filter((line, index) => index > 0 && line === lines[index - 1]);
