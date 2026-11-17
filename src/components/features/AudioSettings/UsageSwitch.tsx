@@ -95,8 +95,8 @@ export function UsageSwitch({ display, inputPurpose, running, locked, blockedRea
             <Button ref={opener} type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={unavailable}
                 aria-describedby={locked ? lockId : blockedReason ? blockedId : undefined} onClick={open}>{t('purpose.switch')}</Button>
         </div>
-        {locked && <p id={lockId} className="text-ui-support text-muted-foreground">{t('peak.liveLocked')}</p>}
-        {!locked && blockedReason && <p id={blockedId} className="text-ui-support text-muted-foreground">{blockedReason}</p>}
+        {locked && <p id={lockId} className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('peak.liveLocked')}</p>}
+        {!locked && blockedReason && <p id={blockedId} className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{blockedReason}</p>}
         {pending && route && <Modal title={t('purpose.switchTitle')} titleInContent role="alertdialog" descriptionId={descriptionId} onClose={close} dismissible={!busy}
             onClosed={() => { const next = afterClose.current; afterClose.current = null; next?.(); }}>
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90">
