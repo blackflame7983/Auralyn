@@ -6,21 +6,33 @@ import { message, type MessageKey } from '../../src/i18n/messages';
 
 test.use({ liveHome: true });
 
-async function openScreen(page: Page, screen: string, locale: 'ja' | 'en', size: { width: number; height: number }) {
+type Screen = 'obs-guide' | 'help' | 'presets' | 'template-wizard';
+
+// CI は本番ビルドを配るため、開発プレビューの ?screen= は使えない。利用者と同じ操作でダイアログを開く。
+async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size: { width: number; height: number }) {
+    const t = (key: MessageKey) => message(locale, key);
     await page.setViewportSize(size);
     await page.addInitScript(locale => {
         localStorage.setItem('vst_host_locale', locale);
         localStorage.setItem('vst_host_theme', 'dark');
         localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_tutorial_completed', 'true');
         localStorage.setItem('vst_host_setup_goal', 'obs');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
     }, locale);
-    await page.goto(`/?mock=live-home&screen=${screen}`);
-    await expect(page.locator('html')).toHaveAttribute('data-auralyn-preview', screen);
-    await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
+    await page.goto('/');
+    await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
+    if (screen === 'obs-guide' || screen === 'help') {
+        await page.getByRole('button', { name: t('header.helpOpen'), exact: true }).click();
+        const item = screen === 'help' ? t('help.title') : t('header.obs');
+        await page.getByRole('menuitem', { name: new RegExp(item) }).click();
+        return;
+    }
+    await page.getByRole('navigation', { name: t('rail.label') }).getByRole('button', { name: t('rail.vst'), exact: true }).click();
+    const opener = screen === 'presets' ? 'rack.manageProfiles' : 'rack.empty.templates';
+    await page.getByRole('button', { name: t(opener), exact: true }).click();
 }
-
 for (const locale of ['ja', 'en'] as const) {
     test(`900×600 のOBS連携ガイドは機器の選択肢がフッターの上に2つ見える ${locale}`, async ({ page }) => {
         await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 });
