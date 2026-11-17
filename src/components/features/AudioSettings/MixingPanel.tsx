@@ -137,13 +137,12 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     // 保存ファイルが読めない、または外部で変わったときだけ復旧を出す（snapshot.error）。
     const showRecovery = !preparationOnly || !!snapshot?.error;
     const preparationSteps = [
-        !ready ? { key: 'output' as const, label: 'mixing.prepareOutput' as const, target: 'output' as const, action: 'mixingUi.openOutput' as const } : null,
-        !primaryIsVoiceDevice ? { key: 'input' as const, label: 'mixing.prepareInput' as const, target: 'input' as const, action: 'mixingUi.openInput' as const } : null,
+        !ready ? { key: 'output' as const, target: 'output' as const, action: 'mixingUi.openOutput' as const } : null,
+        !primaryIsVoiceDevice ? { key: 'input' as const, target: 'input' as const, action: 'mixingUi.openInput' as const } : null,
     ].filter(step => step !== null);
-    const preparationStep = (step: (typeof preparationSteps)[number]) => <>
-        <p>{t(step.label)}</p>
-        <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>
-    </>;
+    // ボタンの名前が手順そのものなので、同じ言葉の説明は重ねない（#715）。
+    const preparationStep = (step: (typeof preparationSteps)[number]) =>
+        <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary tabIndex={0} className="home-card-name cursor-pointer">{t('mixing.title')}</summary>
         {!preparationOnly && <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
@@ -152,8 +151,8 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             {preparationOnly && <>
                 <p>{t('mixing.prepare')}</p>
                 {preparationSteps.length > 1
-                    ? <ol className="list-decimal space-y-3 pl-5">{preparationSteps.map(step => <li key={step.key} className="space-y-2">{preparationStep(step)}</li>)}</ol>
-                    : preparationSteps.map(step => <div key={step.key} className="space-y-2">{preparationStep(step)}</div>)}
+                    ? <ol className="list-decimal space-y-3 pl-5">{preparationSteps.map(step => <li key={step.key}>{preparationStep(step)}</li>)}</ol>
+                    : preparationSteps.map(step => <div key={step.key}>{preparationStep(step)}</div>)}
             </>}
             {!preparationOnly && !ready && <div className="space-y-2"><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!preparationOnly && !primaryIsVoiceDevice && <div className="space-y-2"><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}

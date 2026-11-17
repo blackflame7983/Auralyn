@@ -69,16 +69,16 @@ it('前提が無くオケが無効なら、準備の案内と入口だけを出�
     expect(screen.queryByRole('button', { name: '表示を最新にする' })).not.toBeInTheDocument();
     const steps = screen.getByRole('list');
     expect(steps.tagName).toBe('OL');
-    const outputGuide = screen.getByText('OBS へ送る出力先を選ぶ', { selector: 'p' });
-    const inputGuide = screen.getByText('声のマイクを主入力に選ぶ', { selector: 'p' });
     const outputButton = screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' });
     const inputButton = screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' });
-    expect(outputGuide.closest('li')).toHaveClass('space-y-2');
+    // 手順はボタンの名前だけで示し、同じ言葉の説明を重ねない（#715）。
+    expect(screen.getAllByText('OBS へ送る出力先を選ぶ')).toHaveLength(1);
+    expect(screen.getAllByText('声のマイクを主入力に選ぶ')).toHaveLength(1);
+    expect(outputButton.closest('li')?.parentElement).toBe(steps);
+    expect(inputButton.closest('li')?.parentElement).toBe(steps);
     const follows = (before: HTMLElement, after: HTMLElement) => (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    expect(follows(screen.getByText(intro), outputGuide)).toBe(true);
-    expect(follows(outputGuide, outputButton)).toBe(true);
-    expect(follows(outputButton, inputGuide)).toBe(true);
-    expect(follows(inputGuide, inputButton)).toBe(true);
+    expect(follows(screen.getByText(intro), outputButton)).toBe(true);
+    expect(follows(outputButton, inputButton)).toBe(true);
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' }));
     expect(navigate).toHaveBeenCalledWith('output');
@@ -102,7 +102,7 @@ it('分離出力だけが無いときは、その案内だけを出す', async (
     await setup(snapshot({ config: null }), false, true, vi.fn(), intro);
     expect(screen.getByText(intro)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).toBeInTheDocument();
-    expect(screen.getByText('OBS へ送る出力先を選ぶ', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getAllByText('OBS へ送る出力先を選ぶ')).toHaveLength(1);
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByText('声のマイクを主入力に選ぶ')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '声のマイクを主入力に選ぶ' })).not.toBeInTheDocument();
@@ -116,7 +116,7 @@ it('声の主入力だけが無いときは、その案内だけを出す', asyn
     expect(screen.queryByText('OBS へ送る出力先を選ぶ')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '声のマイクを主入力に選ぶ' })).toBeInTheDocument();
-    expect(screen.getByText('声のマイクを主入力に選ぶ', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getAllByText('声のマイクを主入力に選ぶ')).toHaveLength(1);
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '入力元を適用' })).not.toBeInTheDocument();
     expect(screen.queryByText('保存設定を復旧する')).not.toBeInTheDocument();
