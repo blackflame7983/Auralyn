@@ -24,11 +24,13 @@ interface ModalProps {
     dismissible?: boolean;
     initialFocusRef?: { readonly current: HTMLElement | null };
     onEscapeKeyDown?: (event: KeyboardEvent) => void;
+    /** 閉じて、元の入口へ焦点を戻したあとに呼ぶ。続けて別の場所へ焦点を移すときに使う。 */
+    onClosed?: () => void;
 }
 
 // 既存の見た目を保ち、入れ子の確認画面も含めてフォーカスと背景操作を管理する。
 // 各画面は開いている間だけマウントする。
-export function Modal({ title, titleInContent = false, descriptionId, role = 'dialog', onClose, children, dismissible = true, initialFocusRef, onEscapeKeyDown }: ModalProps) {
+export function Modal({ title, titleInContent = false, descriptionId, role = 'dialog', onClose, children, dismissible = true, initialFocusRef, onEscapeKeyDown, onClosed }: ModalProps) {
     const returnFocus = useRef(captureFocusChain());
     const [dialogNode, setDialogNode] = useState<HTMLElement | null>(null);
     useDialogScrollHint(dialogNode);
@@ -65,6 +67,7 @@ export function Modal({ title, titleInContent = false, descriptionId, role = 'di
                             && (!activeDialog || activeDialog.contains(element)));
                         target?.focus();
                         if (closingFocusChain === returnFocus.current) closingFocusChain = [];
+                        onClosed?.();
                     }}
                 >
                     {cloneElement(children, {}, <>

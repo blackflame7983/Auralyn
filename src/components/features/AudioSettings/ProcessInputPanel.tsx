@@ -1,22 +1,29 @@
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
-import { useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { MixingError } from './mixingUi';
 import { audioApi } from '@/api/audio';
 import { useAlignInputPurpose } from '@/hooks/useAlignInputPurpose';
+import { afterFrame } from '@/hooks/internal/afterFrame';
+import { useFocusRequest } from '@/hooks/useFocusRequest';
+import type { DisplayPurpose } from '@/lib/displayPurpose';
 import { useStaleGuard } from '@/hooks/useStaleGuard';
 import { type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 
-export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection, showKind = true }: {
+export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection, showKind = true, displayPurpose, focusRequest = 0 }: {
     value: InputSourceRequest; onChange: (value: InputSourceRequest) => void; disabled: boolean; isAsio: boolean;
     status?: { failed: boolean; waitingForAudio: boolean };
     /** ASIO で「アプリの音声」を選べない理由から、接続方式の設定へ移す（#290）。 */
     onChooseConnection?: () => void;
     /** 音楽鑑賞、または保存済みがアプリの音声のときだけ、入力の種類を出す。 */
     showKind?: boolean;
+    /** ホームの表示。入力の用途がまだ違っても、ラベルは表示の使い道に合わせる。 */
+    displayPurpose?: DisplayPurpose;
+    /** 増えるたびに、起動中のアプリを読み直して選択欄へ焦点を移す。 */
+    focusRequest?: number;
 }) {
     const t = useMessages();
     const sourceId = useId();
@@ -24,9 +31,16 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
     const [pendingPurpose, setPendingPurpose] = useState<InputSourceRequest | null>(null);
+    const alignOpener = useRef<HTMLElement | null>(null);
+    const appSelect = useRef<HTMLSelectElement>(null);
     const revision = useStaleGuard();
     const latest = useRef(value); latest.current = value;
-    useAlignInputPurpose(value, setPendingPurpose);
+    // 確認を取り消したときは、押したボタンへ戻す。
+    const askAlign = useCallback((next: InputSourceRequest) => {
+        alignOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setPendingPurpose(next);
+    }, []);
+    useAlignInputPurpose(value, askAlign);
     const refresh = async () => {
         const request = ++revision.current;
         setBusy(true); setError('');
@@ -46,6 +60,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
         } catch (e) { if (request === revision.current) setError(String(e)); }
         finally { if (request === revision.current) setBusy(false); }
     };
+    useFocusRequest(focusRequest, refresh, appSelect);
     const processConfig = value.source.kind === 'process_loopback' ? value.source.config : undefined;
     const process = !!processConfig;
     const selected = apps.find(app => app.id === value.candidateId);
@@ -56,7 +71,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
     const aligned = pendingPurpose?.source.config.purpose;
-    const musicSource = value.source.config.purpose === 'music';
+    const musicSource = (displayPurpose ?? value.source.config.purpose) === 'music';
     return <>{showKind && <fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
         <legend className="text-ui-heading font-semibold"><label htmlFor={sourceId}>{t('processInput.source')}</label></legend>
         <Field id={sourceId} label={null}><Select aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
@@ -79,11 +94,12 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
                 <p role="alert" className="text-ui-support text-destructive-text">{t('processInput.asio')}</p>
                 {onChooseConnection && <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>}
             </div>}
-            <Field label={t('processInput.app')}><Select  value={selected?.id ?? ''} onChange={e => selectApp(e.target.value)}>
+            <Field label={t('processInput.app')}><Select ref={appSelect} value={selected?.id ?? ''} onChange={e => selectApp(e.target.value)}>
                     <option value="">{processConfig?.appName ? t('processInput.reselect', { name: processConfig.appName }) : t('processInput.choose')}</option>
                     {apps.map((app, i) => <option key={app.id} value={app.id}>{app.name}{apps.filter(a => a.name === app.name).length > 1 ? t('processInput.candidate', { number: i + 1 }) : ''}</option>)}
                 </Select>
             </Field>
+            {focusRequest > 0 && !value.candidateId && processConfig?.appName && <p role="status" className="text-ui-support text-muted-foreground">{t('processInput.reselectHelp', { name: processConfig.appName })}</p>}
             <Button variant="outline" type="button" disabled={busy} onClick={() => void refresh()} >{t(busy ? 'processInput.loading' : 'processInput.refresh')}</Button>
             <p className="text-ui-support text-muted-foreground">{t('processInput.refreshHelp')}</p>
             {selected && <Field label={t('processInput.raw')}><Select  value={processConfig?.rawEndpointId} onChange={e => {
@@ -105,8 +121,8 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
         title={t(aligned === 'voice' ? 'purpose.askVoiceTitle' : 'purpose.askMusicTitle')}
         description={t(aligned === 'voice' ? 'purpose.askVoiceBody' : 'purpose.askMusicBody')}
         confirmLabel={t(aligned === 'voice' ? 'purpose.askVoiceYes' : 'purpose.askMusicYes')}
-        onConfirm={() => { if (pendingPurpose) onChange(pendingPurpose); setPendingPurpose(null); }}
-        onCancel={() => setPendingPurpose(null)}
+        onConfirm={() => { if (pendingPurpose) onChange(pendingPurpose); setPendingPurpose(null); afterFrame(() => document.getElementById(sourceId)?.focus()); }}
+        onCancel={() => { setPendingPurpose(null); afterFrame(() => alignOpener.current?.focus()); }}
     />
     </>;
 }

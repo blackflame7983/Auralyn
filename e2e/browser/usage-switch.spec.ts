@@ -4,7 +4,7 @@ import { test, expect } from './tauriFixture';
 import type { StartRequest } from './tauriWindow';
 import { message } from '@/i18n/messages';
 
-const shots = 'test-results/ux-eval-check/723';
+const shots = 'test-results/ux-eval-check/723-fix';
 const sizes = [{ width: 900, height: 600 }, { width: 1024, height: 768 }, { width: 1280, height: 800 }] as const;
 
 interface UsageRecord { output: string; inputSource: { config: { purpose: string } } }
@@ -14,8 +14,8 @@ interface StoredState {
     usage: { voice: UsageRecord; music: UsageRecord };
     starts: StartRequest[];
 }
-async function seed(page: Page, { purpose, records, locale = 'ja' }: { purpose: 'voice' | 'music'; records: readonly ('voice' | 'music')[]; locale?: 'ja' | 'en' }) {
-    await page.addInitScript(({ purpose, records, locale }) => {
+async function seed(page: Page, { purpose, records, locale = 'ja', appMusic = false }: { purpose: 'voice' | 'music'; records: readonly ('voice' | 'music')[]; locale?: 'ja' | 'en'; appMusic?: boolean }) {
+    await page.addInitScript(({ purpose, records, locale, appMusic }) => {
         localStorage.setItem('vst_host_wizard_done', 'true');
         localStorage.setItem('vst_host_locale', locale);
         localStorage.setItem('auralyn_display_purpose', purpose);
@@ -26,7 +26,12 @@ async function seed(page: Page, { purpose, records, locale = 'ja' }: { purpose: 
         localStorage.setItem('vst_host_audio_config', JSON.stringify(make(purpose, 'スピーカー', 'headphones')));
         const store: Record<string, unknown> = { version: 1 };
         if (records.includes('voice')) store.voice = make('voice', 'スピーカー', 'headphones');
-        if (records.includes('music')) store.music = make('music', 'USB Headphones', 'phones');
+        if (records.includes('music')) {
+            store.music = appMusic ? {
+                host: 'WASAPI', output: 'USB Headphones', outputId: 'phones', sampleRate: 48000, bufferSize: 512,
+                inputSource: { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Player', rawEndpointId: 'endpoint', purpose: 'music' } },
+            } : make('music', 'USB Headphones', 'phones');
+        }
         localStorage.setItem('auralyn_usage_devices', JSON.stringify(store));
         // 模擬の IPC に無い再起動は開始と同じ応答にし、操作ロックは試験の旗で本番モードの応答へ重ねる。
         const internals = window.__TAURI_INTERNALS__;
@@ -38,7 +43,7 @@ async function seed(page: Page, { purpose, records, locale = 'ja' }: { purpose: 
             if (command === 'live_modes' && window.__e2eArmed && typeof result === 'object' && result !== null) return { ...result, armed: true };
             return result;
         };
-    }, { purpose, records, locale });
+    }, { purpose, records, locale, appMusic });
 }
 
 const setFlag = (page: Page, flag: '__e2eStartFailure' | '__e2eArmed', value: boolean) =>
@@ -88,6 +93,7 @@ test.describe('使い道の切り替え', () => {
         await dialog.getByRole('button', { name: '切り替える', exact: true }).click();
         await expect(dialog).toHaveCount(0);
         await expect(page.getByText('使い道：音楽鑑賞（PCの音にVSTをかけて聴く）')).toBeVisible();
+        await expect(page.getByRole('button', { name: '切り替える', exact: true })).toBeFocused();
         const stored = await page.evaluate((): StoredState => ({
             display: localStorage.getItem('auralyn_display_purpose'),
             config: JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null') as StoredState['config'],
@@ -119,6 +125,34 @@ test.describe('使い道の切り替え', () => {
         await setFlag(page, '__e2eStartFailure', false);
         await dialog.getByRole('button', { name: 'キャンセル' }).click();
         await expect(page.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
+    });
+
+    test('アプリの音声の記録へは自動で再開せず、表示と入力の用途だけを切り替えて、アプリの選択欄へ案内する', async ({ page }) => {
+        await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true });
+        await page.addInitScript(() => {
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) return;
+            const original = internals.invoke;
+            internals.invoke = async (command, args) => command === 'get_process_input_sources'
+                ? [{ id: 'app-1', appKey: 'b'.repeat(64), name: 'chrome.exe', routes: [{ id: 'endpoint', name: 'スピーカー', muted: false }] }]
+                : original(command, args);
+        });
+        await page.goto('/?mock=live-home&screen=settings-audio');
+        const before = await page.evaluate(() => localStorage.getItem('vst_host_audio_config'));
+        await page.getByRole('button', { name: '切り替える', exact: true }).click();
+        const dialog = page.getByRole('alertdialog', { name: '使い道を切り替えます' });
+        await expect(dialog).toContainText('アプリ「Player」の音声でした');
+        await expect(dialog).not.toContainText('音声が一瞬途切れます');
+        await page.screenshot({ path: `${shots}/ja-app-dialog.png`, animations: 'disabled' });
+        await dialog.getByRole('button', { name: '切り替える', exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+        const app = page.getByRole('combobox', { name: '再生中のアプリ' });
+        await expect(app).toBeFocused();
+        await expect(page.getByText('前回のアプリ「Player」は、自動では再開できません。')).toBeVisible();
+        await page.screenshot({ path: `${shots}/ja-app-after.png`, animations: 'disabled' });
+        expect(await page.evaluate(() => localStorage.getItem('auralyn_display_purpose'))).toBe('music');
+        expect(await page.evaluate(() => localStorage.getItem('vst_host_audio_config'))).toBe(before);
+        expect(await page.evaluate(() => window.__e2eStarts ?? [])).toHaveLength(0);
     });
 
     test('切り替え先の記録が無いときは小窓ではなく、その目的でセットアップを開く', async ({ page }) => {

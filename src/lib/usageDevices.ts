@@ -1,6 +1,7 @@
 import type { DisplayPurpose } from './displayPurpose';
 import { readInputSource, type InputSource } from './inputSource';
 import type { AudioPreferences } from './audioPreferences';
+import { channelRoutingFor, readOutputRouting, type ChannelRouting, type OutputRouting } from './audioChannelRouting';
 
 export const USAGE_DEVICES_KEY = 'auralyn_usage_devices';
 
@@ -13,12 +14,15 @@ export interface UsageDeviceRecord {
     sampleRate: number;
     bufferSize: number;
     inputSource: InputSource;
+    /** ASIO のときだけ持つ。無い項目は既定の経路で、ほかの使い道から引き継がない。 */
+    inputChannels?: [number, number];
+    outputRouting?: OutputRouting;
 }
 
 export type UsageDeviceStore = Partial<Record<DisplayPurpose, UsageDeviceRecord>>;
 
 const STORE_KEYS = ['version', 'voice', 'music'];
-const RECORD_KEYS = ['host', 'input', 'inputId', 'output', 'outputId', 'sampleRate', 'bufferSize', 'inputSource'];
+const RECORD_KEYS = ['host', 'input', 'inputId', 'output', 'outputId', 'sampleRate', 'bufferSize', 'inputSource', 'inputChannels', 'outputRouting'];
 
 function recordObject(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -29,6 +33,13 @@ function text(value: unknown, max: number): string | undefined {
     if (typeof value !== 'string') return undefined;
     if (value.length === 0 || value.length > max || /[\x00-\x1f]/.test(value)) return undefined;
     return value;
+}
+
+function channelPair(value: unknown): [number, number] | undefined {
+    if (!Array.isArray(value) || value.length !== 2) return undefined;
+    const [left, right] = value as unknown[];
+    const valid = (channel: unknown): channel is number => typeof channel === 'number' && Number.isSafeInteger(channel) && channel >= 0 && channel <= 65535;
+    return valid(left) && valid(right) ? [left, right] : undefined;
 }
 
 function positive(value: unknown, max: number): number | undefined {
@@ -48,10 +59,13 @@ export function parseUsageDevice(value: unknown, purpose: DisplayPurpose): Usage
     const inputId = record.inputId === undefined ? undefined : text(record.inputId, 4096);
     const outputId = record.outputId === undefined ? undefined : text(record.outputId, 4096);
     if ((record.input !== undefined && !input) || (record.inputId !== undefined && !inputId) || (record.outputId !== undefined && !outputId)) return null;
+    const inputChannels = record.inputChannels === undefined ? undefined : channelPair(record.inputChannels);
+    const outputRouting = record.outputRouting === undefined ? undefined : readOutputRouting(record.outputRouting);
+    if ((record.inputChannels !== undefined && !inputChannels) || (record.outputRouting !== undefined && !outputRouting)) return null;
     if (inputSource.kind === 'process_loopback') {
         if (input || inputId) return null;
     } else if (!input && !inputId) return null;
-    return { host, input, inputId, output, outputId, sampleRate, bufferSize, inputSource };
+    return { host, input, inputId, output, outputId, sampleRate, bufferSize, inputSource, inputChannels, outputRouting };
 }
 
 export function readUsageDevices(): UsageDeviceStore {
@@ -78,6 +92,7 @@ export function writeUsageDevice(purpose: DisplayPurpose, record: UsageDeviceRec
 
 export function usageDeviceFromPreferences(prefs: AudioPreferences, purpose: DisplayPurpose): UsageDeviceRecord | null {
     const inputSource = prefs.inputSource ?? { kind: 'device' as const, config: { purpose: 'voice' as const } };
+    const asio = prefs.host.toLowerCase() === 'asio';
     return parseUsageDevice({
         host: prefs.host,
         input: inputSource.kind === 'process_loopback' ? undefined : prefs.input,
@@ -87,5 +102,12 @@ export function usageDeviceFromPreferences(prefs: AudioPreferences, purpose: Dis
         sampleRate: prefs.sampleRate,
         bufferSize: prefs.bufferSize,
         inputSource,
+        inputChannels: asio ? prefs.inputChannels : undefined,
+        outputRouting: asio ? prefs.outputRouting : undefined,
     }, purpose);
+}
+
+// 記録の経路。ASIO 以外や、無い項目は既定にし、別の使い道の値を持ち越さない。
+export function usageRouting(record: UsageDeviceRecord): ChannelRouting {
+    return channelRoutingFor(record);
 }

@@ -4,7 +4,7 @@ import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { ProcessInputPanel } from './ProcessInputPanel';
-import { deviceInput, readInputSource, type InputSourceRequest } from '@/lib/inputSource';
+import { deviceInput, readInputSource, withInputPurpose, type InputSourceRequest } from '@/lib/inputSource';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
 import { connectionDeviceKey, resolveAudioDevice } from '@/lib/audioDevices';
@@ -37,7 +37,7 @@ import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
 import { OutputChannelSelector } from './OutputChannelSelector';
-import { readOutputRouting } from '@/lib/audioChannelRouting';
+import { channelRoutingFor, readOutputRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { MeasuredSaveBar, SaveBarScope } from './saveBarInset';
@@ -45,13 +45,13 @@ import { NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { UsageSwitch } from './UsageSwitch';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
-import { usageDeviceFromPreferences, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
-import { commitUsageSwitch, type UsageSetupGoal } from '@/lib/usageSwitch';
+import { usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
+import { commitUsageSwitch, switchDisplayOnly, type UsageSetupGoal } from '@/lib/usageSwitch';
 import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
-import { ConnectionApplyError, ConnectionStartError, useAudioConnectionController } from './useAudioConnectionController';
+import { ConnectionApplyError, ConnectionStartError, runningConnection, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
 import { useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { useWhenTrue } from '@/hooks/useWhenTrue';
@@ -152,6 +152,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [inputSource, setInputSource] = useState<InputSourceRequest>(() => ({ source: storedConfig?.inputSource ?? deviceInput() }));
   useWhenTrue(isOpen, () => setInputSource({ source: (currentConfig ?? readAudioPreferences())?.inputSource ?? deviceInput() }));
   const [needsDeviceChoice, setNeedsDeviceChoice] = useState(false);
+  const [appFocus, setAppFocus] = useState(0);
   useWhenTrue(isOpen, () => setNeedsDeviceChoice(false));
   const processInput = inputSource.source.kind === 'process_loopback';
   const inputReady = processInput ? !isAsio && !!inputSource.candidateId && !!readInputSource(inputSource.source) : !needsDeviceChoice && !!selectedInputDevice;
@@ -250,35 +251,58 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       if (record) writeUsageDevice(purpose, record);
     } catch { /* 接続の保存は済んでいる。機器の記憶だけが残らない。 */ }
   };
+  // 切り替えた機器を、接続の欄の選択へ映す。決定済みなら変更なし、下書きなら未保存の変更として扱う。
+  const showUsageSelection = (record: UsageDeviceRecord, draft: boolean) => {
+    const routing = usageRouting(record);
+    setSelectedHost(record.host);
+    setSelectedSampleRate(record.sampleRate);
+    setSelectedBufferSize(record.bufferSize);
+    setSelectedInputKey(record.inputId ? `id:${record.inputId}` : record.input ?? '');
+    setSelectedOutputKey(record.outputId ? `id:${record.outputId}` : record.output);
+    const inputDevice = resolveAudioDevice(devices.inputs, record.host, record.input, record.inputId);
+    if (record.host.toLowerCase() === 'asio' && inputDevice) connection.setRoutingForDevice(connectionDeviceKey(record.host, inputDevice), routing);
+    if (draft) editConnection('host', 'output', 'buffer', 'rate'); else setEditedFields(new Set());
+  };
   const applyUsage = async (record: UsageDeviceRecord) => {
     const target = displayPurpose === 'voice' ? 'music' : 'voice';
+    if (record.inputSource.kind === 'process_loopback') {
+      // アプリの音声は、起動中のアプリを選び直さないと始められない。音は変えず、表示と入力の用途だけを下書きにして選択へ案内する。
+      switchDisplayOnly(target);
+      setInputSource({ source: withInputPurpose(record.inputSource, target) });
+      setNeedsDeviceChoice(false);
+      editConnection('source');
+      showUsageSelection(record, true);
+      return;
+    }
     const applied = await commitUsageSwitch({
       target, record, running: streamRunning,
       restart: async next => {
-        const process = next.inputSource.kind === 'process_loopback';
-        const result = await audioApi.restart(next.host, process ? undefined : next.input, next.output, next.bufferSize, next.sampleRate,
-          process ? undefined : next.inputId, next.outputId, undefined, undefined, { source: next.inputSource });
-        return { sampleRate: result.sample_rate, bufferSize: result.buffer_size };
+        const result = await audioApi.restart(next.host, next.input, next.output, next.bufferSize, next.sampleRate,
+          next.inputId, next.outputId, undefined, usageRouting(next), { source: next.inputSource });
+        return { sampleRate: result.sample_rate, bufferSize: result.buffer_size, routing: result.routing };
       },
       save: async (config, options) => {
         await onConfigChange(config, options);
         if (options?.audioStarted && onEngineRestarted && localStorage.getItem(REVIEW_KEY) !== 'true') await onEngineRestarted();
       },
-      restore: async (config, running) => {
-        if (running) await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, undefined, undefined, config.inputSource ? { source: config.inputSource } : undefined);
-        await onConfigChange(config, running ? { audioStarted: true } : undefined);
+      restore: async (config, engine) => {
+        try {
+          if (engine) await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId,
+            undefined, channelRoutingFor(config), config.inputSource ? { source: config.inputSource } : undefined);
+        } finally {
+          await onConfigChange({ ...config, outputRouting: config.outputRouting ?? { mode: 'legacy' } });
+        }
+        if (engine && onEngineRestarted && localStorage.getItem(REVIEW_KEY) !== 'true') await onEngineRestarted();
       },
+      engineIntact: async () => !!(await runningConnection()),
     });
     setInputSource({ source: applied.inputSource });
-    setNeedsDeviceChoice(applied.inputSource.kind === 'device' && !applied.input && !applied.inputId);
-    setSelectedHost(applied.host);
-    setSelectedSampleRate(applied.sampleRate);
-    setSelectedBufferSize(applied.bufferSize);
-    setSelectedInputKey(applied.inputId ? `id:${applied.inputId}` : applied.input ?? '');
-    setSelectedOutputKey(applied.outputId ? `id:${applied.outputId}` : applied.output);
-    setEditedFields(new Set());
+    setNeedsDeviceChoice(false);
+    showUsageSelection(applied, false);
   };
   const liveModel = providedLive ?? localLive;
+  // 保存のボタンと同じ条件で、切り替えも止める。移行の確認を飛ばして確認済みにしない。
+  const usageBlockedReason = reviewRequired && !migrationConfirmed ? t('purpose.blockedReview') : devicesLoading ? t('purpose.blockedLoading') : undefined;
   const { tuningOpen, setTuningOpen, tuningDetails, hostSelect, chooseConnection } = useTuningSection({
     isOpen, initialSection, loading, hasError: !!error, activeTab, tabRequest, isBeginnerMode, glitchCount: engineStats?.glitchCount });
 
@@ -522,7 +546,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             ) : (
               <div className="space-y-6">
               <UsageSwitch display={displayPurpose} inputPurpose={inputSource.source.config.purpose} running={streamRunning}
-                locked={liveModel.snapshot?.armed === true} onApply={applyUsage} onOpenSetup={goal => onOpenWizard?.(goal)} />
+                locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
               {error && <div className="space-y-4">
                 <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
@@ -532,7 +556,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <Button onClick={() => requestLeave(onClose)} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.returnHome')}</Button>
               </div>}
                 <div id="primary-input-settings" tabIndex={-1} className="space-y-6">
-                <ProcessInputPanel value={inputSource} showKind={displayPurpose === 'music' || processInput} onChange={next => {
+                <ProcessInputPanel value={inputSource} displayPurpose={displayPurpose} focusRequest={appFocus} showKind={displayPurpose === 'music' || processInput} onChange={next => {
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
@@ -560,7 +584,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
                   </Select></Field>
-                  {!error && <MicrophonePermissionGuide />}
+                  {!error && displayPurpose !== 'music' && <MicrophonePermissionGuide />}
                 </fieldset>
 
                 }

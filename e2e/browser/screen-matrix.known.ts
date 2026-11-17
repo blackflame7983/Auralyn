@@ -52,4 +52,6 @@ export const purposeAllowances: PurposeAllowance[] = [
     // 接続ページは、音楽鑑賞では出さないことの説明を持つ。
     { screen: 'connect', purpose: 'music', locale: 'ja', match: '使い道を配信・通話にすると使えます。', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
     { screen: 'connect', purpose: 'music', locale: 'en', match: 'Streaming & calls', reason: '音楽鑑賞ではパネルを出さないと書き、戻す先の名前を示す文' },
+    { screen: 'connect', purpose: 'music', locale: 'ja', match: '「自分用と配信用に分ける」と配信ミックスは', reason: '音楽鑑賞では出さない欄の名前を主語にして、何が出ないのかを示す文' },
+    { screen: 'connect', purpose: 'music', locale: 'en', match: 'Separate monitor and broadcast outputs and Broadcast mix', reason: '音楽鑑賞では出さない欄の名前を主語にして、何が出ないのかを示す文' },
 ];
