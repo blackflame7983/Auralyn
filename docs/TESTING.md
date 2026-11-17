@@ -77,7 +77,7 @@ Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](h
 
 直すときは、失敗したキーの文言を `docs/DESIGN.md` 4章の使う語へ合わせる。その語が文脈上正しいときは、`config/ui-terms.json` の `allow` に `key`、`term`、`reason` を足す。用語を足したり変えたりしたときは、4章の表と `terms` の `use` を両方更新する。`use` が4章の使う語の列に無いと検査は失敗する。
 
-`npm run lint:preview-urls` は、`e2e/` の `*.spec.ts`（画面記録の `*-shots.spec.ts` を除く）に、コメント以外で `?mock=`・`?screen=`・`&screen=` の URL が無いか調べる。これらは開発サーバーだけにあり、CI の本番ビルドでは開けないため、試験の模擬応答（`tauriFixture`）と UI 操作で画面を開く。`npm run verify -- --static` は `terms` の次の段でこの検査を実行する。
+`npm run lint:preview-urls` は、`e2e/` の `*.spec.ts`（画面記録の `*-shots.spec.ts` を除く）の文字列とテンプレートの断片に、`?mock=`・`?screen=`・`&screen=` が無いか調べる。コメントと正規表現リテラルは対象外。複数の文字列をつないで組み立てた URL は見つけられない。これらは開発サーバーだけにあり、CI の本番ビルドでは開けないため、試験の模擬応答（`tauriFixture`）と UI 操作で画面を開く。`npm run verify -- --static` は `terms` の次の段でこの検査を実行する。
 
 | 層 | 目的 | 実行 |
 | --- | --- | --- |

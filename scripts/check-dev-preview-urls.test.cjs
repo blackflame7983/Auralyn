@@ -4,7 +4,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  stripComments,
   findDevPreviewUrls,
   isTargetSpec,
   listSpecFiles,
@@ -42,13 +41,19 @@ test('行コメントとブロックコメントの中の言及は無視する',
   assert.deepEqual(findDevPreviewUrls(source), []);
 });
 
-test('コメントを消しても、行番号と文字列の中身は変わらない', () => {
+test('ブロックコメントのあとでも、行番号と元の行を出す', () => {
   const source = "/* 1行目\n2行目 */\nawait page.goto('/?mock=a'); // 3行目";
-  const stripped = stripComments(source);
-  assert.equal(stripped.split('\n').length, source.split('\n').length);
-  assert.match(stripped, /'\/\?mock=a'/);
-  assert.doesNotMatch(stripped, /3行目/);
-  assert.deepEqual(findDevPreviewUrls(source), [{ line: 3, text: "await page.goto('/?mock=a');" }]);
+  assert.deepEqual(findDevPreviewUrls(source), [{ line: 3, text: "await page.goto('/?mock=a'); // 3行目" }]);
+});
+
+test('正規表現リテラルの中の // や引用符で、文字列とコメントを取り違えない', () => {
+  assert.deepEqual(findDevPreviewUrls('const re = /[//]/; await page.goto("/?mock=live-home");').map(hit => hit.line), [1]);
+  assert.deepEqual(findDevPreviewUrls('const re = /"/; // ?mock=documentation-only\nawait page.goto("/");'), []);
+  assert.deepEqual(findDevPreviewUrls("const re = /'/;\nawait page.goto(`/?screen=${/`/.source}`);").map(hit => hit.line), [2]);
+});
+
+test('正規表現リテラルそのものは URL として扱わない', () => {
+  assert.deepEqual(findDevPreviewUrls('expect(page.url()).not.toMatch(/[?&]mock=/);'), []);
 });
 
 test('文字列の中の // はコメントとして扱わない', () => {

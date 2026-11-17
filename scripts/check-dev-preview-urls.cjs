@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const ts = require('typescript');
 
 const ROOT = path.resolve(__dirname, '..');
 const E2E_DIR = 'e2e';
@@ -9,98 +10,27 @@ const SPEC_SUFFIX = '.spec.ts';
 const DEV_PREVIEW_URL = /[?&](?:mock|screen)=/;
 const FIX_HINT = '試験の模擬応答（tauriFixture）と UI 操作で画面を開く';
 
-// 文字列の中身は残し、コメントだけを空白にする。改行は残すので行番号は変わらない。
-function stripComments(source) {
-  let out = '';
-  let index = 0;
-  // 'code' の上に、テンプレート文字列の ${ } の深さを積む。
-  const templates = [];
-  let braceDepth = 0;
-  const blank = text => text.replace(/[^\r\n]/g, ' ');
+const STRING_PIECE_KINDS = new Set([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+]);
 
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
-
-    if (char === '/' && next === '/') {
-      const end = source.indexOf('\n', index);
-      const stop = end < 0 ? source.length : end;
-      out += blank(source.slice(index, stop));
-      index = stop;
-      continue;
+// 文字列とテンプレートの断片だけを見る。コメントと正規表現リテラルは構文木に文字列として現れない。
+function findDevPreviewUrls(source, fileName = 'spec.ts') {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const lines = source.split(/\r?\n/);
+  const hitLines = new Set();
+  const visit = node => {
+    if (STRING_PIECE_KINDS.has(node.kind) && DEV_PREVIEW_URL.test(node.text)) {
+      hitLines.add(sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line);
     }
-    if (char === '/' && next === '*') {
-      const end = source.indexOf('*/', index + 2);
-      const stop = end < 0 ? source.length : end + 2;
-      out += blank(source.slice(index, stop));
-      index = stop;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      let end = index + 1;
-      while (end < source.length && source[end] !== char && source[end] !== '\n') {
-        end += source[end] === '\\' ? 2 : 1;
-      }
-      const stop = Math.min(end + 1, source.length);
-      out += source.slice(index, stop);
-      index = stop;
-      continue;
-    }
-    if (char === '`') {
-      index = readTemplate(source, index + 1, templates, (text) => { out += text; }, '`');
-      continue;
-    }
-    if (char === '{') braceDepth += 1;
-    if (char === '}') {
-      if (templates.length > 0 && templates[templates.length - 1] === braceDepth) {
-        templates.pop();
-        braceDepth -= 1;
-        out += char;
-        index = readTemplate(source, index + 1, templates, (text) => { out += text; }, '');
-        continue;
-      }
-      braceDepth -= 1;
-    }
-    out += char;
-    index += 1;
-  }
-  return out;
-
-  // テンプレート文字列の本体を読む。`${` に入ったら通常のコードへ戻る。
-  function readTemplate(text, start, stack, emit, opener) {
-    let cursor = start;
-    emit(opener);
-    while (cursor < text.length) {
-      const current = text[cursor];
-      if (current === '\\') {
-        emit(text.slice(cursor, cursor + 2));
-        cursor += 2;
-        continue;
-      }
-      if (current === '`') {
-        emit(current);
-        return cursor + 1;
-      }
-      if (current === '$' && text[cursor + 1] === '{') {
-        emit('${');
-        braceDepth += 1;
-        stack.push(braceDepth);
-        return cursor + 2;
-      }
-      emit(current);
-      cursor += 1;
-    }
-    return cursor;
-  }
-}
-
-function findDevPreviewUrls(source) {
-  const lines = stripComments(source).split(/\r?\n/);
-  const found = [];
-  lines.forEach((line, index) => {
-    if (DEV_PREVIEW_URL.test(line)) found.push({ line: index + 1, text: line.trim() });
-  });
-  return found;
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return [...hitLines].sort((a, b) => a - b).map(line => ({ line: line + 1, text: lines[line].trim() }));
 }
 
 function isTargetSpec(fileName) {
@@ -120,7 +50,7 @@ function listSpecFiles(dir) {
 function checkDevPreviewUrls(files) {
   const errors = [];
   for (const file of files) {
-    for (const hit of findDevPreviewUrls(file.source)) {
+    for (const hit of findDevPreviewUrls(file.source, file.name)) {
       errors.push(`${file.name}:${hit.line}: 開発プレビューの URL（?mock= / ?screen=）は CI の本番ビルドに無い: ${hit.text}\n  直し方: ${FIX_HINT}`);
     }
   }
@@ -155,7 +85,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  stripComments,
   findDevPreviewUrls,
   isTargetSpec,
   listSpecFiles,
