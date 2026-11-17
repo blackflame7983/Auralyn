@@ -34,6 +34,8 @@ function AppModals() {
     return <TutorialProvider>
         <TutorialState />
         <output data-testid="audio-config">{audioConfig.sampleRate}/{audioConfig.bufferSize}</output>
+        <output data-testid="audio-source">{JSON.stringify(audioConfig.inputSource ?? null)}</output>
+        <output data-testid="audio-host">{audioConfig.host}</output>
         <ModalLayer ui={ui} audioConfig={audioConfig} handleConfigUpdate={handleConfigUpdate}
             pluginsApi={{} as ComponentProps<typeof ModalLayer>['pluginsApi']} onPluginAdded={() => {}} />
     </TutorialProvider>;
@@ -91,6 +93,39 @@ describe('セットアップと親画面の連携', () => {
     });
 });
 
+
+it('同じ用途のアプリ入力から機器入力へセットアップすると、エンジン・親の保持値・保存値がそろって機器入力になる', async () => {
+    const app = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Player', rawEndpointId: 'endpoint', purpose: 'voice' } };
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', output: cable.name, sampleRate: 48000, bufferSize: 512, inputSource: app }));
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    render(<AppModals />);
+    await chooseObsRoute();
+    fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+    await screen.findByRole('heading', { name: '音声設定を保存しました' });
+    const device = { kind: 'device', config: { purpose: 'voice' } };
+    expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({ inputSource: { source: device } }));
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('audio-source').textContent ?? 'null')).toEqual(device));
+    expect((JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}') as { inputSource?: unknown }).inputSource).toEqual(device);
+});
+
+it('設定が無い初回のセットアップが保存の途中で失敗したら、音声を止め、親の保持値を未設定へ戻し、保存値も残さない', async () => {
+    render(<AppModals />);
+    await chooseObsRoute();
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+        if (key === 'vst_host_setup_goal') throw new Error('容量不足');
+        return original.call(this, key, value);
+    };
+    try {
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'stop_audio')).toBe(true));
+        await waitFor(() => expect(screen.queryByRole('heading', { name: '音声設定を保存しました' })).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('audio-host')).toHaveTextContent(/^$/));
+    } finally { Storage.prototype.setItem = original; }
+    expect(screen.getByTestId('audio-source')).toHaveTextContent('null');
+    expect(localStorage.getItem('vst_host_audio_config')).toBeNull();
+    expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
+});
 
 it('スキップでも既存の完了フラグを保存し、同じウィンドウの開始条件を更新する', async () => {
     render(<AppModals />);

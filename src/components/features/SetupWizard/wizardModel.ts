@@ -35,8 +35,8 @@ export interface SetupWizardModalProps {
     onClose: () => void;
     onSkip?: () => void;
     onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig, inputSource?: InputSource) => void | Promise<void>;
-    /** 適用に失敗したとき、onApplyConfig で更新した画面の保持値を元の接続へ戻す。 */
-    onRestoreConfig?: (previous: AudioPreferences) => void | Promise<void>;
+    /** 適用に失敗したとき、onApplyConfig で更新した画面の保持値を元の接続へ戻す。null は、設定が無かった（初回の）状態へ戻す。 */
+    onRestoreConfig?: (previous: AudioPreferences | null) => void | Promise<void>;
     onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;

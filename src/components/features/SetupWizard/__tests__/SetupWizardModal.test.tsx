@@ -1627,6 +1627,31 @@ describe('使い道の切り替えからのセットアップ（#723）', () => 
             expect(await screen.findByText(rewindText)).toHaveTextContent('音声の接続');
             expect(localStorage.getItem('vst_host_audio_config')).toBe(JSON.stringify(previous));
         });
+
+        describe('元の音声がアプリの音声だったとき', () => {
+            const appSource = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Player', rawEndpointId: 'endpoint', purpose: 'voice' } };
+            const runningApp = { is_running: true, config: { host: 'WASAPI', output: 'Old Speakers', sample_rate: 48000, buffer_size: 512, input_source: appSource } };
+            const startCalls = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === 'start_audio');
+
+            it('起動中のアプリを見つけられたら、その候補を渡して元のアプリの音声を再開する', async () => {
+                const onApplyConfig = setup({
+                    get_audio_state: () => runningApp,
+                    get_process_input_sources: () => [{ id: 'app-1', appKey: 'a'.repeat(64), name: 'Player', routes: [] }],
+                });
+                await failUsageRecord(() => openAndApply(onApplyConfig, vi.fn()));
+                await waitFor(() => expect(startCalls()).toHaveLength(2));
+                expect(startCalls()[1][1]).toEqual(expect.objectContaining({ output: 'Old Speakers', inputSource: { source: appSource, candidateId: 'app-1' } }));
+                expect(screen.queryByText(rewindText)).not.toBeInTheDocument();
+            });
+
+            it('アプリが終了していたら、再開を試みず、音声の接続を戻せなかったと画面に出す', async () => {
+                const onApplyConfig = setup({ get_audio_state: () => runningApp, get_process_input_sources: () => [] });
+                await failUsageRecord(() => openAndApply(onApplyConfig, vi.fn()));
+                expect(await screen.findByText(rewindText)).toHaveTextContent('音声の接続');
+                expect(startCalls()).toHaveLength(1);
+                expect(localStorage.getItem('vst_host_audio_config')).toBe(JSON.stringify(previous));
+            });
+        });
     });
 
 });

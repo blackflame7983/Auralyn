@@ -10,6 +10,7 @@ import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutp
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
 import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { deviceInput } from '@/lib/inputSource';
+import { resumableInputSource } from '@/lib/processInputRestore';
 import { DISPLAY_PURPOSE_KEY } from '@/lib/displayPurpose';
 import { USAGE_DEVICES_KEY } from '@/lib/usageDevices';
 import { currentUsage, rememberSetupUsage, snapshotStorage } from '@/lib/usageSwitch';
@@ -54,7 +55,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
         if (!init) return true;
         try {
             if (init.is_running && init.config) {
-                const source = init.config.input_source ?? (explicitSource ? deviceInput() : undefined);
+                const saved = init.config.input_source ?? (explicitSource ? deviceInput() : undefined);
+                // アプリの音声は、いま起動しているアプリの候補を引き直さないと再開できない。見つからなければ、戻せなかったとして扱う。
+                const source = saved && await resumableInputSource(saved);
+                if (source === null) throw new Error('The original app is not running');
                 await audioApi.start(
                     init.config.host,
                     init.config.input || undefined,
@@ -62,7 +66,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
                     init.config.buffer_size || undefined,
                     init.config.sample_rate || undefined,
                     init.config.input_id, init.config.output_id, undefined, init.config.routing,
-                    ...(source ? [{ source }] as const : [])
+                    ...(source ? [source] as const : [])
                 );
                 toast.info(createElement(LocalizedMessage, { id: 'guide.copy.241' }));
             } else {
@@ -423,7 +427,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
             setIsTestingSound(false);
             setInputLevel(0);
         } else failed.push('audio');
-        if (previousConfig && onRestoreConfig) {
+        if (onRestoreConfig) {
             try { await onRestoreConfig(previousConfig); } catch { failed.push('screen'); }
         }
         // 親の保持値が書き戻した保存値も含め、最後に元の文字列そのものへ戻す。
@@ -459,8 +463,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
             const directedSource = finalGoal ? { kind: 'device' as const, config: { purpose: finalPurpose } } : undefined;
             // 使い道の切り替えか音楽鑑賞のとき、または今のホームの表示と食い違うときだけ、記録と表示を決める。声のまま使い続ける通常の再設定は触らない。
             const recordUsage = !!directedSource && (!!initialGoal || finalGoal === 'music' || leaving.display !== finalPurpose);
-            // 保存値と画面の保持値へ渡すのは、入力の用途が変わるときだけ。声のまま使い続ける再設定は、従来どおり用途を書き換えない。
-            const persistedSource = directedSource && (recordUsage || (previousConfig?.inputSource?.config.purpose ?? 'voice') !== finalPurpose) ? directedSource : undefined;
+            // 保存値と画面の保持値へ渡すのは、入力元が変わるときだけ（用途もアプリ入力から機器入力への切り替えも含む）。
+            // 省くと画面の保持値は旧い入力元を引き継ぐため、同じ用途のアプリ入力から機器入力へ替えても、旧いまま残る。
+            const persistedSource = directedSource && (recordUsage || JSON.stringify(previousConfig?.inputSource ?? deviceInput()) !== JSON.stringify(directedSource)) ? directedSource : undefined;
             const startedConfig = await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
                 config.input.id, config.output.id, undefined, initialRouting(), ...(directedSource ? [{ source: directedSource }] : []));
             engineStarted = true;

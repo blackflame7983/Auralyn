@@ -15,6 +15,15 @@ export interface AudioPreferences {
     outputId?: string;
 }
 
+/**
+ * 画面の保持値を「設定が無い」状態へ戻す更新。画面の保持値の更新は省いた項目を旧値から引き継ぐため、
+ * 空の値と、明示した undefined（機器ID・入力元）で、すべての項目を上書きする。
+ */
+export const UNSET_AUDIO_UPDATE: Partial<AudioPreferences> & { host: string } = {
+    host: '', input: '', output: '', inputId: undefined, outputId: undefined, inputSource: undefined,
+    sampleRate: 0, bufferSize: 0, outputRouting: { mode: 'legacy' },
+};
+
 // 完全な機器選択でIDが不明なら古いIDを引き継がず、ペアだけの部分更新では保持する。
 export function deviceIdsForUpdate(previous: AudioPreferences, update: Partial<AudioPreferences> & { host: string }) {
     const changedHost = previous.host.toLowerCase() !== update.host.toLowerCase();

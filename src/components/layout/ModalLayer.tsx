@@ -13,6 +13,7 @@ import type { AudioEngineExit } from '@/lib/audioEngineExit';
 import type { SoundPlace } from '@/hooks/useUIState';
 import { checkRestoredRack, type SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { PLUGIN_SESSION_KEY } from '@/hooks/usePluginSessionPersistence';
+import { UNSET_AUDIO_UPDATE } from '@/lib/audioPreferences';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -294,7 +295,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                             markWizardDone();
                         }}
-                        onRestoreConfig={previous => handleConfigUpdate({ ...previous, inputSource: previous.inputSource, outputRouting: previous.outputRouting ?? { mode: 'legacy' } })}
+                        onRestoreConfig={previous => handleConfigUpdate(previous
+                            ? { ...previous, inputSource: previous.inputSource, outputRouting: previous.outputRouting ?? { mode: 'legacy' } }
+                            : UNSET_AUDIO_UPDATE)}
                         onOpenSettings={() => {
                             ui.setIsWizardOpen(false);
                             ui.setWizardGoal?.(null);
