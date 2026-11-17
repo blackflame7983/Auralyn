@@ -125,7 +125,7 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
         message(locale, 'help.home.stage.title'),
         message(locale, 'help.home.meters.title'),
         message(locale, 'help.home.sound.title'),
-        message(locale, 'prep.title'),
+        message(locale, 'help.home.check.title'),
         message(locale, 'help.home.footer.title'),
     ];
     expect(within(dialog).getAllByRole('list')).toHaveLength(homeGuideGroups.length);
@@ -147,11 +147,11 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
     localStorage.setItem('auralyn_display_purpose', 'music');
     fireEvent(window, new Event('auralyn-display-purpose-changed'));
     const musicHeadings = [
-        message(locale, 'help.home.stage.title'),
+        message(locale, 'help.home.stage.musicTitle'),
         message(locale, 'help.home.meters.musicTitle'),
-        message(locale, 'wizard.musicSound'),
-        message(locale, 'prep.title'),
-        message(locale, 'help.home.footer.title'),
+        message(locale, 'help.home.sound.musicTitle'),
+        message(locale, 'help.home.check.musicTitle'),
+        message(locale, 'help.home.footer.musicTitle'),
     ];
     homeGuideGroups.forEach((group, index) => {
         const heading = within(dialog).getByRole('heading', { level: 3, name: musicHeadings[index] });
