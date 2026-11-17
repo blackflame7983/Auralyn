@@ -44,6 +44,27 @@ test('標準のフォルダーは外せない。足したフォルダーは再�
     await expect(again.getByRole('button', { name: /Program Files\\Common Files\\VST3 を外す/ })).toHaveCount(0);
 });
 
+test('登録が無いときは、最近・お気に入り・検索中でも「VSTを探す」が主な操作で、すべて再スキャンは出ない', async ({ page }) => {
+    await page.goto('/');
+    const dialog = await openBrowser(page);
+    const expectFindOnly = async () => {
+        await expect(dialog.getByRole('button', { name: 'VSTを探す', exact: true })).toHaveCount(1);
+        await expect(dialog.getByRole('button', { name: 'VSTを探す', exact: true })).toHaveClass(/bg-primary/);
+        await expect(dialog.getByRole('button', { name: 'すべて再スキャン', exact: true })).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: '更新', exact: true })).toHaveCount(0);
+    };
+    await expectFindOnly();
+    for (const tab of ['最近', 'お気に入り']) {
+        await dialog.getByRole('tab', { name: tab }).click();
+        await expect(dialog.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+        await expectFindOnly();
+    }
+    await dialog.getByRole('tab', { name: 'すべて' }).click();
+    await dialog.getByRole('textbox', { name: 'プラグイン検索' }).fill('no-such-plugin');
+    await expect(dialog.getByRole('heading', { name: /に一致する候補はありません/ })).toBeVisible();
+    await expectFindOnly();
+});
+
 test('見つからないフォルダーを知らせ、足したフォルダーのVST3を一覧に出す', async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('auralyn_vst_scan_folders', JSON.stringify(['D:\\Custom\\VST3', 'D:\\Missing\\VST3']));

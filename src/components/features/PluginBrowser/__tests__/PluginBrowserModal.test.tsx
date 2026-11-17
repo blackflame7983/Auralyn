@@ -44,6 +44,28 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
 });
 
+it('登録が無いときは、最近・お気に入り・検索中でも「VSTを探す」を主な操作にする（#706）', () => {
+    const scan = vi.fn();
+    render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()} />);
+    const expectFind = () => {
+        expect(screen.queryByRole('button', { name: 'すべて再スキャン' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '更新' })).not.toBeInTheDocument();
+        const find = screen.getByRole('button', { name: 'VSTを探す' });
+        expect(find).toHaveClass('bg-primary');
+        return find;
+    };
+    for (const tab of ['最近', 'お気に入り']) {
+        fireEvent.mouseDown(screen.getByRole('tab', { name: tab }), { button: 0, ctrlKey: false });
+        scan.mockClear();
+        fireEvent.click(expectFind());
+        expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
+    }
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'すべて' }), { button: 0, ctrlKey: false });
+    fireEvent.change(screen.getByRole('textbox', { name: 'プラグイン検索' }), { target: { value: 'no-such-plugin' } });
+    expect(screen.getByRole('heading', { name: '「no-such-plugin」に一致する候補はありません。' })).toBeInTheDocument();
+    expectFind();
+});
+
 it('登録があるときは更新とすべて再スキャンを出す', () => {
     openBrowser();
     expect(screen.getByRole('button', { name: '更新' })).toBeInTheDocument();

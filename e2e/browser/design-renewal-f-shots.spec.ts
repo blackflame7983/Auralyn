@@ -70,8 +70,13 @@ async function openPreview(page: Page, shot: Shot) {
             await expect(dialog.getByRole('heading', { name: new RegExp(shot.search) })).toBeVisible();
         }
         if (shot.scanError) {
-            await dialog.getByRole('button', { name: shot.locale === 'ja' ? 'VSTを探す' : 'Find VSTs', exact: true }).click();
-            await expect(dialog.getByRole('button', { name: shot.locale === 'ja' ? '再試行' : 'Try again', exact: true })).toBeVisible();
+            // 開いた直後の自動スキャンで失敗する。失敗の状態では「VSTを探す」は出ず、「すべて再スキャン」と「再試行」が残る。
+            const rescan = dialog.getByRole('button', { name: shot.locale === 'ja' ? 'すべて再スキャン' : 'Rescan all', exact: true });
+            const retry = dialog.getByRole('button', { name: shot.locale === 'ja' ? '再試行' : 'Try again', exact: true });
+            await expect(retry).toBeVisible();
+            await expect(dialog.getByRole('button', { name: shot.locale === 'ja' ? 'VSTを探す' : 'Find VSTs', exact: true })).toHaveCount(0);
+            await rescan.click();
+            await expect(retry).toBeVisible();
         }
     }
     if (shot.screen === 'template-wizard') await expect(page.getByRole('dialog')).toBeVisible();

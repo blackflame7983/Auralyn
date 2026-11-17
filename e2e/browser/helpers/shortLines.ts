@@ -1,21 +1,37 @@
 import type { Locator } from '@playwright/test';
 
-function measure(node: HTMLElement | SVGElement): string[] {
-    const bad: string[] = [];
-    const walker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    const range = node.ownerDocument.createRange();
+// 文は <span> などのインライン要素をまたぐので、行はテキストノードではなく、
+// 文字が属するブロックごとに、描画された位置（top）で集める。
+function measure(root: HTMLElement | SVGElement): string[] {
+    const doc = root.ownerDocument;
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const range = doc.createRange();
+    const blocks = new Map<Element, { top: number; chars: string }[]>();
+    const totals = new Map<Element, number>();
+
+    function blockOf(element: Element): Element {
+        let current: Element | null = element;
+        while (current && current !== root) {
+            const display = getComputedStyle(current).display;
+            if (display !== 'inline' && display !== 'contents') return current;
+            current = current.parentElement;
+        }
+        return root;
+    }
+
     while (walker.nextNode()) {
-        const current = walker.currentNode;
-        const parent = current.parentElement;
+        const node = walker.currentNode;
+        const parent = node.parentElement;
         if (!parent || parent.closest('.sr-only')) continue;
-        const text = current.textContent ?? '';
-        if ([...text.replace(/\s+/g, '')].length <= 2) continue;
-        const lines: { top: number; chars: string }[] = [];
+        const block = blockOf(parent);
+        const lines = blocks.get(block) ?? [];
+        blocks.set(block, lines);
+        const text = node.textContent ?? '';
         for (let index = 0; index < text.length; index += 1) {
             const char = text[index] ?? '';
             if (!char.trim()) continue;
-            range.setStart(current, index);
-            range.setEnd(current, index + 1);
+            range.setStart(node, index);
+            range.setEnd(node, index + 1);
             const rects = range.getClientRects();
             let top: number | null = null;
             for (let rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
@@ -26,12 +42,19 @@ function measure(node: HTMLElement | SVGElement): string[] {
                 }
             }
             if (top === null) continue;
+            totals.set(block, (totals.get(block) ?? 0) + 1);
             const last = lines[lines.length - 1];
             if (!last || Math.abs(top - last.top) > 1) lines.push({ top, chars: char });
             else last.chars += char;
         }
+    }
+
+    const bad: string[] = [];
+    for (const [block, lines] of blocks) {
+        if ((totals.get(block) ?? 0) <= 2) continue;
         for (const line of lines) {
-            if ([...line.chars].length > 0 && [...line.chars].length <= 2) bad.push(line.chars);
+            const count = [...line.chars].length;
+            if (count > 0 && count <= 2) bad.push(line.chars);
         }
     }
     return bad;
