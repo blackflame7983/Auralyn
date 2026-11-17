@@ -16,7 +16,7 @@ import { MdClose, MdMic, MdPlayArrow, MdSave, MdStop, MdAnalytics } from 'react-
 import { cn } from '@/lib/utils';
 import { useVoiceCheck } from './useVoiceCheck';
 import { useFocusWhenEnabled, useOpenWhen } from './useVoiceCheckDialog';
-import { formatMs, formatAdvice, adviceSettingsTarget, adviceSeverityClass, BandDeltaChart, WaveformCanvas, VERDICT_LABELS, VERDICT_STYLES } from './VoiceCheckVisuals';
+import { formatMs, formatSecondsLabel, formatAdvice, adviceSettingsTarget, adviceSeverityClass, BandDeltaChart, WaveformCanvas, VERDICT_LABELS, VERDICT_STYLES } from './VoiceCheckVisuals';
 
 interface VoiceCheckModalProps {
     manualCandidate?: boolean;
@@ -44,6 +44,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
     const isPlaying = preview?.state === 'playing';
     const hasRecording = vcState.duration_ms > 0 || vcState.state === 'ready' || isPlaying || Boolean(preview?.recordingId);
     const previewNeedsChoice = hasRecording && (!outputConfirmed || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId));
+    const selectedPreviewDevice = previewDevices.find(device => device.id === previewDeviceId);
+    const previewTargetText = selectedPreviewDevice ? t('voice.previewTarget', { device: selectedPreviewDevice.name }) : t(previewDeviceId ? 'voice.previewTargetUnverified' : 'voice.previewTargetNone');
     const stopPreviewEnabled = isPlaying || preview?.state === 'stopping' || stopUnconfirmed;
     const recordRef = React.useRef<HTMLButtonElement>(null);
     useFocusWhenEnabled(recordRef, isOpen, !isRecording && streamStatus === 'ready' && !busy && !previewBusy);
@@ -113,7 +115,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                  className="gap-2"
                             >
                                 <MdMic className="w-4 h-4" />
-                                {t('voice.recordMax', { maximum: formatMs(maxMs) })}
+                                {t('voice.recordMax', { seconds: formatSecondsLabel(maxMs) })}
                             </Button>
                         ) : (
                             <Button variant="destructive"
@@ -190,6 +192,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             /></Field>
                             {t('voice.copy.061')}</label>
                     </div>
+                    <p title={previewTargetText} className="text-ui-support text-muted-foreground truncate">{previewTargetText}</p>
                     {(previewError || preview?.error) && <div role="alert" className="flex min-w-0 flex-wrap items-center gap-3 rounded-control border border-warning bg-warning/10 p-3 text-ui-support">
                         <p className="min-w-0 flex-1 basis-64 wrap-anywhere">{previewError || preview?.error}</p>
                         <Button variant="default" size="sm" type="button" disabled={previewBusy} onClick={() => void preparePreview()}>{t('voice.copy.039')}</Button>
