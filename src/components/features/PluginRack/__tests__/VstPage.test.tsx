@@ -32,8 +32,11 @@ it.each(['ja', 'en'] as const)('VSTが無いとき、処理の順にVSTの位置
     const { onAdd, onOpenPresets, onOpenTemplates } = renderPage(locale);
     const heading = document.querySelector('.page-heading');
     expect(heading).not.toBeNull();
+    const row = heading?.querySelector('[data-page-heading-row]');
+    expect(row?.querySelector('.page-heading-lead')).toBeNull();
+    expect(heading?.querySelector(':scope > .page-heading-lead')).not.toBeNull();
     const bar = within(heading as HTMLElement);
-    expect(bar.getByRole('button', { name: message(locale, 'rack.addEffects') })).toBeEnabled();
+    expect(bar.queryByRole('button', { name: message(locale, 'rack.addEffects') })).not.toBeInTheDocument();
     fireEvent.click(bar.getByRole('button', { name: message(locale, 'rack.manageProfiles') }));
     expect(onOpenPresets).toHaveBeenCalledOnce();
     const order = screen.getByRole('list', { name: message(locale, 'vst.order') });
@@ -42,12 +45,23 @@ it.each(['ja', 'en'] as const)('VSTが無いとき、処理の順にVSTの位置
     else expect(text).toContain('Input→Noisereduction→Shapevoice→VST→Output');
     expect(screen.getByRole('heading', { name: message(locale, 'rack.empty.title') })).toBeVisible();
     expect(screen.getByText(message(locale, 'rack.empty.scope'))).toBeVisible();
-    const adds = screen.getAllByRole('button', { name: message(locale, 'rack.addEffects') });
-    expect(adds).toHaveLength(2);
-    for (const button of adds) fireEvent.click(button);
-    expect(onAdd).toHaveBeenCalledTimes(2);
+    const add = screen.getByRole('button', { name: message(locale, 'rack.addEffects') });
+    expect(add).toHaveAttribute('id', 'add-effect-btn');
+    expect(add).toHaveClass('bg-primary');
+    fireEvent.click(add);
+    expect(onAdd).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'rack.empty.templates') }));
     expect(onOpenTemplates).toHaveBeenCalledOnce();
+});
+
+it('ホームの追加から開いたとき、空の案内のVSTを追加へ焦点を移す', () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    render(<LocaleProvider store={store}>
+        <VstPage plugins={[]} audioReady focusNonce={1} focusAdd onAdd={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()}
+            onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={vi.fn()}
+            onOpenPresets={vi.fn()} onOpenTemplates={vi.fn()} />
+    </LocaleProvider>);
+    expect(document.getElementById('add-effect-btn')).toHaveFocus();
 });
 
 it('並びがあるときは各VSTの名前が位置になり、保存は見出しの行に残る', () => {
@@ -57,8 +71,10 @@ it('並びがあるときは各VSTの名前が位置になり、保存は見出�
     const order = screen.getByRole('list', { name: message('ja', 'vst.order') });
     expect(within(order).getByText('OFF')).toBeVisible();
     const heading = document.querySelector('.page-heading') as HTMLElement;
+    expect(within(heading).getByRole('button', { name: 'VSTを追加' })).toBeVisible();
     expect(within(heading).getByRole('button', { name: '設定の保存・復帰' })).toBeVisible();
     expect(screen.getAllByRole('button', { name: '設定の保存・復帰' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'VSTを追加' })).toHaveLength(1);
 });
 
 it('音楽鑑賞は再生元からVST、出力で、構成テンプレートは出さない', () => {
