@@ -92,10 +92,11 @@ export function fadeBox(scroller: DOMRect, saveBar: DOMRect | null): { top: numb
 
 // 焦点が入った要素の枠が、フェードに埋まらず列の上端からも出ないように、本文を送る量（正は下へ、負は上へ）を返す。
 // 枠を含めて収まらない大きな要素と、箱を持たない要素は、ブラウザーの送りに任せて 0 を返す。
-export function scrollToClearFade(target: DOMRect, scroller: DOMRect, fadeTop: number): number {
+// 座標が拡大表示の画面座標なら、枠の幅も同じ倍率で渡す。
+export function scrollToClearFade(target: DOMRect, scroller: DOMRect, fadeTop: number, ringExtent = FOCUS_RING_EXTENT): number {
     if (target.width < 1 && target.height < 1) return 0;
-    const ringTop = target.top - FOCUS_RING_EXTENT;
-    const ringBottom = target.bottom + FOCUS_RING_EXTENT;
+    const ringTop = target.top - ringExtent;
+    const ringBottom = target.bottom + ringExtent;
     if (ringBottom - ringTop > fadeTop - scroller.top) return 0;
     if (ringBottom > fadeTop) return ringBottom - fadeTop;
     if (ringTop < scroller.top) return ringTop - scroller.top;

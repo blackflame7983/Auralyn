@@ -105,7 +105,6 @@ it('区画があとから足されて続きができたときも、フェード�
     }
 });
 
-// キーボードで移ったときだけ焦点の見た目（:focus-visible）が出る。直前の操作で決まるので、操作を明示する。
 function focusByKeyboard(element: HTMLElement) {
     fireEvent.keyDown(document.body, { key: 'Tab' });
     element.focus();
@@ -172,14 +171,42 @@ it('画面を離れたあとは、焦点が入っても送らない（購読を�
     }
 });
 
-it('焦点の見た目が出ない（マウスで押した）要素は、押している間に動かさない', () => {
+it('押している間に焦点が入った要素は動かさず、離したあとのキーボード操作では送る', () => {
     const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 100, 80, 20));
+    const input = document.createElement('input');
+    input.getBoundingClientRect = () => new DOMRect(8, 100, 80, 20);
+    scroller.appendChild(input);
     try {
         render(<Hint><div /></Hint>);
-        fireEvent.mouseDown(button);
-        button.focus();
+        fireEvent.pointerDown(input);
+        input.focus();
         expect(scrollBy).not.toHaveBeenCalled();
+        fireEvent.pointerUp(document.body);
+        focusByKeyboard(button);
+        expect(scrollBy).toHaveBeenCalledTimes(1);
     } finally {
+        scroller.remove();
+    }
+});
+
+it('拡大表示では、枠の幅にも倍率を掛けて見積もり、送る量は CSS px へ戻す', () => {
+    const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 92, 80, 20));
+    // jsdom は zoom を計算しないので、ページの倍率だけを差し替える。
+    const computed = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+        const style = computed(element, pseudo);
+        return element === document.documentElement
+            ? new Proxy(style, { get: (target, key) => (key === 'zoom' ? '1.5' : Reflect.get(target, key, target)) })
+            : style;
+    });
+    try {
+        render(<Hint><div /></Hint>);
+        // フェードは 116 から。下端 112 + 枠 6 = 118 なので画面で 2、CSS px で 4/3 送る。
+        focusByKeyboard(button);
+        expect(scrollBy).toHaveBeenCalledTimes(1);
+        expect(scrollBy.mock.calls[0][0].top).toBeCloseTo(2 / 1.5);
+    } finally {
+        vi.restoreAllMocks();
         scroller.remove();
     }
 });

@@ -158,6 +158,46 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
     expect(after.ringBottom).toBeLessThanOrEqual(after.fadeTop + 0.5);
     expect(after.ringTop).toBeGreaterThanOrEqual(after.columnTop);
 });
+test('フェードにかかる入力欄をマウスで押しても、列は動かずクリックが成立する（#671）', async ({ page }) => {
+    await openHome(page, { width: 900, height: 420 });
+    const fade = page.locator('[data-scroll-more=""]');
+    await expect(fade).toBeVisible();
+    const placed = await page.locator('main.home-main').evaluate(async column => {
+        const hint = document.querySelector('[data-scroll-more=""]');
+        if (!(column instanceof HTMLElement) || !(hint instanceof HTMLElement)) return null;
+        const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const layout = () => `${column.getBoundingClientRect().height}/${column.scrollHeight}/${hint.hidden}/${hint.getBoundingClientRect().top}`;
+        let seen = layout();
+        for (let steady = 0, tries = 0; steady < 10 && tries < 300; tries += 1) {
+            await frame();
+            const now = layout();
+            steady = now === seen ? steady + 1 : 0;
+            seen = now;
+        }
+        const input = document.createElement('input');
+        input.id = 'fade-probe-input';
+        input.style.display = 'block';
+        input.style.height = '24px';
+        const clicks = { count: 0 };
+        input.addEventListener('click', () => { clicks.count += 1; input.dataset.clicks = String(clicks.count); });
+        const spacer = document.createElement('div');
+        spacer.style.height = '800px';
+        column.append(input, spacer);
+        await frame();
+        column.scrollTop += input.getBoundingClientRect().top - (hint.getBoundingClientRect().top - 26);
+        await frame();
+        return { scrollTop: column.scrollTop, ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
+    });
+    expect(placed).not.toBeNull();
+    if (!placed) return;
+    expect(placed.ringBottom).toBeGreaterThan(placed.fadeTop);
+
+    await page.locator('#fade-probe-input').click();
+    await expect(page.locator('#fade-probe-input')).toBeFocused();
+    await expect(page.locator('#fade-probe-input')).toHaveAttribute('data-clicks', '1');
+    expect(await page.locator('main.home-main').evaluate(column => column.scrollTop)).toBe(placed.scrollTop);
+});
+
 for (const size of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }]) {
     test(`${size.width}×${size.height}の下の行は経路が無く、ボタンが左に残る`, async ({ page }) => {
         await openHome(page, size);
