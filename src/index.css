@@ -570,6 +570,14 @@ body:has(.app-shell) {
   .unset-flow-primary:active, .unset-flow-primary:hover .unset-flow-arrow { transform: none; }
 }
 
+/* 高さの決まったダイアログは本文だけを縮めてスクロールする。フッターの下へ隠さない（#699）。 */
+.modal-surface-base.flex-col > .modal-body-base,
+.modal-surface-base.flex-col > .overflow-y-auto {
+  min-height: 0;
+  flex: 1 1 auto;
+  scroll-padding-bottom: 2rem;
+}
+
 /* 拡大表示などで高さが足りない場合も、本文と操作を切らずにスクロールする。 */
 @media (max-height: 500px) {
   .profile-list-region {
@@ -580,6 +588,8 @@ body:has(.app-shell) {
     max-height: calc(100dvh / var(--ui-zoom) - 2rem) !important;
     overflow-y: auto;
   }
+  .modal-surface-base.flex-col > .modal-body-base,
+  .modal-surface-base.flex-col > .overflow-y-auto,
   .modal-body-base {
     flex: none;
     overflow-y: visible;
@@ -917,6 +927,25 @@ html[data-app-hidden="true"] *::after {
   z-index: 10;
   pointer-events: none;
   background: linear-gradient(to bottom, transparent, hsl(var(--background) / 0.92));
+}
+/* ダイアログの本文に続きがある印。面の色に溶かし、操作は通す（#699）。 */
+.dialog-scroll-more {
+  position: absolute;
+  z-index: 5;
+  /* 上端は透かして、焦点の枠（2px + 外側 2px）がフェードに埋まらないようにする。 */
+  background: linear-gradient(to bottom, transparent 0.5rem, hsl(var(--card) / 0.92));
+}
+.obs-guide {
+  max-height: calc(100dvh / var(--ui-zoom) - 2rem);
+}
+.obs-guide .modal-header-base,
+.obs-guide .modal-footer-base,
+.obs-guide .modal-body-base {
+  padding: 0.625rem 1rem;
+}
+.obs-guide [data-choice-card] {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
 }
 @media (prefers-reduced-motion: reduce) {
   .column-scroll-more {
