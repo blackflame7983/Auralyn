@@ -104,8 +104,8 @@ it.each(['ja', 'en'] as const)('アプリ情報はシステムに置き、外観
     expect(screen.queryByRole('heading', { name: 'Auralyn' })).not.toBeInTheDocument();
     expect(screen.getByText(locale === 'ja' ? '黒に近い地にマゼンタ。角を切り欠き、見出しを斜体にします。' : 'Near-black with magenta, cut corners, and italic headings.')).toBeVisible();
     expect(screen.getByText(locale === 'ja'
-        ? '光るのは、主なボタンを押している間と緊急ミュート中だけです。'
-        : 'It glows only while a primary button is pressed, and while emergency mute is on.')).toBeVisible();
+        ? 'ゲーミングで光るのは、主なボタンを押している間と緊急ミュート中だけです。'
+        : 'In Gaming, it glows only while a primary button is pressed, and while emergency mute is on.')).toBeVisible();
     expect(screen.queryByText(/角を切り欠いた形と見出しの斜体で見分けます|set apart by cut corners/)).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? 'システム' : 'System' }), { button: 0, ctrlKey: false });
     expect(screen.getByRole('heading', { name: 'Auralyn' })).toBeVisible();
