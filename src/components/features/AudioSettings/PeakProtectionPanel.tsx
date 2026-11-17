@@ -93,7 +93,7 @@ export function PeakProtectionPanel({ onPendingChange, hideApplyNote = false, nu
                 <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={applyDisabled} onClick={applyValues}>{t('peak.apply')}</Button>
             </div>
         </details>
-        <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('peak.limitsTitle')}</summary><p className="mt-2">{t(music ? 'peak.limitsMusic' : 'peak.limits')}</p></details>
+        <details className="text-ui-support"><summary className="cursor-pointer text-ui-control font-semibold">{t('peak.limitsTitle')}</summary><p className="mt-3 text-muted-foreground">{t(music ? 'peak.limitsMusic' : 'peak.limits')}</p></details>
         {failed && <p role="alert" className="text-ui-support">{t('peak.failed')}</p>}
     </section>;
 }
