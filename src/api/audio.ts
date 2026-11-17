@@ -231,6 +231,7 @@ export const audioApi = {
             mode: config.mode,
             strength: config.strength,
             voiceGuard: config.voiceGuard,
+            ...(config.requireRunning ? { requireRunning: true } : {}),
         });
     },
     setBuiltInEffects: async (config: BuiltInEffectsConfig) => {
@@ -238,6 +239,7 @@ export const audioApi = {
             active: config.active,
             preset: config.preset,
             amount: config.amount,
+            ...(config.requireRunning ? { requireRunning: true } : {}),
         });
     },
     setOutputGain: async (value: number) => {
@@ -410,12 +412,16 @@ export interface NoiseControlConfig {
     mode: NoiseControlMode;
     strength: number;
     voiceGuard: boolean;
+    /** 音声エンジンが居るときだけ届ける。居なければ起こさず失敗にする（停止中のホーム用）。 */
+    requireRunning?: boolean;
 }
 
 export interface BuiltInEffectsConfig {
     active: boolean;
     preset?: BuiltInEffectsPreset;
     amount: number;
+    /** 音声エンジンが居るときだけ届ける。居なければ起こさず失敗にする（停止中のホーム用）。 */
+    requireRunning?: boolean;
 }
 
 export interface LoopbackProbeResult {

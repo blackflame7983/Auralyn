@@ -94,21 +94,25 @@ function filesUnder(dir: string): string[] {
 }
 
 it('操作名の隠蔽、通知の置き場所、舞台の伸びをソースに残さない', () => {
+  // 数百ファイルを走査するため、ファイルごとに expect を作らず、違反を集めて最後に1回だけ確かめる。
+  const toasterImport = new RegExp(String.raw`import\s*\{[^}]*\bToaster\b[^}]*\}\s*from\s*['"]sonner['"]`);
+  const violations: string[] = [];
   const paths = filesUnder('src').filter(path => /\.(tsx?|css)$/.test(path));
   for (const path of paths) {
     const source = readFileSync(path, 'utf8');
-    expect(source, path).not.toContain('live-' + 'action-label');
-    if (!path.endsWith('NoticeLane.tsx')) {
-      expect(source.includes('<' + 'Toaster'), path).toBe(false);
-      expect(source, path).not.toMatch(new RegExp(String.raw`import\s*\{[^}]*\bToaster\b[^}]*\}\s*from\s*['"]sonner['"]`));
+    if (source.includes('live-' + 'action-label')) violations.push(`${path}: 隠蔽用の操作名クラスが残っている`);
+    if (!path.endsWith('NoticeLane.tsx') && source.includes('Toaster')) {
+      if (source.includes('<' + 'Toaster')) violations.push(`${path}: Toaster を NoticeLane の外で描いている`);
+      if (toasterImport.test(source)) violations.push(`${path}: Toaster を NoticeLane の外で読み込んでいる`);
     }
     if (!path.endsWith('.css')) continue;
     for (const block of source.split('}')) {
       const [selector = '', body = ''] = block.split('{');
-      if (/\.live-stage\b|\.live-strip\b/.test(selector)) expect(body, `${path} ${selector}`).not.toMatch(/flex-grow\s*:/);
+      if (/\.live-stage\b|\.live-strip\b/.test(selector) && /flex-grow\s*:/.test(body)) violations.push(`${path} ${selector}: 舞台が flex-grow で伸びる`);
       if (/(live-action|channel-actions|action-word)/.test(selector) && /display\s*:\s*none|font-size\s*:\s*0/.test(body)) {
-        throw new Error(`${path} hides an action word`);
+        violations.push(`${path} ${selector}: 操作名を隠している`);
       }
     }
   }
+  expect(violations).toEqual([]);
 });

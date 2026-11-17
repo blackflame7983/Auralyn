@@ -37,6 +37,98 @@ fn obs_reach_never_spawns_for_stopped_or_missing_stream() {
     assert!(host.child.is_none());
 }
 
+/// 停止中のホームが使う3つの操作を、同じ指定で通して結果の文面を返す。
+fn home_routed_errors(host: &mut AudioHost, require_running: bool) -> Vec<String> {
+    let request = crate::audio_engine::builtin::Request::Apply {
+        epoch: "epoch".into(),
+        expected_revision: "revision".into(),
+        config: Default::default(),
+    };
+    vec![
+        host.set_noise_control_config_routed(require_running, true, "low".into(), 0.8, true)
+            .unwrap_err()
+            .to_string(),
+        host.set_built_in_effects_routed(require_running, true, None, 0.7, None)
+            .unwrap_err()
+            .to_string(),
+        host.builtin_effects_routed(require_running, request)
+            .unwrap_err()
+            .to_string(),
+        host.builtin_effects_routed(
+            require_running,
+            crate::audio_engine::builtin::Request::Snapshot,
+        )
+        .unwrap_err()
+        .to_string(),
+    ]
+}
+
+#[test]
+fn home_operations_that_require_a_running_engine_never_spawn_one() {
+    let mut host = AudioHost::new(std::env::temp_dir());
+    for message in home_routed_errors(&mut host, true) {
+        assert!(message.contains("動いていない"), "{message}");
+    }
+    assert!(host.child.is_none());
+}
+
+#[test]
+fn home_operations_without_the_requirement_keep_the_existing_start_path() {
+    // 更新中は、起動の前に ensure_engine_running が止める。既存の経路を通った印になる。
+    let mut host = AudioHost::new(std::env::temp_dir());
+    host.maintenance = true;
+    let messages = home_routed_errors(&mut host, false);
+    for message in &messages[..3] {
+        assert!(message.contains("更新を適用中"), "{message}");
+    }
+    assert!(!messages[3].contains("動いていない"), "{}", messages[3]);
+    assert!(host.child.is_none());
+    for message in home_routed_errors(&mut host, true) {
+        assert!(message.contains("動いていない"), "{message}");
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn home_operations_that_require_a_running_engine_do_not_restart_an_exited_one() {
+    let mut host = AudioHost::new(std::env::temp_dir());
+    let mut child = Command::new("cmd.exe")
+        .args(["/C", "exit", "0"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.wait().unwrap();
+    let pid = child.id();
+    host.child = Some(child);
+    host.reader_active.store(true, Ordering::Release);
+    for message in home_routed_errors(&mut host, true) {
+        assert!(message.contains("動いていない"), "{message}");
+    }
+    assert_eq!(host.child.as_ref().map(Child::id), Some(pid));
+}
+
+#[cfg(windows)]
+#[test]
+fn home_operations_that_require_a_running_engine_need_the_reader_too() {
+    let mut host = AudioHost::new(std::env::temp_dir());
+    let child = Command::new("cmd.exe")
+        .args(["/C", "pause"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    host.child = Some(child);
+    host.reader_active.store(false, Ordering::Release);
+    for message in home_routed_errors(&mut host, true) {
+        assert!(message.contains("動いていない"), "{message}");
+    }
+    let mut child = host.child.take().unwrap();
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
 #[cfg(windows)]
 #[test]
 fn obs_reach_ack_captures_own_stop_but_old_cleanup_never_stops_new_tone_or_user_stop() {

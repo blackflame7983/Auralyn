@@ -48,7 +48,13 @@
     { "use": "アプリ入力", "avoid": ["プロセス単独入力"], "locale": "ja" },
     { "use": "メーカー", "avoid": ["ベンダー"], "locale": "ja" },
     { "use": "使い道", "avoid": ["使い方"], "locale": "ja", "ref": "#723" },
-    { "use": "Use", "avoid": ["How you use it"], "locale": "en", "ref": "#723" }
+    { "use": "Use", "avoid": ["How you use it"], "locale": "en", "ref": "#723" },
+    { "use": "Auralyn の音を止める", "avoid": ["Auralynの音声を停止"], "locale": "ja", "ref": "#722" },
+    { "use": "Stop Auralyn’s audio", "avoid": ["Stop Auralyn audio"], "locale": "en", "ref": "#722" },
+    { "use": "Auralyn を終了", "avoid": ["Auralynを終了する"], "locale": "ja", "ref": "#722" },
+    { "use": "Quit Auralyn", "avoid": ["Exit Auralyn"], "locale": "en", "ref": "#722" },
+    { "use": "停止中", "avoid": ["音楽は停止中"], "locale": "ja", "ref": "#705" },
+    { "use": "Stopped", "avoid": ["Music stopped"], "locale": "en", "ref": "#705" }
   ],
   "allow": [
     { "key": "saveHelp.modeScope", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },
@@ -92,5 +98,12 @@
     { "key": "presets.copy.145", "term": "profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" },
     { "key": "presets.copy.149", "term": "Profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" },
     { "key": "presets.copy.162", "term": "Profile", "reason": "The wider save that includes OBS, not the voice, VST and device setup (#626)" }
+  ],
+  "distinct": [
+    {
+      "locale": "en",
+      "keys": ["shell.sound", "settings.AudioSettingsModal.095"],
+      "reason": "ホームの区画と声を整えるのカード（#709）"
+    }
   ]
 }

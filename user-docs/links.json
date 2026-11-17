@@ -15,6 +15,7 @@
   "troubleshooting.no-sound": "troubleshooting#no-sound",
   "troubleshooting.not-received": "troubleshooting#not-received",
   "troubleshooting.dropouts": "troubleshooting#dropouts",
+  "troubleshooting.still-running": "troubleshooting#still-running",
   "troubleshooting.latency": "troubleshooting#latency",
   "troubleshooting.vst-load": "troubleshooting#vst-load",
   "help.home.meters": "home#meters",

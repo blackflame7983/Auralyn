@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { RouteSummary } from './RouteSummary';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { PreparationModel } from '@/hooks/usePreparation';
-import { PreparationPanel, availabilityLabels } from './PreparationPanel';
+import { PreparationPanel, availabilityLabel } from './PreparationPanel';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { AudioFlow } from '@/components/ui/AudioFlow';
@@ -50,7 +50,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const configured = model.observation.availability !== 'unconfigured';
     // いまの状態の札と同じ文言は、札が出ている間は重ねない。
     const stripStatus = !configured ? null : audioReady ? t('device.engine') : statusText ?? null;
-    const resolvedStatus = statusText ?? t(availabilityLabels[model.observation.availability]);
+    const resolvedStatus = statusText ?? t(availabilityLabel(model.observation.availability, music));
     const statusCovered = stripStatus !== null && resolvedStatus === stripStatus;
     // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。
     const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);

@@ -292,24 +292,8 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 8,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
       "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
@@ -324,25 +308,9 @@
     },
     {
       "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 8,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "553953656cc9689d74013d51b66f2d648ab0a28928ac7b2ff9d95e9206d64bdb",
       "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/home-actions.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "8a977e9d7bd50b38089318075eb0cb621a0fc2455a15440c89ce04c8907865bd",
-      "count": 2,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -504,13 +472,6 @@
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "544624dc140f6fa5bc93b3b6d232c275eac092cfa6b74484f21551422131009a",
       "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/layout.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "ade6fcdc645052f78cb60b6e0ad9660ebd7b5fe3a7d3be05f6c77c532bd4bb04",
-      "count": 3,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -691,13 +652,6 @@
     {
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "3caf99dd62adc96140e55c26b1a157f84f54221b8e4409a793fb98e2d8b8330c",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
       "hash": "3f423bfc87e60a29a9817277ad9b392e447bc651024ea22a728ce8aa8f6c5619",
       "count": 5,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -761,13 +715,6 @@
     {
       "file": "e2e/browser/mixing.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "3caf99dd62adc96140e55c26b1a157f84f54221b8e4409a793fb98e2d8b8330c",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "3f423bfc87e60a29a9817277ad9b392e447bc651024ea22a728ce8aa8f6c5619",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
@@ -798,13 +745,6 @@
       "rule": "@typescript-eslint/no-unsafe-call",
       "hash": "d8d9b474cd2d971f2e346733c9d420494f02316b902efa8066e4b27bfb1a7c14",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "3caf99dd62adc96140e55c26b1a157f84f54221b8e4409a793fb98e2d8b8330c",
-      "count": 4,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -847,13 +787,6 @@
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "d8d9b474cd2d971f2e346733c9d420494f02316b902efa8066e4b27bfb1a7c14",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/mixing.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "3caf99dd62adc96140e55c26b1a157f84f54221b8e4409a793fb98e2d8b8330c",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -1124,29 +1057,8 @@
     },
     {
       "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-assignment",
       "hash": "7a4eb8931f83d68cac935f33b18759d4ba912f50236dc088c946f6be59491b0e",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
@@ -1159,22 +1071,8 @@
     },
     {
       "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "7a4eb8931f83d68cac935f33b18759d4ba912f50236dc088c946f6be59491b0e",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
       "count": 7,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
@@ -1183,13 +1081,6 @@
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "7a4eb8931f83d68cac935f33b18759d4ba912f50236dc088c946f6be59491b0e",
       "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-followup.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "de52a97778eec61d2392f258491689d12bcb94baa8f2e55896dab973526399d9",
-      "count": 3,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -1957,13 +1848,6 @@
     },
     {
       "file": "e2e/browser/ui-refresh.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "33e663638c5cd1e4a1bc0e29b01f1a2e804bcdce75a6dd84f7b278bdaa7198d9",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/ui-refresh.spec.ts",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "30f2badf681e25de563e576fb13972a6bb891e76b4e502954bb9ad26a5253b23",
       "count": 1,
@@ -1978,13 +1862,6 @@
     },
     {
       "file": "e2e/browser/ui-refresh.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "33e663638c5cd1e4a1bc0e29b01f1a2e804bcdce75a6dd84f7b278bdaa7198d9",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/ui-refresh.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "30f2badf681e25de563e576fb13972a6bb891e76b4e502954bb9ad26a5253b23",
       "count": 2,
@@ -1992,23 +1869,9 @@
     },
     {
       "file": "e2e/browser/ui-refresh.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "33e663638c5cd1e4a1bc0e29b01f1a2e804bcdce75a6dd84f7b278bdaa7198d9",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/ui-refresh.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "30f2badf681e25de563e576fb13972a6bb891e76b4e502954bb9ad26a5253b23",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/ui-refresh.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "33e663638c5cd1e4a1bc0e29b01f1a2e804bcdce75a6dd84f7b278bdaa7198d9",
-      "count": 3,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -2873,27 +2736,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/AudioSettings/__tests__/MigrationRestart.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "ad2042b1bcfcecfe94ff1ce81c471d7c98426cfa8c8bc77f2f9f0135c8e0b6fa",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/__tests__/MigrationRestart.test.tsx",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "ad2042b1bcfcecfe94ff1ce81c471d7c98426cfa8c8bc77f2f9f0135c8e0b6fa",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/__tests__/MigrationRestart.test.tsx",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "ad2042b1bcfcecfe94ff1ce81c471d7c98426cfa8c8bc77f2f9f0135c8e0b6fa",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/__tests__/MixingContracts.test.tsx",
       "rule": "@typescript-eslint/no-explicit-any",
       "hash": "e069934df0533be7e7b09acd4600c0d740efa959b03c418b5da333c12133b88c",
@@ -3556,13 +3398,6 @@
       "rule": "react-hooks/exhaustive-deps",
       "hash": "c6b07abbbf8aa0681365186d6208126d5550e39e50394692765302bbeb1a21ea",
       "count": 5,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Guide/__tests__/HowToUseModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "84f31f393c2b7d44e4031c012fb3611b5711b2e357e0ffe6686c2b86e63bbeb9",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -5037,13 +4872,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/layout/__tests__/HeaderControls.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "aee9bd9e31062f0eccdc0f180f989729f145c6831ec14885a1fc113c017725fd",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/layout/__tests__/homeChrome.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "5c0325f9de9a173db775bc1d11f033e130134cf2fbea5a46534b40fc516ef680",
@@ -5149,53 +4977,11 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "a707c25da901d9d7e01f91816323ebe79dc9e89efdfc354c5d2d6c71a5a67484",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/layout/EmergencyMuteButton.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "a707c25da901d9d7e01f91816323ebe79dc9e89efdfc354c5d2d6c71a5a67484",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/layout/LatencyStageDetails.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "6f030a67d1c73641e9f61dfd0b60bfaaa2ffd66938d118e66f17f0f2faf6b55a",
       "count": 4,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "356eeaf8ddebbf1c80ac434420453bbc3f6ba956f40d7d166b2f533380bfff0f",
-      "count": 7,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/layout/MasterBar.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "356eeaf8ddebbf1c80ac434420453bbc3f6ba956f40d7d166b2f533380bfff0f",
-      "count": 2,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
       "file": "src/components/layout/NoticeLane.tsx",
@@ -5390,13 +5176,6 @@
       "file": "src/contexts/__tests__/TutorialContext.test.tsx",
       "rule": "@typescript-eslint/no-floating-promises",
       "hash": "c5b2b925fe02252dd8b63e05f92df055f4f5beceeb1188ee9641647f4cdf54f7",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/__tests__/previewScreen.test.ts",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "35bbaf283d4c66fd52422cff28e726b1805a4411237e0ad0f275cd5cde29b0bf",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },

@@ -54,13 +54,31 @@ it.each(['ja', 'en'] as const)('緊急ミュートは名前を固定し、状態
     expect(muteButton).not.toHaveClass('ring-2');
     fireEvent.click(muteButton);
     expect(mute).toHaveBeenCalledOnce();
-    const callback = vi.mocked(listen).mock.calls.find(([event]) => event === 'global-mute-changed')![1];
-    act(() => callback({ event: 'global-mute-changed', id: 1, payload: true }));
+    const subscribed = vi.mocked(listen).mock.calls.find(([event]) => event === 'global-mute-changed');
+    if (!subscribed) throw new Error('global-mute-changed が購読されていません');
+    act(() => subscribed[1]({ event: 'global-mute-changed', id: 1, payload: true }));
     expect(screen.getByRole('button', { name: message(locale, 'header.emergency') })).toBe(muteButton);
     expect(muteButton).toHaveAttribute('aria-pressed', 'true');
     expect(muteButton).toHaveClass('bg-destructive/10', 'ring-2', 'ring-destructive-text');
     expect(muteButton).not.toHaveClass('bg-background');
     expect(muteButton).toHaveAccessibleDescription(message(locale, 'header.muted'));
+    expect(muteButton.querySelector('[data-emergency-icon="microphone"]')).toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('音楽鑑賞の緊急ミュートはスピーカーの消音で、名前は同じ（%s）', locale => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><EmergencyMuteButton onOpenSettings={vi.fn()} /></LocaleProvider>);
+    const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
+    expect(muteButton).toHaveTextContent(message(locale, 'header.emergency'));
+    expect(muteButton.querySelector('[data-emergency-icon="speaker"]')).toBeInTheDocument();
+    expect(muteButton.querySelector('[data-emergency-icon="microphone"]')).not.toBeInTheDocument();
+});
+
+it('音楽鑑賞の停止中の札は停止中にする', () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    render(<DeviceStatus processReady isRunning={false} host="WASAPI" />);
+    expect(screen.getByRole('status')).toHaveTextContent('停止中');
+    expect(screen.getByRole('status')).not.toHaveTextContent('音声停止中');
 });
 
 it.each([

@@ -10,6 +10,7 @@ const {
   findEnRepeats,
   findRepeatViolations,
   findUseMismatches,
+  findDistinctCollisions,
   checkUiTerms,
 } = require('./check-ui-terms.cjs');
 
@@ -137,6 +138,17 @@ test('値の次の行にある読点だけは、現行の書き方として読�
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.messages.ja['voice.candidateValues'], '候補');
   assert.equal(parsed.messages.en['autoGain.title'], 'Level');
+});
+
+test('区画とカードの英語は、your を除いても同じ名前なら見つける', () => {
+  const parsed = parseMessages(messagesSource(
+    ['    "shell.sound": "音調整",', '    "settings.AudioSettingsModal.095": "声を整える",'],
+    ['    "shell.sound": "Shape your voice",', '    "settings.AudioSettingsModal.095": "Shape voice",'],
+  ));
+  const distinct = [{ locale: 'en', keys: ['shell.sound', 'settings.AudioSettingsModal.095'], reason: '試験' }];
+  assert.equal(findDistinctCollisions(parsed.messages, distinct).length, 1);
+  parsed.messages.en['shell.sound'] = 'Sound controls';
+  assert.deepEqual(findDistinctCollisions(parsed.messages, distinct), []);
 });
 
 test('3つの検査をまとめて、問題が無い定義は通す', () => {

@@ -128,6 +128,17 @@ describe('audioApi', () => {
         });
     });
 
+    describe('音声エンジンが居るときだけ届ける指定', () => {
+        it('指定したときだけ requireRunning を送り、指定が無ければ従来の引数のままにする', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+            await audioApi.setNoiseControlConfig({ active: true, mode: 'low', strength: 0.5, voiceGuard: true, requireRunning: true });
+            expect(mockedInvoke).toHaveBeenLastCalledWith('set_noise_control_config', { active: true, mode: 'low', strength: 0.5, voiceGuard: true, requireRunning: true });
+            await audioApi.setBuiltInEffects({ active: true, preset: 'warm', amount: 0.4, requireRunning: true });
+            expect(mockedInvoke).toHaveBeenLastCalledWith('set_built_in_effects', { active: true, preset: 'warm', amount: 0.4, requireRunning: true });
+            await audioApi.setBuiltInEffects({ active: true, preset: 'warm', amount: 0.4 });
+            expect(mockedInvoke).toHaveBeenLastCalledWith('set_built_in_effects', { active: true, preset: 'warm', amount: 0.4 });
+        });
+    });
     describe('voice check', () => {
         it('ボイスチェック関連コマンドを正しいパラメータで送信する', async () => {
             mockedInvoke.mockResolvedValue(undefined);

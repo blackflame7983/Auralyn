@@ -1,6 +1,6 @@
 import { type ComponentProps } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ModalLayer } from '../ModalLayer';
@@ -10,6 +10,13 @@ import { useUIState } from '@/hooks/useUIState';
 vi.mock('@/components/features/AudioSettings/AudioSettingsModal', () => ({
     AudioSettingsModal: ({ initialTab, initialSection, isAudioRunning, currentConfig, allowConnectionRetry }: { initialTab: string; initialSection?: string; isAudioRunning?: boolean; currentConfig: { host: string }; allowConnectionRetry?: boolean }) => <><h2>設定タブ：{initialTab}</h2><p>設定欄：{initialSection ?? 'none'} / {isAudioRunning ? 'running' : 'stopped'} / {currentConfig.host}</p><p>再試行：{String(allowConnectionRetry)}</p></>,
 }));
+// ModalLayer は各モーダルを初回表示で遅延importする。並列実行で読み込みが長引いても各試験の待ちに混ざらないよう、先に済ませる。
+beforeAll(async () => {
+    await Promise.all([
+        import('../../features/VoiceCheck/VoiceCheckModal'),
+        import('../../features/Templates/TemplateWizardModal'),
+    ]);
+}, 60_000);
 let streamRunning: boolean;
 let adviceKey: string;
 function AppModals() {
@@ -56,7 +63,7 @@ afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks
 it('テンプレートの内蔵ボイスチェーンの入口は音づくりタブを開く', async () => {
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: 'テンプレートを開く' }));
-    // 初回の遅延importを待ち、画面内の操作は表示完了後に確認する。
+    // 遅延importは beforeAll で済ませてある。表示を待ってから画面内の操作を確認する。
     await screen.findByRole('dialog', { name: 'VST構成テンプレート' }, { timeout: 3000 });
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     await screen.findByRole('heading', { name: '設定タブ：sound' });
