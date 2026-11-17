@@ -2,7 +2,7 @@
   "connection": {
     "sources": ["src/lib/audioChannelRouting.ts", "src/components/features/SetupWizard/", "src/components/features/AudioSettings/"],
     "tests": ["src/lib/__tests__/routing.property.test.ts", "src/components/features/SetupWizard/__tests__/", "src/components/features/AudioSettings/__tests__/"],
-    "browser": ["e2e/browser/asio-routing.spec.ts", "e2e/browser/process-input.spec.ts"]
+    "browser": ["e2e/browser/asio-routing.spec.ts", "e2e/browser/process-input.spec.ts", "e2e/browser/usage-switch.spec.ts"]
   },
   "home": {
     "sources": ["src/components/features/Home/", "src/components/features/LevelMeter/", "src/components/layout/"],
