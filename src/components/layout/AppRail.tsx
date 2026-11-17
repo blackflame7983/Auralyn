@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { HowToUseModal } from '../features/Guide/HowToUseModal';
-import { useEffect, useRef, useState } from 'react';
+import { useRailHelp } from '@/hooks/useRailHelp';
 import { DiscordIcon } from '../ui/DiscordIcon';
 import {
     MdCable,
@@ -60,29 +60,7 @@ export function AppRail({
 }: AppRailProps) {
     const t = useMessages();
     const pageLocked = usePageLock();
-    const [helpOpen, setHelpOpen] = useState(false);
-    // 開発プレビューの ?screen=help だけ、使い方を最初から開く。本番ビルドでは消える。
-    useEffect(() => {
-        if (!import.meta.env.DEV) return;
-        const params = new URLSearchParams(location.search);
-        if (params.get('mock') !== null && params.get('screen') === 'help') setHelpOpen(true);
-    }, []);
-    const [helpMenuOpen, setHelpMenuOpen] = useState(false);
-    const helpTrigger = useRef<HTMLButtonElement>(null);
-    const menuHelp = useRef(false);
-    useEffect(() => {
-        const open = (event: KeyboardEvent) => {
-            if (event.key !== 'F1' || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.defaultPrevented) return;
-            event.preventDefault();
-            if (event.repeat) return;
-            if (helpTrigger.current?.getAttribute('aria-expanded') === 'true') {
-                menuHelp.current = true;
-                setHelpMenuOpen(false);
-            } else setHelpOpen(true);
-        };
-        window.addEventListener('keydown', open);
-        return () => window.removeEventListener('keydown', open);
-    }, []);
+    const { helpOpen, setHelpOpen, helpMenuOpen, setHelpMenuOpen, helpMount, helpTrigger, menuHelp } = useRailHelp();
     const appUpdate = useAppUpdate();
     const go: Record<RailDestination, () => void> = { home: onHome, sound: onSound, vst: onVst, connect: onConnect, settings: onSettings };
 
@@ -182,7 +160,7 @@ export function AppRail({
                     </DropdownMenu>
                 </div>
             </TooltipProvider>
-            {helpOpen && <HowToUseModal onClose={() => setHelpOpen(false)}
+            {helpOpen && <HowToUseModal key={helpMount} onClose={() => setHelpOpen(false)}
                 onSetup={onOpenWizard} onTroubleshoot={onOpenTroubleshoot}
                 onOBS={onOpenOBSGuide} onDiscord={onOpenDiscordGuide} onShortcuts={onOpenShortcuts ?? onSettings} />}
             {appUpdate.showGuide && <UpdateGuide onClose={appUpdate.closeGuide} />}

@@ -4603,20 +4603,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/PluginBrowser/PluginBrowserModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "7baeb93c4a2dcda5484b702372c5bb80d207ae21cd647154b548795008d28b9e",
-      "count": 3,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/PluginBrowser/PluginBrowserModal.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "7baeb93c4a2dcda5484b702372c5bb80d207ae21cd647154b548795008d28b9e",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/PluginRack/__tests__/PluginCard.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "02a23f5d4e4ea66c4cc73e5342e7f92d0c6e9c2848c10ada89db6820bf4d9750",
@@ -5812,13 +5798,6 @@
       "hash": "8290c3bece3895ab55c3418a40d925dd38d7c9435f8de9f2669a500bc77f7d5a",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/layout/AppRail.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "a1d67f2e65cca7afe35265559c40158076fd01983f8fff6834b936fe1b325c33",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/layout/EmergencyMuteButton.tsx",

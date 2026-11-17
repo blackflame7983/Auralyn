@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import type { MessageKey } from '@/i18n/messages';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { requestHelpSection } from '@/lib/openHelp';
+import { pluginListStorage, storedKeyMatches, useClearCategoryOnTab, usePluginBrowserLists, useScanEmptyCatalog } from '@/hooks/usePluginBrowserSession';
 import { VstPlugin, type PluginScanRequest, type ScanFailure, type ScanFailureKind, type ScanStats, type SkippedScanRoot } from '../../../api/audio';
 import { ScanFolders } from './ScanFolders';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -36,11 +38,6 @@ interface PluginBrowserModalProps {
 
 type TabType = 'all' | 'favorites' | 'recent';
 
-const STORAGE_KEYS = {
-  favorites: 'vst_host_plugin_favorites',
-  recent: 'vst_host_plugin_recent',
-};
-
 const MAX_RECENT = 10;
 
 // 既存の日本語カテゴリIDは選択・集計用のまま保ち、表示だけを切り替える。
@@ -69,15 +66,6 @@ function formatScannedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-}
-
-function readStoredPaths(key: string): string[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
-    return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 function visibleIdentity(plugin: VstPlugin): string {
@@ -127,36 +115,6 @@ function classPrefixByPlugin(plugins: VstPlugin[]): Map<VstPlugin, string> {
     });
   }
   return labels;
-}
-
-/** path だけの旧キーは、そのパスの候補が1つなら新しいキーへ移す。複数や未スキャンは path のまま残す。 */
-function migrateStoredKeys(stored: string[], plugins: VstPlugin[]): { keys: string[]; changed: boolean } {
-  if (plugins.length === 0) return { keys: stored, changed: false };
-  const keys: string[] = [];
-  let changed = false;
-  for (const key of stored) {
-    if (key.includes('::')) {
-      if (!keys.includes(key)) keys.push(key);
-      continue;
-    }
-    const matches = plugins.filter(plugin => plugin.path === key);
-    if (matches.length === 1) {
-      const migrated = pluginKey(matches[0]);
-      if (migrated !== key) changed = true;
-      if (!keys.includes(migrated)) keys.push(migrated);
-    } else if (!keys.includes(key)) {
-      keys.push(key);
-    }
-  }
-  if (keys.length !== stored.length) changed = true;
-  return { keys, changed };
-}
-
-/** 新しいキーは完全一致。path だけの旧キーは、候補が複数のときだけそのパスのクラスをすべて出す。 */
-function storedKeyMatches(plugin: VstPlugin, stored: string, plugins: VstPlugin[]): boolean {
-  if (stored === pluginKey(plugin)) return true;
-  if (stored.includes('::') || plugin.path !== stored) return false;
-  return plugins.filter(candidate => candidate.path === plugin.path).length !== 1;
 }
 
 // Map VST3 category strings to user-friendly Japanese labels
@@ -244,45 +202,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const searchRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [recentPaths, setRecentPaths] = useState<string[]>([]);
   const [includeFailed, setIncludeFailed] = useState(false);
-
-  // 候補が見えた時点で、path だけの旧キーを1件なら新しいキーへ移す。
-  // お気に入りと履歴の両方が書けたときだけ移行完了にする。片方だけ残さない。
-  useEffect(() => {
-    const favoriteStored = readStoredPaths(STORAGE_KEYS.favorites);
-    const recentStored = readStoredPaths(STORAGE_KEYS.recent);
-    const nextFavorites = migrateStoredKeys(favoriteStored, plugins);
-    const nextRecent = migrateStoredKeys(recentStored, plugins);
-    if (!nextFavorites.changed && !nextRecent.changed) {
-      setFavorites(nextFavorites.keys);
-      setRecentPaths(nextRecent.keys);
-      return;
-    }
-    const previousFavorites = localStorage.getItem(STORAGE_KEYS.favorites);
-    const previousRecent = localStorage.getItem(STORAGE_KEYS.recent);
-    const restoreStored = (key: string, previous: string | null) => {
-      try {
-        if (previous === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, previous);
-      } catch {
-        // 戻し書きも失敗したときは旧キーを残し、次の表示で再試行する。
-      }
-    };
-    try {
-      if (nextFavorites.changed) localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(nextFavorites.keys));
-      if (nextRecent.changed) localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRecent.keys));
-    } catch {
-      restoreStored(STORAGE_KEYS.favorites, previousFavorites);
-      restoreStored(STORAGE_KEYS.recent, previousRecent);
-      setFavorites(favoriteStored);
-      setRecentPaths(recentStored);
-      return;
-    }
-    setFavorites(nextFavorites.keys);
-    setRecentPaths(nextRecent.keys);
-  }, [plugins]);
+  const { favorites, setFavorites, recentPaths, setRecentPaths } = usePluginBrowserLists(plugins);
+  useScanEmptyCatalog(isOpen, plugins.length, () => onScan());
+  const clearCategory = useCallback(() => setSelectedCategory(null), []);
+  useClearCategoryOnTab(activeTab, clearCategory);
 
   // Build category list from plugins
   const categories = useMemo(() => {
@@ -299,13 +223,13 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   // Save favorites to localStorage
   const saveFavorites = (newFavorites: string[]) => {
     setFavorites(newFavorites);
-    localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(newFavorites));
+    localStorage.setItem(pluginListStorage.favorites, JSON.stringify(newFavorites));
   };
 
   // Save recent to localStorage
   const saveRecent = (newRecent: string[]) => {
     setRecentPaths(newRecent);
-    localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(newRecent));
+    localStorage.setItem(pluginListStorage.recent, JSON.stringify(newRecent));
   };
 
   const toggleFavorite = (plugin: VstPlugin, e: React.MouseEvent) => {
@@ -329,19 +253,6 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
       handlePluginSelect(plugin);
     }
   };
-
-  useEffect(() => {
-    if (isOpen && plugins.length === 0) {
-      onScan();
-    }
-  }, [isOpen]);
-
-  // Reset category filter when switching tabs
-  useEffect(() => {
-    if (activeTab !== 'all') {
-      setSelectedCategory(null);
-    }
-  }, [activeTab]);
 
   // Filter plugins based on search, tab, and category
   const getFilteredPlugins = () => {
@@ -531,6 +442,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.retryScan')}</Button>
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
+                    <button type="button" className="mt-2 text-primary underline" onClick={() => requestHelpSection('vst')}>{t('help.section.vst')}</button>
                     <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.fullScan')}</Button>
                   </>}
                 </>}

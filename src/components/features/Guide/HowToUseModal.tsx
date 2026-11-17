@@ -8,14 +8,14 @@ import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useShortcutBindings } from '@/hooks/useShortcutBindings';
+import { helpSectionKey } from '@/lib/openHelp';
 import { homeGuideFor, homeGuideGroups, type HomeGuideGroup } from './homeGuide';
 import { shortcutActions } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
-const sections = ['home', 'setup', 'trouble', 'terms', 'keys'] as const;
+const sections = ['home', 'setup', 'vst', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
-const storageKey = 'auralyn_help_section';
-const sectionDocs = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
+const sectionDocs = { home: 'help.home', setup: 'help.setup', vst: 'help.vst', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
 
 interface Props {
     onClose: () => void;
@@ -34,7 +34,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     const heading = useId();
     const [section, setSection] = useState<Section>(() => {
         try {
-            const saved = localStorage.getItem(storageKey);
+            const saved = localStorage.getItem(helpSectionKey);
             return sections.find(value => value === saved) ?? 'home';
         } catch { return 'home'; }
     });
@@ -43,7 +43,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     const select = (next: Section) => {
         setSection(next);
         if (body.current) body.current.scrollTop = 0;
-        try { localStorage.setItem(storageKey, next); } catch { /* 保存できなくても読む操作は続けられる。 */ }
+        try { localStorage.setItem(helpSectionKey, next); } catch { /* 保存できなくても読む操作は続けられる。 */ }
     };
     const go = (open: () => void) => { onClose(); open(); };
     const labels = {
@@ -97,6 +97,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 <p>{t('help.home.other', labels)}</p>
                             </>}
                             {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
+                            {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>
                                 <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
