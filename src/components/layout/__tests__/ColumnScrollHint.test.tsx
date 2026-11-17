@@ -196,7 +196,7 @@ it('拡大表示では、枠の幅にも倍率を掛けて見積もり、送る�
     vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
         const style = computed(element, pseudo);
         return element === document.documentElement
-            ? new Proxy(style, { get: (target, key) => (key === 'zoom' ? '1.5' : Reflect.get(target, key, target)) })
+            ? new Proxy(style, { get: (target, key) => (key === 'zoom' ? '1.5' : Reflect.get(target, key, target) as unknown) })
             : style;
     });
     try {
@@ -204,7 +204,7 @@ it('拡大表示では、枠の幅にも倍率を掛けて見積もり、送る�
         // フェードは 116 から。下端 112 + 枠 6 = 118 なので画面で 2、CSS px で 4/3 送る。
         focusByKeyboard(button);
         expect(scrollBy).toHaveBeenCalledTimes(1);
-        expect(scrollBy.mock.calls[0][0].top).toBeCloseTo(2 / 1.5);
+        expect(scrollBy).toHaveBeenCalledWith({ top: 2 / 1.5, behavior: 'instant' });
     } finally {
         vi.restoreAllMocks();
         scroller.remove();
