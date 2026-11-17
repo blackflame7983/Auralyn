@@ -202,6 +202,22 @@ it.each(['ja', 'en'] as const)('送る音の線のあいだは適正の範囲で
     expect(screen.queryByText(message(locale, 'home.levelOk'))).not.toBeInTheDocument();
 });
 
+it.each(['stopped', 'waiting', 'stale'] as const)('音が流れていないとき、送る音の適正範囲の塗りは出さず線は残す (%s)', state => {
+    // #702: 停止・受信待ち・更新停止は信号に見えないよう、塗りだけを消す。線とバーの寸法は残す。
+    meter.output = state === 'stopped' ? 'live' : state;
+    render(<LiveStrip model={fixture()} running={state !== 'stopped'} />);
+    const send = screen.getByRole('meter', { name: '送る音' });
+    expect(send.querySelector('[data-meter-range]')).toBeNull();
+    expect([...send.querySelectorAll('[data-meter-guide]')].map(node => (node as HTMLElement).style.left)).toEqual(['50%', '90%']);
+    expect(send.querySelector('[data-meter-guide]')?.parentElement).toHaveAttribute('title', '線のあいだが適正の範囲です');
+});
+
+it('無音は値が届いているので、適正範囲の塗りを残す', () => {
+    meter.output = 'silent';
+    render(<LiveStrip model={fixture()} running />);
+    expect(screen.getByRole('meter', { name: '送る音' }).querySelector('[data-meter-range]')).not.toBeNull();
+});
+
 it.each(['ja', 'en'] as const)('小さめと大きすぎは、いまの状態にも注意の色で出す (%s)', locale => {
     meter.output = 'live';
     meter.levels = [0.01, 0.01];

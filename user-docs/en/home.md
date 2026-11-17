@@ -29,7 +29,7 @@ Check “Running” or “Audio stopped”, the elapsed time, and the audio path
 
 On the right side of the screen, “Microphone” is the bar for incoming sound. “Output” is the peak number.
 
-The level sent onward is the “Level being sent” bar on Current status.
+The level sent onward is the “Level being sent” bar on Current status. While stopped, waiting, or no longer updating, the in-range tint stays off.
 
 The bar follows the current level, and the output number on the right side of the screen holds a recent peak.
 
@@ -39,7 +39,7 @@ Incoming sound is shown on the input bar at the right, at the current level and 
 
 The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. While sound is coming in, the word is “Receiving”.
 
-The scale runs in even steps from −60 dBFS to 0 dBFS. The input in the right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.”
+The scale runs in even steps from −60 dBFS to 0 dBFS. The input in the right column, the bar in Current status, and the voice flow use the same scale. “Level being sent” has thin marks at the boundary of “A bit low” and of “Too loud”. The area between them is tinted as the in-range span only while a level is coming in. While stopped, waiting, or no longer updating, that tint stays off and the lines remain. The bar says “The area between the lines is in range.”
 
 While waiting, silent, or stopped, the incoming bar and the bar in Current status keep their size and position. Waiting and silence are written inside those bars. While stopped, the bars stay empty, and the output number in the right column becomes a dash. Stopped is still announced. The value is not delayed to look smoother.
 
@@ -113,13 +113,13 @@ While locked, it shows “Locked”. Stop and “Emergency mute” stay availabl
 
 On the right side of the screen, “Playback source” is the bar for incoming sound. “Output” is the peak number.
 
-The level you hear is the “Output level” bar on Current status.
+The level you hear is the “Output level” bar on Current status. While stopped, waiting, or no longer updating, the in-range tint stays off.
 
 The bar follows the current level, and the output number on the right side of the screen holds a recent peak.
 
 Incoming sound is shown on the input bar at the right, at the current level and without delay. “Audio flow” compares the sound before and after processing.
 
-The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”, and the area between them is tinted as the in-range span. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
+The output may also say “A bit low”, “In range”, or “Too loud”. The right column shows one of those three. Current status hides “In range”, and shows “A bit low” or “Too loud” in the warning color. “Output level” has thin marks at the boundary of “A bit low” and of “Too loud”. The area between them is tinted as the in-range span only while a level is coming in. While stopped, waiting, or no longer updating, that tint stays off and the lines remain. The bar says “The area between the lines is in range.” While sound is coming in, the word is “Receiving”.
 
 ### Sound flow {#music-flow}
 

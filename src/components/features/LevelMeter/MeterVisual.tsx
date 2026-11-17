@@ -70,13 +70,14 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
         <div ref={scaleRef} role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
             aria-valuetext={accessibleText} title={reading.state === 'waiting' || reading.state === 'stale' ? `${accessibleText} — ${t('meter.waitingHelp')}` : accessibleText}
-            className={`meter-visual relative flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
+            className={`meter-visual relative flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }} data-meter-flow={reading.state}>
             {bars.map((value, i) => {
                 // 見た目の長さだけを dB 等間隔にする。色は振幅の境目のまま（#570）。
                 const position = current ? meterPosition(value) : 0;
                 const peak = current ? meterPosition(peaks[i]) : 0;
                 const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : fill === 'aurora' ? 'meter-fill-aurora' : 'bg-success';
-                const range = guides && guides.length >= 2 ? rangeBand(guides, orientation) : null;
+                // 停止・受信待ち・更新停止は塗りを出さない。線は残し、バーの寸法は変えない（#702、#632）。
+                const range = guides && guides.length >= 2 && (reading.state === 'live' || reading.state === 'silent') ? rangeBand(guides, orientation) : null;
                 return <div key={i} title={guideTitle ?? (orientation === 'vertical' ? t(i === 0 ? 'meter.left' : 'meter.right') : undefined)}
                     className={`relative overflow-hidden rounded ${empty ? 'bg-muted/40 ring-border/40' : 'bg-muted ring-border'} ring-1 ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
                     {range}
