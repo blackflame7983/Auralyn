@@ -190,9 +190,13 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     const vstPage = page.locator('[data-vst-page]');
     await expect(vstPage).toBeVisible();
     await expect(page.locator('#home-vst-open')).toHaveCount(0);
-    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(2);
-    const meter = page.getByRole('meter', { name: '出力', exact: true });
+    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
+    await expect(vstPage.locator('.page-heading').getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(0);
+    await expect(page.locator('#add-effect-btn')).toBeFocused();
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    const meter = column.locator('p', { hasText: /出力のピーク/ });
     await expect(meter).toBeVisible();
+    await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     await page.locator('.app-shell').evaluate(async element => {
         await new Promise(requestAnimationFrame);
@@ -202,15 +206,15 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     });
     const pageBox = await vstPage.boundingBox();
     const meterEdge = await meter.boundingBox();
-    const column = await page.getByRole('complementary', { name: '本番中の操作', exact: true }).boundingBox();
+    const columnBox = await column.boundingBox();
     const meterBox = await meter.boundingBox();
     expect(pageBox).not.toBeNull();
     expect(meterEdge).not.toBeNull();
-    expect(column).not.toBeNull();
+    expect(columnBox).not.toBeNull();
     expect(meterBox).not.toBeNull();
-    if (!pageBox || !meterEdge || !column || !meterBox) return;
+    if (!pageBox || !meterEdge || !columnBox || !meterBox) return;
     expect(pageBox.x + pageBox.width).toBeLessThanOrEqual(meterEdge.x + 1);
-    expect(meterBox.x).toBeGreaterThanOrEqual(column.x - 1);
-    expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(column.x + column.width + 1);
+    expect(meterBox.x).toBeGreaterThanOrEqual(columnBox.x - 1);
+    expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
     await page.screenshot({ path: testInfo.outputPath('healthy-portrait-panel.png') });
 });

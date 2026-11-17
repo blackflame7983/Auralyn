@@ -1,5 +1,6 @@
-import { cloneElement, useCallback, useRef, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, useCallback, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useDialogScrollHint } from '@/hooks/useDialogScrollHint';
 
 // 画面の置き換えでも、消えたボタンから元の入口まで復帰先をたどれるようにする。
 const focusChains = new WeakMap<Element, readonly HTMLElement[]>();
@@ -29,7 +30,10 @@ interface ModalProps {
 // 各画面は開いている間だけマウントする。
 export function Modal({ title, titleInContent = false, descriptionId, role = 'dialog', onClose, children, dismissible = true, initialFocusRef, onEscapeKeyDown }: ModalProps) {
     const returnFocus = useRef(captureFocusChain());
+    const [dialogNode, setDialogNode] = useState<HTMLElement | null>(null);
+    useDialogScrollHint(dialogNode);
     const contentRef = useCallback((element: HTMLDivElement | null) => {
+        setDialogNode(element);
         if (element) focusChains.set(element, returnFocus.current);
         // 遅延読み込みの画面が来るまでの、フォーカスがbodyへ移る隙間も引き継ぐ。
         else closingFocusChain = returnFocus.current;

@@ -22,6 +22,10 @@ declare global {
         __e2eStarts?: StartRequest[];
         __e2eStartFailure?: boolean;
         __e2eArmed?: boolean;
+        __e2eOutputGainWrites?: number[];
+        __e2eSetOutputGain?: (value: number) => void;
+        __e2eSetOutputMuted?: (muted: boolean) => void;
+        __layoutMeterState?: { value: number | null };
         /** 配信ラックへ送った要求の記録（mixing.spec の模擬）。 */
         __postRequests?: { action: string; ids?: string[] }[];
     }
