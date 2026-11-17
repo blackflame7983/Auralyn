@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 description: "Find checks and a next action for each symptom."
 order: 7
-uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Bypass VST", "Add VST", "Refresh", "Find VSTs", "Rescan all", "Try again", "Folders to search"]
+uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check the connection", "Connection", "Connection and dropout settings", "Bypass VST", "Add VST", "Refresh", "Find VSTs", "Rescan all", "Try again", "Folders to search", "Stop Auralyn’s audio", "Quit Auralyn"]
 ---
 
 ## No sound {#no-sound}
@@ -36,6 +36,10 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check 
 3. If it persists: review the original error detail and the VST installation location. While the saved chain is protected, current changes are not saved automatically.
 
 Use test tones only when they cannot reach streams, recordings or calls. A diagnosis without problems applies only to the items it could check.
+
+## Audio keeps running after you close the window {#still-running}
+
+Closing the window hides Auralyn in the tray, and the audio keeps running. To stop it, open the status on the top band and choose “Stop Auralyn’s audio”. To quit the app, choose “Quit Auralyn”. To silence the sound while Auralyn keeps running, use “Emergency mute”.
 
 ## Related pages {#related}
 

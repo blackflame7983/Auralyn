@@ -82,7 +82,7 @@ test.describe('設定済みの停止中', () => {
     test('別経路で音声が復旧したら開始失敗の警告を解除する', async ({ page }, info) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(() => { (window as any).__e2eStartFailure = true; });
+        await page.evaluate(() => { (window as Window & { __e2eStartFailure?: boolean }).__e2eStartFailure = true; });
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声を開始できませんでした' });
         await expect(error).toBeVisible();
@@ -92,8 +92,10 @@ test.describe('設定済みの停止中', () => {
         await page.screenshot({ path: info.outputPath('error-details.png') });
         // ホームや設定のcallbackを通さず、別の開始経路から届く通知を再現する。
         await page.evaluate(async () => {
-            (window as any).__e2eStartFailure = false;
-            await (window as any).__TAURI_INTERNALS__.invoke('start_audio');
+            (window as Window & { __e2eStartFailure?: boolean }).__e2eStartFailure = false;
+            const invoke = window.__TAURI_INTERNALS__?.invoke;
+            if (!invoke) throw new Error('invoke がありません');
+            await invoke('start_audio');
         });
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
         await expect(error).toHaveCount(0);
@@ -101,7 +103,7 @@ test.describe('設定済みの停止中', () => {
     test('音声開始後の保存失敗を、開始自体の失敗と区別する', async ({ page }) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(() => { (window as any).__e2eSaveFailure = true; });
+        await page.evaluate(() => { (window as Window & { __e2eSaveFailure?: boolean }).__e2eSaveFailure = true; });
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声は開始しましたが' });
         await expect(error).toBeVisible();
@@ -109,8 +111,8 @@ test.describe('設定済みの停止中', () => {
         await expect(page.getByText('音声を開始できませんでした。', { exact: false })).toHaveCount(0);
         await error.getByRole('button', { name: '入出力を変更' }).click();
         await expect(page.locator('[data-settings-page]')).toBeVisible();
-        expect(await page.evaluate(() => (window as any).__e2eStarts.length)).toBe(1);
-        await page.evaluate(() => { (window as any).__e2eSaveFailure = false; });
+        expect(await page.evaluate(() => (window as Window & { __e2eStarts?: unknown[] }).__e2eStarts?.length)).toBe(1);
+        await page.evaluate(() => { (window as Window & { __e2eSaveFailure?: boolean }).__e2eSaveFailure = false; });
         await page.getByRole('button', { name: '接続を保存して再起動', exact: true }).click();
         await expect(page.locator('[data-settings-page]')).toHaveCount(0);
         await expect(error).toHaveCount(0);
@@ -122,13 +124,13 @@ test.describe('設定済みの停止中', () => {
         await expect(start).toHaveCount(1);
         await expect(start).toBeInViewport();
         await expect(page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
-        await expect(page.getByRole('region', { name: '状態の帯', exact: true }).getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(page.getByRole('region', { name: '状態の帯', exact: true }).locator('[data-status-menu]').getByText('音声停止中', { exact: true })).toHaveCount(1);
         // 段階4で、停止中の入力状態をカードに同じ言葉で出す。上の帯の札は1つのまま。
         await expect(page.getByRole('region', { name: 'いまの状態', exact: true }).locator('[data-now-incoming="stopped"]')).toHaveText('音声停止中');
         await page.screenshot({ path: info.outputPath('stopped.png') });
         await start.click();
         await expect(start).toHaveCount(0);
-        await expect.poll(() => page.evaluate(() => (window as any).__e2eStarts)).toEqual([
+        await expect.poll(() => page.evaluate(() => (window as Window & { __e2eStarts?: unknown[] }).__e2eStarts)).toEqual([
             expect.objectContaining({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones' }),
         ]);
         await expect(page.getByRole('button', { name: '送り先を選ぶ' })).toBeVisible();
@@ -136,7 +138,7 @@ test.describe('設定済みの停止中', () => {
     test('開始できないときは原因と設定への操作を示す', async ({ page }, info) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(() => { (window as any).__e2eStartFailure = true; });
+        await page.evaluate(() => { (window as Window & { __e2eStartFailure?: boolean }).__e2eStartFailure = true; });
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声を開始できませんでした' });
         await expect(error).toBeInViewport();

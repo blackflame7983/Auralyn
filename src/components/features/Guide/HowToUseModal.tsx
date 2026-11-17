@@ -105,6 +105,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
                                 <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p><UserDocLink name="troubleshooting.dropouts" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
+                                <h3 className="font-semibold">{t('help.trouble.keepsRunning')}</h3><p>{t('help.trouble.keepsRunningBody')}</p><UserDocLink name="troubleshooting.still-running" compact />
                             </>}
                             {section === 'terms' && glossary[locale].map(term => <div key={term.anchor}><h3 className="font-semibold">{term.title}</h3><p className="mt-1 text-muted-foreground">{term.summary}</p><UserDocLink name={glossaryDocName(term.anchor)} compact /></div>)}
                             {section === 'keys' && <>

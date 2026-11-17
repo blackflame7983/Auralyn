@@ -16,9 +16,9 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toBeVisible();
         const strip = page.getByRole('region', { name: 'いまの状態', exact: true });
         const band = page.getByRole('region', { name: '状態の帯', exact: true });
-        await expect(band.getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(band.locator('[data-status-menu]').getByText('音声停止中', { exact: true })).toHaveCount(1);
         // #602: 「音声停止中」の見た目は、上の帯といまの状態の入力の状態語だけ。メーターは空で、読み上げには残す。
-        await expect(page.getByText('音声停止中', { exact: true })).toHaveCount(2);
+        await expect(page.getByText('音声停止中', { exact: true }).and(page.locator(':not([role="status"])'))).toHaveCount(2);
         await expect(strip.locator('[data-now-incoming="stopped"]')).toHaveText('音声停止中');
         const send = strip.getByRole('meter', { name: '送る音', exact: true });
         await expect(send).toHaveAttribute('aria-valuetext', /音声停止中/);

@@ -1,14 +1,15 @@
 import { Button } from '@/components/ui/button';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import React, { useState, useRef, type ReactNode } from 'react';
 import { MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
-import { type EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../api/audio';
+import { type EngineRuntimeStats } from '../../api/audio';
 import { SafetyOutput } from './SafetyLevels';
-import { invalidateRuntimeStats, useRuntimeStats, useRuntimeStatsUnavailable } from '@/hooks/useRuntimeStats';
+import { useRuntimeStatsUnavailable } from '@/hooks/useRuntimeStats';
+import { useMasterHealth } from '@/hooks/useMasterHealth';
 import { recentAnomalyWarning } from './processingHealth';
 import { AudioQueueDetails } from './AudioQueueDetails';
 import { LatencyDetails } from './LatencyDetails';
@@ -38,82 +39,16 @@ interface MasterBarProps {
 export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning, compare, input, lock, outputName, outputMuted = false, onCheckOutput }) => {
     const t = useMessages();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
-    const stats = useRuntimeStats();
+    const { stats, health, hasRecentGlitch, processingStalled } = useMasterHealth(isRunning, onStatsChange);
     const statsUnavailable = useRuntimeStatsUnavailable();
-    const [eventHealth, setEventHealth] = useState<ProcessingHealthSnapshot | null>(null);
-    const eventHealthTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
-    const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const previousGlitchCount = useRef<number | null>(null);
-    const previousRunning = useRef(isRunning);
-    const clearEventHealth = useCallback(() => {
-        if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
-        eventHealthTimer.current = null;
-        setEventHealth(null);
-    }, []);
-    useEffect(() => {
-        if (previousRunning.current !== isRunning) invalidateRuntimeStats();
-        previousRunning.current = isRunning;
-        previousGlitchCount.current = null;
-        if (glitchTimer.current) clearTimeout(glitchTimer.current);
-        setHasRecentGlitch(false);
-    }, [isRunning]);
-
-    useEffect(() => {
-        const unlisten = listen('audio-started', () => {
-            previousGlitchCount.current = null;
-            if (glitchTimer.current) clearTimeout(glitchTimer.current);
-            setHasRecentGlitch(false);
-            clearEventHealth();
-        });
-        return () => { void unlisten.then(stop => stop()).catch(() => {}); };
-    }, [clearEventHealth]);
-
-    useEffect(() => () => { if (glitchTimer.current) clearTimeout(glitchTimer.current); }, []);
-
-    useEffect(() => {
-        let disposed = false;
-        const clear = () => { if (!disposed) clearEventHealth(); };
-        // 統計が来ない間も、失効と同じ 2.5 秒でイベント由来の停止を残さない。
-        const unlistenHealth = listen<ProcessingHealthSnapshot>('audio-processing-health', event => {
-            if (disposed) return;
-            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
-            setEventHealth(event.payload);
-            eventHealthTimer.current = setTimeout(clear, 2500);
-        });
-        const unlistenLifecycle = Promise.all(
-            ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, clear)),
-        );
-        return () => {
-            disposed = true;
-            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
-            void unlistenHealth.then(stop => stop()).catch(() => {});
-            void unlistenLifecycle.then(stops => stops.forEach(stop => stop())).catch(() => {});
-        };
-    }, [clearEventHealth]);
-    useEffect(() => { clearEventHealth(); }, [stats, clearEventHealth]);
-    useEffect(() => { if (!isRunning) clearEventHealth(); }, [isRunning, clearEventHealth]);
-    const health = eventHealth ?? stats?.processingHealth ?? null;
-    const processingStalled = isRunning && health?.state === 'stalled';
-
-    useEffect(() => {
-        onStatsChange?.(stats);
-        if (!stats) { previousGlitchCount.current = null; return; }
-        const previous = previousGlitchCount.current;
-        if (previous !== null && stats.glitchCount > previous) {
-            setHasRecentGlitch(true);
-            if (glitchTimer.current) clearTimeout(glitchTimer.current);
-            glitchTimer.current = setTimeout(() => setHasRecentGlitch(false), 10000);
-        }
-        previousGlitchCount.current = stats.glitchCount;
-    }, [stats, onStatsChange]);
 
     const isFxActive = !!stats && !stats.globalBypass && stats.enabledPluginCount > 0;
     const isNoiseConfigured = !!stats?.noiseReductionEnabled;
     const isCleanActive = isNoiseConfigured && !isFxActive;
     const broadcastFailed = isRunning && stats?.latencyMetadata?.broadcastState === 'failed';
-    const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
+    const [purpose] = useDisplayPurpose();
+    const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t(purpose === 'music' ? 'shell.stoppedMusic' : 'shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">

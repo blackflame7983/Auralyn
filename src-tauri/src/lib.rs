@@ -68,6 +68,12 @@ async fn set_autostart_enabled(
     .map_err(|e| e.to_string())
 }
 
+/// 上の帯のメニューの「Auralyn を終了」とトレイの「終了」の共通の終了。終了コードは呼び出し側から受け取らない。
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
     commands::run_blocking(move || open::that(&url).map_err(|e| e.to_string())).await
@@ -347,10 +353,7 @@ pub fn run() {
                             }
                         }
                     }
-                    "quit" => {
-                        // Actually quit the application
-                        app.exit(0);
-                    }
+                    "quit" => quit_app(app.clone()),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -495,6 +498,7 @@ pub fn run() {
             commands::audio::set_loudness_measurement,
             commands::audio::set_global_bypass,
             open_url,
+            quit_app,
             connect_obs,
             disconnect_obs,
             obs_preview_setup,
@@ -530,4 +534,14 @@ pub fn run() {
         ])
         .run(context)
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod capability_tests {
+    #[test]
+    fn frontend_cannot_exit_with_arbitrary_code() {
+        let capability = include_str!("../capabilities/default.json");
+        assert!(!capability.contains("process:allow-exit"));
+        assert!(capability.contains("process:allow-restart"));
+    }
 }
