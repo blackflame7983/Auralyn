@@ -139,7 +139,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             {/* Startup Settings */}
             <section className="flex items-center justify-between gap-3 py-2">
               <div>
-                <div className="flex items-center gap-1"><h3 className="text-foreground text-ui-control font-semibold">{t('settings.AudioSettingsModal.142')}</h3><InfoPopover label={t('settings.AudioSettingsModal.142')}>{t('settings.AudioSettingsModal.143')}</InfoPopover></div>
+                <div className="flex items-center gap-1"><h4 className="text-foreground text-ui-control font-semibold">{t('settings.AudioSettingsModal.142')}</h4><InfoPopover label={t('settings.AudioSettingsModal.142')}>{t('settings.AudioSettingsModal.143')}</InfoPopover></div>
                 <div className="text-ui-support text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.system.autostartAudio')}</div>
               </div>
               <div className="flex items-center">
@@ -176,14 +176,14 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <section aria-label={t('settings.system.maintenance')} className="space-y-4 border-t border-border pt-5">
               <h3 className="text-ui-heading font-semibold">{t('settings.system.maintenance')}</h3>
             {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
-              <h3 className="text-ui-control font-semibold">{t('settings.system.setup')}</h3>
+              <h4 className="text-ui-control font-semibold">{t('settings.system.setup')}</h4>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
               <Button type="button" disabled={loading} onClick={onOpenWizard} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
             </section>}
 
 
             <section className="rounded-card border border-border p-4 space-y-2">
-              <div className="flex items-center gap-1"><h3 className="text-ui-control font-semibold">{t('structure.restart')}</h3><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
+              <div className="flex items-center gap-1"><h4 className="text-ui-control font-semibold">{t('structure.restart')}</h4><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.restartWarning')}</p>
                 <Button variant="outline"
                   onClick={handleRestart}
@@ -196,7 +196,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               const open = event.currentTarget.open;
               setOpenSections(prev => ({ ...prev, optimization: open }));
             }} className="rounded-card border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline text-ui-control font-semibold">{t('structure.optimization')}</h3></summary>
+              <summary className="cursor-pointer"><h4 className="inline text-ui-control font-semibold">{t('structure.optimization')}</h4></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
               <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.166')}</p>
@@ -353,9 +353,9 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             </Modal>}
             {/* Plugin Management */}
             <section className="rounded-card border border-border p-4 space-y-4">
-              <h3 className="text-foreground flex items-center gap-2 text-ui-control font-semibold">
+              <h4 className="text-foreground flex items-center gap-2 text-ui-control font-semibold">
                 <MdExtension className="w-4 h-4 text-primary" />
-                {t('settings.AudioSettingsModal.179')}</h3>
+                {t('settings.AudioSettingsModal.179')}</h4>
               <div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -394,15 +394,15 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               const open = event.currentTarget.open;
               setOpenSections(prev => ({ ...prev, migration: open }));
             }} className="rounded-card border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline text-ui-control font-semibold">{t('structure.migration')}</h3></summary>
+              <summary className="cursor-pointer"><h4 className="inline text-ui-control font-semibold">{t('structure.migration')}</h4></summary>
               <MigrationPanel />
             </details>
 
             {/* Factory Reset */}
             <section className="rounded-card border border-border p-4 space-y-4">
-              <h3 className="text-foreground flex items-center gap-2 text-ui-control font-semibold">
+              <h4 className="text-foreground flex items-center gap-2 text-ui-control font-semibold">
                 <MdRefresh className="w-4 h-4 text-destructive-text" />
-                {t('settings.AudioSettingsModal.188')}</h3>
+                {t('settings.AudioSettingsModal.188')}</h4>
               <div>
                 <div className="flex items-center justify-between">
                   <div>

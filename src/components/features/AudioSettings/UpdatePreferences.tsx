@@ -11,7 +11,7 @@ export function UpdatePreferences() {
     const standalone = useStandaloneDistribution();
     const downloadDisabled = !standalone || !policy.automatic;
     return <section className="space-y-3 rounded-card border border-border p-4">
-        <div className="flex items-center gap-1"><h3 className="text-ui-control font-semibold">{t('settings.UpdatePreferences.434')}</h3>
+        <div className="flex items-center gap-1"><h4 className="text-ui-control font-semibold">{t('settings.UpdatePreferences.434')}</h4>
             <InfoPopover label={t('settings.UpdatePreferences.434')}>{t('settings.UpdatePreferences.435')}</InfoPopover>
         </div>
         <label className="flex gap-2 text-ui-control"><Checkbox disabled={!standalone} checked={policy.automatic} onChange={e => { const next = { ...policy, automatic: e.target.checked }; saveUpdatePolicy(next); setPolicy(next); }} />{t('settings.UpdatePreferences.436')}</label>
