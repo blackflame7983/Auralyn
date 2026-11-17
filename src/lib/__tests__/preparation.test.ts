@@ -1,5 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
-import { buildPreparationObservation, confirmationState, emptyObservation, expireConfirmations, nextPreparationStage, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
+import { buildPreparationObservation, confirmationState, editPreparationReceiver, emptyObservation, expireConfirmations, nextPreparationStage, normalizeReceiver, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
 
 import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
 const observe = (stats = runtime(), ctx = context, live = liveStatus) => buildPreparationObservation(audioState, stats, live, ctx);
@@ -18,6 +18,32 @@ it('旧local用途を試聴へ読み替え、用途が一致しない送り先�
     savePreparationContext(context);
     localStorage.setItem('vst_host_setup_goal', 'local');
     expect(readPreparationContext()).toMatchObject({ usage: 'listening', receiver: '' });
+});
+it('診断からの入力名は200字まで保存し、準備欄が受け取ったときは二重に書かない', () => {
+    savePreparationContext(context);
+    editPreparationReceiver('あ'.repeat(250));
+    expect(readPreparationContext().receiver).toBe('あ'.repeat(200));
+    const seen: string[] = [];
+    const listener = (event: Event) => {
+        event.preventDefault();
+        seen.push((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener('preparation-receiver-edited', listener);
+    try {
+        editPreparationReceiver('Mic');
+        expect(seen).toEqual(['Mic']);
+        expect(readPreparationContext().receiver).toBe('あ'.repeat(200));
+    } finally {
+        window.removeEventListener('preparation-receiver-edited', listener);
+    }
+});
+it('受け側の入力名は前後の空白を除き、空白だけなら空にして、200字までにする', () => {
+    expect(normalizeReceiver('  Mic  ')).toBe('Mic');
+    expect(normalizeReceiver(' 	 ')).toBe('');
+    expect(normalizeReceiver('あ'.repeat(250))).toBe('あ'.repeat(200));
+    savePreparationContext(context);
+    editPreparationReceiver('  Studio ');
+    expect(readPreparationContext().receiver).toBe('Studio');
 });
 it('用途を未選択へ戻したときは共用キーも消し、再起動で以前の用途を復活させない', () => {
     savePreparationContext({ ...context, usage: 'obs' });

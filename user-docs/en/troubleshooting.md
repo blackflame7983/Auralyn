@@ -14,7 +14,7 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Check 
 ## Others cannot hear you {#not-received}
 
 1. Check first: the receiving app's input must connect to Auralyn's output device.
-2. One action in Auralyn: open “Check the connection” and check the chosen destination and output device.
+2. One action in Auralyn: open “Check the connection” and check the chosen destination and output device. The name of the input or source selected in the receiving app can be entered when “Diagnose audio problems” shows the receiving-app checklist. Leaving it blank still keeps the diagnosis.
 3. If it persists: follow the [OBS](./obs.md#connect) or [call](./discord.md#connect) steps to check receiving-app mute and meters, then listen.
 
 ## Sound cuts out {#dropouts}
