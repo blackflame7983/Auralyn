@@ -339,10 +339,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
   // 失敗の通知は上のほうに出る。保存の操作でページが下へ送られていても、結果が見える所へ焦点を移す。
   const [errorFocus, setErrorFocus] = useState(0);
+  // 使い道の切り替えの失敗。接続の適用の失敗（error）とは別に持ち、元へ戻したあとの操作だけを出す。
+  const [usageFailure, setUsageFailure] = useState<{ message: SettingsNotice; restored: boolean } | null>(null);
+  useWhenTrue(isOpen, () => setUsageFailure(null));
   const errorPanel = useRef<HTMLDivElement>(null);
   useFocusRequest(isApplying ? 0 : errorFocus, async () => {}, errorPanel);
   // 表示の確定に失敗したら、切り替え全体の失敗として、通常の切り替えと同じ巻き戻しで元へ戻す。
-  // アプリの選択欄の下書きは残すが、入力の用途は元の表示へそろえる。
+  // 接続の下書きも捨て、画面の選択を切り替え前の保存済みの接続へそろえる。
   const rollBackPendingUsage = async (pending: PendingUsage, cause: unknown) => {
     let { failed, reason } = await rollbackUsageSwitch({ previous: pending.leaving.preferences, rewind: pending.rewind,
       running: pending.running, restarted: true, saveStarted: true, restore: restoreUsageConnection });
@@ -354,15 +357,24 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       }
     }
     setPendingUsage(null);
-    setInputSource(current => ({ ...current, source: withInputPurpose(current.source, pending.leaving.display) }));
+    discardConnectionDraft(pending.leaving);
     setConnectionRetry(false);
     setErrorFocus(request => request + 1);
-    const commitReason = cause instanceof Error ? cause.message : String(cause);
+    const reasons = [cause instanceof Error ? cause.message : String(cause), reason].filter(Boolean)
+      .map(text => text.replace(/[\s。.]+$/, '')).join(t('wizard.rewindSeparator'));
     const notRestored = (['audio', 'saved'] as const).filter(target => failed.includes(target))
       .map(target => t(`wizard.rewind.${target}`)).join(t('wizard.rewindSeparator'));
-    setError(notRestored
-      ? notice('purpose.commitRestoreFailed', { targets: notRestored, reason: [commitReason, reason].filter(Boolean).join(' ') })
-      : notice('purpose.commitFailed', { reason: commitReason }));
+    setUsageFailure({ restored: !notRestored, message: notRestored
+      ? notice('purpose.commitRestoreFailed', { targets: notRestored, reason: reasons })
+      : notice('purpose.commitFailed', { reason: reasons }) });
+  };
+  // 接続の下書き（入力元・機器・経路・変更の印）を捨てて、切り替え前の保存済みの接続を画面へ映す。
+  const discardConnectionDraft = (leaving: LeavingUsage) => {
+    const previous = leaving.preferences;
+    const record = previous?.host ? usageDeviceFromPreferences(previous, leaving.display) : null;
+    setInputSource({ source: previous?.inputSource ?? deviceInput() });
+    setNeedsDeviceChoice(false);
+    if (record) showUsageSelection(record, false); else setEditedFields(new Set());
   };
   // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。
   const commitPendingUsage = async (): Promise<boolean> => {
@@ -420,6 +432,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (!canSaveConnection || isApplying) return;
     if (retryRestart.current) { await performRestart(); return; }
     setError(null);
+    setUsageFailure(null);
     // 保存のあいだ入力の欄が作り直される。切り替えのあとの焦点の依頼を残すと、保存の結果より先に選択欄へ戻る。
     setAppFocus(0);
     setLoading(true);
@@ -441,6 +454,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const performRestart = async () => {
     retryRestart.current = true;
     setError(null);
+    setUsageFailure(null);
     setAppFocus(0);
     setLoading(true);
     try {
@@ -629,8 +643,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-6">
               <UsageSwitch display={displayPurpose} inputPurpose={inputSource.source.config.purpose} running={streamRunning}
                 locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onBusyChange={setUsageSwitching} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
-              {error && <div className="space-y-4">
+              {usageFailure && <div className="space-y-4">
                 <div ref={errorPanel} tabIndex={-1} role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card outline-hidden">
+                  <p>{renderNotice(t, usageFailure.message)}</p>
+                </div>
+                {!usageFailure.restored && <Button onClick={() => requestLeave(onClose)} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.returnHome')}</Button>}
+              </div>}
+              {error && <div className="space-y-4">
+                <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
                   {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
                 </div>

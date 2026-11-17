@@ -108,6 +108,37 @@ describe('アプリの音声を保存したあと、表示の確定に失敗し�
         await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
     });
 
+    it('理由は「理由：…」の文として添え、次にすることを示す。接続の適用の失敗の操作（設定に戻って再試行・ホームへ戻る）は出さない', async () => {
+        const { before, save } = await chooseApp();
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            const alert = await screen.findByRole('alert');
+            expect(alert).toHaveTextContent('ホームの表示を切り替えられなかったため、接続を元に戻しました。理由：容量不足。もう一度切り替えるか、そのまま使ってください。');
+        } finally { unpatch(); }
+        expect(screen.queryByRole('button', { name: message('ja', 'settings.AudioSettingsModal.031') })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: message('ja', 'settings.returnHome') })).not.toBeInTheDocument();
+        sameAsBefore(before);
+    });
+
+    it('元へ戻したら接続の下書きも捨て、保存欄は変更なしで押せず、画面の選択・入力の用途・保存値が切り替え前と一致する', async () => {
+        const { before, save } = await chooseApp();
+        expect(screen.getByText(message('ja', 'settings.connection.changes', { fields: '' }), { exact: false })).toBeVisible();
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        expect(screen.getByText(message('ja', 'settings.connection.unchanged'))).toBeVisible();
+        expect(screen.queryByText(message('ja', 'settings.connection.changes', { fields: '' }), { exact: false })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
+        expect(screen.queryByRole('combobox', { name: message('ja', 'processInput.app') })).not.toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic');
+        expect(screen.getByRole('combobox', { name: '出力先' })).toHaveValue('Headphones');
+        sameAsBefore(before);
+        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ inputSource: voiceSource });
+    });
+
     it('そのあとに接続欄を編集して保存すると、編集が普通に保存される（表示の確定だけを繰り返さない）', async () => {
         const { start, onClose, onConfigChange, before, save } = await chooseApp();
         const unpatch = failDisplayWrites(1);
@@ -117,20 +148,19 @@ describe('アプリの音声を保存したあと、表示の確定に失敗し�
         } finally { unpatch(); }
         sameAsBefore(before);
 
-        fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.AudioSettingsModal.031') }));
-        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'Headphones' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'USB Headphones' } });
         const retry = screen.getByRole('button', { name: '接続を保存して再起動' });
         await waitFor(() => expect(retry).toBeEnabled());
         fireEvent.click(retry);
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(start).toHaveBeenCalledTimes(2);
-        expect(start.mock.calls[1][2]).toBe('Headphones');
+        expect(start.mock.calls[1][2]).toBe('USB Headphones');
         const [saved, saveOptions] = onConfigChange.mock.lastCall ?? [];
-        expect(saved).toMatchObject({ output: 'Headphones', inputSource: { kind: 'process_loopback' } });
+        expect(saved).toMatchObject({ output: 'USB Headphones', inputSource: voiceSource });
         expect(saveOptions).toEqual({ audioStarted: true });
-        // 保留は残っていないので、表示は切り替え前の使い道のまま、入力の用途も表示にそろう。
+        // 下書きは捨てているので、保存するのは切り替え前の入力元に、編集した出力先だけを替えた接続。表示も入力の用途も配信・通話のまま。
         expect(readDisplayPurpose()).toBe('voice');
-        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ output: 'Headphones', inputSource: { kind: 'process_loopback', config: { purpose: 'voice' } } });
+        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ output: 'USB Headphones', inputSource: voiceSource });
     });
 
     it('そのあとに変更を捨てて画面を離れ、開き直しても、表示・入力の用途・保留・記録が切り替え前と一致する', async () => {
@@ -158,7 +188,10 @@ describe('アプリの音声を保存したあと、表示の確定に失敗し�
         try {
             fireEvent.click(save);
             const alert = await screen.findByRole('alert');
-            expect(alert).toHaveTextContent(message('ja', 'purpose.commitRestoreFailed', { targets: message('ja', 'wizard.rewind.audio'), reason: '容量不足 再開できない' }));
+            expect(alert).toHaveTextContent(message('ja', 'purpose.commitRestoreFailed', { targets: message('ja', 'wizard.rewind.audio'), reason: '容量不足、再開できない' }));
+            // 元へ戻せなかったときだけ、ホームで確かめる操作を出す。設定へ戻って再試行は出さない。
+            expect(screen.getByRole('button', { name: message('ja', 'settings.returnHome') })).toBeVisible();
+            expect(screen.queryByRole('button', { name: message('ja', 'settings.AudioSettingsModal.031') })).not.toBeInTheDocument();
         } finally { unpatch(); }
         sameAsBefore(before);
     });

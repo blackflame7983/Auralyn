@@ -237,7 +237,7 @@ test.describe('使い道の切り替え', () => {
     });
 
     for (const locale of ['ja', 'en'] as const) {
-        test(`アプリの音声の保存のあと表示の確定に失敗すると、元の接続へ戻し、理由を示す。そのあとの保存は普通に通る ${locale} 900x600`, async ({ page }) => {
+        test(`アプリの音声の保存のあと表示の確定に失敗すると、元の接続へ戻し、理由を示す。そのあと、もう一度切り替えられる ${locale} 900x600`, async ({ page }) => {
             await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true, locale });
             await withAppCandidates(page);
             await page.setViewportSize({ width: 900, height: 600 });
@@ -272,18 +272,30 @@ test.describe('使い道の切り替え', () => {
             await expect(notice).toBeInViewport();
             await expect(page.getByRole('alert').filter({ has: notice })).toBeFocused();
             expect(await stored()).toEqual(before);
+            // 元へ戻したあと、利用者がすることは「もう一度切り替える」か「そのまま使う」。接続の適用の失敗の操作は出さない。
+            await expect(page.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.031'), exact: true })).toHaveCount(0);
+            await expect(page.getByRole('button', { name: message(locale, 'settings.returnHome'), exact: true })).toHaveCount(0);
+            // 接続の下書きも捨てている。保存欄は変更なしで押せず、選択は切り替え前の接続と一致する。
+            await expect(page.getByText(message(locale, 'settings.connection.unchanged'))).toBeVisible();
+            await expect(save).toBeDisabled();
+            await expect(page.getByRole('combobox', { name: message(locale, 'processInput.app') })).toHaveCount(0);
+            await expect(output.locator('option:checked')).toHaveText('スピーカー');
+            // 上の帯は、戻した接続の入力名まで出している（900 幅では先頭の区切りを「…」で隠すが、全文は title に残る）。
+            await expect(page.locator('[data-route-box]')).toHaveAttribute('title', /^CABLE Output → スピーカー/);
+            await expect(page.getByText(message(locale, 'purpose.mismatch'))).toHaveCount(0);
             // 音声は元の接続で再起動し直している（切り替えの保存の開始と、元へ戻す再起動）。
             await expect.poll(() => page.evaluate(() => (window.__e2eStarts ?? []).length)).toBe(2);
             const box = await notice.boundingBox();
             expect(box && box.x >= 0 && box.x + box.width <= 900).toBe(true);
             await expect(shortWrappedLines(notice)).resolves.toEqual([]);
             await page.screenshot({ path: `${shots}/${locale}-app-commit-failed-900x600.png`, animations: 'disabled' });
-            // 続けて編集して保存すると、編集が普通に保存される。
-            await output.selectOption({ index: 0 });
-            await expect(save).toBeEnabled();
-            await save.click();
-            await expect(settingsPage(page)).toHaveCount(0);
-            expect((await stored()).display).toBe('voice');
+            // 元へ戻れているので、もう一度切り替えられる。アプリの選択欄が下書きとして開き直る。
+            const opener = page.getByRole('button', { name: message(locale, 'purpose.switch'), exact: true });
+            await expect(opener).toBeEnabled();
+            await opener.click();
+            await page.getByRole('alertdialog').getByRole('button', { name: message(locale, 'purpose.switch'), exact: true }).click();
+            await expect(page.getByRole('combobox', { name: message(locale, 'processInput.app') })).toBeVisible();
+            await expect(page.getByText(message(locale, 'purpose.blockedPending'))).toBeVisible();
         });
     }
 
