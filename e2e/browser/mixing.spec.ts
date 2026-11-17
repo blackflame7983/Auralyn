@@ -1,5 +1,5 @@
 import { test, expect } from './tauriFixture';
-import { settleLayoutMotion } from './layoutMotion';
+import { SUBPIXEL, settleLayoutMotion } from './layoutMotion';
 import type { Page, Locator } from '@playwright/test';
 
 async function fixture(page: Page, configPresent = true, running = false, panelShown = true) {
@@ -44,7 +44,7 @@ test('オケは1段で自動表示し、キーボードの音量調整を適用�
     await expect(mixing.getByRole('region', { name: 'いま使っているオケ' })).toBeVisible();
     const draft = mixing.getByRole('region', { name: 'オケの入力元を変える' });
     const reload = draft.getByRole('button', { name: '変更を取り消して、保存した設定に戻す' });
-    expect(Math.round(await reload.evaluate(el => el.getBoundingClientRect().height))).toBeGreaterThanOrEqual(40);
+    expect(await reload.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40 - SUBPIXEL);
     const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', '1%');
     await expect.poll(() => page.evaluate(() => {

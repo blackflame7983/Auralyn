@@ -63,7 +63,7 @@ afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks
 it('テンプレートの内蔵ボイスチェーンの入口は音づくりタブを開く', async () => {
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: 'テンプレートを開く' }));
-    // 初回の遅延importを待ち、画面内の操作は表示完了後に確認する。
+    // 遅延importは beforeAll で済ませてある。表示を待ってから画面内の操作を確認する。
     await screen.findByRole('dialog', { name: 'VST構成テンプレート' }, { timeout: 3000 });
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     await screen.findByRole('heading', { name: '設定タブ：sound' });

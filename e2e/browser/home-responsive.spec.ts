@@ -1,6 +1,6 @@
 import type { Locator } from '@playwright/test';
 import { expect, test } from './tauriFixture';
-import { settleLayoutMotion } from './layoutMotion';
+import { SUBPIXEL, settleLayoutMotion } from './layoutMotion';
 import { uiScale } from '../../src/lib/largeWindow';
 import { message } from '../../src/i18n/messages';
 
@@ -275,7 +275,7 @@ for (const locale of ['ja', 'en'] as const) {
                 await settleLayoutMotion(page);
                 const where = `${size.width}×${size.height}`;
                 const box = await boxOf(meter, where);
-                expect(Math.round(box.width), where).toBeGreaterThanOrEqual(192);
+                expect(box.width, where).toBeGreaterThanOrEqual(192 - SUBPIXEL);
                 const card = await boxOf(now, where);
                 expect(box.x + box.width, where).toBeLessThanOrEqual(card.x + card.width + 1);
                 if (locale === 'ja') {

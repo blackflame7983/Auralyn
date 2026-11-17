@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import { uiScale } from '../../src/lib/largeWindow';
-import { settleLayoutMotion } from './layoutMotion';
+import { SUBPIXEL, settleLayoutMotion } from './layoutMotion';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
@@ -180,8 +180,8 @@ test.describe('操作部品のサイズとテーマ', () => {
             const box = await track.boundingBox();
             if (!box) throw new Error('声の整え具合の位置が取れません');
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
-            expect(Math.round(box.width)).toBeGreaterThanOrEqual(120);
-            expect(Math.round(box.width)).toBeLessThanOrEqual(240);
+            expect(box.width).toBeGreaterThanOrEqual(120 - SUBPIXEL);
+            expect(box.width).toBeLessThanOrEqual(240 + SUBPIXEL);
             // 幅だけを確かめる。値を動かすと確定して音声処理へ送るため、この画面試験では操作しない（刻みは単体試験で確かめる）。
             await page.screenshot({ path: testInfo.outputPath(`controls-${width}.png`) });
         }

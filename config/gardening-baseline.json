@@ -4232,13 +4232,6 @@
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
-      "file": "src/components/features/Home/SoundFlow.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "28a22693e8d68780a38a1887cf3cc10882d923d11771624ee00dd4cd9e4207c1",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/Home/StreamMixPanel.tsx",
       "rule": "auralyn/owned-effects",
       "hash": "cc0a8569f9cb623497cd53febf5d7e4162c3d741e8b36a8e6372659cd1cc34e9",

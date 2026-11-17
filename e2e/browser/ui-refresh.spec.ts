@@ -89,9 +89,7 @@ test('音の流れは共有メーターで描き、動きを減らす設定で�
     await emitLevel({ input: [0.1, 0.08], output: [0.05, 0.04] });
     await expect(graph).toHaveAttribute('data-flow', 'time');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    // 動きの設定は共有メーターの読み取りが変わったときに読み直す。同じ値の通知は読み取りを変えないことがあるため、
-    // 前と違う値を送って、設定の反映後に新しい読み取りを必ず作る。
-    await emitLevel({ input: [0.3, 0.25], output: [0.2, 0.15] });
+    // 値は送り直さない。音量が変わらないまま設定だけが変わっても、すぐ静止する。
     await expect(graph).toHaveAttribute('data-flow', 'still');
     await expect(page.locator('.live-aurora')).toHaveCount(0);
     await page.getByRole('button', { name: message('ja', 'rail.connectName'), exact: true }).click();
