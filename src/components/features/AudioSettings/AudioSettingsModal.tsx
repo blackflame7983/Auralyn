@@ -645,7 +645,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onBusyChange={setUsageSwitching} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
               {usageFailure && <div className="space-y-4">
                 <div ref={errorPanel} tabIndex={-1} role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card outline-hidden">
-                  <p>{renderNotice(t, usageFailure.message)}</p>
+                  <p className="text-balance [word-break:auto-phrase]">{renderNotice(t, usageFailure.message)}</p>
                 </div>
                 {!usageFailure.restored && <Button onClick={() => requestLeave(onClose)} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.returnHome')}</Button>}
               </div>}
