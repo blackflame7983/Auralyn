@@ -49,17 +49,20 @@ export function useDeviceTargetFocus({ isOpen, initialSection, loading, hasError
         return afterFrame(() => {
             const el = settingsBody.current?.querySelector<HTMLElement>(initialSection === 'liveOutput' ? '#live-output-settings' : '#primary-input-settings');
             if (!el) return;
-            deviceTargetShown.current = true;
             // 出力一覧は開いたときに読み込む。読み込み後に出力先の選択へ移る。
             if (el instanceof HTMLDetailsElement) {
+                deviceTargetShown.current = true;
                 el.open = true;
                 const parent = el.parentElement?.closest('details');
                 if (parent instanceof HTMLDetailsElement) parent.open = true;
                 outputFocusPending.current = true;
                 setLoadOutput(true);
             }
+            const control = el.querySelector<HTMLElement>('summary, select:not([disabled])');
+            if (!control) return;
+            deviceTargetShown.current = true;
             el.scrollIntoView?.({ block: 'start' });
-            (el.querySelector<HTMLElement>('summary, select') ?? el).focus({ preventScroll: true });
+            control.focus({ preventScroll: true });
         });
     }, [isOpen, initialSection, loading, hasError, activeTab, tabRequest, settingsBody]);
     return { loadOutput, setLoadOutput };

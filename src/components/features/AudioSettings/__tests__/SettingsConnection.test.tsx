@@ -151,10 +151,12 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const input = await screen.findByRole('combobox', { name: previousHost === 'ASIO' ? '機器' : 'マイク' });
     await waitFor(() => expect(input).toHaveValue(`id:${previousHost}-1`));
+    fireEvent.click(screen.getByText('入出力プリセット'));
+    const anyRouting: unknown = expect.any(Object);
     fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
     fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
-    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: anyRouting }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
 it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止する', async () => {
@@ -272,7 +274,7 @@ it('通常は現在値付きで閉じ、再検出の操作領域を確保する'
 it('入力元・マイク・出力先は同じカードと見出しの階層で区切る', async () => {
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     await screen.findByRole('combobox', { name: 'マイク' });
-    for (const name of ['入力元と用途', 'マイク', '出力先']) {
+    for (const name of ['マイク', '出力先']) {
         const group = screen.getByRole('group', { name });
         expect(group.tagName).toBe('FIELDSET');
         expect(group).toHaveClass('rounded-card', 'border', 'border-border', 'p-3');
@@ -280,11 +282,11 @@ it('入力元・マイク・出力先は同じカードと見出しの階層で�
     }
 });
 
-it('音楽の入力欄は見える名前と読み上げ名をPCの音にそろえる', async () => {
-    localStorage.setItem('vst_host_setup_goal', 'music');
-    render(<AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const input = await screen.findByRole('combobox', { name: 'PCの音' });
-    expect(screen.getByText('PCの音', { selector: 'label' })).toHaveAttribute('for', input.id);
+it('音楽鑑賞の入力欄は見える名前と読み上げ名を再生元にそろえる', async () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    render(<AudioSettingsModal isOpen currentConfig={{ ...config, inputSource: { kind: 'device', config: { purpose: 'music' } } }} onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const input = await screen.findByRole('combobox', { name: '再生元' });
+    expect(screen.getByText('再生元', { selector: 'label' })).toHaveAttribute('for', input.id);
 });
 
 
@@ -326,7 +328,7 @@ it('再起動なしの開始失敗で旧接続へ戻してもVST復元を重ね�
 it('入力元の入口は機器一覧の読み込み後に入力選択へフォーカスする', async () => {
     render(<AudioSettingsModal isOpen initialSection="primaryInput" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     await screen.findByRole('combobox', { name: 'マイク' });
-    await waitFor(() => expect(screen.getByRole('combobox', { name: '入力元' })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveFocus());
 });
 
 it('音楽鑑賞の音づくりは声向けの入口を出さず、理由とVSTの入口を示す', async () => {
@@ -347,7 +349,7 @@ it('入力元への移動は設定のエラー表示が終わるまで待機す�
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
     expect(retry).toHaveFocus();
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByRole('combobox', { name: '入力元' })).toHaveFocus());
+    await waitFor(() => expect(document.getElementById('primary-input-settings')).toContainElement(document.activeElement as HTMLElement));
     view.unmount();
 });
 
@@ -400,5 +402,6 @@ it.each(['ja', 'en'] as const)('入出力プリセットは、声やVSTを一緒
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />
     </LocaleProvider>);
-    expect(await screen.findByText(message(locale, 'settings.apply.connectionPreset'))).toBeVisible();
+    fireEvent.click(await screen.findByText(message(locale, 'settings.AudioSettingsModal.086')));
+    expect(screen.getByText(message(locale, 'settings.apply.connectionPreset'))).toBeVisible();
 });

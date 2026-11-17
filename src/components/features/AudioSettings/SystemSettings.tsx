@@ -178,7 +178,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
               <h4 className="text-ui-control font-semibold">{t('settings.system.setup')}</h4>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
-              <Button type="button" disabled={loading} onClick={onOpenWizard} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
+              <Button type="button" disabled={loading} onClick={() => onOpenWizard()} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
             </section>}
 
 

@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { audioApi } from '@/api/audio';
-import { deviceInput, type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
+import { deviceInput, withInputPurpose, type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
+import { publishDisplayPurpose } from '@/hooks/useAlignInputPurpose';
 import { ProcessInputPanel } from '../ProcessInputPanel';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -36,10 +37,9 @@ it('再生先が変わっても同じアプリと新しい用途を保持し、�
     await waitFor(() => expect(screen.getByRole('option', { name: 'same.exe' })).toBeInTheDocument());
     fireEvent.change(screen.getByRole('combobox', { name: '再生中のアプリ' }), { target: { value: 'same' } });
     fireEvent.click(screen.getByRole('button', { name: 'アプリ一覧を更新' }));
-    fireEvent.change(screen.getByRole('combobox', { name: '入力の用途' }), { target: { value: 'voice' } });
     await act(async () => { finish([{ ...app('same'), routes: [{ id: 'moved', name: '移動後の出力先', muted: true }] }]); });
     expect(screen.getByRole('combobox', { name: '再生中のアプリ' })).toHaveValue('same');
-    expect(screen.getByRole('combobox', { name: '入力の用途' })).toHaveValue('voice');
+    expect(screen.getByTestId('source').textContent).toContain('"purpose":"voice"');
     expect(screen.getByRole('combobox', { name: '原音の出力先' })).toHaveValue('');
     fireEvent.change(screen.getByRole('combobox', { name: '原音の出力先' }), { target: { value: 'moved' } });
     expect(screen.getByTestId('source').textContent).toContain('"rawEndpointId":"moved"');
@@ -55,4 +55,40 @@ it('ASIO ではアプリの音声を選べない理由を入力元に結び付�
     cleanup();
     render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio={false} onChooseConnection={choose} />);
     expect(screen.queryByText(/ASIO のため/)).not.toBeInTheDocument();
+});
+it('音楽鑑賞の入力元は「マイク」と言わず、配信・雑談では従来の言い方のまま', () => {
+    render(<ProcessInputPanel value={{ source: withInputPurpose(deviceInput(), 'music') }} onChange={vi.fn()} disabled={false} isAsio={false} />);
+    expect(screen.getByRole('option', { name: '機器（仮想ケーブルなど）' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /マイク/ })).not.toBeInTheDocument();
+    cleanup();
+    render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio={false} />);
+    expect(screen.getByRole('option', { name: 'マイク・仮想ケーブル' })).toBeInTheDocument();
+});
+
+it('表示が音楽鑑賞なら、入力の用途がまだ声でも入力元を「マイク」と言わない', () => {
+    render(<ProcessInputPanel value={{ source: deviceInput() }} displayPurpose="music" onChange={vi.fn()} disabled={false} isAsio={false} />);
+    expect(screen.getByRole('option', { name: '機器（仮想ケーブルなど）' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /マイク/ })).not.toBeInTheDocument();
+});
+
+it('そろえる確認を取り消すと、押したボタンへ焦点を戻す', async () => {
+    const onChange = vi.fn();
+    render(<><button type="button">そろえる</button><ProcessInputPanel value={{ source: deviceInput() }} onChange={onChange} disabled={false} isAsio={false} /></>);
+    const trigger = screen.getByRole('button', { name: 'そろえる' });
+    trigger.focus();
+    act(() => publishDisplayPurpose('music'));
+    fireEvent.click(await screen.findByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(onChange).not.toHaveBeenCalled();
+});
+
+it('アプリの選択へ案内されたら一覧を読み直して選択欄へ焦点を移し、選び直しを促す', async () => {
+    const sources = vi.spyOn(audioApi, 'processInputSources').mockResolvedValue([app('player')]);
+    const value: InputSourceRequest = { source: { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Player', rawEndpointId: 'raw', purpose: 'music' } } };
+    const view = render(<ProcessInputPanel value={value} onChange={vi.fn()} disabled={false} isAsio={false} focusRequest={0} />);
+    expect(screen.queryByText(/自動では再開できません/)).not.toBeInTheDocument();
+    view.rerender(<ProcessInputPanel value={value} onChange={vi.fn()} disabled={false} isAsio={false} focusRequest={1} />);
+    await waitFor(() => expect(sources).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '再生中のアプリ' })).toHaveFocus());
+    expect(screen.getByText(/Player.*自動では再開できません/)).toBeVisible();
 });

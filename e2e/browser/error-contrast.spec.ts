@@ -29,9 +29,14 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await page.addInitScript(theme => {
             localStorage.setItem('vst_host_theme', theme);
             localStorage.setItem('vst_host_wizard_done', 'true');
-            const original = (window as any).__TAURI_INTERNALS__.invoke;
-            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+            // アプリの音声を選べるのは使い道が音楽鑑賞のときだけ（#723）。
+            localStorage.setItem('auralyn_display_purpose', 'music');
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+            const original = internals.invoke;
+            internals.invoke = async (command, args) => {
                 if (command === 'get_process_input_sources') throw new Error('テスト用：アプリを取得できません');
+                if (command === 'live_output') return { config: { deviceId: null, splitProcessing: false, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
                 return original(command, args);
             };
         }, theme);
@@ -47,7 +52,11 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await page.mouse.move(0, 0);
         await page.mouse.up();
         await page.screenshot({ path: info.outputPath(`${theme}-mute-off.png`) });
-        await page.evaluate(() => (window as any).__e2eEmit('global-mute-changed', true));
+        await page.evaluate(() => {
+            const emit = window.__e2eEmit;
+            if (!emit) throw new Error('__e2eEmit がありません');
+            emit('global-mute-changed', true);
+        });
         await expect(mute).toHaveAttribute('aria-pressed', 'true');
         expect(await contrast(mute, 'borderTopColor')).toBeGreaterThanOrEqual(3);
         expect(await contrast(mute, '--tw-ring-color')).toBeGreaterThanOrEqual(3);

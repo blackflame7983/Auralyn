@@ -82,3 +82,21 @@ it.each(['ja', 'en'] as const)('音楽鑑賞で使っている配信向けの設
     expectStreamingSections(locale, true);
     expect(screen.getByText(message(locale, 'streamMix.voiceOnly'))).toBeVisible();
 });
+
+it.each(['ja', 'en'] as const)('音楽鑑賞ではマイクの許可の案内を平時に出さず、配信・通話では出す（%s）', async locale => {
+    const guide = message(locale, 'settings.MicrophonePermissionGuide.238');
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    open(locale);
+    expect(await screen.findByText(message(locale, 'streamMix.voiceOnly'))).toBeVisible();
+    expect(screen.queryByText(guide)).not.toBeInTheDocument();
+    cleanup();
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    open(locale);
+    expect(await screen.findByText(guide)).toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('配信向けの欄が出ない理由は、何が出ないのかを先に言う（%s）', locale => {
+    const text = message(locale, 'streamMix.voiceOnly');
+    expect(text).toContain(message(locale, 'liveOutput.title'));
+    expect(text).toContain(message(locale, 'streamMix.title'));
+});

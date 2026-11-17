@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
 import { expectFieldDescriptionBelow } from './fieldDescription';
@@ -72,41 +73,54 @@ for (const locale of ['ja', 'en'] as const) {
 
 type FollowupWindow = Window & { __e2eSavedAudioAvailable?: boolean; __e2eStarts?: unknown[] };
 
+// 設定が無く、ASIO・WASAPI の機器が並ぶ環境で、接続のページまで開く。使い道（ホームの表示）は引数で選ぶ。
+async function openUnconfiguredConnection(page: Page, locale: 'ja' | 'en', theme: string, purpose: 'voice' | 'music') {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.addInitScript(({ locale, theme, purpose }) => {
+        localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
+        localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('auralyn_display_purpose', purpose);
+        const internals = window.__TAURI_INTERNALS__;
+        if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+        const invoke = internals.invoke;
+        internals.invoke = async (command: string, args?: unknown) => {
+            if (command === 'get_saved_audio_config') return (window as FollowupWindow).__e2eSavedAudioAvailable
+                ? { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', input_id: 'mic', output_id: 'headphones', sample_rate: 48000, buffer_size: 256 } : null;
+            if (command === 'get_audio_devices') {
+                const asio = { host: 'ASIO', name: 'Test ASIO', id: 'asio:test', channels: 4, is_input: true, is_default: false, index: 0 };
+                const mic = { ...asio, host: 'Wasapi', name: 'Test microphone', id: 'mic', channels: 2, is_default: true };
+                const output = { ...mic, name: 'Test headphones', id: 'headphones', is_input: false };
+                return { inputs: [asio, { ...mic, name: '再生リダイレクト', id: 'playback', is_default: false }, mic],
+                    outputs: [{ ...asio, is_input: false }, { ...output, name: 'Voicemeeter In 2', id: 'virtual', is_default: false }, output] };
+            }
+            // 音楽鑑賞の接続のページは、配信向けの設定が使用中かを分離出力の保存値から確かめる。既定のまま（使用中でない）を返す。
+            if (command === 'live_output') return { config: { deviceId: null, splitProcessing: false, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
+            return invoke(command, args);
+        };
+    }, { locale, theme, purpose });
+    await page.goto('/');
+    await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
+    const unconfigured = page.getByRole('region', { name: message(locale, 'band.label'), exact: true }).getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
+    await expect(unconfigured).toBeVisible();
+    await expect(unconfigured.locator('..').locator('div.rounded-full[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
+    await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
+    return page.locator('[data-settings-page]');
+}
+
 for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
+    // アプリの音声を選べるのは使い道が音楽鑑賞のときだけ（#723）。未設定の既定の WASAPI で、その選択肢が無効にならない。
+    test(`未設定の音楽鑑賞の既定方式ではアプリの音声を選べる ${locale} ${theme}`, async ({ page }) => {
+        const dialog = await openUnconfiguredConnection(page, locale, theme, 'music');
+        const source = dialog.getByRole('combobox', { name: message(locale, 'processInput.source'), exact: true });
+        await expect(source.locator('option[value=process]')).toBeEnabled();
+    });
+
     test(`未設定の既定方式・変更予定・ASIO案内 ${locale} ${theme}`, async ({ page }, info) => {
-        await page.setViewportSize({ width: 900, height: 600 });
-        await page.addInitScript(({ locale, theme }) => {
-            localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
-            localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('auralyn_vst_panel_open', 'false');
-            const internals = window.__TAURI_INTERNALS__;
-            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
-            const invoke = internals.invoke;
-            internals.invoke = async (command: string, args?: unknown) => {
-                if (command === 'get_saved_audio_config') return (window as FollowupWindow).__e2eSavedAudioAvailable
-                    ? { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', input_id: 'mic', output_id: 'headphones', sample_rate: 48000, buffer_size: 256 } : null;
-                if (command === 'get_audio_devices') {
-                    const asio = { host: 'ASIO', name: 'Test ASIO', id: 'asio:test', channels: 4, is_input: true, is_default: false, index: 0 };
-                    const mic = { ...asio, host: 'Wasapi', name: 'Test microphone', id: 'mic', channels: 2, is_default: true };
-                    const output = { ...mic, name: 'Test headphones', id: 'headphones', is_input: false };
-                    return { inputs: [asio, { ...mic, name: '再生リダイレクト', id: 'playback', is_default: false }, mic],
-                        outputs: [{ ...asio, is_input: false }, { ...output, name: 'Voicemeeter In 2', id: 'virtual', is_default: false }, output] };
-                }
-                return invoke(command, args);
-            };
-        }, { locale, theme });
-        await page.goto('/');
-        await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
-        const unconfigured = page.getByRole('region', { name: message(locale, 'band.label'), exact: true }).getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
-        await expect(unconfigured).toBeVisible();
-        await expect(unconfigured.locator('..').locator('div.rounded-full[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
-        await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
+        const dialog = await openUnconfiguredConnection(page, locale, theme, 'voice');
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
-        const dialog = page.locator('[data-settings-page]');
         const changes = dialog.locator('#settings-connection-changes');
         await expect(changes).toContainText(message(locale, 'settings.connection.firstStart', { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones' }));
         await expect(changes).not.toContainText(message(locale, 'settings.connection.changes', { fields: '' }));
-        const source = dialog.getByRole('combobox', { name: message(locale, 'processInput.source'), exact: true });
-        await expect(source.locator('option[value=process]')).toBeEnabled();
         await dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') }).click();
         await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('Wasapi');
         await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true })).toHaveValue('id:mic');

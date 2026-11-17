@@ -14,14 +14,12 @@ function readPurpose(event: Event): DisplayPurpose | null {
     return detail === 'voice' || detail === 'music' ? detail : null;
 }
 
-// ホームの表示を変えたとき、入力の用途が合っていなければ合わせる下書きを渡す。保存は呼び出し側のまま。
+// 表示に合わせて入力の用途を変える下書きを渡す。保存は呼び出し側のまま。
 export function useAlignInputPurpose(value: InputSourceRequest, onAsk: (next: InputSourceRequest) => void) {
     useEffect(() => {
         const onPurpose = (event: Event) => {
             const next = readPurpose(event);
             if (!next || value.source.config.purpose === next) return;
-            // プロセス入力を音楽へ寄せる確認は、接続ページの既存の確認が出す。ここでは重ねない（#654）。
-            if (value.source.kind === 'process_loopback' && next === 'music') return;
             onAsk({ ...value, source: withInputPurpose(value.source, next) });
         };
         window.addEventListener(ALIGN_INPUT_PURPOSE, onPurpose);

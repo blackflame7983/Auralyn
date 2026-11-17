@@ -117,6 +117,7 @@ export const useUIState = () => {
     const [isOBSGuideOpen, setIsOBSGuideOpen] = useState(false);
     const [isDiscordGuideOpen, setIsDiscordGuideOpen] = useState(false);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [wizardGoal, setWizardGoal] = useState<'obs' | 'discord' | 'listening' | 'music' | 'other' | null>(null);
     const [isTemplateWizardOpen, setIsTemplateWizardOpen] = useState(false);
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
@@ -161,6 +162,8 @@ export const useUIState = () => {
         setIsDiscordGuideOpen,
         isWizardOpen,
         setIsWizardOpen,
+        wizardGoal,
+        setWizardGoal,
         isTemplateWizardOpen,
         setIsTemplateWizardOpen,
         isRecoveryModalOpen,

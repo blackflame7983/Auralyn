@@ -41,7 +41,7 @@ export class ConnectionStartError extends Error {
 }
 
 // 開始前に音が出ていた接続を控える。止まっている・確かめられない場合は戻す対象にしない。
-async function runningConnection() {
+export async function runningConnection() {
     try {
         const state = await audioApi.getAudioState();
         if (!state) return undefined;

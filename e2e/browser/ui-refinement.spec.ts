@@ -136,10 +136,12 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
     expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
     const dialog = page.locator('[data-settings-page]');
-    const input = dialog.getByRole('group', { name: '入力元と用途', exact: true });
+    // 入力の用途の選択欄は無くなり（#723）、配信・通話の入力は「マイク」の欄の1つだけ。
+    const inputName = message('ja', 'settings.AudioSettingsModal.038');
+    const input = dialog.getByRole('group', { name: inputName, exact: true });
     await expect(input).toBeVisible();
     expect(await input.locator('legend').evaluate(el => getComputedStyle(el).fontSize)).toBe('20px');
-    expect(await input.getByRole('combobox', { name: '入力元', exact: true }).evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
+    expect(await input.getByRole('combobox', { name: inputName, exact: true }).evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
     await page.screenshot({ path: info.outputPath('audio-zoom.png') });
     const rail = page.getByRole('navigation', { name: '行き先' });
     for (const tab of ['settings.sound', 'settings.obs', 'settings.shortcuts', 'settings.system', 'settings.appearance'] as const) {

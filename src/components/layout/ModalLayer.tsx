@@ -1,7 +1,8 @@
 import { useSingingDraft } from '../../hooks/useSingingDraft';
 import type { LiveModesModel } from '../../hooks/useLiveModes';
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useObsUsage } from '../../hooks/useObsUsage';
+import { useModalReturnFlags, useRegisteredCloser } from '../../hooks/useModalReturn';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
 import { channelRoutingFor } from '@/lib/audioChannelRouting';
@@ -10,6 +11,9 @@ import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
 import type { SoundPlace } from '@/hooks/useUIState';
+import { checkRestoredRack, type SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
+import { PLUGIN_SESSION_KEY } from '@/hooks/usePluginSessionPersistence';
+import { UNSET_AUDIO_UPDATE } from '@/lib/audioPreferences';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -52,6 +56,8 @@ interface UIState {
     setIsDiscordGuideOpen: (v: boolean) => void;
     isWizardOpen: boolean;
     setIsWizardOpen: (v: boolean) => void;
+    wizardGoal?: 'obs' | 'discord' | 'listening' | 'music' | 'other' | null;
+    setWizardGoal?: (goal: 'obs' | 'discord' | 'listening' | 'music' | 'other' | null) => void;
     isTemplateWizardOpen: boolean;
     setIsTemplateWizardOpen: (v: boolean) => void;
     isLicenseModalOpen: boolean;
@@ -117,28 +123,25 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
     const singingModel = useSingingDraft();
     const leaveGeneration = useLeaveGeneration();
     const [singingPreview, setSingingPreview] = useState(false);
-    const [returnToTiming, setReturnToTiming] = useState(false);
-    const [returnToBundle, setReturnToBundle] = useState(false);
+    const { returnToTiming, setReturnToTiming, returnToBundle, setReturnToBundle } = useModalReturnFlags({ settingsOpen: ui.isSettingsOpen, presetManagerOpen: ui.isPresetManagerOpen, obsGuideOpen: ui.isOBSGuideOpen });
     // lazy画面の読込中も、明示的なガイド↔接続設定の往復だけ接続寿命を引き継ぐ。
     useObsUsage(ui.isOBSGuideOpen || (returnToTiming && ui.isSettingsOpen) || ui.isPresetManagerOpen || (returnToBundle && ui.isSettingsOpen));
-    useEffect(() => { if (!ui.isSettingsOpen && !ui.isPresetManagerOpen) setReturnToBundle(false); }, [ui.isSettingsOpen, ui.isPresetManagerOpen]);
-    useEffect(() => {
-        if (!ui.isOBSGuideOpen && !ui.isSettingsOpen) setReturnToTiming(false);
-    }, [ui.isOBSGuideOpen, ui.isSettingsOpen]);
     // ホームへ戻す処理は確認の外に置き、レールや試験の入口が同じ確認を通す。
-    useEffect(() => registerSettingsCloser(() => {
+    useRegisteredCloser(registerSettingsCloser, () => {
         ui.applyNavigation?.({ page: 'home' });
         if (returnToTiming) ui.setIsOBSGuideOpen(true);
         if (returnToBundle) ui.setIsPresetManagerOpen(true);
-    }), [ui.applyNavigation, ui.setIsOBSGuideOpen, ui.setIsPresetManagerOpen, returnToTiming, returnToBundle]);
+    });
     const leaveHome = (after?: () => void) => {
         const apply = () => { ui.applyNavigation?.({ page: 'home' }); after?.(); };
         if (ui.leave) ui.leave(apply);
         else apply();
     };
-    const handleEngineRestart = async () => {
+    const handleEngineRestart = async (): Promise<SessionRestoreOutcome> => {
         pluginsApi.resetPlugins();
         await pluginsApi.restoreSession();
+        // 復元の関数は失敗を内部で通知して正常に終わる。結果は、復元後の実ラックで確かめる。
+        return await checkRestoredRack(localStorage.getItem(PLUGIN_SESSION_KEY));
     };
 
     const handlePluginSelect = async (vstPlugin: VstPlugin) => {
@@ -179,7 +182,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         }}
                         onConfigChange={handleConfigUpdate}
                         onEngineRestarted={handleEngineRestart}
-                        onOpenWizard={() => leaveHome(() => ui.setIsWizardOpen(true))}
+                        onOpenWizard={goal => leaveHome(() => { ui.setWizardGoal?.(goal ?? null); ui.setIsWizardOpen(true); })}
                         onOpenOBSGuide={() => leaveHome(() => ui.setIsOBSGuideOpen(true))}
                         onOpenTroubleshoot={() => leaveHome(() => ui.setIsTroubleshootOpen(true))}
                         onOpenVoiceCheck={() => leaveHome(() => ui.setIsVoiceCheckOpen(true))}
@@ -195,7 +198,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                     <PluginBrowserModal
                         isOpen={ui.isBrowserOpen}
                         onClose={() => ui.setIsBrowserOpen(false)}
-                        onPluginSelect={handlePluginSelect}
+                        onPluginSelect={plugin => { void handlePluginSelect(plugin); }}
                         plugins={pluginsApi.availablePlugins}
                         failures={pluginsApi.scanFailures}
                         stats={pluginsApi.scanStats}
@@ -207,8 +210,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         error={pluginsApi.scanError}
                         notice={pluginsApi.error}
                         protectionNotice={pluginsApi.sessionProtectionReason}
-                        onScan={pluginsApi.scanPlugins}
-                        onRetry={pluginsApi.retryPluginScan}
+                        onScan={request => { void pluginsApi.scanPlugins(request); }}
+                        onRetry={pluginsApi.retryPluginScan ? path => { void pluginsApi.retryPluginScan?.(path); } : undefined}
                         skippedRoots={pluginsApi.skippedRoots}
                     />
                 </Suspense>
@@ -271,29 +274,38 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                 <Suspense fallback={null}>
                     <SetupWizardModal
                         isOpen={ui.isWizardOpen}
-                        onOpenVoiceCheck={() => { ui.setIsWizardOpen(false); ui.setIsVoiceCheckOpen(true); }}
+                        initialGoal={ui.wizardGoal ?? undefined}
+                        onOpenVoiceCheck={() => { ui.setIsWizardOpen(false); ui.setWizardGoal?.(null); ui.setIsVoiceCheckOpen(true); }}
                         onClose={() => {
                             ui.setIsWizardOpen(false);
+                            ui.setWizardGoal?.(null);
                         }}
                         onCompleted={openVstPage => { if (openVstPage) ui.openVst(); }}
                         onSkip={() => {
                             ui.setIsWizardOpen(false);
+                            ui.setWizardGoal?.(null);
                             markWizardDone();
                         }}
-                        onApplyConfig={(host, input, output, actualConfig) => {
+                        onApplyConfig={async (host, input, output, actualConfig, inputSource) => {
                             // 起動時の自動調整を含む実値を画面と保存設定へ反映する。
                             const config = { host, input, output, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size,
-                                inputChannels: actualConfig.routing?.inputChannels, outputRouting: actualConfig.routing?.outputRouting };
-                            handleConfigUpdate(config);
+                                inputChannels: actualConfig.routing?.inputChannels, outputRouting: actualConfig.routing?.outputRouting,
+                                ...(inputSource ? { inputSource } : {}) };
+                            await handleConfigUpdate(config);
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                             markWizardDone();
                         }}
+                        onRestoreConfig={previous => handleConfigUpdate(previous
+                            ? { ...previous, inputSource: previous.inputSource, outputRouting: previous.outputRouting ?? { mode: 'legacy' } }
+                            : UNSET_AUDIO_UPDATE)}
                         onOpenSettings={() => {
                             ui.setIsWizardOpen(false);
+                            ui.setWizardGoal?.(null);
                             ui.setIsSettingsOpen(true);
                         }}
                         onOpenTroubleshoot={() => {
                             ui.setIsWizardOpen(false);
+                            ui.setWizardGoal?.(null);
                             ui.setIsTroubleshootOpen(true);
                         }}
                     />
@@ -327,7 +339,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => ui.setIsTemplateWizardOpen(false)}
                         availablePlugins={pluginsApi.availablePlugins}
                         onApplyTemplate={pluginsApi.applyTemplate}
-                        onScan={pluginsApi.scanPlugins}
+                        onScan={() => { void pluginsApi.scanPlugins(); }}
                         isScanning={pluginsApi.isScanning}
                         onOpenSoundSettings={() => {
                             ui.setIsTemplateWizardOpen(false);
