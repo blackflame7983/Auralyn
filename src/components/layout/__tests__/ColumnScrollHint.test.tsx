@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { useColumnScrollHint } from '@/hooks/useColumnScrollHint';
 
 afterEach(() => cleanup());
@@ -100,6 +100,85 @@ it('区画があとから足されて続きができたときも、フェード�
         scroller.appendChild(document.createElement('section'));
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(fadeOf().hidden).toBe(false);
+    } finally {
+        scroller.remove();
+    }
+});
+
+// キーボードで移ったときだけ焦点の見た目（:focus-visible）が出る。直前の操作で決まるので、操作を明示する。
+function focusByKeyboard(element: HTMLElement) {
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    element.focus();
+}
+
+function columnWithButton(rect: DOMRect) {
+    const scroller = document.createElement('main');
+    scroller.className = 'home-main';
+    scroller.style.overflowY = 'auto';
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 200 });
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 0 });
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 400 });
+    scroller.getBoundingClientRect = () => new DOMRect(8, 40, 200, 100);
+    const scrollBy = vi.fn();
+    scroller.scrollBy = scrollBy;
+    const button = document.createElement('button');
+    button.textContent = '操作';
+    button.getBoundingClientRect = () => rect;
+    scroller.appendChild(button);
+    document.body.appendChild(scroller);
+    return { scroller, button, scrollBy };
+}
+
+it('焦点の枠がフェードに隠れる操作は、すぐに（動きを付けず）フェードの上まで送る', () => {
+    const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 100, 80, 20));
+    try {
+        render(<Hint><div /></Hint>);
+        expect(fadeOf().hidden).toBe(false);
+        focusByKeyboard(button);
+        // フェードは 116 から。下端 120 + 枠 4 = 124 なので 8 送る。
+        expect(scrollBy).toHaveBeenCalledTimes(1);
+        expect(scrollBy).toHaveBeenCalledWith({ top: 8, behavior: 'instant' });
+    } finally {
+        scroller.remove();
+    }
+});
+
+it('フェードに掛からない操作と、フェードが出ていないときは送らない', () => {
+    const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 60, 80, 20));
+    try {
+        render(<Hint><div /></Hint>);
+        focusByKeyboard(button);
+        expect(scrollBy).not.toHaveBeenCalled();
+        button.blur();
+        Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 100 });
+        button.getBoundingClientRect = () => new DOMRect(8, 100, 80, 20);
+        focusByKeyboard(button);
+        expect(scrollBy).not.toHaveBeenCalled();
+    } finally {
+        scroller.remove();
+    }
+});
+
+it('画面を離れたあとは、焦点が入っても送らない（購読を外す）', () => {
+    const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 100, 80, 20));
+    try {
+        const { unmount } = render(<Hint><div /></Hint>);
+        unmount();
+        focusByKeyboard(button);
+        expect(scrollBy).not.toHaveBeenCalled();
+    } finally {
+        scroller.remove();
+    }
+});
+
+it('焦点の見た目が出ない（マウスで押した）要素は、押している間に動かさない', () => {
+    const { scroller, button, scrollBy } = columnWithButton(new DOMRect(8, 100, 80, 20));
+    try {
+        render(<Hint><div /></Hint>);
+        fireEvent.mouseDown(button);
+        button.focus();
+        expect(scrollBy).not.toHaveBeenCalled();
     } finally {
         scroller.remove();
     }
