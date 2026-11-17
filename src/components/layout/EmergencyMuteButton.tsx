@@ -1,9 +1,7 @@
-import { useEffect, useState } from 'react';
-import { MdMicOff } from 'react-icons/md';
-import { listen } from '@tauri-apps/api/event';
-import { toast } from 'sonner';
-import { audioApi } from '@/api/audio';
-import { LocalizedMessage, useMessages } from '@/i18n/LocaleProvider';
+import { MdMicOff, MdVolumeOff } from 'react-icons/md';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useEmergencyMute } from '@/hooks/useEmergencyMute';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface EmergencyMuteButtonProps {
@@ -13,30 +11,9 @@ interface EmergencyMuteButtonProps {
 /** 緊急ミュート。名前は固定し、状態は aria-pressed と別の文言で示す。 */
 export function EmergencyMuteButton({ onOpenSettings }: EmergencyMuteButtonProps) {
     const t = useMessages();
-    const [isGlobalMuted, setIsGlobalMuted] = useState(false);
-
-    useEffect(() => {
-        const unlisten = listen<boolean>('global-mute-changed', (event) => {
-            setIsGlobalMuted(event.payload);
-            toast.dismiss('emergency-mute-failed');
-            if (event.payload) {
-                toast.warning(<LocalizedMessage id="header.muteOn" />);
-            } else {
-                toast.success(<LocalizedMessage id="header.muteOff" />);
-            }
-        });
-        return () => { void unlisten.then(stop => stop()); };
-    }, []);
-
-    const handleToggleMute = async () => {
-        try {
-            await audioApi.toggleGlobalMute();
-        } catch (e) {
-            console.error('Failed to toggle global mute', e);
-            toast.error(t('header.muteFailed'), { id: 'emergency-mute-failed', duration: Infinity,
-                action: { label: t('header.audioSettingsOpen'), onClick: onOpenSettings } });
-        }
-    };
+    const [purpose] = useDisplayPurpose();
+    const { isGlobalMuted, toggle } = useEmergencyMute(onOpenSettings);
+    const MuteIcon = purpose === 'music' ? MdVolumeOff : MdMicOff;
 
     return (
         <TooltipProvider>
@@ -44,7 +21,7 @@ export function EmergencyMuteButton({ onOpenSettings }: EmergencyMuteButtonProps
                 <TooltipTrigger asChild>
                     <button
                         id="emergency-mute" aria-pressed={isGlobalMuted}
-                        onClick={handleToggleMute}
+                        onClick={toggle}
                         aria-label={t('header.emergency')}
                         aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
                         className={`press-feedback flex w-full max-w-full shrink-0 items-center gap-2 px-3 py-1.5 rounded-full border font-medium text-ui-support shadow-sm text-foreground ${isGlobalMuted
@@ -52,7 +29,7 @@ export function EmergencyMuteButton({ onOpenSettings }: EmergencyMuteButtonProps
                             : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
                             }`}
                     >
-                        <MdMicOff aria-hidden="true" className="w-5 h-5 shrink-0" />
+                        <MuteIcon aria-hidden="true" data-emergency-icon={purpose === 'music' ? 'speaker' : 'microphone'} className="w-5 h-5 shrink-0" />
                         <span className="flex min-w-0 flex-col items-start">
                             <span>{t('header.emergency')}</span>
                             {isGlobalMuted && <span id="header-mute-state" className="text-ui-support font-medium">{t('header.muted')}</span>}

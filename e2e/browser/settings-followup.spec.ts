@@ -70,15 +70,19 @@ for (const locale of ['ja', 'en'] as const) {
 
 }
 
+type FollowupWindow = Window & { __e2eSavedAudioAvailable?: boolean; __e2eStarts?: unknown[] };
+
 for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
     test(`未設定の既定方式・変更予定・ASIO案内 ${locale} ${theme}`, async ({ page }, info) => {
         await page.setViewportSize({ width: 900, height: 600 });
         await page.addInitScript(({ locale, theme }) => {
             localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
             localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('auralyn_vst_panel_open', 'false');
-            const invoke = (window as any).__TAURI_INTERNALS__.invoke;
-            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
-                if (command === 'get_saved_audio_config') return (window as any).__e2eSavedAudioAvailable
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+            const invoke = internals.invoke;
+            internals.invoke = async (command: string, args?: unknown) => {
+                if (command === 'get_saved_audio_config') return (window as FollowupWindow).__e2eSavedAudioAvailable
                     ? { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', input_id: 'mic', output_id: 'headphones', sample_rate: 48000, buffer_size: 256 } : null;
                 if (command === 'get_audio_devices') {
                     const asio = { host: 'ASIO', name: 'Test ASIO', id: 'asio:test', channels: 4, is_input: true, is_default: false, index: 0 };
@@ -94,7 +98,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
         const unconfigured = page.getByRole('region', { name: message(locale, 'band.label'), exact: true }).getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
         await expect(unconfigured).toBeVisible();
-        await expect(unconfigured.locator('..').locator('[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
+        await expect(unconfigured.locator('..').locator('div.rounded-full[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         const dialog = page.locator('[data-settings-page]');
@@ -116,7 +120,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await input.evaluate(el => el.scrollIntoView({ block: 'start' }));
         expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         await page.screenshot({ path: info.outputPath('asio-near-device.png'), animations: 'disabled' });
-        await page.evaluate(() => { (window as any).__e2eSavedAudioAvailable = true; });
+        await page.evaluate(() => { (window as FollowupWindow).__e2eSavedAudioAvailable = true; });
         await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
         await page.getByRole('alertdialog', { name: message(locale, 'settings.leave.title') }).getByRole('button', { name: message(locale, 'settings.leave.discard'), exact: true }).click();
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
@@ -125,13 +129,17 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         // 未保存のASIO選択は再表示で既定のWASAPIへ戻り、入力名も「マイク」へ戻る。
         const reopenedInput = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
         await expect(reopenedInput).toHaveValue('id:mic');
-        expect(await reopenedInput.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
+        expect(await reopenedInput.evaluate((el, label) => {
+            const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent === label);
+            if (!button) throw new Error(`${label} のボタンが無い`);
+            return Boolean(el.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING);
+        }, message(locale, 'settings.connection.restoreSaved'))).toBe(true);
         await restore.click();
         await expect(dialog.getByText(message(locale, 'settings.connection.restored'), { exact: true })).toBeVisible();
         const tuning = dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') });
         if (await tuning.locator('..').getAttribute('open') === null) await tuning.click();
         await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('Wasapi');
-        expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
+        expect(await page.evaluate(() => (window as FollowupWindow).__e2eStarts)).toEqual([]);
     });
 
     test(`送り先4択と入力未選択の次へ ${locale} ${theme}`, async ({ page }, info) => {
@@ -139,8 +147,10 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.addInitScript(({ locale, theme }) => {
             localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
             localStorage.setItem('auralyn_vst_panel_open', 'false');
-            const invoke = (window as any).__TAURI_INTERNALS__.invoke;
-            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+            const internals = window.__TAURI_INTERNALS__;
+            if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+            const invoke = internals.invoke;
+            internals.invoke = async (command: string, args?: unknown) => {
                 if (command === 'get_audio_devices') {
                     const input = { host: 'WASAPI', name: 'Input one', channels: 2, is_input: true, is_default: false, index: 0 };
                     return { inputs: [input, { ...input, name: 'Input two', index: 1 }], outputs: [{ ...input, name: 'Test headphones', is_input: false, is_default: true }] };

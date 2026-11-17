@@ -87,6 +87,8 @@ it.each(['ja', 'en'] as const)('停止中の音楽鑑賞は、見出しを音楽
     </LocaleProvider>);
     const now = screen.getByRole('region', { name: message(locale, 'home.now') });
     expect(within(now).getByRole('heading', { name: message(locale, 'home.musicHeading') })).toBeVisible();
+    expect(now.querySelector('[data-now-incoming="stopped"]')?.textContent).toBe(message(locale, 'shell.stoppedMusic'));
+    expect(within(now).getByRole('meter', { name: message(locale, 'home.listenLevel') })).toHaveAttribute('aria-valuetext', expect.stringContaining(message(locale, 'meter.state.stopped')));
     expect(within(now).getByRole('button', { name: message(locale, 'home.startListening') })).toBeVisible();
     expect(screen.getByText(message(locale, 'home.startSavedPlayback'))).toBeVisible();
     expect(screen.queryByText(message(locale, 'home.startSavedDevices'))).not.toBeInTheDocument();
