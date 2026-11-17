@@ -443,7 +443,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
                     <button type="button" className="mt-2 text-primary underline" onClick={() => requestHelpSection('vst')}>{t('help.section.vst')}</button>
-                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.fullScan')}</Button>
+                    <Button variant="default" className="mt-3 h-auto min-h-10 whitespace-normal" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.findVsts')}</Button>
                   </>}
                 </>}
                 {activeTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}

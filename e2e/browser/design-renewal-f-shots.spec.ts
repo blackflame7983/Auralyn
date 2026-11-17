@@ -70,7 +70,7 @@ async function openPreview(page: Page, shot: Shot) {
             await expect(dialog.getByRole('heading', { name: new RegExp(shot.search) })).toBeVisible();
         }
         if (shot.scanError) {
-            await dialog.getByRole('button', { name: shot.locale === 'ja' ? 'すべて再スキャン' : 'Rescan all', exact: true }).click();
+            await dialog.getByRole('button', { name: shot.locale === 'ja' ? 'VSTを探す' : 'Find VSTs', exact: true }).click();
             await expect(dialog.getByRole('button', { name: shot.locale === 'ja' ? '再試行' : 'Try again', exact: true })).toBeVisible();
         }
     }

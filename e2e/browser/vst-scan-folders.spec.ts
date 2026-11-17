@@ -20,6 +20,11 @@ async function openBrowser(page: import('@playwright/test').Page) {
 test('標準のフォルダーは外せない。足したフォルダーは再読み込み後も残る', async ({ page }) => {
     await page.goto('/');
     const dialog = await openBrowser(page);
+    const find = dialog.getByRole('button', { name: 'VSTを探す', exact: true });
+    await expect(find).toBeVisible();
+    await expect(find).toHaveClass(/bg-primary/);
+    await expect(dialog.getByRole('button', { name: 'すべて再スキャン', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '更新', exact: true })).toHaveCount(0);
     const folders = dialog.getByRole('region', { name: '探すフォルダー' });
     // ふだんは閉じている。VST の一覧を先に見せるため。
     await expect(folders.locator('details')).not.toHaveAttribute('open', '');
@@ -46,6 +51,8 @@ test('見つからないフォルダーを知らせ、足したフォルダー�
     const dialog = await openBrowser(page);
     await dialog.getByRole('button', { name: '更新', exact: true }).click();
     await expect(dialog.getByRole('button', { name: 'Room を追加', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'すべて再スキャン', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'VSTを探す', exact: true })).toHaveCount(0);
     const folders = dialog.getByRole('region', { name: '探すフォルダー' });
     // 見つからないフォルダーがあるときは、開いて理由を見せる。
     await expect(folders.locator('details')).toHaveAttribute('open', '');
