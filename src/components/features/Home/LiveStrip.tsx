@@ -9,12 +9,13 @@ import { useInputMeterState, useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 
 /** 入ってきた音の状態。レベルの平滑化では描き直さず、状態が変わったときだけ読む。 */
-function IncomingStatus({ running, label }: { running: boolean; label: string }) {
+function IncomingStatus({ running, label, music }: { running: boolean; label: string; music: boolean }) {
     const t = useMessages();
     const state = useInputMeterState(running);
+    const status = state === 'stopped' && music ? 'shell.stoppedMusic' : meterStatusLabel(state);
     return <p className="shrink-0 text-ui-support">
         <span className="text-muted-foreground">{label}</span>{' '}
-        <span data-now-incoming={state} className="font-medium">{t(meterStatusLabel(state))}</span>
+        <span data-now-incoming={state} className="font-medium">{t(status)}</span>
     </p>;
 }
 
@@ -70,7 +71,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t('prep.muted')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <IncomingStatus running={running} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
+            <IncomingStatus running={running} music={music} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
         {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">

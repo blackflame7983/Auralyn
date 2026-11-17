@@ -70,8 +70,6 @@ it('焦点の枠がフェードに隠れる項目は、フッターの手前の�
     const item = getByRole('button', { name: '項目', hidden: true });
     item.blur();
     scrollBy.mockClear();
-    // キーボードで移ったときだけ焦点の見た目（:focus-visible）が出る。
-    fireEvent.keyDown(document.body, { key: 'Tab' });
     item.focus();
     // フェードは 136 から。下端 135 + 枠 4 = 139 なので 3 送る。
     expect(scrollBy).toHaveBeenCalledTimes(1);

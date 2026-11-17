@@ -58,6 +58,15 @@ it('焦点の枠が列の上端より上へはみ出すときは、その分を�
     expect(scrollToClearFade(new DOMRect(8, 10, 80, 20), scroller, 116)).toBe(-34);
 });
 
+it('拡大表示では、同じ倍率の枠の幅で見積もる', () => {
+    const scroller = new DOMRect(12, 60, 300, 150);
+    // 150%。フェードは 174 から。下端 170 + 枠 6 = 176 なので 2 送る。4px で見積もると 0 になる。
+    expect(scrollToClearFade(new DOMRect(12, 140, 120, 30), scroller, 174, 6)).toBe(2);
+    expect(scrollToClearFade(new DOMRect(12, 140, 120, 30), scroller, 174)).toBe(0);
+    expect(scrollToClearFade(new DOMRect(12, 62, 120, 30), scroller, 174, 6)).toBe(-4);
+    expect(scrollToClearFade(new DOMRect(12, 60, 120, 110), scroller, 174, 6)).toBe(0);
+});
+
 it('枠を含めて列に収まらない要素と、箱の無い要素は送らない', () => {
     const scroller = new DOMRect(8, 40, 200, 100);
     expect(scrollToClearFade(new DOMRect(8, 30, 80, 90), scroller, 116)).toBe(0);

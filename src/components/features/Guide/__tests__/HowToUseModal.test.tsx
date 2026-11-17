@@ -200,13 +200,14 @@ it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュ
         expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(name, locale));
         if (section === 'terms') for (const term of glossary[locale]) {
             const heading = screen.getByRole('heading', { name: term.title });
-            const item = within(heading.parentElement!);
+            if (!heading.parentElement) throw new Error('用語の見出しに親要素がありません');
+            const item = within(heading.parentElement);
             expect(item.getByText(term.summary)).toBeInTheDocument();
             fireEvent.click(item.getByRole('button'));
             expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(glossaryDocName(term.anchor), locale));
         }
         if (section === 'trouble') {
-            const symptoms = ['troubleshooting.no-sound', 'troubleshooting.not-received', 'troubleshooting.dropouts'] as const;
+            const symptoms = ['troubleshooting.no-sound', 'troubleshooting.not-received', 'troubleshooting.dropouts', 'troubleshooting.still-running'] as const;
             screen.getAllByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) }).forEach((button, index) => {
                 fireEvent.click(button);
                 expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(symptoms[index], locale));

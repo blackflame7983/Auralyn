@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check playback", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn"]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -14,6 +14,8 @@ This page separates the home overview for streaming and calls from the overview 
 When Sing or Talk is saved, Current status shows “Mode” and the name, and when neither is saved the heading is “Current voice”. It also shows whether sound is coming in and “Level being sent”, and the mute note appears only when the output is muted or the volume is zero.
 
 The status display, elapsed time, and audio path are at the top of the screen. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
+
+Press the status on the top band to open a menu. While running, it offers “Stop Auralyn’s audio” and “Quit Auralyn”. While stopped, it offers “Start audio” and “Quit Auralyn”. Closing the window hides Auralyn in the tray, and the audio keeps running.
 
 The “Sing” and “Talk” switch is at the top of the screen too.
 
@@ -96,6 +98,8 @@ Use “Output volume” to set the level. To silence the sound immediately, use 
 The heading is “Music listening”, with “Output level”. The path appears once, at the top of the screen.
 
 The status display, elapsed time, and audio path are at the top of the screen. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
+
+Press the status on the top band to open a menu. While running, it offers “Stop Auralyn’s audio” and “Quit Auralyn”. While stopped, it offers “Start listening” and “Quit Auralyn”. Closing the window hides Auralyn in the tray, and the audio keeps running. While stopped, the status on the top band and the playback source on Current status say “Stopped”.
 
 “Lock controls” appears on the right side of the screen only while locked.
 
