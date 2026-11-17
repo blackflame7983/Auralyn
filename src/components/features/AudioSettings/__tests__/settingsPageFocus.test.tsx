@@ -37,7 +37,7 @@ function page(html: string) {
 }
 
 const deviceInput = {
-    isOpen: true, initialSection: 'liveOutput' as 'liveOutput' | 'primaryInput' | undefined, loading: false, hasError: false, activeTab: 'audio' as SettingsTab, tabRequest: 0,
+    isOpen: true, initialSection: 'liveOutput' as 'liveOutput' | 'liveOutputSplit' | 'primaryInput' | undefined, loading: false, hasError: false, activeTab: 'audio' as SettingsTab, tabRequest: 0,
 };
 
 it('出力先の指定で来たときは、描画のあとに区画を開いて読込を始め、読み終えたら出力先の選択へ焦点を移す', () => {
@@ -50,6 +50,26 @@ it('出力先の指定で来たときは、描画のあとに区画を開いて�
     expect(details?.open).toBe(true);
     expect(result.current.loadOutput).toBe(true);
     expect(document.activeElement).toBe(settingsBody.current.querySelector('select'));
+});
+
+it('分離の指定で来たときは、区画を開き、読み込み済みなら待たずに分離の欄へ焦点を移す', () => {
+    const settingsBody = page('<details id="live-output-settings"><summary>出力</summary><select></select><input id="split" type="checkbox"></details>');
+    renderHook(() => useDeviceTargetFocus({ ...deviceInput, initialSection: 'liveOutputSplit', settingsBody }));
+    flushFrames();
+    expect(settingsBody.current.querySelector('details')?.open).toBe(true);
+    expect(document.activeElement).toBe(settingsBody.current.querySelector('#split'));
+});
+
+it('分離の指定で来たとき、欄がまだ使えなければ読み終えるまで待ち、使えるようになったら焦点を移す', () => {
+    const settingsBody = page('<details id="live-output-settings"><summary>出力</summary><input id="split" type="checkbox" disabled></details>');
+    const { rerender } = renderHook(({ loading }) => useDeviceTargetFocus({ ...deviceInput, initialSection: 'liveOutputSplit', loading, settingsBody }), { initialProps: { loading: false } });
+    flushFrames();
+    const split = settingsBody.current.querySelector<HTMLInputElement>('#split');
+    expect(document.activeElement).toBe(settingsBody.current.querySelector('summary'));
+    split?.removeAttribute('disabled');
+    rerender({ loading: true });
+    rerender({ loading: false });
+    expect(document.activeElement).toBe(split);
 });
 
 it('出力先へ移す描画の待ちは、条件が外れたら取り消し、同じ依頼では1回だけ動かす', () => {

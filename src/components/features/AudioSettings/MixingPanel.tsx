@@ -22,19 +22,20 @@ const contextLabels: Record<OffsetContextField, MessageKey> = {
 const initialLevels = (): MixLevels => ({ voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: false }, monitorAccompaniment: true, offsetMs: 0 });
 const validMixLevels = (value: MixLevels) => [value.voice.gain, value.accompaniment.gain].every(n => Number.isFinite(n) && n >= 0 && n <= 2)
     && Number.isInteger(value.offsetMs) && Math.abs(value.offsetMs) <= 2000;
+export type PreparationTarget = 'output' | 'split' | 'input';
 export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disabled = false, onBusyChange, onNavigate, initiallyOpen = false }: {
     inputs: AudioDevice[]; primaryInputId?: string; primaryIsVoiceDevice: boolean; disabled?: boolean;
-    onBusyChange?: (busy: boolean) => void; onNavigate?: (target: 'output' | 'input') => void; initiallyOpen?: boolean;
+    onBusyChange?: (busy: boolean) => void; onNavigate?: (target: PreparationTarget) => void; initiallyOpen?: boolean;
 }) {
     const t = useMessages(), reasonId = useId();
     const [open, setOpen] = useState(initiallyOpen), panel = useRef<HTMLDetailsElement>(null);
-    const [ready, setReady] = useState(false);
+    const [outputState, setOutputState] = useState({ selected: false, split: false });
     const [audioConfig, setAudioConfig] = useState<ActiveAudioConfig | null>(null);
     const [broadcastConfig, setBroadcastConfig] = useState<LiveOutputConfig | null>(null);
     async function readContext() {
         const [audio, output] = await Promise.all([audioApi.getAudioState().catch(() => null), liveOutputApi.request().catch(e => { setBroadcastConfig(null); throw e; })]);
         setAudioConfig(audio?.config ?? null); setBroadcastConfig(output.config);
-        setReady(!!output.config.deviceId && !!output.config.splitProcessing);
+        setOutputState({ selected: !!output.config.deviceId, split: !!output.config.splitProcessing });
         return { audio: audio?.config, broadcast: output.config };
     }
     const resource = useRevisionedResource(async () => {
@@ -128,17 +129,21 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     }
     const mark = () => { dirty.current = true; setConfirmedRoute(''); };
     const describe = (config: MixConfig | null) => !config ? t('mixing.none') : config.source.kind === 'device' ? inputs.find(d => d.id === (config.source.kind === 'device' ? config.source.config.inputId : ''))?.name ?? t('mixing.device') : config.source.config.appName;
-    const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !ready ? 'mixing.notReady' : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
+    const outputReady = outputState.selected && outputState.split;
+    const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !outputReady ? 'mixing.notReady' : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const notice = (key: MessageKey) => key === 'mixing.stale' ? t(key, { load: t('mixing.load') }) : t(key);
     // 前提が無く、オケがまだ有効でないときは、準備だけを出す（2つ以上のときだけ番号を付ける）。有効なオケは無効化のため残す。
-    const preparationOnly = !!snapshot && (!ready || !primaryIsVoiceDevice) && !snapshot.config;
+    const preparationOnly = !!snapshot && (!outputReady || !primaryIsVoiceDevice) && !snapshot.config;
     // 保存ファイルが読めない、または外部で変わったときだけ復旧を出す（snapshot.error）。
     const showRecovery = !preparationOnly || !!snapshot?.error;
+    // 出力側の不足は2つ。出力先が未選択なら先にそれを、選択済みで処理が分かれていないなら分離の欄を案内する。
+    const outputStep = !outputState.selected ? { key: 'output', target: 'output', action: 'mixingUi.openOutput' } as const
+        : !outputState.split ? { key: 'split', target: 'split', action: 'mixingUi.openSplit' } as const : null;
     const preparationSteps = [
-        !ready ? { key: 'output' as const, target: 'output' as const, action: 'mixingUi.openOutput' as const } : null,
-        !primaryIsVoiceDevice ? { key: 'input' as const, target: 'input' as const, action: 'mixingUi.openInput' as const } : null,
+        outputStep,
+        !primaryIsVoiceDevice ? { key: 'input', target: 'input', action: 'mixingUi.openInput' } as const : null,
     ].filter(step => step !== null);
     // ボタンの名前が手順そのものなので、同じ言葉の説明は重ねない（#715）。
     const preparationStep = (step: (typeof preparationSteps)[number]) =>
@@ -154,7 +159,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
                     ? <ol className="list-decimal space-y-3 pl-5">{preparationSteps.map(step => <li key={step.key}>{preparationStep(step)}</li>)}</ol>
                     : preparationSteps.map(step => <div key={step.key}>{preparationStep(step)}</div>)}
             </>}
-            {!preparationOnly && !ready && <div className="space-y-2"><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
+            {!preparationOnly && outputStep && <div className="space-y-2"><p>{t('mixing.notReady')}</p>{preparationStep(outputStep)}</div>}
             {!preparationOnly && !primaryIsVoiceDevice && <div className="space-y-2"><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
             {!preparationOnly && <>
             <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>

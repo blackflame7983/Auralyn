@@ -6,7 +6,7 @@ import { consumeLeaveSkip, requestLeave } from '@/components/layout/pageLeave';
 export type AppPage = 'home' | 'sound' | 'vst' | 'connect' | 'settings';
 export type SettingsPane = 'appearance' | 'shortcuts' | 'obs' | 'system';
 export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
-export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
+export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
 export type SoundPlace = 'basic' | 'liveModes' | 'singing' | 'peak';
 
 type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean; openMeasurement?: boolean; vstFocusAdd?: boolean };
@@ -93,8 +93,9 @@ export const useUIState = () => {
     const openAudioTuning = () => go({ page: 'connect', section: 'audioTuning' });
     // 配信ミックスは設定ではなくホームのパネルで扱う（#299）。
     const openMixingSettings = () => openStreamMixPanel();
-    // 配信ミックスのパネルから、出力先・入力元の区画を開いて案内する。
-    const openDeviceSettings = (target: 'output' | 'input') => go({ page: 'connect', section: target === 'output' ? 'liveOutput' : 'primaryInput' });
+    // 配信ミックスのパネルから、出力先・分離・入力元の欄を開いて案内する。
+    const deviceSections = { output: 'liveOutput', split: 'liveOutputSplit', input: 'primaryInput' } as const;
+    const openDeviceSettings = (target: keyof typeof deviceSections) => go({ page: 'connect', section: deviceSections[target] });
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
         const anchor = section === 'liveModes' || section === 'singing' ? section : undefined;
