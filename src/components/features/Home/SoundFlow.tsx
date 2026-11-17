@@ -1,10 +1,8 @@
 import { useRef, type ReactNode } from 'react';
+import { useSoundFlowCanvas } from '@/hooks/useSoundFlowCanvas';
 import type { MeterState } from '@/hooks/useMeterLevels';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useSoundFlowCanvas } from '@/hooks/useSoundFlowCanvas';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
-
-export { drawFlowWave, flowBeforeLineAlpha, flowBeforeLineWidth, flowHalfHeight, pushFlowSample } from '@/hooks/useSoundFlowCanvas';
 
 /**
  * 波形を描くか、区画を出さないかを決める状態。
@@ -16,11 +14,12 @@ export function flowIdleState(running: boolean, input: MeterState, output: Meter
     return running ? input : 'stopped';
 }
 
-/** 加工前と加工後の音量を重ねる帯。共有メーター以外の購読やタイマーは持たない。 */
+/** 加工前と加工後の音量を重ねる帯。音声メーターの購読・IPC・タイマーは足さない。 */
 export function SoundFlow({ running, music, action }: { running: boolean; music: boolean; action?: ReactNode }) {
     const t = useMessages();
     const input = useSharedMeter(running, 'input');
     const output = useSharedMeter(running, 'output');
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const idle = flowIdleState(running, input.state, output.state);
     const live = idle === null;
     const receiving = live || idle === 'silent';
@@ -30,7 +29,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     const received = useRef(false);
     received.current = running && (received.current || receiving);
     const shown = received.current;
-    const canvasRef = useSoundFlowCanvas(input, output, live, receiving, shown);
+    useSoundFlowCanvas({ canvasRef, input, output, live, receiving, shown });
     if (!shown) return null;
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
         className="mb-3 rounded-card bg-card px-4 py-2">

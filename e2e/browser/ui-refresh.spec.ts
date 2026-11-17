@@ -77,12 +77,19 @@ test('音の流れは共有メーターで描き、動きを減らす設定で�
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    await page.evaluate(() => {
+        const host: Window & { __e2eSetOutputMuted?: (muted: boolean) => void } = window;
+        host.__e2eSetOutputMuted?.(false);
+    });
     const graph = page.getByRole('img', { name: '加工前と加工後の音量', exact: true });
-    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.1, 0.08], output: [0.05, 0.04] }));
+    const emitLevel = (level: { input: number[]; output: number[] }) => page.evaluate(payload => {
+        const host: Window & { __e2eEmit?: (event: string, payload: unknown) => void } = window;
+        host.__e2eEmit?.('audio-level', payload);
+    }, level);
+    await emitLevel({ input: [0.1, 0.08], output: [0.05, 0.04] });
     await expect(graph).toHaveAttribute('data-flow', 'time');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.1, 0.08], output: [0.05, 0.04] }));
+    // 値は送り直さない。音量が変わらないまま設定だけが変わっても、すぐ静止する。
     await expect(graph).toHaveAttribute('data-flow', 'still');
     await expect(page.locator('.live-aurora')).toHaveCount(0);
     await page.getByRole('button', { name: message('ja', 'rail.connectName'), exact: true }).click();

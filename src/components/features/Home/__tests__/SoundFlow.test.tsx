@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { MeterReading } from '@/hooks/useMeterLevels';
-import { SoundFlow, drawFlowWave, flowBeforeLineAlpha, flowBeforeLineWidth, flowHalfHeight, flowIdleState } from '../SoundFlow';
+import { SoundFlow, flowIdleState } from '../SoundFlow';
+import { drawFlowWave, flowBeforeLineAlpha, flowBeforeLineWidth, flowHalfHeight } from '../soundFlowDraw';
 
 const meter = vi.hoisted(() => ({
     state: 'stopped' as MeterReading['state'],
@@ -10,14 +11,19 @@ const meter = vi.hoisted(() => ({
     levels: [0, 0],
     peak: [0, 0],
 }));
+// 実際の useMeterLevels と同じく、値が変わらない間は同じ読み取りを返す。毎回新しい参照を返すと、
+// 値が変わらないまま設定だけが変わった場合の再描画を、無関係な再描画が隠してしまう。
+const readings = vi.hoisted(() => new Map<string, { key: string; reading: unknown }>());
 vi.mock('../../LevelMeter/MeterContext', () => ({
-    useSharedMeter: (_running: boolean, type: 'input' | 'output') => ({
-        levels: meter.levels,
-        peak: meter.peak,
-        clipped: false,
-        state: (type === 'input' ? meter.input : meter.output) ?? meter.state,
-        resetClip: () => {},
-    }),
+    useSharedMeter: (_running: boolean, type: 'input' | 'output') => {
+        const state = (type === 'input' ? meter.input : meter.output) ?? meter.state;
+        const key = `${state}|${meter.levels.join()}|${meter.peak.join()}`;
+        const cached = readings.get(type);
+        if (cached?.key === key) return cached.reading as MeterReading;
+        const reading = { levels: meter.levels, peak: meter.peak, clipped: false, state, resetClip: () => {} };
+        readings.set(type, { key, reading });
+        return reading;
+    },
 }));
 
 afterEach(() => {
@@ -27,11 +33,28 @@ afterEach(() => {
     meter.output = undefined;
     meter.levels = [0, 0];
     meter.peak = [0, 0];
+    readings.clear();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
 });
 
 function matchMedia(matches: boolean) {
     vi.stubGlobal('matchMedia', () => ({ matches, addEventListener() {}, removeEventListener() {} }));
+}
+
+/** 利用者が OS の設定を切り替えたときと同じく、購読している change を呼ぶ。 */
+function switchableMatchMedia(initial: boolean) {
+    let matches = initial;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', () => ({
+        get matches() { return matches; },
+        addEventListener: (_type: string, listener: () => void) => { listeners.add(listener); },
+        removeEventListener: (_type: string, listener: () => void) => { listeners.delete(listener); },
+    }));
+    return (next: boolean) => {
+        matches = next;
+        act(() => { listeners.forEach(listener => listener()); });
+    };
 }
 
 it.each(['stopped', 'waiting', 'stale'] as const)('入力が %s のときは声の流れの区画を出さない（#624、#639）', state => {
@@ -107,14 +130,87 @@ it('流れの状態は、動いているときの入力を優先し、停止中�
 it('稼働中は時間の流れを描き、動きを減らす設定では静止する', () => {
     meter.state = 'live';
     meter.levels = [0.2, 0.2];
-    matchMedia(false);
-    const view = render(<SoundFlow running music={false} />);
-    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
     matchMedia(true);
-    view.rerender(<SoundFlow running music={false} />);
+    render(<SoundFlow running music={false} />);
     expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'still');
 });
 
+it('音量が変わらないまま動きを減らす設定に変わっても、すぐ静止する', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const setReduced = switchableMatchMedia(false);
+    render(<SoundFlow running music={false} />);
+    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
+    setReduced(true);
+    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'still');
+    setReduced(false);
+    expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
+});
+
+it('更新が止まって最後の波形を保っているあいだに設定が変わっても、最後の値で静止する', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const setReduced = switchableMatchMedia(false);
+    const view = render(<SoundFlow running music={false} />);
+    const canvas = screen.getByRole('img') as HTMLCanvasElement;
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    meter.state = 'stale';
+    view.rerender(<SoundFlow running music={false} />);
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    const { ctx, ops } = recordingContext();
+    Object.assign(ctx, { setTransform: vi.fn(), clearRect: vi.fn() });
+    vi.spyOn(canvas, 'getContext').mockReturnValue(ctx);
+    setReduced(true);
+    expect(canvas).toHaveAttribute('data-flow', 'still');
+    // 最後の値1つだけで描き直す。時間の流れの再生ヘッドは出さない。
+    expect(ops.filter(op => op.op === 'fill')).toHaveLength(1);
+    expect(ops.some(op => op.op === 'fillRect')).toBe(false);
+    expect(screen.getByRole('region', { name: '声の流れ' })).toBeInTheDocument();
+});
+
+function setAppHidden(hidden: boolean) {
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(hidden);
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+}
+
+it('隠れているあいだに動きを減らす設定が変わっても、表示に戻ったとき静止で描き直す', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const setReduced = switchableMatchMedia(false);
+    render(<SoundFlow running music={false} />);
+    const canvas = screen.getByRole('img') as HTMLCanvasElement;
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    setAppHidden(true);
+    setReduced(true);
+    // 隠れているあいだは描かない。メーターの参照は変わっていない。
+    expect(canvas).toHaveAttribute('data-flow', 'time');
+    setAppHidden(false);
+    expect(canvas).toHaveAttribute('data-flow', 'still');
+});
+
+it('隠れているあいだに設定が変わり、そのまま大きさが変わっても、再生ヘッドを描かない', () => {
+    meter.state = 'live';
+    meter.levels = [0.2, 0.2];
+    const resizes: (() => void)[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { resizes.push(callback); }
+        observe() {}
+        disconnect() {}
+    });
+    const setReduced = switchableMatchMedia(false);
+    render(<SoundFlow running music={false} />);
+    const canvas = screen.getByRole('img') as HTMLCanvasElement;
+    const { ctx, ops } = recordingContext();
+    Object.assign(ctx, { setTransform: vi.fn(), clearRect: vi.fn() });
+    vi.spyOn(canvas, 'getContext').mockReturnValue(ctx);
+    setAppHidden(true);
+    setReduced(true);
+    setAppHidden(false);
+    ops.length = 0;
+    resizes.forEach(resize => resize());
+    expect(ops.filter(op => op.op === 'fill')).toHaveLength(1);
+    expect(ops.some(op => op.op === 'fillRect')).toBe(false);
+});
 function recordingContext() {
     const ops: { op: string; x?: number; y?: number; strokeStyle?: string; lineWidth?: number; fillStyle?: unknown }[] = [];
     const ctx = {
