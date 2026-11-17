@@ -31,7 +31,6 @@ export interface PurposeAllowance {
 
 export const knownViolations: KnownViolation[] = [
     // 1〜2文字だけの行を見つける検査（#708、#720）が、セットアップ以外の画面で見つけた既存の崩れ。
-    { check: 'short-line', screen: 'connect', purpose: 'voice', size: '900x600', locale: 'ja', match: 'Store・MSIX版は', issue: '#751' },
     { check: 'short-line', screen: 'system', size: '900x600', locale: 'ja', match: 'すべて初期化', issue: '#751' },
     { check: 'short-line', screen: 'system', size: '1280x800', locale: 'ja', match: '読み込みを止めたVSTをリセット', issue: '#751' },
 ];

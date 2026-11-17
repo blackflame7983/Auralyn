@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shortWrappedLines, unphrasedJapaneseBlocks } from './helpers/shortLines';
+import { shortLineRoot, shortWrappedLineDetails, shortWrappedLines, unphrasedJapaneseBlocks } from './helpers/shortLines';
 
 async function render(page: Page, html: string) {
     await page.setContent(`<style>#t { font: 16px monospace; width: 8.5ch; word-break: break-all; }</style><p id="t">${html}</p>`);
@@ -22,6 +22,70 @@ test.describe('shortWrappedLines', () => {
 
     test('3文字以上で折り返す文は知らせない', async ({ page }) => {
         expect(await render(page, 'abcdefgh ijklmn')).toEqual([]);
+    });
+});
+
+test.describe('見えていない文字は数えない', () => {
+    const wrapped = 'abcdefghij';
+    const hiddenPatterns: Record<string, string> = {
+        'opacity: 0': `<div style="opacity: 0">${wrapped}</div>`,
+        'visibility: hidden': `<div style="visibility: hidden">${wrapped}</div>`,
+        'aria-hidden': `<div aria-hidden="true">${wrapped}</div>`,
+        hidden: `<div hidden>${wrapped}</div>`,
+        inert: `<div inert>${wrapped}</div>`,
+        '閉じた details': `<details><summary>見出し</summary>${wrapped}</details>`,
+        '閉じた disclosure-panel': `<div style="display: grid; grid-template-rows: 0fr"><div style="min-height: 0; overflow: hidden"><div>${wrapped}</div></div></div>`,
+        'height: 0 と overflow: hidden': `<div style="height: 0; overflow: hidden">${wrapped}</div>`,
+        '親の overflow: clip': `<div style="height: 0; overflow: clip">${wrapped}</div>`,
+    };
+
+    async function renderBox(page: Page, html: string) {
+        await page.setContent(`<style>#t { font: 16px monospace; width: 8.5ch; word-break: break-all; }</style><div id="t">${html}</div>`);
+        return page.locator('#t');
+    }
+
+    for (const [name, html] of Object.entries(hiddenPatterns)) {
+        test(`${name} の文字は、短い行にも日本語の折り返しにも数えない`, async ({ page }) => {
+            const box = await renderBox(page, html.replace(wrapped, `${wrapped}あいうえおかきくけこさしすせそたちつてと`));
+            expect(await shortWrappedLines(box)).toEqual([]);
+            expect(await unphrasedJapaneseBlocks(box)).toEqual([]);
+        });
+    }
+
+    test('見えている短い行は、隠れた文字が混ざっていても知らせる', async ({ page }) => {
+        const box = await renderBox(page, `abcdefghij<span aria-hidden="true"> HIDDEN</span>`);
+        expect(await shortWrappedLines(box)).toEqual(['ij']);
+    });
+
+    test('診断の文字列は、見えている文字だけから組む', async ({ page }) => {
+        const box = await renderBox(page, `abcdefghij<span aria-hidden="true"> HIDDEN</span><span style="opacity: 0"> GHOST</span>`);
+        const details = await shortWrappedLineDetails(box);
+        expect(details).toEqual([{ line: 'ij', block: 'abcdefghij' }]);
+    });
+
+    test('スクロールで届く文字は、いまの表示の外にあっても数える', async ({ page }) => {
+        const box = await renderBox(page, `<div style="height: 0.5em; overflow: auto">${wrapped}</div>`);
+        expect(await shortWrappedLines(box)).toEqual(['ij']);
+    });
+
+    test('一部だけ切り取られた箱は、見えている行だけを数える', async ({ page }) => {
+        // 1行目は abcdefgh、2行目は ij。箱は1行目しか見せない。
+        const box = await renderBox(page, `<div style="height: 0.5em; overflow: hidden">${wrapped}</div>`);
+        expect(await shortWrappedLines(box)).toEqual([]);
+    });
+});
+
+test.describe('shortLineRoot', () => {
+    test('ダイアログが無ければ body、あれば最前面のダイアログだけを対象にする', async ({ page }) => {
+        await page.setContent('<main id="home">ホーム</main>');
+        await expect(await shortLineRoot(page)).toHaveJSProperty('tagName', 'BODY');
+        await page.setContent('<main id="home">ホーム</main><div role="dialog" id="first">一つ目</div><div role="dialog" id="second">二つ目</div>');
+        await expect(await shortLineRoot(page)).toHaveAttribute('id', 'second');
+    });
+
+    test('aria-hidden で隠れたダイアログは、最前面に数えない', async ({ page }) => {
+        await page.setContent('<div role="dialog" id="first">一つ目</div><div role="dialog" id="second" aria-hidden="true">二つ目</div>');
+        await expect(await shortLineRoot(page)).toHaveAttribute('id', 'first');
     });
 });
 

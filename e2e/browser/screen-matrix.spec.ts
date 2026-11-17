@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installTauriMock, type TauriMockOptions } from '../../src/dev/tauriMock';
-import { collectScreenAudit, type AuditHit } from './helpers/screenAudit';
-import { shortWrappedLineDetails, unphrasedJapaneseBlocks } from './helpers/shortLines';
+import { runScreenAudit, type AuditHit } from './helpers/screenAudit';
+import { shortLineRoot, shortWrappedLineDetails, unphrasedJapaneseBlocks } from './helpers/shortLines';
 import { message } from '../../src/i18n/messages';
 import { setOutputMuted } from './e2eHooks';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
@@ -220,14 +220,14 @@ async function openScreen(page: Page, ctx: Context & { screen: ScreenId }, width
 // 日本語の文が語の途中で折れ、末尾に1〜2文字だけの行が残るのを止める（#708）。英語は語単位で折れるので対象にしない。
 async function shortLineHits(page: Page, locale: Locale): Promise<AuditHit[]> {
     if (locale !== 'ja') return [];
-    const found = await shortWrappedLineDetails(page.locator('body'));
+    const found = await shortWrappedLineDetails(await shortLineRoot(page));
     return found.map(item => ({ check: 'short-line', selector: '文の末尾', text: `${item.line} ← ${item.block}` }));
 }
 
 // セットアップの最初の画面は、複数行になる日本語の文をすべて文節で折り返す（#708、#720）。
 async function setupPhraseBreakHits(page: Page, locale: Locale): Promise<AuditHit[]> {
     if (locale !== 'ja') return [];
-    const blocks = await unphrasedJapaneseBlocks(page.getByRole('dialog'));
+    const blocks = await unphrasedJapaneseBlocks(await shortLineRoot(page));
     return blocks.map(text => ({ check: 'phrase-break', selector: '複数行の日本語', text }));
 }
 
@@ -248,7 +248,7 @@ async function runMatrix(page: Page, retried: () => number, ctx: Context, width:
     errors.length = 0;
     if (ctx.screen === 'setup-first') await openSetupFirst(page, ctx.locale, width, height);
     else await openScreen(page, { ...ctx, screen: ctx.screen }, width, height);
-    const hits = [...await page.evaluate(collectScreenAudit, { purpose: ctx.purpose, locale: ctx.locale }), ...await shortLineHits(page, ctx.locale),
+    const hits = [...await runScreenAudit(page, { purpose: ctx.purpose, locale: ctx.locale }), ...await shortLineHits(page, ctx.locale),
         ...ctx.screen === 'setup-first' ? await setupPhraseBreakHits(page, ctx.locale) : []];
     // 一時的なソケット不足で開き直したときは、エラーページの localStorage の拒否だけを除く（helpers/transientGoto.ts）。
     expect(retried() > 0 ? errors.filter(message => message !== deniedStorageOnErrorPage) : errors, '画面の実行時例外').toEqual([]);

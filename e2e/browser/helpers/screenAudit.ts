@@ -1,3 +1,6 @@
+import type { Page } from '@playwright/test';
+import { visibilityExpression, type PageVisibility } from './visibility';
+
 // 見えている要素だけを調べる。ブラウザの中で実行する。外側の変数は参照しない。
 
 export type AuditCheck = 'overlap' | 'overflow' | 'wrap' | 'short-line' | 'phrase-break' | 'duplicate' | 'empty' | 'separator' | 'purpose';
@@ -11,40 +14,19 @@ export interface AuditHit {
     word?: string;
 }
 
-export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: 'ja' | 'en' }): AuditHit[] {
-    // page.evaluate は関数だけを渡すので、定数は関数の中に置く。
+// ブラウザの中で、関数と可視判定（visibility.ts）を一緒に評価する。関数は文字列にして送るので、外側の変数を参照しない。
+export function runScreenAudit(page: Page, args: AuditArgs): Promise<AuditHit[]> {
+    return page.evaluate<AuditHit[]>(`(${collectScreenAudit.toString()})(${JSON.stringify(args)}, ${visibilityExpression})`);
+}
+
+export interface AuditArgs { purpose: 'voice' | 'music'; locale: 'ja' | 'en' }
+
+function collectScreenAudit(args: AuditArgs, visibility: PageVisibility): AuditHit[] {
+    // 定数は関数の中に置く。
     const interactiveSelector = 'button, a, input, select, [role="button"], [role="switch"], [role="slider"], [role="tab"]';
     const jaWords = ['配信', 'OBS', '通話', '歌', '雑談'];
     const enWords = ['stream', 'broadcast', 'obs', 'sing', 'talk'];
-    const visibleCache = new WeakMap<Element, boolean>();
-    const isVisible = (element: Element): boolean => {
-        const cached = visibleCache.get(element);
-        if (cached !== undefined) return cached;
-        let visible = true;
-        // 閉じたメニューの中は見えない。ボタン自身の data-state="closed" は、ツールチップが閉じている印なので外さない。
-        const closed = element.closest('[data-state="closed"]');
-        const closedPanel = closed !== null && !closed.matches('button, a, summary, [role="button"], [role="radio"], [role="tab"], [role="switch"], [role="menuitem"]');
-        if (element.closest('[aria-hidden="true"], .sr-only, [hidden]') || closedPanel) visible = false;
-        else {
-            const details = element.closest('details');
-            if (details && !details.open) {
-                const summary = details.querySelector(':scope > summary');
-                if (summary !== element && !summary?.contains(element)) visible = false;
-            }
-            for (let node: Element | null = element; node && visible; node = node.parentElement) {
-                const style = getComputedStyle(node);
-                if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.contentVisibility === 'hidden') visible = false;
-                if (Number(style.opacity) === 0) visible = false;
-            }
-            if (visible) {
-                const box = element.getBoundingClientRect();
-                // 1px 未満は、画面に出ていないものとして外す。
-                if (box.width < 1 || box.height < 1) visible = false;
-            }
-        }
-        visibleCache.set(element, visible);
-        return visible;
-    };
+    const { isVisible } = visibility;
     const directText = (element: Element) => {
         let text = '';
         for (const node of element.childNodes) {
@@ -102,27 +84,14 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         return rects;
     };
     // 省略（overflow: hidden）の文字範囲は、見えている箱の外まで伸びる。重なりは、箱の内側だけを見る。
-    const clips = (style: CSSStyleDeclaration) => /\b(hidden|clip|auto|scroll)\b/.test(`${style.overflowX} ${style.overflowY}`);
     const visibleTextRects = (element: Element) => {
         const raw = textRects(element);
         const source = raw.length > 0 ? raw : [boxOf(element)];
         // overflow が見えている要素は、はみ出した文字も画面に出ている。隠している箱だけに切り揃える。
-        const limits: DOMRect[] = [];
-        if (clips(getComputedStyle(element))) limits.push(boxOf(element));
-        for (let node = element.parentElement; node; node = node.parentElement) {
-            if (clips(getComputedStyle(node))) limits.push(node.getBoundingClientRect());
-        }
+        const limits = visibility.clipLimits(element);
         const kept: DOMRect[] = [];
         for (const rect of source) {
-            let current: DOMRect | null = rect;
-            for (const limit of limits) {
-                if (!current) break;
-                const left = Math.max(current.left, limit.left);
-                const right = Math.min(current.right, limit.right);
-                const top = Math.max(current.top, limit.top);
-                const bottom = Math.min(current.bottom, limit.bottom);
-                current = right - left >= 1 && bottom - top >= 1 ? new DOMRect(left, top, right - left, bottom - top) : null;
-            }
+            const current = visibility.clipRect(rect, limits);
             if (current) kept.push(current);
         }
         return kept;
@@ -134,19 +103,7 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
     };
     // スクロールで切り取られた部分は描かれない。保存の欄との重なりは、見えている範囲だけを見る（#640）。
     // overflow: visible のまま枠の外へ出る部分は、切り取りが無いので箱の全体が残る。完全に隠れた操作は数えない。
-    const visibleBox = (element: Element) => {
-        let current: DOMRect | null = boxOf(element);
-        for (let node = element.parentElement; node && current; node = node.parentElement) {
-            if (!clips(getComputedStyle(node))) continue;
-            const limit = node.getBoundingClientRect();
-            const left = Math.max(current.left, limit.left);
-            const right = Math.min(current.right, limit.right);
-            const top = Math.max(current.top, limit.top);
-            const bottom = Math.min(current.bottom, limit.bottom);
-            current = right - left >= 1 && bottom - top >= 1 ? new DOMRect(left, top, right - left, bottom - top) : null;
-        }
-        return current;
-    };
+    const visibleBox = (element: Element) => visibility.clipRect(boxOf(element), visibility.clipLimits(element.parentElement));
     for (const control of interactive) {
         const controlBox = visibleBox(control);
         if (!controlBox) continue;
@@ -295,9 +252,16 @@ export function collectScreenAudit(args: { purpose: 'voice' | 'music'; locale: '
         if (!isFrame(element) || !isVisible(element)) continue;
         const box = element.getBoundingClientRect();
         if (box.height < 40) continue;
-        // アイコンだけを入れた小さな角丸の面（カードの記号の台）は、中身のある飾りで、空の枠ではない（#720）。
-        // 背景の暗幕の後ろまで枠として数えないよう、高さの上限（64px）と svg の有無で絞る。
-        if (box.height <= 64 && element.querySelector(':scope > svg') && !element.textContent?.trim()) continue;
+        // ChoiceCard のアイコン台は、見えているアイコンを入れた飾りで、空の枠ではない（#720）。
+        // 大きさでは逃がさない。拡大表示やほかの空のカードまで見逃すため、専用のクラスと見えている svg で絞る。
+        // アイコンは装飾なので aria-hidden が付く。読み上げではなく、描かれているかで見る。
+        const icon = element.querySelector(':scope > svg');
+        if (element.classList.contains('setup-choice-icon') && icon) {
+            const iconStyle = getComputedStyle(icon);
+            const iconBox = icon.getBoundingClientRect();
+            const drawn = iconStyle.display !== 'none' && iconStyle.visibility === 'visible' && Number(iconStyle.opacity) > 0 && iconBox.width >= 1 && iconBox.height >= 1;
+            if (drawn) continue;
+        }
         const half = box.height / 2;
         const heading = element.querySelector('h1, h2, h3, h4');
         if (!hasSubstance(element, true)) {
