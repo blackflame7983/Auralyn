@@ -11,6 +11,7 @@ import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar, LiveModeSwitch } from './components/features/AudioSettings/LiveModeBar';
 import { LiveProtectButton } from './components/features/AudioSettings/LiveProtectButton';
 import { useEffect, useRef } from 'react';
+import { delay } from '@/hooks/internal/afterFrame';
 import { AppShell } from './components/layout/AppShell';
 import { VstPage } from './components/features/PluginRack/VstPage';
 import { VstChainItems } from './components/features/Home/VstChainItems';
@@ -39,6 +40,7 @@ function AppContent() {
 
   // Custom Hooks
   const ui = useUIState();
+  const { setIsOBSGuideOpen } = ui;
   const [displayPurpose] = useDisplayPurpose();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
@@ -101,22 +103,23 @@ function AppContent() {
   // Show next-step guidance when tutorial completes
   useEffect(() => {
     if (currentStep === 'complete') {
-      // Small delay to let the last overlay disappear
-      const timer = setTimeout(() => {
+      return delay(500, () => {
         toast.info(<LocalizedMessage id="guide.copy.424" />, {
           description:
             <LocalizedMessage id={readPreparationContext().usage === 'obs' ? "guide.copy.425" : "guide.tutorialLocalDone"} />,
           duration: 5000,
           action: readPreparationContext().usage === 'obs' ? {
             label: <LocalizedMessage id="guide.copy.426" />,
-            onClick: () => ui.setIsOBSGuideOpen(true),
+            onClick: () => setIsOBSGuideOpen(true),
           } : undefined,
         });
-      }, 500);
-      return () => clearTimeout(timer);
+      });
     }
-  }, [currentStep]);
+  }, [currentStep, setIsOBSGuideOpen]);
 
+  const { cleanupPending } = sessionMode();
+  const toggleVst = (id: string, enabled: boolean) => { void pluginsApi.togglePlugin(id, enabled); };
+  const editVst = (id: string) => { void pluginsApi.openEditor(id); };
   const isModalOpen = [
     ui.isSettingsOpen, ui.isBrowserOpen, ui.isOBSGuideOpen, ui.isDiscordGuideOpen,
     ui.isWizardOpen, ui.isTemplateWizardOpen, ui.isLicenseModalOpen, ui.isRecoveryModalOpen,
@@ -129,12 +132,12 @@ function AppContent() {
       focusNonce={ui.vstOpenNonce}
       focusAdd={ui.vstFocusAdd}
       onAdd={() => ui.setIsBrowserOpen(true)}
-      onToggle={pluginsApi.togglePlugin}
-      onMute={pluginsApi.toggleMute}
-      onGainChange={pluginsApi.setPluginGain}
-      onRemove={pluginsApi.removePlugin}
-      onEdit={pluginsApi.openEditor}
-      onReorder={pluginsApi.reorderPlugins}
+      onToggle={toggleVst}
+      onMute={(id, muted) => { void pluginsApi.toggleMute(id, muted); }}
+      onGainChange={(id, gain) => { void pluginsApi.setPluginGain(id, gain); }}
+      onRemove={id => { void pluginsApi.removePlugin(id); }}
+      onEdit={editVst}
+      onReorder={next => { void pluginsApi.reorderPlugins(next); }}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
       unrestored={pluginsApi.sessionUnrestored}
@@ -263,18 +266,19 @@ function AppContent() {
         liveProtect={<LiveProtectButton model={liveModel} safetyOnly={displayPurpose === 'music'} />}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
-        vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={toggleVst} onEdit={editVst} />}
         vstEditors={pluginsApi.plugins.some(plugin => plugin.hasEditor)
-          ? <VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />
+          ? <VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={toggleVst} onEdit={editVst} />
           : undefined}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.length}
+        vstActiveCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.filter(plugin => plugin.enabled).length}
         onOpenVst={ui.openVst}
         onLoadPreset={pluginsApi.loadPreset}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
         notices={<>
-          {sessionMode().cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: sessionMode().cleanupPending! })}</p>}
+          {cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: cleanupPending })}</p>}
           {sessionMode().temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
           <SessionRecoveryNotice
             status={pluginsApi.sessionRestoreStatus}

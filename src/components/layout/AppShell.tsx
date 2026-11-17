@@ -98,6 +98,8 @@ interface AppShellProps {
     onLoadPreset?: (name: string) => Promise<boolean>;
     /** 画面側の VST 一覧の件数。未取得は null。 */
     vstCount?: number | null;
+    /** オンのVSTの件数。0 のあいだは比べるものが無いので、比較を無効にする。未取得は null。 */
+    vstActiveCount?: number | null;
     /** 表示を選んだ配信ミックス。本番帯の直下へ置く。 */
     streamMixPanel?: ReactNode;
 }
@@ -143,6 +145,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstEditors,
     vstUnrestored,
     vstCount = null,
+    vstActiveCount = null,
     onOpenVst,
     onLoadPreset,
     streamMixPanel
@@ -233,14 +236,22 @@ export const AppShell: React.FC<AppShellProps> = ({
         purpose === 'music',
     ) : null;
     const elapsed = useSessionElapsed(isEngineRunning);
-    const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass();
+    const nothingToCompare = vstActiveCount === 0;
+    const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass(nothingToCompare);
     // 比較は配信も音楽鑑賞も、右の列に常に出す。未設定のホームだけ、比較中に限る。
     const compareInColumn = chrome.footer.compare === 'always' || isABBypassed;
     // 止まっているあいだは比べられない。比較のオンオフはここでは変えない（#612）。
     const compareStopped = !isEngineRunning;
+    // 動いていても、オンのVSTが無ければ比べるものが無い。理由は1つだけ出し、止まっているときは音声の開始を先にする。
+    // 比較中は、切る操作を残す（自動で終わらせる送信が失敗しても戻せる）。
+    const compareNeedsVst = nothingToCompare && !isABBypassed && !compareStopped
+        ? t((vstCount ?? 0) === 0 ? 'header.compareNeedsVst' : 'header.compareNeedsVstOn') : undefined;
+    const compareDisabled = compareStopped || compareNeedsVst !== undefined;
+    const compareReason = compareStopped ? t('header.compareNeedsAudio') : compareNeedsVst;
     const compareDescribedBy = [
         isABBypassed ? 'safety-compare-state' : '',
         compareStopped ? 'safety-compare-needs-audio' : '',
+        compareNeedsVst ? 'safety-compare-needs-vst' : '',
     ].filter(Boolean).join(' ') || undefined;
 
     return (
@@ -269,7 +280,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
                         input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
-                        vstBypassed={isABBypassed} onCompareVst={() => { void handleABToggle(); }}
+                        vstBypassed={isABBypassed} compareUnavailable={compareNeedsVst} onCompareVst={() => { void handleABToggle(); }}
                         onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
                 />
                 <NoticeLane />
@@ -357,13 +368,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <button
                                         id="ab-compare-btn"
                                         type="button"
-                                        disabled={compareStopped}
-                                        onClick={() => { if (!compareStopped) void handleABToggle(); }}
+                                        disabled={compareDisabled}
+                                        onClick={() => { if (!compareDisabled) void handleABToggle(); }}
                                         aria-label={t('header.compare')}
                                         role="switch"
                                         aria-checked={isABBypassed}
                                         aria-describedby={compareDescribedBy}
-                                        title={compareStopped ? t('header.compareNeedsAudio') : undefined}
+                                        title={compareReason}
                                         className={cn(
                                             "home-control flex w-full min-w-0 shrink-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control disabled:cursor-not-allowed disabled:opacity-50",
                                             isABBypassed
@@ -386,6 +397,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             </Tooltip>
                             {/* 列が狭いので理由は title と読み上げに残し、ボタンの中へは出さない。 */}
                             {compareStopped && <span id="safety-compare-needs-audio" className="sr-only">{t('header.compareNeedsAudio')}</span>}
+                            {compareNeedsVst && <span id="safety-compare-needs-vst" className="sr-only">{compareNeedsVst}</span>}
                         </TooltipProvider>}
                     />
                 </aside>

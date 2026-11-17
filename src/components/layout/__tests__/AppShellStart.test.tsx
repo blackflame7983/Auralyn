@@ -324,6 +324,73 @@ it('比較中のまま止めても、右の列の比較のオンオフは切り�
     expect(bypass).toHaveBeenCalledTimes(1);
 });
 
+it.each(['ja', 'en'] as const)('VSTが1つも無いあいだは、右の列の比較を無効にして理由を結ぶ（%s）', locale => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>
+    </LocaleProvider>);
+    const compare = screen.getByRole('switch', { name: message(locale, 'header.compare') });
+    const reason = message(locale, 'header.compareNeedsVst');
+    expect(compare).toBeDisabled();
+    expect(compare).toHaveAttribute('aria-checked', 'false');
+    expect(compare).toHaveAttribute('title', reason);
+    expect(compare).toHaveAccessibleDescription(reason);
+    fireEvent.click(compare);
+    expect(bypass).not.toHaveBeenCalled();
+});
+
+it('止まっていてVSTも無いときは、音声を開始する理由だけを結ぶ', () => {
+    render(<AppShell {...commonProps} isEngineRunning={false} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    expect(compare).toBeDisabled();
+    expect(compare).toHaveAttribute('title', message('ja', 'header.compareNeedsAudio'));
+    expect(compare).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+});
+
+it('VSTが全部オフのあいだは、追加ではなくオンにする案内を結ぶ', () => {
+    render(<AppShell {...commonProps} vstCount={2} vstActiveCount={0}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    expect(compare).toBeDisabled();
+    expect(compare).toHaveAccessibleDescription(message('ja', 'header.compareNeedsVstOn'));
+});
+
+it.each([1, null])('オンのVSTがある、または数が未確認のあいだは、比較を押せる（数=%s）', async count => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    render(<AppShell {...commonProps} vstCount={count} vstActiveCount={count}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    expect(compare).toBeEnabled();
+    expect(compare).not.toHaveAttribute('title');
+    await act(async () => { fireEvent.click(compare); });
+    expect(bypass).toHaveBeenCalledWith(true);
+});
+
+it('比較中にVSTを全部外すと、比較を終わらせて音の処理側の状態に合わせる', async () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    const view = render(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    expect(bypass).toHaveBeenCalledTimes(1);
+    await act(async () => { view.rerender(<AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>); });
+    expect(bypass).toHaveBeenCalledTimes(2);
+    expect(bypass).toHaveBeenLastCalledWith(false);
+    expect(compare).toHaveAttribute('aria-checked', 'false');
+    expect(compare).toBeDisabled();
+    expect(compare).toHaveAccessibleDescription(message('ja', 'header.compareNeedsVst'));
+});
+
+it('比較中にVSTが無くなり、終わらせる送信が失敗しても、比較は切れるまま残して無効にしない', async () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const view = render(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    bypass.mockRejectedValue(new Error('test failure'));
+    await act(async () => { view.rerender(<AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>); });
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    expect(compare).toBeEnabled();
+});
+
 it('音楽鑑賞のほかのページと配信のホームでは、右の列の比較をこれまでどおり出す', () => {
     saveDisplayPurpose('music');
     const musicPage = render(<AppShell {...commonProps} page="sound"><p>rack</p></AppShell>);
