@@ -5296,20 +5296,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/VoiceCheck/__tests__/VoiceCheckModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "2020d68f407f685ab8b74103d3995815441e453fdff2aaea9c9e0745aa2c266c",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/VoiceCheck/__tests__/VoiceCheckModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "65345a8efa26efc926fb942e5620f7a726b01d6ab662dbabc3429940d1ac7953",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/VoiceCheck/__tests__/VoiceProposal.test.tsx",
       "rule": "@typescript-eslint/no-floating-promises",
       "hash": "a1a7e6ee5ef08274fc603eb80c7fff959a8f311df40a7693d7dbb6f335370e39",
@@ -5335,13 +5321,6 @@
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "ae0fd30510e24ea5b0d81aeefb4e8e3c270b53d318e43f2748133a330adc6fa6",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/VoiceCheck/__tests__/VoiceProposal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "ccca2cb97a7821771289f74e25a6af6271f860f3cdbfea08e555e8d5c40b2253",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -5412,13 +5391,6 @@
       "rule": "react-hooks/exhaustive-deps",
       "hash": "56a126bae79d8eb0120088cbe60e9b2a97b930d25121e83b02850d0a87a32d9c",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/VoiceCheck/VoiceCheckModal.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "83473a8174f850d0ea913f29af6f6544850e0cc855d43fa19e0cc382deddbce3",
-      "count": 6,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {

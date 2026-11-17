@@ -118,7 +118,8 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     const store = createLocaleStore(() => 'ja', () => true); const save = vi.fn();
     function Screen() { const model = useSingingDraft(); return <><input type="number" aria-label="manual draft" value={model.draft?.singing?.lowCutHz ?? 80} onChange={e => model.edit({ lowCutHz: Number(e.target.value) })} /><VoiceCheckModal isOpen manualCandidate={false} singingModel={model} onClose={vi.fn()} onSaveSingingProfile={save} /></>; }
     render(<LocaleProvider store={store}><Screen /></LocaleProvider>);
-    const candidates = (await screen.findByText('歌向け：声を整える機能の候補を試す')).closest('details')!;
+    const candidates = (await screen.findByText('歌向け：声を整える機能の候補を試す')).closest('details');
+    if (!(candidates instanceof HTMLDetailsElement)) throw new Error('候補の欄がありません');
     expect(candidates).not.toHaveAttribute('open');
     const play = screen.getByRole('button', { name: '選んだ試聴先で再生' });
     expect(play.compareDocumentPosition(candidates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -130,17 +131,18 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     fireEvent.change(screen.getByLabelText('manual draft'), { target: { value: '140' } });
     fireEvent.click(create);
     await screen.findByText(/低音整理80 Hz/);
+    fireEvent.click(screen.getByText('試聴先と注意'));
     fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
     await screen.findByRole('option', { name: '実名ヘッドホン' });
     fireEvent.change(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' }), { target: { value: 'hp' } });
-    const safety = screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }); fireEvent.click(safety);
+    const safety = screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ }); fireEvent.click(safety);
     const dialog = screen.getByRole('dialog'); const calls = vi.mocked(voicePreviewApi.request).mock.calls.length;
     const builtinCalls = vi.mocked(builtinApi.request).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('dialog')).toBe(dialog);
     expect(screen.getByRole('combobox', { name: 'Voice Check listening output' })).toHaveValue('hp');
     expect(screen.getByLabelText('manual draft')).toHaveValue(140);
-    expect(screen.getByRole('checkbox', { name: /I checked that OBS/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /I confirmed that OBS and call apps are not capturing the listening output/ })).toBeChecked();
     expect(screen.getByText(/fixed starting points, not measured optimal/)).toBeVisible();
     expect(voicePreviewApi.request).toHaveBeenCalledTimes(calls);
     expect(builtinApi.request).toHaveBeenCalledTimes(builtinCalls);
@@ -228,10 +230,11 @@ it('手動Aと録音提案Bを混同せず、手動再準備後のA/BにはAのc
     await screen.findByText('候補の準備ができました。試聴先を確認して再生してください。');
     expect(screen.getByText('A/B対象：原音と手動下書きの候補（声を整える機能のみ）')).toBeVisible();
     expect(prepared?.config.singing?.lowCutHz).toBe(140);
+    fireEvent.click(screen.getByText('試聴先と注意'));
     fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
     await screen.findByRole('option', { name: 'Headphones' });
     fireEvent.change(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' }), { target: { value: 'hp' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ }));
     fireEvent.click(screen.getByRole('button', { name: '選んだ試聴先で再生' }));
     await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', candidateId: 'manual140' })));
 });
