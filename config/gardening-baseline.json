@@ -4820,27 +4820,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Presets/PresetManagerModal.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "7c04b71934d5a46bc222874ce5fc54e661180594dbdd2bcbd7e7dadee4d36f33",
-      "count": 9,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Presets/PresetManagerModal.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "7c04b71934d5a46bc222874ce5fc54e661180594dbdd2bcbd7e7dadee4d36f33",
-      "count": 9,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Presets/PresetManagerModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "7c04b71934d5a46bc222874ce5fc54e661180594dbdd2bcbd7e7dadee4d36f33",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/Presets/RecoveryActionsPanel.tsx",
       "rule": "auralyn/architecture",
       "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",

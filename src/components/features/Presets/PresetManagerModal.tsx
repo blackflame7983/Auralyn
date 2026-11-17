@@ -13,7 +13,8 @@ import { notice, renderNotice, type SettingsNotice } from '@/components/features
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { isRecoveryProfileName, profileDisplayName } from '@/lib/profileNames';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import { useRefreshProfilesWhenOpen } from './useRefreshProfilesWhenOpen';
 import { Modal } from '../../ui/modal';
 import {
     MdClose, MdSave, MdDelete, MdFolderOpen, MdPlayArrow, MdSearch,
@@ -31,7 +32,7 @@ import {
 } from '../../../api/presets';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { toast } from 'sonner';
-import { audioApi, AudioDeviceList } from '../../../api/audio';
+import { type AudioDeviceList } from '../../../api/audio';
 import { BroadcastBundlePanel } from './BroadcastBundlePanel';
 import type { BundleOperation, BundleResult } from '../../../api/bundles';
 
@@ -245,13 +246,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         }
     };
 
-    useEffect(() => {
-        if (isOpen) {
-            loadProfiles();
-            setApplySummary(null);
-            audioApi.getDevices(false).then(setDevices).catch(() => {});
-        }
-    }, [isOpen]);
+    useRefreshProfilesWhenOpen(isOpen, loadProfiles, () => setApplySummary(null), setDevices);
 
     const handleSaveProfile = async () => {
         if (!saveName.trim()) {
@@ -269,7 +264,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
             if (ok) {
                 setSaveName('');
                 toast.success(React.createElement(NoticeText, { value: notice('presets.copy.020') }));
-                loadProfiles();
+                void loadProfiles();
             }
         };
 
@@ -278,7 +273,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 title: notice('presets.copy.021', { arg0: saveName }),
                 description: notice('presets.copy.022'),
                 confirmLabel: notice('presets.copy.023'),
-                onConfirm: doSave,
+                onConfirm: () => { void doSave(); },
             });
             return;
         }
@@ -300,7 +295,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         } else {
             toast.warning(React.createElement(NoticeText, { value: notice('presets.copy.025') }));
         }
-        loadProfiles();
+        void loadProfiles();
     };
 
     const handleApply = async (name: string) => {
@@ -313,7 +308,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         }
 
         const needsRestart = !soundOnly && !!presetDetail?.audioConfig;
-        const confirmApply = () => runApply(name);
+        const confirmApply = () => { void runApply(name); };
 
         if (needsRestart) {
             showConfirm({
@@ -337,12 +332,12 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
             title: notice('presets.copy.032', { arg0: name }),
             description: notice('presets.copy.033'),
             confirmLabel: notice('presets.copy.034'),
-            onConfirm: async () => {
+            onConfirm: () => { void (async () => {
                 if (await onLoadPreset(name)) {
                     toast.success(React.createElement(NoticeText, { value: notice('presets.copy.035') }));
                     onClose();
                 }
-            },
+            })(); },
         });
     };
 
@@ -352,16 +347,16 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
             description: notice('presets.copy.037'),
             confirmLabel: notice('presets.copy.038'),
             variant: 'destructive',
-            onConfirm: async () => {
+            onConfirm: () => { void (async () => {
                 try {
                     await presetApi.delete(name);
                     toast.success(React.createElement(NoticeText, { value: notice('presets.copy.039') }));
-                    loadProfiles();
+                    void loadProfiles();
                 } catch (e) {
                     console.error("Failed to delete:", e);
                     toast.error(React.createElement(NoticeText, { value: notice('presets.copy.040') }));
                 }
-            },
+            })(); },
         });
     };
 
@@ -379,7 +374,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         try {
             const importedName = await presetApi.importProfile();
             toast.success(React.createElement(NoticeText, { value: notice('presets.copy.043', { arg0: importedName }) }));
-            loadProfiles();
+            void loadProfiles();
         } catch (e: unknown) {
             if (e === 'cancelled' || (typeof e === 'string' && e.includes('cancel'))) return;
             toast.error(React.createElement(NoticeText, { value: notice('presets.copy.044') }));
@@ -391,15 +386,15 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
             title: notice('presets.copy.045'),
             description: notice('presets.copy.046'),
             confirmLabel: notice('presets.copy.047'),
-            onConfirm: async () => {
+            onConfirm: () => { void (async () => {
                 const summary = await onRestoreBackup();
                 if (summary) {
                     setApplySummary(summary);
                     toast.success(React.createElement(NoticeText, { value: notice('presets.copy.048') }));
-                    loadProfiles();
+                    void loadProfiles();
                     onClose();
                 }
-            },
+            })(); },
         });
     };
 
@@ -467,6 +462,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     {/* 見出しと範囲の選択で保存対象が分かる。同じ説明は重ねない（#626）。 */}
                     <SegmentedControl label={t('profilePurpose.title')} value={saveCategories.includeAudioConfig ? 'equipment' : 'sound'} onValueChange={value => setSaveCategories(c => ({ ...c, includeAudioConfig: value === 'equipment' }))} options={[{value: 'sound', label: t('profilePurpose.sound')}, {value: 'equipment', label: t('profilePurpose.equipment')}]} />
                     <p className="text-ui-support text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
+                    {saveCategories.includeAudioConfig && <p className="text-ui-support text-muted-foreground">{t('profilePurpose.devicesOnlyElsewhere')}</p>}
                     {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
                     <details className="text-ui-support">
                         <summary className="cursor-pointer text-ui-support font-medium">{t('profilePurpose.customize')}</summary>
@@ -485,10 +481,10 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                             onChange={(e) => setSaveName(e.target.value)}
                             placeholder={t('presets.copy.062')}
                             className="flex-1"
-                            onKeyDown={(e) => e.key === 'Enter' && handleSaveProfile()}
+                            onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveProfile(); }}
                         /></Field>
                         <Button variant="default" size="sm"
-                            onClick={handleSaveProfile}
+                            onClick={() => { void handleSaveProfile(); }}
                             disabled={!saveName.trim()}
                             className="flex items-center gap-2"
                         >
@@ -497,17 +493,12 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
 
-                <fieldset className="mx-4 my-4 space-y-3 text-ui-support">
-                    <legend className="text-ui-heading font-semibold mb-3">{t('profilePurpose.apply')}</legend>
-                    <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
-                    {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
-                </fieldset>
                 {applySummary && (
                     <ApplyResultSummary
                         summary={applySummary}
                         devices={devices}
                         onSubstitute={(subs) => {
-                            if (pendingApplyName) runApply(pendingApplyName, subs);
+                            if (pendingApplyName) void runApply(pendingApplyName, subs);
                         }}
                     />
                 )}
@@ -515,7 +506,12 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="profile-list-region flex-none overflow-hidden flex flex-col">
                     <div className="p-4 pb-2 border-t border-border space-y-3">
                         <h3 className="text-ui-heading font-semibold">{t('presets.savedProfiles')}</h3>
-                        <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5">
+                        <fieldset className="space-y-3 text-ui-support">
+                            <legend className="text-ui-heading font-semibold mb-3">{t('profilePurpose.apply')}</legend>
+                            <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
+                            {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
+                        </fieldset>
+                        <Button variant="outline" size="sm" onClick={() => { void handleImport(); }} className="gap-1.5">
                             <MdFileUpload className="w-3.5 h-3.5" />
                             {t('presets.copy.065')}
                         </Button>
@@ -571,7 +567,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                     </button>
                                     <div className="flex items-center gap-1 shrink-0">
                                         <Button variant="ghost" size="icon"
-                                            onClick={(e) => { e.stopPropagation(); handleApply(profile.name); }}
+                                            onClick={(e) => { e.stopPropagation(); void handleApply(profile.name); }}
 
                                             title={t('presets.copy.074')}
                                             aria-label={t('presets.copy.075', { arg0: visibleName })}
@@ -587,7 +583,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                             VST
                                         </Button>
                                         <Button variant="ghost" size="icon"
-                                            onClick={(e) => { e.stopPropagation(); handleExport(profile.name); }}
+                                            onClick={(e) => { e.stopPropagation(); void handleExport(profile.name); }}
 
                                             title={t('presets.copy.078')}
                                             aria-label={t('presets.copy.079', { arg0: visibleName })}
@@ -624,7 +620,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 variant={confirmState.variant}
                 onConfirm={() => {
                     setConfirmState(prev => ({ ...prev, isOpen: false }));
-                    confirmState.onConfirm();
+                    void confirmState.onConfirm();
                 }}
                 onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
             />
