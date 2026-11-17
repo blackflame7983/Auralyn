@@ -1424,34 +1424,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "e2e/browser/settings-discovery.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "3e6048e4dbce3ba35a6093dfa2cdb7e39f65d4fa28ce37ca076b6bc86175282e",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-discovery.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "3e6048e4dbce3ba35a6093dfa2cdb7e39f65d4fa28ce37ca076b6bc86175282e",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-discovery.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "3e6048e4dbce3ba35a6093dfa2cdb7e39f65d4fa28ce37ca076b6bc86175282e",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "e2e/browser/settings-discovery.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "3e6048e4dbce3ba35a6093dfa2cdb7e39f65d4fa28ce37ca076b6bc86175282e",
-      "count": 4,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "e2e/browser/settings-followup.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
       "hash": "7a4eb8931f83d68cac935f33b18759d4ba912f50236dc088c946f6be59491b0e",
@@ -4004,67 +3976,11 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/AudioSettings/ObsConnectionSettings.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "0163affee70f78e055716f8f6b37b39a29b66b6af0b874641c26e5bfdc750f53",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ObsConnectionSettings.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ObsConnectionSettings.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "0163affee70f78e055716f8f6b37b39a29b66b6af0b874641c26e5bfdc750f53",
-      "count": 4,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ObsConnectionSettings.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "0163affee70f78e055716f8f6b37b39a29b66b6af0b874641c26e5bfdc750f53",
-      "count": 2,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/ObsSafeSetup.tsx",
       "rule": "auralyn/owned-effects",
       "hash": "86a7f8dcd7316b7e6780d7a54afe9acd4648eacc8cc0934698c3937893e540cc",
       "count": 2,
       "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PeakProtectionPanel.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PeakProtectionPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "4cc11c5f70c1521a5b24aa6f20cc2b3aa2086f94d21f8b2ca94973614f0edea5",
-      "count": 3,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PeakProtectionPanel.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "4cc11c5f70c1521a5b24aa6f20cc2b3aa2086f94d21f8b2ca94973614f0edea5",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/PeakProtectionPanel.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "4cc11c5f70c1521a5b24aa6f20cc2b3aa2086f94d21f8b2ca94973614f0edea5",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
       "file": "src/components/features/AudioSettings/PostMixPanel.tsx",
@@ -4095,34 +4011,6 @@
       "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
     },
     {
-      "file": "src/components/features/AudioSettings/ShortcutsPanel.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ShortcutsPanel.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "ec9d5c702aa0dd411d92d9475c460a1cdaf14a1d622416b2360d315dbe364fe4",
-      "count": 4,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ShortcutsPanel.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "ec9d5c702aa0dd411d92d9475c460a1cdaf14a1d622416b2360d315dbe364fe4",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/ShortcutsPanel.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "ec9d5c702aa0dd411d92d9475c460a1cdaf14a1d622416b2360d315dbe364fe4",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/SingingControls.tsx",
       "rule": "auralyn/architecture",
       "hash": "ca03696318c7909ad06de34cff527aae8d0dfc40557011bcfba8910b42abce2e",
@@ -4148,20 +4036,6 @@
       "rule": "react-hooks/exhaustive-deps",
       "hash": "f4451aa168cd091c5dcbfef085d54bff572eb31b84d16b8654d772bc0cd4742b",
       "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SoundSettings.tsx",
-      "rule": "@typescript-eslint/no-floating-promises",
-      "hash": "950c2aa537dccff71ddb406cfede7d648366183e4990ff62f57b894ea05868bc",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SoundSettings.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "950c2aa537dccff71ddb406cfede7d648366183e4990ff62f57b894ea05868bc",
-      "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
@@ -4170,34 +4044,6 @@
       "hash": "50ed19866e45505ae4a07b626e0140d18e9e99e39d7274d371a0e6df2b27c5b4",
       "count": 3,
       "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SoundSettings.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "950c2aa537dccff71ddb406cfede7d648366183e4990ff62f57b894ea05868bc",
-      "count": 4,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SoundSettings.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "950c2aa537dccff71ddb406cfede7d648366183e4990ff62f57b894ea05868bc",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SoundSettings.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "950c2aa537dccff71ddb406cfede7d648366183e4990ff62f57b894ea05868bc",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/SystemSettings.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "9a1450d64992449864ae90cdf25593b0d6365c25c0b68c840651ae59f0cf3add",
-      "count": 7,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
       "file": "src/components/features/AudioSettings/SystemSettings.tsx",
@@ -4219,13 +4065,6 @@
       "hash": "ea4344ac6a38c628d8f1d1de144f69745e53d05919a9f2db31e735dceca1bde4",
       "count": 2,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/UpdatePreferences.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "f5a4bcba768212e98f454d8bb100d1d25518038dcf6acd9dcc556482bab7da89",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
     },
     {
       "file": "src/components/features/AudioSettings/useAudioConnectionController.ts",
