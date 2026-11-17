@@ -56,13 +56,14 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
     const aligned = pendingPurpose?.source.config.purpose;
+    const musicSource = value.source.config.purpose === 'music';
     return <>{showKind && <fieldset disabled={disabled} className="page-section rounded-card border border-border p-3">
         <legend className="text-ui-heading font-semibold"><label htmlFor={sourceId}>{t('processInput.source')}</label></legend>
         <Field id={sourceId} label={null}><Select aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }
             }}>
-                <option value="device">{t('processInput.device')}</option>
+                <option value="device">{t(musicSource ? 'processInput.deviceMusic' : 'processInput.device')}</option>
                 <option value="process" disabled={isAsio}>{t('processInput.process')}</option>
             </Select>
         </Field>
@@ -96,7 +97,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
         </>}
         <details className="text-ui-support text-muted-foreground">
             <summary className="cursor-pointer">{t('processInput.cable')}</summary>
-            <p className="mt-2">{t('processInput.cableHelp')}</p>
+            <p className="mt-2">{t(musicSource ? 'processInput.cableHelpMusic' : 'processInput.cableHelp')}</p>
         </details>
     </fieldset>}
     <ConfirmDialog

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { audioApi } from '@/api/audio';
-import { deviceInput, type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
+import { deviceInput, withInputPurpose, type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 import { ProcessInputPanel } from '../ProcessInputPanel';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -54,4 +54,12 @@ it('ASIO ではアプリの音声を選べない理由を入力元に結び付�
     cleanup();
     render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio={false} onChooseConnection={choose} />);
     expect(screen.queryByText(/ASIO のため/)).not.toBeInTheDocument();
+});
+it('音楽鑑賞の入力元は「マイク」と言わず、配信・雑談では従来の言い方のまま', () => {
+    render(<ProcessInputPanel value={{ source: withInputPurpose(deviceInput(), 'music') }} onChange={vi.fn()} disabled={false} isAsio={false} />);
+    expect(screen.getByRole('option', { name: '機器（仮想ケーブルなど）' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /マイク/ })).not.toBeInTheDocument();
+    cleanup();
+    render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio={false} />);
+    expect(screen.getByRole('option', { name: 'マイク・仮想ケーブル' })).toBeInTheDocument();
 });
