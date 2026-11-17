@@ -19,7 +19,6 @@ interface MockBuiltin {
 }
 
 interface MockArgs {
-    code?: number;
     value: number;
     url: string;
     id: number | null;
@@ -111,7 +110,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 emit('audio-stopped', {});
                 return;
             }
-            case 'plugin:process|exit': quits.push(args.code ?? 0); return;
+            case 'quit_app': quits.push(0); return;
             case 'start_audio': {
                 starts.push(args);
                 if (page.__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');

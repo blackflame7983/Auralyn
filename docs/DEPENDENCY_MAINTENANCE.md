@@ -223,7 +223,7 @@ npm側はTauri以外の全lockfileエントリが作業前と同一。Rustの音
 - `process:allow-restart`
 
 個別のdownload / install / exit権限やremote URL権限は追加していない。既存のUIでユーザーが操作した更新・再起動を許可する変更であり、この検証中にインストール・再起動は実行していない。
-その後、上の帯の状態の札のメニュー「Auralyn を終了」（`src/api/quit.ts`、#722）のため `process:allow-exit` を追加した。プラグインの `exit` は `app.exit(code)` を呼ぶだけで、トレイの「終了」（`src-tauri/src/lib.rs` の `app.exit(0)`）と同じ終了になる。利用者がメニューで選んだときだけ呼ぶ。
+その後、上の帯の状態の札のメニュー「Auralyn を終了」（`src/api/quit.ts`、#722）を足した。プラグインの `process:allow-exit` は画面から任意の終了コードで終了できる権限になるため付けず、引数のない専用コマンド `quit_app`（`src-tauri/src/lib.rs`）を呼ぶ。中身はトレイの「終了」と同じ `app.exit(0)` で、両方が同じ関数を使う。利用者がメニューで選んだときだけ呼ぶ。`capabilities/default.json` に `process:allow-exit` が戻らないことは Rust の試験で確かめる。
 本番のアプリID・公開先・署名公開鍵・バージョンなどの `tauri.conf.json` は作業前と同一。
 
 ### 検証結果と残件

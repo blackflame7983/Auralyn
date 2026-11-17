@@ -1,5 +1,5 @@
-import { exit } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
 
 export function quitApp(): Promise<void> {
-    return exit(0);
+    return invoke<void>('quit_app');
 }
