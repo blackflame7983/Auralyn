@@ -4,6 +4,7 @@ import { test, expect } from './tauriFixture';
 import type { StartRequest } from './tauriWindow';
 import { message } from '@/i18n/messages';
 import { settingsPage } from './settingsPage';
+import { shortWrappedLines } from './helpers/shortLines';
 
 const shots = 'test-results/ux-eval-check/723-fix2';
 const sizes = [{ width: 900, height: 600 }, { width: 1024, height: 768 }, { width: 1280, height: 800 }] as const;
@@ -236,6 +237,57 @@ test.describe('使い道の切り替え', () => {
     });
 
     for (const locale of ['ja', 'en'] as const) {
+        test(`アプリの音声の保存のあと表示の確定に失敗すると、元の接続へ戻し、理由を示す。そのあとの保存は普通に通る ${locale} 900x600`, async ({ page }) => {
+            await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true, locale });
+            await withAppCandidates(page);
+            await page.setViewportSize({ width: 900, height: 600 });
+            await openConnection(page, locale);
+            const stored = () => page.evaluate(() => ({
+                display: localStorage.getItem('auralyn_display_purpose'),
+                config: localStorage.getItem('vst_host_audio_config'),
+                usage: localStorage.getItem('auralyn_usage_devices'),
+            }));
+            const before = await stored();
+            await page.getByRole('button', { name: message(locale, 'purpose.switch'), exact: true }).click();
+            await page.getByRole('alertdialog').getByRole('button', { name: message(locale, 'purpose.switch'), exact: true }).click();
+            await expect(page.getByRole('alertdialog')).toHaveCount(0);
+            await page.getByRole('combobox', { name: message(locale, 'processInput.app') }).selectOption({ index: 1 });
+            const output = page.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.041'), exact: true });
+            await output.selectOption({ label: 'スピーカー' });
+            const save = page.getByRole('button', { name: message(locale, 'settings.saveRestart') });
+            await expect(save).toBeEnabled();
+            // 表示の保存だけを1回失敗させる。巻き戻しの書き込みは通す。
+            await page.evaluate(() => {
+                const original = Storage.prototype.setItem;
+                let failed = false;
+                Storage.prototype.setItem = function (key, value) {
+                    if (key === 'auralyn_display_purpose' && !failed) { failed = true; throw new Error('容量不足'); }
+                    return original.call(this, key, value);
+                };
+            });
+            await save.click();
+            const notice = page.getByText(message(locale, 'purpose.commitFailed', { reason: '容量不足' }));
+            await expect(notice).toBeVisible();
+            // 通知は画面の上にある。ページが下へ送られていても、見える所へ焦点を移す。
+            await expect(notice).toBeInViewport();
+            await expect(page.getByRole('alert').filter({ has: notice })).toBeFocused();
+            expect(await stored()).toEqual(before);
+            // 音声は元の接続で再起動し直している（切り替えの保存の開始と、元へ戻す再起動）。
+            await expect.poll(() => page.evaluate(() => (window.__e2eStarts ?? []).length)).toBe(2);
+            const box = await notice.boundingBox();
+            expect(box && box.x >= 0 && box.x + box.width <= 900).toBe(true);
+            await expect(shortWrappedLines(notice)).resolves.toEqual([]);
+            await page.screenshot({ path: `${shots}/${locale}-app-commit-failed-900x600.png`, animations: 'disabled' });
+            // 続けて編集して保存すると、編集が普通に保存される。
+            await output.selectOption({ index: 0 });
+            await expect(save).toBeEnabled();
+            await save.click();
+            await expect(settingsPage(page)).toHaveCount(0);
+            expect((await stored()).display).toBe('voice');
+        });
+    }
+
+    for (const locale of ['ja', 'en'] as const) {
         test(`アプリの音声の下書き中は、切り替えを押せず、理由を示す ${locale} 900x600`, async ({ page }) => {
             await seed(page, { purpose: 'voice', records: ['voice', 'music'], appMusic: true, locale });
             await withAppCandidates(page);
@@ -278,6 +330,9 @@ test.describe('使い道の切り替え', () => {
             await expect(opener).toHaveAccessibleDescription(message(locale, 'purpose.blockedReviewRunning'));
             const box = await reason.boundingBox();
             expect(box && box.x >= 0 && box.x + box.width <= 900).toBe(true);
+            // 日本語は文節で折り返す（#708）。語の途中で切れず、1〜2文字だけの行も作らない。
+            await expect(reason).toHaveCSS('word-break', 'auto-phrase');
+            await expect(shortWrappedLines(reason)).resolves.toEqual([]);
             await page.screenshot({ path: `${shots}/${locale}-review-running-900x600.png`, animations: 'disabled' });
         });
     }

@@ -129,28 +129,55 @@ export async function commitUsageSwitch({ target, record, running, restart, save
         writeUsageDevice(target, applied);
         return applied;
     } catch (error) {
-        const outcome = await rollback();
+        const outcome = await rollbackUsageSwitch({ previous, rewind, running, restarted, saveStarted, restore, engineIntact });
         throw new UsageSwitchError(error, outcome.restored, outcome.reason);
     }
+}
 
-    // 再起動が失敗しても、元のエンジンは止まっていることがある。動いていれば触らず、止まっていれば戻す。
-    async function rollback(): Promise<{ restored: boolean; reason: string }> {
-        const stillRunning = running && !restarted && engineIntact ? await engineIntact().catch(() => false) : false;
-        const engine = running && !stillRunning;
-        let restored = true;
-        let reason = '';
-        if (previous?.host) {
-            if (engine || saveStarted) {
-                try { await restore(previous, engine); } catch (cause) {
-                    restored = false;
-                    reason = cause instanceof Error ? cause.message : String(cause);
-                }
+/** 戻せなかったもの。audio は元の接続での再開、saved は保存した設定と表示。 */
+export type RestoreTarget = 'audio' | 'saved';
+
+export interface RollbackPlan extends Pick<CommitOptions, 'restore' | 'engineIntact'> {
+    /** 切り替える前の接続。無いときは、画面の保持値を戻さない。 */
+    previous: AudioPreferences | null;
+    /** 切り替える前の保存値を、元の文字列のまま書き戻す。すべて戻せたときだけ true。 */
+    rewind: () => boolean;
+    /** 切り替える前に、音声が動いていたか。 */
+    running: boolean;
+    /** 新しい接続での再起動が済んでいるか。 */
+    restarted: boolean;
+    /** 新しい接続の保存を始めているか。 */
+    saveStarted: boolean;
+}
+
+export interface RollbackOutcome {
+    restored: boolean;
+    /** 元へ戻せなかった理由。戻せたときや理由が無いときは空。 */
+    reason: string;
+    failed: RestoreTarget[];
+}
+
+/**
+ * 切り替えの失敗を元へ戻す。実行中だったときだけ元の接続で再起動し、VST も戻す。
+ * 再起動が失敗しても元のエンジンは止まっていることがある。動いていれば触らず、止まっていれば戻す。
+ */
+export async function rollbackUsageSwitch({ previous, rewind, running, restarted, saveStarted, restore, engineIntact }: RollbackPlan): Promise<RollbackOutcome> {
+    const stillRunning = running && !restarted && engineIntact ? await engineIntact().catch(() => false) : false;
+    const engine = running && !stillRunning;
+    const failed: RestoreTarget[] = [];
+    let reason = '';
+    if (previous?.host) {
+        if (engine || saveStarted) {
+            try { await restore(previous, engine); } catch (cause) {
+                failed.push('audio');
+                reason = cause instanceof Error ? cause.message : String(cause);
             }
-        } else if (engine) {
-            restored = false;
         }
-        return { restored: rewind() && restored, reason };
+    } else if (engine) {
+        failed.push('audio');
     }
+    if (!rewind()) failed.push('saved');
+    return { restored: failed.length === 0, reason, failed };
 }
 
 /**

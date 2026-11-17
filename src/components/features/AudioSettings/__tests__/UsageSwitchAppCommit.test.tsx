@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { audioApi } from '@/api/audio';
 import { message } from '@/i18n/messages';
+import { REVIEW_KEY } from '@/api/migration';
 import { readDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 
@@ -42,14 +43,34 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
 
-it('アプリの音声の保存のあと、表示の保存に失敗しても、保留を残して表示の保存だけを再試行でき、成功したら音声と表示がそろう', async () => {
+
+const KEYS = ['vst_host_audio_config', 'auralyn_usage_devices', DISPLAY_KEY, REVIEW_KEY] as const;
+const stored = () => Object.fromEntries(KEYS.map(key => [key, localStorage.getItem(key)]));
+
+// 表示の保存だけが失敗する。times を省くと、巻き戻しの書き込みも失敗させる。
+function failDisplayWrites(times = Infinity) {
+    const original = Storage.prototype.setItem;
+    let remaining = times;
+    Storage.prototype.setItem = function (key, value) {
+        if (key === DISPLAY_KEY && remaining > 0) { remaining -= 1; throw new Error('容量不足'); }
+        return original.call(this, key, value);
+    };
+    return () => { Storage.prototype.setItem = original; };
+}
+
+async function chooseApp() {
     vi.spyOn(audioApi, 'processInputSources').mockResolvedValue([candidate]);
     const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    const stop = vi.spyOn(audioApi, 'stop').mockResolvedValue(undefined);
     const onClose = vi.fn();
-    const onConfigChange = vi.fn(async (next: { inputSource?: unknown; host: string }) => {
+    const onConfigChange = vi.fn<(next: { inputSource?: unknown; host: string }, options?: { audioStarted: true }) => Promise<void>>(async next => {
         localStorage.setItem('vst_host_audio_config', JSON.stringify(next));
     });
-    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={onClose} onConfigChange={onConfigChange} onEngineRestarted={vi.fn(async () => 'completed' as const)} />);
+    const onEngineRestarted = vi.fn(async () => 'completed' as const);
+    const before = stored();
+    const view = () => <AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={onClose} onConfigChange={onConfigChange} onEngineRestarted={onEngineRestarted} />;
+    render(view());
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     fireEvent.click(screen.getByRole('button', { name: '切り替える' }));
     fireEvent.click(within(await screen.findByRole('alertdialog', { name: '使い道を切り替えます' })).getByRole('button', { name: '切り替える' }));
@@ -58,28 +79,124 @@ it('アプリの音声の保存のあと、表示の保存に失敗しても、�
     fireEvent.change(app, { target: { value: 'app-1' } });
     const save = screen.getByRole('button', { name: '接続を保存して再起動' });
     await waitFor(() => expect(save).toBeEnabled());
+    return { start, restart, stop, onClose, onConfigChange, onEngineRestarted, before, save, view };
+}
 
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-        if (key === DISPLAY_KEY) throw new Error('容量不足');
-        return original.call(this, key, value);
-    };
-    try {
-        fireEvent.click(save);
-        await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
-    } finally { Storage.prototype.setItem = original; }
-    expect(start).toHaveBeenCalledOnce();
+const sameAsBefore = (before: ReturnType<typeof stored>) => {
+    expect(stored()).toEqual(before);
     expect(readDisplayPurpose()).toBe('voice');
-    expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ inputSource: { kind: 'process_loopback' } });
-    expect(onClose).not.toHaveBeenCalled();
+};
 
-    // 再試行できる。接続は保存済みなので、音声を開始し直さず、表示だけを確定する。
-    const retry = screen.getByRole('button', { name: '接続を保存して再起動' });
-    expect(retry).toBeEnabled();
-    fireEvent.click(retry);
-    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(start).toHaveBeenCalledOnce();
-    expect(readDisplayPurpose()).toBe('music');
-    expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ inputSource: { kind: 'process_loopback', config: { purpose: 'music' } } });
-    expect((JSON.parse(localStorage.getItem('auralyn_usage_devices') ?? '{}') as { voice?: unknown }).voice).toMatchObject({ input: 'Mic', inputSource: voiceSource });
+describe('アプリの音声を保存したあと、表示の確定に失敗したとき', () => {
+    it('切り替え全体の失敗として、元の接続で再起動し、VST を戻し、音声・親・保存値・表示・記録を切り替え前へ戻す', async () => {
+        const { start, restart, onClose, onConfigChange, onEngineRestarted, before, save } = await chooseApp();
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            expect(await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }))).toBeVisible();
+        } finally { unpatch(); }
+        expect(start).toHaveBeenCalledOnce();
+        expect(restart).toHaveBeenCalledOnce();
+        expect(restart.mock.calls[0].slice(0, 5)).toEqual(['Wasapi', 'Mic', 'Headphones', 512, 48000]);
+        expect(onEngineRestarted).toHaveBeenCalledOnce();
+        expect(onConfigChange).toHaveBeenLastCalledWith(expect.objectContaining({ host: 'Wasapi', input: 'Mic', output: 'Headphones', inputSource: voiceSource }));
+        sameAsBefore(before);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
+        expect(screen.getByRole('button', { name: '切り替える' })).toBeEnabled();
+        // 失敗の通知は上に出る。保存の操作でページが下へ送られていても、通知へ焦点を移す。
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
+    });
+
+    it('そのあとに接続欄を編集して保存すると、編集が普通に保存される（表示の確定だけを繰り返さない）', async () => {
+        const { start, onClose, onConfigChange, before, save } = await chooseApp();
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        sameAsBefore(before);
+
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.AudioSettingsModal.031') }));
+        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'Headphones' } });
+        const retry = screen.getByRole('button', { name: '接続を保存して再起動' });
+        await waitFor(() => expect(retry).toBeEnabled());
+        fireEvent.click(retry);
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        expect(start).toHaveBeenCalledTimes(2);
+        expect(start.mock.calls[1][2]).toBe('Headphones');
+        const [saved, saveOptions] = onConfigChange.mock.lastCall ?? [];
+        expect(saved).toMatchObject({ output: 'Headphones', inputSource: { kind: 'process_loopback' } });
+        expect(saveOptions).toEqual({ audioStarted: true });
+        // 保留は残っていないので、表示は切り替え前の使い道のまま、入力の用途も表示にそろう。
+        expect(readDisplayPurpose()).toBe('voice');
+        expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ output: 'Headphones', inputSource: { kind: 'process_loopback', config: { purpose: 'voice' } } });
+    });
+
+    it('そのあとに変更を捨てて画面を離れ、開き直しても、表示・入力の用途・保留・記録が切り替え前と一致する', async () => {
+        const { before, save, view } = await chooseApp();
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        cleanup();
+        render(view());
+        await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
+        sameAsBefore(before);
+        expect(screen.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
+        expect(screen.queryByText(message('ja', 'purpose.mismatch'))).not.toBeInTheDocument();
+        const opener = screen.getByRole('button', { name: '切り替える' });
+        expect(opener).toBeEnabled();
+        expect(opener).not.toHaveAccessibleDescription(message('ja', 'purpose.blockedPending'));
+    });
+
+    it('元へ戻す再起動も失敗したら、音声を元の接続で再開できていないことを出す。保存値と表示は元へ戻す', async () => {
+        const { restart, before, save } = await chooseApp();
+        restart.mockRejectedValue(new Error('再開できない'));
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            const alert = await screen.findByRole('alert');
+            expect(alert).toHaveTextContent(message('ja', 'purpose.commitRestoreFailed', { targets: message('ja', 'wizard.rewind.audio'), reason: '容量不足 再開できない' }));
+        } finally { unpatch(); }
+        sameAsBefore(before);
+    });
+
+    it('保存値と表示を元へ戻せなかったときは、その対象を出す', async () => {
+        const { save } = await chooseApp();
+        const unpatch = failDisplayWrites();
+        try {
+            fireEvent.click(save);
+            const alert = await screen.findByRole('alert');
+            expect(alert).toHaveTextContent(message('ja', 'purpose.commitRestoreFailed', { targets: message('ja', 'wizard.rewind.saved'), reason: '容量不足' }));
+        } finally { unpatch(); }
+    });
+
+    it('切り替え前に音声が動いていなかったときは、元へ戻すとき再起動せず、新しい接続で動き出した音声を止める', async () => {
+        vi.spyOn(audioApi, 'processInputSources').mockResolvedValue([candidate]);
+        const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+        const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+        const stop = vi.spyOn(audioApi, 'stop').mockResolvedValue(undefined);
+        const onConfigChange = vi.fn(async (next: { host: string }) => { localStorage.setItem('vst_host_audio_config', JSON.stringify(next)); });
+        const before = stored();
+        render(<AudioSettingsModal isOpen isAudioRunning={false} currentConfig={config} onClose={vi.fn()} onConfigChange={onConfigChange} onEngineRestarted={vi.fn(async () => 'completed' as const)} />);
+        await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
+        fireEvent.click(screen.getByRole('button', { name: '切り替える' }));
+        fireEvent.click(within(await screen.findByRole('alertdialog', { name: '使い道を切り替えます' })).getByRole('button', { name: '切り替える' }));
+        const app = await screen.findByRole('combobox', { name: message('ja', 'processInput.app') });
+        await waitFor(() => expect(screen.getByRole('option', { name: 'Player' })).toBeInTheDocument());
+        fireEvent.change(app, { target: { value: 'app-1' } });
+        const save = screen.getByRole('button', { name: /接続を保存/ });
+        await waitFor(() => expect(save).toBeEnabled());
+        const unpatch = failDisplayWrites(1);
+        try {
+            fireEvent.click(save);
+            await screen.findByText(message('ja', 'purpose.commitFailed', { reason: '容量不足' }));
+        } finally { unpatch(); }
+        expect(start).toHaveBeenCalledOnce();
+        expect(restart).not.toHaveBeenCalled();
+        expect(stop).toHaveBeenCalledOnce();
+        sameAsBefore(before);
+    });
 });

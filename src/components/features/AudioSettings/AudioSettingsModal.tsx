@@ -46,7 +46,7 @@ import { UsageSwitch } from './UsageSwitch';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
-import { commitDisplaySwitch, commitUsageSwitch, currentUsage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
+import { commitDisplaySwitch, commitUsageSwitch, currentUsage, rollbackUsageSwitch, snapshotUsageStorage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
 import type { SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { resumableInputSource } from '@/lib/processInputRestore';
 import { audioApi } from '@/api/audio';
@@ -57,12 +57,22 @@ import { ConnectionApplyError, ConnectionStartError, runningConnection, useAudio
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
 import { useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { useWhenTrue } from '@/hooks/useWhenTrue';
+import { useFocusRequest } from '@/hooks/useFocusRequest';
 import { useSavedConnection, useSavedRestoreAvailable } from './useSavedConnection';
 import { useLiveOutputInUse } from './useLiveOutputInUse';
 import { useAdvancedModePreference, useBeginnerModeSync, useSettingsLeaveGuard } from './useSettingsPreferences';
 import { useActiveSettingsTab, useSoundPlace, type SettingsSection, type SettingsTab } from './useSettingsNavigation';
 import { useDeviceTargetFocus, useSettingsPageFocus, useSettingsScroller, useTuningSection } from './useSettingsPageFocus';
 import { useAudioPresets } from './useAudioPresets';
+
+interface PendingUsage {
+  target: DisplayPurpose;
+  leaving: LeavingUsage;
+  /** 切り替える前に音声が動いていたか。元へ戻すとき、動いていたときだけ再起動する。 */
+  running: boolean;
+  /** 切り替える前の保存値を、元の文字列のまま書き戻す。 */
+  rewind: () => boolean;
+}
 
 interface AudioSettingsModalProps {
   liveModel?: LiveModesModel;
@@ -131,7 +141,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // 使い道の切り替えの応答を待つ間。画面は残したまま、画面を離れる操作だけを止める。
   const [usageSwitching, setUsageSwitching] = useState(false);
   // アプリの音声の記録へ切り替えた下書き。接続を保存するまで、表示も離れる使い道の記録も確定しない。
-  const [pendingUsage, setPendingUsage] = useState<{ target: DisplayPurpose; leaving: LeavingUsage } | null>(null);
+  // 表示の確定に失敗したときに元へ戻せるよう、切り替える前の音声の状態と保存値を持つ。
+  const [pendingUsage, setPendingUsage] = useState<PendingUsage | null>(null);
   useWhenTrue(isOpen, () => setPendingUsage(null));
   const [connectionRetry, setConnectionRetry] = useState(false);
   // システム再起動の途中失敗は、接続画面からの再試行でもVST復元まで引き継ぐ。
@@ -284,11 +295,24 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (!request) throw new Error(t('purpose.appNotRunning', { app: source.kind === 'process_loopback' ? source.config.appName : '' }));
     return request;
   };
+  // 元の接続へ戻す。engine が true のときは元の接続で再起動し、VST も戻す。画面の保持値も元へそろえる。
+  const restoreUsageConnection = async (config: AudioPreferences, engine: boolean) => {
+    try {
+      if (engine) {
+        const source = await restoreSourceRequest(config);
+        await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId,
+          undefined, channelRoutingFor(config), source);
+      }
+    } finally {
+      await onConfigChange({ ...config, outputRouting: config.outputRouting ?? { mode: 'legacy' } });
+    }
+    if (engine) await restoreVst();
+  };
   const applyUsage = async (record: UsageDeviceRecord) => {
     const target = displayPurpose === 'voice' ? 'music' : 'voice';
     if (record.inputSource.kind === 'process_loopback') {
       // アプリの音声は、起動中のアプリを選び直さないと始められない。音も保存値も変えず、表示と入力の用途を下書きにして選択へ案内する。
-      setPendingUsage({ target, leaving: currentUsage() });
+      setPendingUsage({ target, leaving: currentUsage(), running: streamRunning, rewind: snapshotUsageStorage() });
       setInputSource({ source: withInputPurpose(record.inputSource, target) });
       setNeedsDeviceChoice(false);
       editConnection('source');
@@ -306,39 +330,49 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         await onConfigChange(config, options);
         if (options?.audioStarted) await restoreVst();
       },
-      restore: async (config, engine) => {
-        try {
-          if (engine) {
-            const source = await restoreSourceRequest(config);
-            await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId,
-              undefined, channelRoutingFor(config), source);
-          }
-        } finally {
-          await onConfigChange({ ...config, outputRouting: config.outputRouting ?? { mode: 'legacy' } });
-        }
-        if (engine) await restoreVst();
-      },
+      restore: restoreUsageConnection,
       engineIntact: async () => !!(await runningConnection()),
     });
     setInputSource({ source: applied.inputSource });
     setNeedsDeviceChoice(false);
     showUsageSelection(applied, false);
   };
+  // 失敗の通知は上のほうに出る。保存の操作でページが下へ送られていても、結果が見える所へ焦点を移す。
+  const [errorFocus, setErrorFocus] = useState(0);
+  const errorPanel = useRef<HTMLDivElement>(null);
+  useFocusRequest(isApplying ? 0 : errorFocus, async () => {}, errorPanel);
+  // 表示の確定に失敗したら、切り替え全体の失敗として、通常の切り替えと同じ巻き戻しで元へ戻す。
+  // アプリの選択欄の下書きは残すが、入力の用途は元の表示へそろえる。
+  const rollBackPendingUsage = async (pending: PendingUsage, cause: unknown) => {
+    let { failed, reason } = await rollbackUsageSwitch({ previous: pending.leaving.preferences, rewind: pending.rewind,
+      running: pending.running, restarted: true, saveStarted: true, restore: restoreUsageConnection });
+    // 動いていなかった音声は、保存のときに新しい接続で動き出している。切り替える前のとおり止める。
+    if (!pending.running) {
+      try { await audioApi.stop(); } catch (stopCause) {
+        failed = [...failed, 'audio'];
+        reason ||= stopCause instanceof Error ? stopCause.message : String(stopCause);
+      }
+    }
+    setPendingUsage(null);
+    setInputSource(current => ({ ...current, source: withInputPurpose(current.source, pending.leaving.display) }));
+    setConnectionRetry(false);
+    setErrorFocus(request => request + 1);
+    const commitReason = cause instanceof Error ? cause.message : String(cause);
+    const notRestored = (['audio', 'saved'] as const).filter(target => failed.includes(target))
+      .map(target => t(`wizard.rewind.${target}`)).join(t('wizard.rewindSeparator'));
+    setError(notRestored
+      ? notice('purpose.commitRestoreFailed', { targets: notRestored, reason: [commitReason, reason].filter(Boolean).join(' ') })
+      : notice('purpose.commitFailed', { reason: commitReason }));
+  };
   // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。
-  // 残せなければ、表示は元のまま、保留も残す。接続は保存済みなので、次の保存は表示の確定だけをやり直す。
-  const commitOnly = useRef(false);
-  useWhenTrue(isOpen, () => { commitOnly.current = false; });
-  const commitPendingUsage = (): boolean => {
+  const commitPendingUsage = async (): Promise<boolean> => {
     if (!pendingUsage) return true;
     try {
       commitDisplaySwitch(pendingUsage.leaving, pendingUsage.target);
       setPendingUsage(null);
-      commitOnly.current = false;
       return true;
     } catch (cause) {
-      commitOnly.current = true;
-      setConnectionRetry(true);
-      setError(notice('purpose.commitFailed', { reason: cause instanceof Error ? cause.message : String(cause) }));
+      await rollBackPendingUsage(pendingUsage, cause);
       return false;
     }
   };
@@ -386,17 +420,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (!canSaveConnection || isApplying) return;
     if (retryRestart.current) { await performRestart(); return; }
     setError(null);
-    if (commitOnly.current) {
-      if (commitPendingUsage()) { setConnectionRetry(false); onClose(); }
-      return;
-    }
+    // 保存のあいだ入力の欄が作り直される。切り替えのあとの焦点の依頼を残すと、保存の結果より先に選択欄へ戻る。
+    setAppFocus(0);
     setLoading(true);
     try {
       await connection.apply(false);
       rememberAppliedUsage();
       setConnectionRetry(false);
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
-      if (commitPendingUsage()) onClose();
+      if (await commitPendingUsage()) onClose();
     } catch (err) {
       if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
@@ -409,6 +441,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const performRestart = async () => {
     retryRestart.current = true;
     setError(null);
+    setAppFocus(0);
     setLoading(true);
     try {
       await connection.apply(true);
@@ -423,7 +456,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       }
       retryRestart.current = false;
       setConnectionRetry(false);
-      if (commitPendingUsage()) onClose();
+      if (await commitPendingUsage()) onClose();
       // Optional: formatting toast success
     } catch (err) {
       setConnectionRetry(true);
@@ -597,7 +630,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <UsageSwitch display={displayPurpose} inputPurpose={inputSource.source.config.purpose} running={streamRunning}
                 locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onBusyChange={setUsageSwitching} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
               {error && <div className="space-y-4">
-                <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
+                <div ref={errorPanel} tabIndex={-1} role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card outline-hidden">
                   <p>{renderNotice(t, error)}</p>
                   {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
                 </div>
