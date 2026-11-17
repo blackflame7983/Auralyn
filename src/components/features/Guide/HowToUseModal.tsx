@@ -81,7 +81,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                 </div>
                 <div ref={body} className="modal-body-base min-h-0 min-w-0">
                     <div className="grid min-w-0 gap-6 md:grid-cols-[11rem_minmax(0,1fr)]">
-                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 [overflow-wrap:anywhere] md:flex-col">
+                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 [overflow-wrap:anywhere] md:sticky md:top-0 md:self-start md:flex-col">
                             {sections.map(value => <Button key={value} variant={section === value ? 'secondary' : 'ghost'}
                                 className="h-auto min-w-0 max-w-full justify-start whitespace-normal text-left" aria-current={section === value ? 'page' : undefined}
                                 onClick={() => select(value)}>{t(`help.section.${value}`)}</Button>)}

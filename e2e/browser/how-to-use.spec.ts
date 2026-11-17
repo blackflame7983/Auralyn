@@ -106,6 +106,10 @@ for (const [locale, purpose] of [['ja', 'voice'], ['en', 'voice'], ['ja', 'music
         // 見出しへ寄せても、枠の上の題名と閉じるボタンは隠れない。
         await expect(dialog.getByRole('button', { name: t('common.close'), exact: true })).toBeInViewport();
         await expect(dialog.locator('.modal-surface-base')).toHaveJSProperty('scrollTop', 0);
+        // 本文を送っても、選んでいる目次の項目は枠の中に欠けずに残る。
+        const current = await dialog.getByRole('button', { name: t('help.section.trouble'), exact: true }).boundingBox();
+        const box = await dialog.locator('.modal-body-base').boundingBox();
+        expect(current && box && current.y >= box.y && current.y + current.height <= box.y + box.height).toBe(true);
     });
 }
 
