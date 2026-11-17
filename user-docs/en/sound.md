@@ -2,7 +2,7 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Save modes", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search", "Rescan all", "Standard", "Warm", "Bright"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Save modes", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search", "Find VSTs", "Rescan all", "Standard", "Warm", "Bright"]
 ---
 
 ## Noise reduction {#noise-reduction}
@@ -30,7 +30,7 @@ While the saved chain is protected, current VST changes are not saved automatica
 
 1. Install a VST3 plugin using the steps from its distributor.
 2. Many plugins install into the standard folders. “Add VST” searches those folders and any place you add in “Folders to search”.
-3. After installing, open “Add VST” and press “Rescan all”.
+3. After installing, open “Add VST”. Press “Find VSTs” when nothing is registered yet, or “Rescan all” when plugins are already listed.
 
 ## Save modes {#modes}
 
