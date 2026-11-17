@@ -94,7 +94,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
         const unconfigured = page.getByRole('region', { name: message(locale, 'band.label'), exact: true }).getByRole('status').filter({ hasText: message(locale, 'shell.unconfigured') });
         await expect(unconfigured).toBeVisible();
-        await expect(unconfigured.locator('..').locator('[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
+        await expect(unconfigured.locator('..').locator('div.rounded-full[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; document.documentElement.style.setProperty('--ui-zoom', '1.5'); });
         const dialog = page.locator('[data-settings-page]');
