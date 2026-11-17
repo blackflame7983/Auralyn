@@ -255,6 +255,33 @@ test.describe('使い道の切り替え', () => {
         });
     }
 
+    for (const locale of ['ja', 'en'] as const) {
+        test(`移行の確認が終わっていない間に音声が動いていると、切り替えを押せず、理由を示す ${locale} 900x600`, async ({ page }) => {
+            await seed(page, { purpose: 'voice', records: ['voice', 'music'], locale });
+            await page.addInitScript(() => {
+                const internals = window.__TAURI_INTERNALS__;
+                if (!internals) return;
+                const original = internals.invoke;
+                internals.invoke = async (command, args) => command === 'migration_bootstrap'
+                    ? { reviewRequired: true, ui: null }
+                    : original(command, args);
+            });
+            await page.setViewportSize({ width: 900, height: 600 });
+            await page.goto('/');
+            // 確認が終わるまで自動では開始しない。確認の完了に失敗して音声だけが動いている状態を、開始の呼び出しで作る。
+            await page.evaluate(() => window.__TAURI_INTERNALS__?.invoke('start_audio', { host: 'WASAPI' }));
+            await openConnectionPage(page, locale);
+            const opener = page.getByRole('button', { name: message(locale, 'purpose.switch'), exact: true });
+            await expect(opener).toBeDisabled();
+            const reason = page.getByText(message(locale, 'purpose.blockedReviewRunning'));
+            await expect(reason).toBeVisible();
+            await expect(opener).toHaveAccessibleDescription(message(locale, 'purpose.blockedReviewRunning'));
+            const box = await reason.boundingBox();
+            expect(box && box.x >= 0 && box.x + box.width <= 900).toBe(true);
+            await page.screenshot({ path: `${shots}/${locale}-review-running-900x600.png`, animations: 'disabled' });
+        });
+    }
+
     test('再起動のあとの VST の復元が失敗したら、切り替えを失敗として元の接続へ戻し、音楽鑑賞に確定しない', async ({ page }) => {
         await seed(page, { purpose: 'voice', records: ['voice', 'music'] });
         await page.addInitScript(() => {
