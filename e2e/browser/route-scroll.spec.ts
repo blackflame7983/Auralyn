@@ -183,19 +183,28 @@ test('フェードにかかる入力欄をマウスで押しても、列は動�
         const spacer = document.createElement('div');
         spacer.style.height = '800px';
         column.append(input, spacer);
-        await frame();
-        column.scrollTop += input.getBoundingClientRect().top - (hint.getBoundingClientRect().top - 26);
-        await frame();
-        return { scrollTop: column.scrollTop, ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
+        // 遅れて組み上がる区画で列の中身が動くことがある。入力欄の上端がフェードの 26px 上で2回続けて止まるまで置き直す。
+        const offset = () => input.getBoundingClientRect().top - (hint.getBoundingClientRect().top - 26);
+        for (let settled = 0, tries = 0; settled < 2 && tries < 60; tries += 1) {
+            await frame();
+            const miss = offset();
+            if (Math.abs(miss) < 1) settled += 1;
+            else {
+                settled = 0;
+                column.scrollTop += miss;
+            }
+        }
+        return { ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
     });
     expect(placed).not.toBeNull();
     if (!placed) return;
     expect(placed.ringBottom).toBeGreaterThan(placed.fadeTop);
 
+    const scrollTop = await page.locator('main.home-main').evaluate(column => column.scrollTop);
     await page.locator('#fade-probe-input').click();
     await expect(page.locator('#fade-probe-input')).toBeFocused();
     await expect(page.locator('#fade-probe-input')).toHaveAttribute('data-clicks', '1');
-    expect(await page.locator('main.home-main').evaluate(column => column.scrollTop)).toBe(placed.scrollTop);
+    expect(await page.locator('main.home-main').evaluate(column => column.scrollTop)).toBe(scrollTop);
 });
 
 for (const size of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }]) {
