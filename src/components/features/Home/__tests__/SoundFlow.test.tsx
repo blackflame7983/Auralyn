@@ -83,6 +83,7 @@ it('live のときだけ波形を描き、状態の文字は出さない', () =>
     render(<SoundFlow running music={false} />);
     expect(screen.getByRole('img')).toHaveAttribute('data-flow', 'time');
     expect(screen.getByRole('region', { name: '声の流れ' }).querySelector('[data-flow-status]')).toBeNull();
+    expect(screen.getByRole('region', { name: '声の流れ' })).toHaveTextContent('加工の前後を比べます');
 });
 
 it('波形の高さはメーターと同じ −60〜0 dBFS の目盛りにする', () => {
