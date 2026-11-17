@@ -20,6 +20,12 @@ async function collapsedRow(prep: Locator) {
     return row;
 }
 
+// 実行中になると開始の行が消え、準備の確認がそろうと手順欄が畳まれる。どちらも列の高さを大きく変えるので、終わってから列へ要素を置く。
+async function settleHomeColumn(page: Page) {
+    await expect(page.locator('.now-action')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: message('ja', 'prep.steps'), exact: true })).toHaveAttribute('aria-expanded', 'false');
+}
+
 async function openHome(page: Page, size: { width: number; height: number }) {
     await page.setViewportSize(size);
     await page.addInitScript(() => {
@@ -90,7 +96,7 @@ test('900×600では送り先が見え、下の行は1行のまま。列が溢�
 
 test('列の下端のフェードにかかる操作へTabで焦点を移すと、焦点の枠がフェードの上まで送られる（#671）', async ({ page }) => {
     await openHome(page, { width: 900, height: 420 });
-    await expect(page.locator('.now-action')).toHaveCount(0);
+    await settleHomeColumn(page);
     const fade = page.locator('[data-scroll-more=""]');
     await expect(fade).toBeVisible();
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -132,6 +138,7 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
             }
         }
         return {
+            settled: Math.abs(offset()) < 1,
             fadeTop: hint.getBoundingClientRect().top,
             secondBottom: second.getBoundingClientRect().bottom,
             hidden: hint.hidden,
@@ -139,6 +146,7 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
     });
     expect(placed).not.toBeNull();
     if (!placed) return;
+    expect(placed.settled).toBe(true);
     expect(placed.hidden).toBe(false);
     // 前の送りでは、枠（下端 + 4px）はフェードに入っている。
     expect(placed.secondBottom + 4).toBeGreaterThan(placed.fadeTop);
@@ -167,7 +175,7 @@ test('列の下端のフェードにかかる操作へTabで焦点を移すと�
 });
 test('フェードにかかる入力欄をマウスで押しても、列は動かずクリックが成立する（#671）', async ({ page }) => {
     await openHome(page, { width: 900, height: 420 });
-    await expect(page.locator('.now-action')).toHaveCount(0);
+    await settleHomeColumn(page);
     const fade = page.locator('[data-scroll-more=""]');
     await expect(fade).toBeVisible();
     const placed = await page.locator('main.home-main').evaluate(async column => {
@@ -202,10 +210,11 @@ test('フェードにかかる入力欄をマウスで押しても、列は動�
                 column.scrollTop += miss;
             }
         }
-        return { ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
+        return { settled: Math.abs(offset()) < 1, ringBottom: input.getBoundingClientRect().bottom + 4, fadeTop: hint.getBoundingClientRect().top };
     });
     expect(placed).not.toBeNull();
     if (!placed) return;
+    expect(placed.settled).toBe(true);
     expect(placed.ringBottom).toBeGreaterThan(placed.fadeTop);
 
     const scrollTop = await page.locator('main.home-main').evaluate(column => column.scrollTop);
