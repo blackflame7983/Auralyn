@@ -128,13 +128,82 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 
 ブラウザ画面試験のIPCモックの本体は `src/dev/tauriMock.ts` にあり、`e2e/browser/tauriFixture.ts` と開発プレビューで共有する。開発サーバー（`npm run dev`）で `http://localhost:1420/?mock=<状態>` を開くと、Tauriなしのブラウザで画面を再現できる。用途は Pencil（pen.dev）などのデザインツールへの取り込みと見た目の確認で、音声処理・IPC・実機の受入には使わない。
 
-- 状態は `live-home`（実行中・登録済みモード）、`live-home-builtin`（内蔵エフェクトON）、`stopped-home`（停止中）、`first-run`（初回セットアップ）。定義は `src/dev/previewMock.ts`。
+- 状態は `live-home`（実行中・登録済みモード）、`live-home-builtin`（内蔵エフェクトON）、`stopped-home`（停止中）、`first-run`（初回セットアップ）。定義は `src/dev/previewMock.ts`。クエリを足さないときの意味は変えない。`devices=realistic` は言語に依存しない機器名（既定の `devices` は `legacy` で、実行中は `CABLE Output` / `スピーカー`、未設定の試験は `Test microphone` / `Test headphones`）。`registered=0` または `registered=1` は、その状態の歌・雑談の登録だけを上書きする。`purpose=music` は表示用途を音楽鑑賞にして保存し、`purpose=voice` はその保存値を消す。`purpose` を省いたときは、開く前からある表示用途を残す。
 - 画面は `?screen=` で最初から開く。`settings-audio`（接続のページ）、`settings-sound`（音づくり）、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`（設定の各区分）、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst`（`vst-panel` も同じページを開く）。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。接続・音づくり・設定は中央のページで、`[data-settings-page]` に出る。診断情報や確認などのモーダルは `#root` の外に出るため、取り込みは `body` を使う。
 - 設定済みの状態では、開いたブラウザの localStorage にセットアップ完了と機器設定を書き込む。状態が持つ保存値以外は、切り替えるたびに消す。プレビュー専用のブラウザで使う。
 - 未定義のIPCはプレビューでは失敗させず `window.__e2eUnexpected` に記録する。試験（`strict: true`）では従来どおり失敗させる。
 - 読込は `vite.config.ts` の serve 専用プラグインで行い、本番ビルドには含まれない。Tauri上（`__TAURI_INTERNALS__` がある場合）では何もしない。
 - Pencil へは、内蔵ブラウザで上記URLを開いて `#root` を取り込む。取り込み幅はブラウザの表示幅に従うため、幅を揃えたいときは CDP の `Emulation.setDeviceMetricsOverride` で指定してから取り込む。取り込んだものは静的な写しで、コードとは同期しない。
 - 段階 H（広い窓）の出し分けと拡大は `e2e/browser/large-window.spec.ts` で確かめる。寸法の正本は `src/lib/largeWindow.ts`。画面記録は `RENEWAL_H_SHOTS=1` のときだけ `e2e/browser/design-renewal-h-shots.spec.ts` が `docs/verification/design-renewal-h/` を上書きする。通常の `npm run test:e2e` では撮らない。`RENEWAL_SHOTS` とは別の変数にする。
+
+### 利用者目線の評価の撮影
+
+開発プレビューを決まった窓で撮り、PNG と画面の文字（`document.body.innerText`）を評価者に渡す手順です。音声処理・実機の受入には使いません。通常の `npm run test:e2e` と CI の Browser tests には含まれません。撮影ファイルは `e2e/ux-eval/capture.ts` で、Playwright の設定は `playwright.ux-eval.config.ts` です。既定の設定の `testDir` は `e2e/browser` なので、このファイルは拾われません。
+
+```powershell
+npm run capture:ux-eval
+```
+
+開発サーバーは `playwright.config.ts` と同じです。手元では `http://127.0.0.1:1427` の `npm run dev` になります。`CI` または `E2E_PREVIEW` が立っているときは本番ビルドを配るため、`?mock=` の模擬は入りません。撮影はそれらの変数を付けずに実行します。
+
+出力先は `test-results/ux-eval/<日付>-<ブランチ名の最後の区間>-<短いSHA>/` です。日付は実行したマシンのローカル日付、SHA は `git rev-parse --short=8 HEAD` の8文字です。ブランチ `codex/ux-eval-capture-716` なら区間は `ux-eval-capture-716` です。フォルダーごと別の場所にするときは、環境変数 `UX_EVAL_OUT` にそのパスを指定します。
+
+中は4つです。各フォルダーに `README.md` があり、ファイル名と状態を一覧にします。
+
+| フォルダー | 窓 |
+| --- | --- |
+| `w900` | 900×600 |
+| `w1024` | 1024×768 |
+| `w1280` | 1280×800 |
+| `w1440` | 1440×900 |
+
+`w1440` は、ヘルプにある「窓が広いときは接続の列がホームの右に開く」を撮るためです。幅の境は 1400px（`docs/DESIGN.md` 10.8、`src/lib/largeWindow.ts` の `connectColumnMinWidth`）です。
+
+各ショットは同名の `.png` と `.txt` です。撮る前に「音声エンジンを起動しています…」（英語は `Starting the audio engine…`）が消えるのを待ち、開いたページまたはダイアログが見えるまで待ちます。スクリーンショットは `animations: 'disabled'` です。テーマは `vst_host_theme`、言語は `vst_host_locale` を、ページを開く前に書きます。URL だけではテーマと言語は変わりません。
+
+機器名はすべて `devices=realistic` です。入力の候補は `Yeti Stereo Microphone` と `CABLE Output (VB-Audio Virtual Cable)`、出力の候補は `CABLE Input (VB-Audio Virtual Cable)` と `USB Headphones` です。配信の保存値は Yeti → CABLE Input、音楽鑑賞の保存値は CABLE Output → USB Headphones です。名前は言語に依存しません。`devices` を付けないプレビューと既存のブラウザ試験は、これまでどおり `CABLE Output` と `スピーカー` です。
+
+| ファイル | 模擬 | 画面 | 用途 | 実行 | 登録 | 言語 | テーマ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `setup-first` | `first-run` | セットアップ | 配信 | 未設定 | 未登録 | 日本語 | ダーク |
+| `home-voice` | `live-home` `registered=0` | ホーム | 配信 | 実行中 | 未登録（見出しは「いまの声」） | 日本語 | ダーク |
+| `home-voice-registered` | `live-home` | ホーム | 配信 | 実行中 | 登録済み（見出しは「いまの調整」） | 日本語 | ダーク |
+| `home-voice-builtin` | `live-home-builtin` | ホーム | 配信 | 実行中 | 登録済み（声を整える ON） | 日本語 | ダーク |
+| `home-stopped` | `stopped-home` `registered=0` | ホーム | 配信 | 停止中 | 未登録 | 日本語 | ダーク |
+| `home-voice-gaming` | `live-home` | ホーム | 配信 | 実行中 | 登録済み | 日本語 | ゲーミング |
+| `home-voice-light-en` | `live-home` | ホーム | 配信 | 実行中 | 登録済み | 英語 | ライト |
+| `home-music` | `live-home` `purpose=music` | ホーム | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
+| `home-music-stopped` | `stopped-home` `purpose=music` | ホーム | 音楽鑑賞 | 停止中 | 登録済み | 日本語 | ダーク |
+| `home-music-en` | `live-home` `purpose=music` | ホーム | 音楽鑑賞 | 実行中 | 登録済み | 英語 | ダーク |
+| `vst` | `live-home` | VST | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `vst-music` | `live-home` `purpose=music` | VST | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
+| `sound` | `live-home` | 音づくり | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `sound-music` | `live-home` `purpose=music` | 音づくり | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
+| `audio` | `live-home` | 接続 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `appearance` | `live-home` | 外観 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `obs` | `live-home` | OBS連携 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `system` | `live-home` | システム | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `shortcuts` | `live-home` | ホットキー | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `stream-mix` | `live-home` | 配信ミックス | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `stream-mix-en` | `live-home` | 配信ミックス | 配信 | 実行中 | 登録済み | 英語 | ダーク |
+| `plugin-browser` | `live-home` | VSTを追加 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `voice-check` | `live-home` | ボイスチェック | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `presets` | `live-home` | 設定の保存・復帰 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `troubleshoot` | `live-home` | 音のトラブルを診断 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `help` | `live-home` | 使い方 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `template-wizard` | `live-home` | 構成テンプレート | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `obs-guide` | `live-home` | OBS連携ガイド | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+
+上の表で `registered` や `purpose` を書いていない行は、その `mock` の既定です。`live-home` と `stopped-home` と `live-home-builtin` は登録済み、`first-run` は未登録です。音楽鑑賞の見出しは「音楽鑑賞」（英語は `Music listening`）で、歌・雑談の札は出ません。
+
+#### 模擬データの限界
+
+この撮影は Tauri も音声機器も動かしません。次は模擬の都合です。アプリの不具合として数えないでください。
+
+- **ノイズ低減のモードを返さない。** `get_engine_runtime_stats` は `noiseReductionMode` を含めません。弱・強は、エンジンが返したモードとしては選ばれません。
+- **出力ミュートの初期値。** 模擬の `muted` は `true` で始まります。統計が届くと「出力ミュート・音量ゼロ」（英語は `Output muted / volume zero`）になります。撮影は統計を待ってから撮るので、この札が出ます。
+- **試聴先が無い。** ボイスチェックの試聴候補（`auto_gain` の `devices`）は空です。「試聴の準備ができませんでした」は、試聴先が無い模擬の表示です。
+- **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
 
 ### 画面の状態をまとめて開く（screen-matrix）
 

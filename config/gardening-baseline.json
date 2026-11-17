@@ -5954,48 +5954,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 6,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-argument",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 9,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-call",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 2,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 25,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/dev/tauriMock.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "f0cc3e1f6044f6f4071543975780eb94cf096e706225e78ab647ced56ee7e6c6",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/hooks/__tests__/sessionRackFixture.ts",
       "rule": "@typescript-eslint/no-unsafe-assignment",
       "hash": "add84f85e45d40627e997b3191c040979fc2d10a01643345a45dab55bbaa1638",
