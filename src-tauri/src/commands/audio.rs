@@ -889,9 +889,13 @@ pub(crate) async fn set_noise_control_config(
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
-        host.when_engine_running(require_running.unwrap_or(false), |host| {
-            host.set_noise_control_config(active, mode, strength, voice_guard)
-        })
+        host.set_noise_control_config_routed(
+            require_running.unwrap_or(false),
+            active,
+            mode,
+            strength,
+            voice_guard,
+        )
         .map_err(|e| e.to_string())
     })
     .await
@@ -909,9 +913,13 @@ pub(crate) async fn set_built_in_effects(
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
-        host.when_engine_running(require_running.unwrap_or(false), |host| {
-            host.set_built_in_effects_full(active, preset, amount, singing)
-        })
+        host.set_built_in_effects_routed(
+            require_running.unwrap_or(false),
+            active,
+            preset,
+            amount,
+            singing,
+        )
         .map_err(|e| e.to_string())
     })
     .await
@@ -926,10 +934,8 @@ pub(crate) async fn builtin_effects(
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
-        host.when_engine_running(require_running.unwrap_or(false), |host| {
-            host.builtin_effects(request)
-        })
-        .map_err(|error| error.to_string())
+        host.builtin_effects_routed(require_running.unwrap_or(false), request)
+            .map_err(|error| error.to_string())
     })
     .await
 }

@@ -190,22 +190,128 @@ impl State {
     }
 }
 
+/// 停止中のホームからの操作用。engine が居るときだけ送り、居なければ起動せず失敗にする。
+/// 終了済みの engine も起こし直さない。状態の読取りが先に空を返して、画面は「状態を読み取れません」へ戻る。
+/// 確認と送信のあいだに終了しても、送信側が読取りの終了を見て失敗にするだけで、起動は通らない。
 impl super::AudioHost {
-    /// 停止中のホームからの操作用。`require_running` のとき、engine が居なければ起動せず失敗にする。
-    /// 終了済みの engine も起こし直さない。状態の読取りが先に空を返して、画面は「状態を読み取れません」へ戻る。
-    pub fn when_engine_running<T>(
+    fn require_live_engine(&mut self) -> anyhow::Result<()> {
+        self.guard_mode_vst()?;
+        let reader_active = self.reader_active.load(Ordering::Acquire);
+        let alive = match self.child.as_mut() {
+            Some(child) => child.try_wait()?.is_none(),
+            None => false,
+        };
+        anyhow::ensure!(
+            reader_active && alive,
+            "音声エンジンが動いていないため、変更できません。"
+        );
+        anyhow::ensure!(
+            !self.maintenance,
+            "更新を適用中のため音声操作はできません。"
+        );
+        Ok(())
+    }
+
+    fn execute_command_if_running(&mut self, cmd: Command) -> anyhow::Result<Response> {
+        self.require_live_engine()?;
+        if super::conditions::command_changes(&cmd) {
+            self.frontend_bootstrap.cancel();
+        }
+        if self.bundle_change_generation.is_some() {
+            self.validate_bundle_connection()?;
+        }
+        self.sync_live_modes()?;
+        self.guard_live_command(&cmd)?;
+        let replaces_builtin = matches!(
+            &cmd,
+            Command::SetBuiltInEffects { .. }
+                | Command::BuiltinEffects {
+                    request: crate::audio_engine::builtin::Request::Apply { .. }
+                }
+        );
+        let response = self.execute_running_command(cmd)?;
+        if replaces_builtin && !matches!(response, Response::Error(_)) {
+            self.live_modes.target = None;
+        }
+        Ok(response)
+    }
+
+    /// `require_running` が偽のときは従来どおり（居なければ起動する）、真のときは起動せず失敗にする。
+    pub fn set_noise_control_config_routed(
         &mut self,
         require_running: bool,
-        operation: impl FnOnce(&mut Self) -> anyhow::Result<T>,
-    ) -> anyhow::Result<T> {
-        if require_running {
-            let alive = match self.child.as_mut() {
-                Some(child) => child.try_wait()?.is_none(),
-                None => false,
-            };
-            anyhow::ensure!(alive, "音声エンジンが動いていないため、変更できません。");
+        active: bool,
+        mode: String,
+        strength: f32,
+        voice_guard: bool,
+    ) -> anyhow::Result<()> {
+        if !require_running {
+            return self.set_noise_control_config(active, mode, strength, voice_guard);
         }
-        operation(self)
+        anyhow::ensure!(strength.is_finite(), "ノイズ低減の抑制強度が不正です");
+        match self.execute_command_if_running(Command::SetNoiseControlConfig {
+            active,
+            mode,
+            strength,
+            voice_guard,
+        })? {
+            Response::Success => Ok(()),
+            Response::Error(error) => Err(anyhow::anyhow!(error)),
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_built_in_effects_routed(
+        &mut self,
+        require_running: bool,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+    ) -> anyhow::Result<()> {
+        if !require_running {
+            return self.set_built_in_effects_full(active, preset, amount, singing);
+        }
+        match self.execute_command_if_running(Command::SetBuiltInEffects {
+            active,
+            preset,
+            amount,
+            singing,
+            reverb: None,
+            deesser: None,
+            replace_deesser: false,
+        })? {
+            Response::Success => Ok(()),
+            Response::Error(error) => Err(anyhow::anyhow!(error)),
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn builtin_effects_routed(
+        &mut self,
+        require_running: bool,
+        request: crate::audio_engine::builtin::Request,
+    ) -> anyhow::Result<crate::audio_engine::builtin::Snapshot> {
+        use crate::audio_engine::builtin::Request;
+        if !require_running {
+            return self.builtin_effects(request);
+        }
+        if matches!(
+            &request,
+            Request::Snapshot
+                | Request::ApplyProposal { .. }
+                | Request::Undo { .. }
+                | Request::Redo { .. }
+        ) {
+            // 読取り・提案・取消・やり直しは、読取りが無ければ送らない従来の経路をそのまま使う。
+            self.require_live_engine()?;
+            return self.builtin_effects(request);
+        }
+        match self.execute_command_if_running(Command::BuiltinEffects { request })? {
+            Response::BuiltinEffects(snapshot) => Ok(snapshot),
+            Response::Error(error) => Err(anyhow::anyhow!(error)),
+            _ => Err(anyhow::anyhow!("Unexpected builtin response")),
+        }
     }
 }
 impl Operations {

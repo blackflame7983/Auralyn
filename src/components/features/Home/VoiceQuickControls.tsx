@@ -27,7 +27,7 @@ export function useVoiceQuick(_running: boolean, enabled = true, stopped = false
     const delivery = stopped ? { requireRunning: true } : {};
     const request = (req: BuiltinRequest) => stopped ? builtinApi.request(req, { requireRunning: true }) : builtinApi.request(req);
 
-    const run = async (action: () => Promise<unknown>, success: string) => {
+    const run = async (action: () => Promise<unknown>, success: string, held: string) => {
         if (busy) return;
         setBusy(true);
         try {
@@ -35,7 +35,7 @@ export function useVoiceQuick(_running: boolean, enabled = true, stopped = false
             await refresh();
             // 音づくりタブや歌向けの下書きへ、外部で値が変わったことを知らせる。
             window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { runtimeStatsRefreshed: active.current } }));
-            if (stopped) toast.success(success, { description: t('home.stoppedHeld') });
+            if (stopped) toast.success(success, { description: held });
             else toast.success(success);
         } catch (error) {
             console.error('Failed to apply quick voice setting', error);
@@ -60,7 +60,7 @@ export function useVoiceQuick(_running: boolean, enabled = true, stopped = false
             strength: stats.noiseControlStrength > 0 ? stats.noiseControlStrength : 0.8,
             voiceGuard: stats.noiseVoiceGuard ?? true,
             ...delivery,
-        }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
+        }), active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'), t('home.stoppedHeldNoise'));
     };
 
     const chainOn = !!stats?.builtInEffectsEnabled;
@@ -68,14 +68,14 @@ export function useVoiceQuick(_running: boolean, enabled = true, stopped = false
     const shownAmount = amount ?? Math.round((stats?.builtInEffectsAmount ?? 0.7) * 100);
     // ON/OFFは適用済みの設定（歌向けの値・残響）を保持したまま切り替える。
     const toggleChain = (active: boolean) => run(async () => {
-        const current = await builtinApi.request({ action: 'snapshot' });
+        const current = await request({ action: 'snapshot' });
         await request({ action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: { ...current.config, active } });
-    }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
+    }, active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'), t('home.stoppedHeldVoice'));
     const applyChain = (next: { preset?: BuiltInEffectsPreset; amount?: number }) => run(async () => {
         const amount = Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100;
         // OFF のときは builtin の適用で種類と整え具合だけを残す。ON にはせず、歌向けや残響も消さない。
         if (!chainOn) {
-            const current = await builtinApi.request({ action: 'snapshot' });
+            const current = await request({ action: 'snapshot' });
             await request({
                 action: 'apply',
                 epoch: current.epoch,
@@ -85,7 +85,7 @@ export function useVoiceQuick(_running: boolean, enabled = true, stopped = false
             return;
         }
         await audioApi.setBuiltInEffects({ active: true, preset: next.preset ?? preset, amount, ...delivery });
-    }, t('settings.AudioSettingsModal.008'));
+    }, t('settings.AudioSettingsModal.008'), t('home.stoppedHeldVoice'));
     const commitAmount = (value: number) => { setAmount(null); void applyChain({ amount: value }); };
 
     return { stats, disabled: !stats || busy, noiseOn, noiseMode, applyNoise, chainOn, preset, shownAmount, setAmount, commitAmount, toggleChain, applyChain };

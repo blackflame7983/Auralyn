@@ -230,7 +230,13 @@ it.each(['keyup', 'blur'] as const)('声の量は5%刻みの編集中に送ら�
     expect(audioApi.setBuiltInEffects).toHaveBeenCalledTimes(1);
 });
 
-it('停止中の操作は音声エンジンが居るときだけ届け、成功したら変更が戻る旨を補足する', async () => {
+// 事前の snapshot も含め、builtin への要求はすべて音声エンジンが居るときだけの指定で届ける。
+function expectEveryBuiltinRequestRequiresRunning(request: { mock: { calls: unknown[][] } }, actions: string[]) {
+    expect(request.mock.calls.map(([req]) => (req as { action: string }).action)).toEqual(actions);
+    for (const call of request.mock.calls) expect(call[1]).toEqual({ requireRunning: true });
+}
+
+it('停止中の操作は音声エンジンが居るときだけ届け、成功したら変更が戻る旨と残し方を補足する', async () => {
     const request = vi.spyOn(builtinApi, 'request').mockImplementation(async req => ({
         epoch: 'e1', revision: '3', appliedRevision: '3', config: req.action === 'apply' ? req.config : singing, pending: false, undoToken: null, error: null,
     }));
@@ -238,11 +244,24 @@ it('停止中の操作は音声エンジンが居るときだけ届け、成功�
     await waitFor(() => expect(view.result.current.stats).not.toBeNull());
     await act(async () => { await view.result.current.applyNoise({ mode: 'high' }); });
     expect(audioApi.setNoiseControlConfig).toHaveBeenCalledExactlyOnceWith({ active: true, mode: 'high', strength: 0.6, voiceGuard: false, requireRunning: true });
+    expect(toast.success).toHaveBeenLastCalledWith(expect.any(String), { description: message('ja', 'home.stoppedHeldNoise') });
     await act(async () => { await view.result.current.applyChain({ amount: 30 }); });
     expect(audioApi.setBuiltInEffects).toHaveBeenCalledExactlyOnceWith({ active: true, preset: 'broadcast', amount: 0.3, requireRunning: true });
     await act(async () => { await view.result.current.toggleChain(false); });
-    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'apply' }), { requireRunning: true });
-    expect(toast.success).toHaveBeenCalledWith(expect.any(String), { description: message('ja', 'home.stoppedHeld') });
+    expectEveryBuiltinRequestRequiresRunning(request, ['snapshot', 'apply']);
+    expect(toast.success).toHaveBeenLastCalledWith(expect.any(String), { description: message('ja', 'home.stoppedHeldVoice') });
+});
+
+it('停止中に声を整えるがOFFのまま種類・整え具合を変えるときも、事前の読取りを含めて音声エンジンが居るときだけ届ける', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ builtInEffectsEnabled: false }));
+    const request = vi.spyOn(builtinApi, 'request').mockImplementation(async req => ({
+        epoch: 'e1', revision: '3', appliedRevision: '3', config: req.action === 'apply' ? req.config : singing, pending: false, undoToken: null, error: null,
+    }));
+    const view = renderHook(() => useVoiceQuick(false, true, true));
+    await waitFor(() => expect(view.result.current.stats).not.toBeNull());
+    await act(async () => { await view.result.current.applyChain({ amount: 30 }); });
+    expectEveryBuiltinRequestRequiresRunning(request, ['snapshot', 'apply']);
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
 });
 
 it('停止中に音声エンジンが居なくて失敗したら、起こさず失敗を知らせて状態を読み直す', async () => {
@@ -284,7 +303,7 @@ it('停止中のホームのスイッチ・選択・スライダーを実際に�
     expect(audioApi.setNoiseControlConfig).toHaveBeenLastCalledWith({ active: true, mode: 'high', strength: 0.6, voiceGuard: false, requireRunning: true });
     await waitFor(() => expect(screen.getByRole('switch', { name: '声を整える' })).toBeEnabled());
     await act(async () => fireEvent.click(screen.getByRole('switch', { name: '声を整える' })));
-    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'apply' }), { requireRunning: true });
+    expectEveryBuiltinRequestRequiresRunning(request, ['snapshot', 'apply']);
     await waitFor(() => expect(screen.getByRole('radio', { name: '明瞭' })).toBeEnabled());
     await act(async () => fireEvent.click(screen.getByRole('radio', { name: '明瞭' })));
     expect(audioApi.setBuiltInEffects).toHaveBeenLastCalledWith({ active: true, preset: 'bright', amount: 0.5, requireRunning: true });
