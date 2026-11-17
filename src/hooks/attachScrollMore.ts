@@ -1,4 +1,4 @@
-import { fadeBox, moreBelow, readScrollMetrics } from '@/lib/columnScrollHint';
+import { FOCUS_RING_EXTENT, fadeBox, moreBelow, readScrollMetrics, scrollToClearFade } from '@/lib/columnScrollHint';
 
 function sameElements(left: Set<Element>, right: Set<Element>): boolean {
     if (left.size !== right.size) return false;
@@ -27,10 +27,16 @@ export function createScrollMoreFade(variant: '' | 'dialog'): HTMLDivElement {
     fade.append(chevron);
     return fade;
 }
-export function cssPx(value: number): string {
+function pageZoom(): number {
     const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom);
-    const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-    return `${value / scale}px`;
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+}
+// 画面の座標（拡大表示を含む）を、要素の CSS px へ戻す。
+function unzoom(value: number): number {
+    return value / pageZoom();
+}
+export function cssPx(value: number): string {
+    return `${unzoom(value)}px`;
 }
 
 export function attachScrollMore(
@@ -42,11 +48,46 @@ export function attachScrollMore(
     let observer: ResizeObserver | null = null;
     let children: MutationObserver | null = null;
     let watched = new Set<Element>();
+    let pointerHeld = false;
+
+    const currentBox = () => {
+        const limit = scroller ? findLimit(scroller) : null;
+        return scroller && moreBelow(readScrollMetrics(scroller))
+            ? fadeBox(scroller.getBoundingClientRect(), limit?.getBoundingClientRect() ?? null)
+            : null;
+    };
+
+    // 焦点が入った要素の枠がフェードに隠れるなら、その分だけ本文を送る。scroll-padding を持たない本文では、
+    // 一部でも見えている要素へ焦点を移してもブラウザーは送らない。フェードが出ているときだけ補い、動きは付けずすぐに送る。
+    // 押している間に焦点が入った要素は送らない。押している間に要素が動くと、クリックが成立しなくなる。
+    const clearFade = (event: FocusEvent) => {
+        const box = currentBox();
+        if (scroller && box && !pointerHeld && event.target instanceof Element) {
+            const delta = scrollToClearFade(event.target.getBoundingClientRect(), scroller.getBoundingClientRect(), box.top, FOCUS_RING_EXTENT * pageZoom());
+            if (delta !== 0) scroller.scrollBy({ top: unzoom(delta), behavior: 'instant' });
+        }
+        // ブラウザーの送りでスクロールの位置が変わっていることがある。スクロールの通知を待たず、フェードを今の位置に合わせる。
+        applyBox(currentBox());
+    };
+
+    const release = () => {
+        pointerHeld = false;
+        document.removeEventListener('pointerup', release, true);
+        document.removeEventListener('pointercancel', release, true);
+    };
+    const hold = () => {
+        pointerHeld = true;
+        document.addEventListener('pointerup', release, true);
+        document.addEventListener('pointercancel', release, true);
+    };
 
     const place = () => {
         const next = findScroller();
         if (next !== scroller) {
             scroller?.removeEventListener('scroll', place);
+            scroller?.removeEventListener('focusin', clearFade);
+            scroller?.removeEventListener('pointerdown', hold, true);
+            release();
             observer?.disconnect();
             observer = null;
             children?.disconnect();
@@ -55,6 +96,8 @@ export function attachScrollMore(
             scroller = next;
             if (scroller) {
                 scroller.addEventListener('scroll', place, { passive: true });
+                scroller.addEventListener('focusin', clearFade);
+                scroller.addEventListener('pointerdown', hold, true);
                 if (typeof MutationObserver !== 'undefined') {
                     children = new MutationObserver(place);
                     children.observe(scroller, { childList: true });
@@ -72,17 +115,16 @@ export function attachScrollMore(
                 watched = targets;
             }
         }
-        const limit = scroller ? findLimit(scroller) : null;
-        const box = scroller && moreBelow(readScrollMetrics(scroller))
-            ? fadeBox(scroller.getBoundingClientRect(), limit?.getBoundingClientRect() ?? null)
-            : null;
-        applyBox(box);
+        applyBox(currentBox());
     };
 
     return {
         place,
         stop() {
             scroller?.removeEventListener('scroll', place);
+            scroller?.removeEventListener('focusin', clearFade);
+            scroller?.removeEventListener('pointerdown', hold, true);
+            release();
             observer?.disconnect();
             children?.disconnect();
         },
