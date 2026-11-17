@@ -6,7 +6,7 @@ import { consumeLeaveSkip, requestLeave } from '@/components/layout/pageLeave';
 export type AppPage = 'home' | 'sound' | 'vst' | 'connect' | 'settings';
 export type SettingsPane = 'appearance' | 'shortcuts' | 'obs' | 'system';
 export type SettingsTab = 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
-export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
+export type SettingsAnchor = 'liveModes' | 'singing' | 'audioTuning' | 'connectionType' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
 export type SoundPlace = 'basic' | 'liveModes' | 'singing' | 'peak';
 
 type Navigation = { page: AppPage; pane?: SettingsPane; section?: SettingsAnchor; retry?: boolean; soundPlace?: SoundPlace; soundFocus?: boolean; openMeasurement?: boolean; vstFocusAdd?: boolean };
@@ -91,6 +91,8 @@ export const useUIState = () => {
     const openShortcuts = () => go({ page: 'settings', pane: 'shortcuts' });
     const openObsSettings = () => go({ page: 'settings', pane: 'obs' });
     const openAudioTuning = () => go({ page: 'connect', section: 'audioTuning' });
+    // 接続方式の選択そのものへ移す。音切れの設定の欄を開き、選択へ焦点を移す。
+    const openConnectionType = () => go({ page: 'connect', section: 'connectionType' });
     // 配信ミックスは設定ではなくホームのパネルで扱う（#299）。
     const openMixingSettings = () => openStreamMixPanel();
     // 配信ミックスのパネルから、出力先・分離・入力元の欄を開いて案内する。
@@ -149,6 +151,7 @@ export const useUIState = () => {
         openObsSettings,
         openShortcuts,
         openAudioTuning,
+        openConnectionType,
         openMixingSettings,
         openDeviceSettings,
         openSoundSettings,

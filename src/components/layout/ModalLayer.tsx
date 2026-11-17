@@ -10,7 +10,7 @@ import { registerSettingsCloser, useLeaveGeneration } from './pageLeave';
 import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
-import type { SoundPlace } from '@/hooks/useUIState';
+import type { SettingsAnchor, SoundPlace } from '@/hooks/useUIState';
 import { checkRestoredRack, type SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { PLUGIN_SESSION_KEY } from '@/hooks/usePluginSessionPersistence';
 import { UNSET_AUDIO_UPDATE } from '@/lib/audioPreferences';
@@ -35,7 +35,7 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'liveOutputSplit' | 'primaryInput';
+    settingsSection?: SettingsAnchor;
     soundPlace?: SoundPlace;
     soundFocusNonce?: number;
     measurementNonce?: number;
@@ -48,6 +48,7 @@ interface UIState {
     openSoundSettings: (section?: 'liveModes' | 'singing') => void;
     openObsSettings: () => void;
     openAudioTuning: () => void;
+    openConnectionType: () => void;
     isBrowserOpen: boolean;
     setIsBrowserOpen: (v: boolean) => void;
     isOBSGuideOpen: boolean;
@@ -230,6 +231,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onOpenAudioSettings={() => {
                             ui.setIsOBSGuideOpen(false);
                             ui.setIsSettingsOpen(true);
+                        }}
+                        onChooseConnection={() => {
+                            ui.setIsOBSGuideOpen(false);
+                            ui.openConnectionType();
                         }}
                         onOpenTroubleshoot={() => {
                             ui.setIsOBSGuideOpen(false);
