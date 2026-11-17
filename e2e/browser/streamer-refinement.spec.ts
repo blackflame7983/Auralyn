@@ -171,8 +171,13 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
 test('再評価用の正常ホームは警告状態と分け、縦長でも出力メーターを離さない', async ({ page }, testInfo) => {
     await page.goto('/');
     await page.evaluate(() => {
-        (window as any).__e2eSetOutputMuted(false);
-        setInterval(() => (window as any).__e2eEmit('audio-level', { input: [0.32, 0.28], output: [0.25, 0.2] }), 100);
+        const host: Window & {
+            __e2eSetOutputMuted?: (muted: boolean) => void;
+            __e2eEmit?: (event: string, payload: { input: number[]; output: number[] }) => void;
+        } = window;
+        if (!host.__e2eSetOutputMuted || !host.__e2eEmit) throw new Error('模擬の音声操作がありません');
+        host.__e2eSetOutputMuted(false);
+        setInterval(() => host.__e2eEmit?.('audio-level', { input: [0.32, 0.28], output: [0.25, 0.2] }), 100);
     });
     await expect(page.locator('#home-vst-open')).toHaveText('追加');
     await expect(page.getByRole('region', { name: 'VST保存済み構成の保護', exact: true })).toHaveCount(0);
@@ -185,7 +190,7 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     const vstPage = page.locator('[data-vst-page]');
     await expect(vstPage).toBeVisible();
     await expect(page.locator('#home-vst-open')).toHaveCount(0);
-    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
+    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(2);
     const meter = page.getByRole('meter', { name: '出力', exact: true });
     await expect(meter).toBeVisible();
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
@@ -195,9 +200,16 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
             .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
             .map(animation => animation.finished.catch(() => {})));
     });
-    expect((await vstPage.boundingBox())!.x + (await vstPage.boundingBox())!.width).toBeLessThanOrEqual((await meter.boundingBox())!.x + 1);
-    const column = (await page.getByRole('complementary', { name: '本番中の操作', exact: true }).boundingBox())!;
-    const meterBox = (await meter.boundingBox())!;
+    const pageBox = await vstPage.boundingBox();
+    const meterEdge = await meter.boundingBox();
+    const column = await page.getByRole('complementary', { name: '本番中の操作', exact: true }).boundingBox();
+    const meterBox = await meter.boundingBox();
+    expect(pageBox).not.toBeNull();
+    expect(meterEdge).not.toBeNull();
+    expect(column).not.toBeNull();
+    expect(meterBox).not.toBeNull();
+    if (!pageBox || !meterEdge || !column || !meterBox) return;
+    expect(pageBox.x + pageBox.width).toBeLessThanOrEqual(meterEdge.x + 1);
     expect(meterBox.x).toBeGreaterThanOrEqual(column.x - 1);
     expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(column.x + column.width + 1);
     await page.screenshot({ path: testInfo.outputPath('healthy-portrait-panel.png') });

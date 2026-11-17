@@ -22,7 +22,7 @@ async function openApp(page: Page, locale: 'ja' | 'en', width: number, height: n
     const nav = locale === 'ja' ? '行き先' : 'Destinations';
     const add = locale === 'ja' ? 'VSTを追加' : 'Add VST';
     await page.getByRole('navigation', { name: nav }).getByRole('button', { name: 'VST', exact: true }).click();
-    await page.getByRole('button', { name: add, exact: true }).click();
+    await page.locator('#add-effect-btn').click();
     const dialog = page.getByRole('dialog', { name: add });
     await expect(dialog.getByRole('region', { name: locale === 'ja' ? '探すフォルダー' : 'Folders to search' })).toBeVisible();
     return dialog;

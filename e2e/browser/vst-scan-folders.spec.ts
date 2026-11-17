@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 
 async function openBrowser(page: import('@playwright/test').Page) {
     await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'VST', exact: true }).click();
-    await page.getByRole('button', { name: 'VSTを追加', exact: true }).click();
+    await page.locator('#add-effect-btn').click();
     return page.getByRole('dialog', { name: 'VSTを追加' });
 }
 
