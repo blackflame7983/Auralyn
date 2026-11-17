@@ -1,5 +1,6 @@
 {
   "help.home": "home#stage",
+  "help.vst": "sound#vst-install",
   "help.setup": "setup#purpose",
   "help.troubleshooting": "troubleshooting#no-sound",
   "help.glossary": "glossary#terms",
