@@ -9,6 +9,13 @@ test.use({ liveHome: true });
 
 const sizes = [{ width: 900, height: 600 }, { width: 1280, height: 800 }];
 
+async function openOtherShortcuts(page: Page, locale: 'ja' | 'en') {
+    const title = message(locale, 'shortcuts.other');
+    const details = page.locator('[data-settings-page] details').filter({ has: page.locator('summary', { hasText: title }) });
+    if (!await details.evaluate(node => node instanceof HTMLDetailsElement && node.open)) await details.locator('summary').filter({ hasText: title }).click();
+    await expect(details).toHaveJSProperty('open', true);
+}
+
 async function openPage(page: Page, locale: 'ja' | 'en', size: { width: number; height: number }, pageName: 'connect' | 'shortcuts') {
     await page.setViewportSize(size);
     await page.addInitScript(locale => {
@@ -97,6 +104,7 @@ for (const locale of ['ja', 'en'] as const) {
         });
         test(`ホットキーの最後の操作と焦点が、保存の欄に隠れない（${label}）`, async ({ page }) => {
             await openPage(page, locale, size, 'shortcuts');
+            await openOtherShortcuts(page, locale);
             await lastControlClearsBar(page);
             await tabStaysAboveBar(page);
         });

@@ -1511,14 +1511,6 @@
     {
       "file": "e2e/browser/settings-issues.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
-      "hash": "8cd523051e4228948a81f3068783a910812855305284abde6f7d978d68ebdb5b",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-explicit-any",
       "hash": "92b1754b474981d55df2a17b747cfcbeeda287ed4bdf5b3d5999a8667a7bf4e4",
       "count": 6,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
@@ -1553,14 +1545,6 @@
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "3db86cec837eb886fb7046a300cb7b8bc72eae238d9d2f5537deb5ec0c09f132",
       "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "8cd523051e4228948a81f3068783a910812855305284abde6f7d978d68ebdb5b",
-      "count": 3,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },
@@ -1615,14 +1599,6 @@
     {
       "file": "e2e/browser/settings-issues.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-member-access",
-      "hash": "8cd523051e4228948a81f3068783a910812855305284abde6f7d978d68ebdb5b",
-      "count": 1,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "92b1754b474981d55df2a17b747cfcbeeda287ed4bdf5b3d5999a8667a7bf4e4",
       "count": 12,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
@@ -1657,14 +1633,6 @@
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "3db86cec837eb886fb7046a300cb7b8bc72eae238d9d2f5537deb5ec0c09f132",
       "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/settings-issues.spec.ts",
-      "rule": "@typescript-eslint/no-unsafe-return",
-      "hash": "8cd523051e4228948a81f3068783a910812855305284abde6f7d978d68ebdb5b",
-      "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
     },

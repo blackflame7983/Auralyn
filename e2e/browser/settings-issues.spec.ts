@@ -1,6 +1,7 @@
 import { test, expect } from './tauriFixture';
 import './tauriWindow';
 import type { Page } from '@playwright/test';
+import { message } from '../../src/i18n/messages';
 
 test.use({ liveHome: true });
 
@@ -41,6 +42,13 @@ test.beforeEach(async ({ page }) => {
         };
     }, config);
 });
+
+async function openOtherShortcuts(page: Page, locale: 'ja' | 'en') {
+    const title = message(locale, 'shortcuts.other');
+    const details = page.locator('[data-settings-page] details').filter({ has: page.locator('summary', { hasText: title }) });
+    if (!await details.evaluate(node => node instanceof HTMLDetailsElement && node.open)) await details.locator('summary').filter({ hasText: title }).click();
+    await expect(details).toHaveJSProperty('open', true);
+}
 
 async function openSettings(page: Page) {
     await page.goto('/');
@@ -128,6 +136,7 @@ test('ホットキーは未設定を示し、一覧から変更・取消・保�
     const dialog = await openSettings(page);
     await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
     await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
+    await openOtherShortcuts(page, 'ja');
     const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: '緊急ミュート（オン）' }) });
     await expect(field.locator('[data-shortcut-binding]')).toHaveText('未設定');
     await expect(field.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' })).toHaveText('キーを入力');
@@ -135,14 +144,22 @@ test('ホットキーは未設定を示し、一覧から変更・取消・保�
     const discard = dialog.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await expect(save).toBeDisabled();
     const rows = dialog.locator('fieldset').filter({ has: page.locator('[data-shortcut-binding]') });
-    const saveTop = (await save.boundingBox())!.y;
-    const visibleRows = await rows.evaluateAll((elements, saveTop) => elements.filter(element => {
+    const saveBox = await save.boundingBox();
+    if (!saveBox) throw new Error('保存ボタンの位置が取れません');
+    const saveTop = saveBox.y;
+    const visibleRows = await rows.evaluateAll((elements, top) => elements.filter(element => {
         const row = element.getBoundingClientRect();
-        const scroller = element.closest('.overflow-y-auto')!.getBoundingClientRect();
-        return row.top >= scroller.top && row.bottom <= Math.min(scroller.bottom, saveTop);
+        const scrollerElement = element.closest('.overflow-y-auto');
+        if (!(scrollerElement instanceof HTMLElement)) throw new Error('スクロール領域がありません');
+        const scroller = scrollerElement.getBoundingClientRect();
+        return row.top >= scroller.top && row.bottom <= Math.min(scroller.bottom, top);
     }).length, saveTop);
     expect(visibleRows).toBeGreaterThanOrEqual(8);
-    for (const row of await rows.all()) expect((await row.boundingBox())!.height).toBeLessThanOrEqual(56);
+    for (const row of await rows.all()) {
+        const rowBox = await row.boundingBox();
+        if (!rowBox) throw new Error('ホットキーの行の位置が取れません');
+        expect(rowBox.height).toBeLessThanOrEqual(56);
+    }
     await field.getByRole('button', { name: '緊急ミュート（オン）のキーを一覧から選ぶ' }).focus();
     await page.keyboard.press('Enter');
     await field.getByRole('combobox', { name: '緊急ミュート（オン）の修飾キー' }).selectOption('Alt');
@@ -155,7 +172,10 @@ test('ホットキーは未設定を示し、一覧から変更・取消・保�
     await save.click();
     await expect(dialog.getByRole('status')).toContainText('キー設定を保存しました');
     await expect(save).toBeDisabled();
-    expect(await page.evaluate(() => (window as any).__settingsShortcutWrites)).toEqual([[{ action: 'muteOn', shortcut: 'Alt+KeyM' }]]);
+    expect(await page.evaluate(() => {
+        const host: Window & { __settingsShortcutWrites?: { action: string; shortcut: string }[][] } = window;
+        return host.__settingsShortcutWrites ?? [];
+    })).toEqual([[{ action: 'muteOn', shortcut: 'Alt+KeyM' }]]);
 });
 
 test('OBS接続後は接続先を折りたたみ、明示操作で確認できる', async ({ page }) => {
