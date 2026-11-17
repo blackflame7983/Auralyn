@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { mustBox } from './mustBox';
 
 test.use({ liveHome: true, registeredModes: true, builtinEnabled: true });
 test.beforeEach(async ({ page }) => {
@@ -21,9 +22,12 @@ for (const width of [1200, 1600, 1920, 2560]) {
         await expect(page.locator('.home-content')).toHaveCount(0);
         await expect.poll(async () => {
             const gap = await page.evaluate(() => {
-                const pageBox = document.querySelector('[data-vst-page]')!.getBoundingClientRect();
-                const meter = document.querySelector('[role="meter"][aria-label="出力"]')!.getBoundingClientRect();
-                return meter.left - pageBox.right;
+                const pageNode = document.querySelector('[data-vst-page]');
+                const columnNode = document.querySelector('aside[aria-label="本番中の操作"]');
+                if (!(pageNode instanceof HTMLElement) || !(columnNode instanceof HTMLElement)) throw new Error('列かページがありません');
+                const pageBox = pageNode.getBoundingClientRect();
+                const column = columnNode.getBoundingClientRect();
+                return column.left - pageBox.right;
             });
             return gap >= -1;
         }).toBe(true);
@@ -41,21 +45,23 @@ for (const width of [1200, 1600, 1920, 2560]) {
     });
 }
 
-test('最小画面でVSTのページを開いても右の列の出力メーターは残り、大型メーターは出さない', async ({ page }, testInfo) => {
+test('最小画面でVSTのページを開いても右の列の出力の数字は残り、横メーターと大型メーターは出さない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
-    const meter = page.getByRole('meter', { name: '出力', exact: true });
-    await expect(meter).toBeVisible();
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    const peak = column.locator('p', { hasText: /出力のピーク/ });
+    await expect(peak).toBeVisible();
+    await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
     await page.locator('#home-vst-open').click();
     await expect(page.locator('[data-vst-page]')).toBeVisible();
     await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-    await expect(meter).toBeVisible();
+    await expect(peak).toBeVisible();
     await expect(page.locator('#large-meter-suspended')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('vst-page-meter.png') });
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-vst-page]')).toBeVisible();
-    await expect(meter).toBeVisible();
+    await expect(peak).toBeVisible();
 });
 
 test('動きを減らす設定でもVSTのページは右の列と重ならない', async ({ page }) => {
@@ -63,10 +69,12 @@ test('動きを減らす設定でもVSTのページは右の列と重ならな�
     await page.setViewportSize({ width: 2560, height: 1369 });
     await page.goto('/');
     await page.locator('#home-vst-open').click();
-    const meter = page.getByRole('meter', { name: '出力', exact: true });
-    await expect(meter).toBeVisible();
-    const pageBox = (await page.locator('[data-vst-page]').boundingBox())!;
-    const meterBox = (await meter.boundingBox())!;
-    expect(meterBox.x).toBeGreaterThanOrEqual(pageBox.x + pageBox.width - 1);
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    const peak = column.locator('p', { hasText: /出力のピーク/ });
+    await expect(peak).toBeVisible();
+    await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
+    const pageBox = await mustBox(page.locator('[data-vst-page]'));
+    const peakBox = await mustBox(peak);
+    expect(peakBox.x).toBeGreaterThanOrEqual(pageBox.x + pageBox.width - 1);
     expect(await page.locator('.workspace-body').evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');
 });

@@ -78,7 +78,8 @@ afterEach(async () => {
 
 describe('起動時の保存ゲイン復元', () => {
     it('古い要求の遅い失敗を、新しい要求の成功後の再試行として残さない', async () => {
-        const original = vi.mocked(invoke).getMockImplementation()!;
+        const original = vi.mocked(invoke).getMockImplementation();
+        if (!original) throw new Error('invoke の実装がありません');
         let rejectFirst!: (error: Error) => void;
         const firstWrite = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
         const values: number[] = [];
@@ -135,7 +136,8 @@ describe('起動時の保存ゲイン復元', () => {
         else expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
     it('手動設定の失敗は背景の状態取得が成功しても消さない', async () => {
-        const original = vi.mocked(invoke).getMockImplementation()!;
+        const original = vi.mocked(invoke).getMockImplementation();
+        if (!original) throw new Error('invoke の実装がありません');
         vi.mocked(invoke).mockImplementation(async (command, args) => {
             if (command === 'set_output_gain') throw new Error('manual request failed');
             return original(command, args);
@@ -207,10 +209,10 @@ describe('起動時の保存ゲイン復元', () => {
         } as EngineRuntimeStats);
         const view = render(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning={false} />);
         await act(async () => { finishListening(); });
-        // #602: 右の列のメーターに停止の札は出さない。読み上げと、停止中のピークの横線は残す。
+        // #602: 右の列に停止の札は出さない。停止中のピークは横線で、読み上げに停止を残す。横メーターは置かない（#724）。
         expect(screen.queryByText('音声停止中')).not.toBeInTheDocument();
-        expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '音声停止中');
-        expect(screen.getByText('—')).toHaveAttribute('aria-label', expect.stringContaining('出力のピーク'));
+        expect(screen.queryByRole('meter', { name: '出力' })).not.toBeInTheDocument();
+        expect(screen.getByText(message('ja', 'home.outputPeakStopped'), { exact: false }).closest('p')).toHaveTextContent('—');
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const details = screen.getByRole('button', { name: '音声処理の詳細' });
@@ -222,7 +224,9 @@ describe('起動時の保存ゲイン復元', () => {
         expect(screen.getByText('WASAPI')).toBeInTheDocument();
         expect(screen.queryByText('48,000 Hz')).not.toBeInTheDocument();
         expect(screen.queryByText('推定 41.3 ms')).not.toBeInTheDocument();
-        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        const active = document.activeElement;
+        if (!(active instanceof Element)) throw new Error('焦点がありません');
+        fireEvent.keyDown(active, { key: 'Escape' });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(details).toHaveFocus();
@@ -548,7 +552,9 @@ it('出力音量は1つで、マウスで100%にでき、キーの刻みと30ms�
     } finally { vi.unstubAllGlobals(); }
 });
 
-it.each([true, false])('出力メーターは右の列に常に1つ出す（稼働=%s）', isRunning => {
+it.each([true, false])('右の列の出力はピークの数字で、横メーターは出さない（稼働=%s）', isRunning => {
     render(<MasterBar isRunning={isRunning} />);
-    expect(screen.getAllByRole('meter', { name: message('ja', 'meter.output') })).toHaveLength(1);
+    expect(screen.queryByRole('meter', { name: message('ja', 'meter.output') })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: message('ja', 'meter.output') })).toBeInTheDocument();
+    expect(screen.getByText(/出力のピーク/)).toBeInTheDocument();
 });
