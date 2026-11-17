@@ -6,6 +6,8 @@ import { Modal } from '../../ui/modal';
 import { ObsMixCheck } from './ObsMixCheck';
 import React, { useState } from 'react';
 import { useMuteShortcut } from '@/hooks/useMuteShortcut';
+import { readAudioPreferences } from '@/lib/audioPreferences';
+import { isAsioHost } from '../SetupWizard/wizardModel';
 import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic, MdTune, MdHelpOutline } from 'react-icons/md';
 
 type ObsDevice = 'mixer' | 'usb' | 'unknown';
@@ -32,6 +34,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     const [device, setDevice] = useState<ObsDevice | null>(null);
     // 「分からない」は、どのマイクでも成り立つ仮想ケーブルの経路で進める。
     const useHardwareMixer = device === null ? null : device === 'mixer';
+    // 仮想ケーブルの方法は通常出力を CABLE Input にするため、出力を選べない ASIO のままでは進めない。
+    const needsWasapi = route === 'processed' && useHardwareMixer === false && isAsioHost(readAudioPreferences()?.host ?? '');
     const chooseRoute = (value: SingingRoute) => {
         setRoute(value); setTimingRequested(false);
         if (value === 'processed' && device === null && step > 0) setStep(0);
@@ -106,6 +110,12 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 {route === 'direct' ? t('singingRoute.choose') : useHardwareMixer ? t('guide.copy.015') : t('guide.copy.016')}
                             </h3>
                             {device === 'unknown' && route === 'processed' && <p role="status" className="text-ui-support text-balance text-foreground [word-break:auto-phrase]">{t('guide.obs.unknownNotice')}</p>}
+                            {needsWasapi && (
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-warning/20 bg-warning/5 p-3">
+                                    <p className="min-w-0 flex-1 text-ui-support text-foreground text-balance [word-break:auto-phrase]">{t('guide.obs.asioNotice')}</p>
+                                    <Button variant="outline" size="sm" type="button" onClick={onOpenAudioSettings}>{t('processInput.chooseConnection')}</Button>
+                                </div>
+                            )}
 
                             {route === 'direct' ? <p className="text-ui-support">{t('singingRoute.directInstructions')}</p> : useHardwareMixer ? (
                                 <div className="space-y-4">

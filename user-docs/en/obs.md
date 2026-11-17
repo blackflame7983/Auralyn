@@ -9,7 +9,7 @@ uiLabels: ["Voice Check", "Not sure"]
 
 Use a virtual cable, or send the device's PC return through hardware loopback. Loopback sends your PC's sound back to the PC after mixing it inside the device. Hardware loopback requires driver and device support.
 
-If you do not know which device you have, choose “Not sure” in the OBS guide. The guide continues with the virtual cable method, which works with any microphone.
+If you do not know which device you have, choose “Not sure” in the OBS guide. The guide continues with the virtual cable method, which works with any microphone. This method works with WASAPI. If you are using ASIO, change the connection type to WASAPI on the Connection page before you continue.
 
 1. If no virtual cable is installed, prepare VB-CABLE as described in the existing OBS guide. A PC restart may be needed after installation.
 2. Set Auralyn's output to CABLE Input.

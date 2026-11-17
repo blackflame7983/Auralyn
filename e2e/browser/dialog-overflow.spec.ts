@@ -9,18 +9,21 @@ test.use({ liveHome: true });
 type Screen = 'obs-guide' | 'help' | 'presets' | 'template-wizard';
 
 // CI は本番ビルドを配るため、開発プレビューの ?screen= は使えない。利用者と同じ操作でダイアログを開く。
-async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size: { width: number; height: number }) {
+const WASAPI_CONFIG = { host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 };
+const ASIO_CONFIG = { host: 'ASIO', input: 'Focusrite USB ASIO', output: 'Focusrite USB ASIO', sampleRate: 48000, bufferSize: 512 };
+
+async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size: { width: number; height: number }, audioConfig: object = WASAPI_CONFIG) {
     const t = (key: MessageKey) => message(locale, key);
     await page.setViewportSize(size);
-    await page.addInitScript(locale => {
+    await page.addInitScript(([locale, config]) => {
         localStorage.setItem('vst_host_locale', locale);
         localStorage.setItem('vst_host_theme', 'dark');
         localStorage.setItem('vst_host_wizard_done', 'true');
         localStorage.setItem('vst_host_tutorial_completed', 'true');
         localStorage.setItem('vst_host_setup_goal', 'obs');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
-        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
-    }, locale);
+        localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
+    }, [locale, audioConfig] as const);
     await page.goto('/');
     await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
     if (screen === 'obs-guide' || screen === 'help') {
@@ -96,6 +99,34 @@ for (const locale of ['ja', 'en'] as const) {
         await expect(dialog.getByText(t('guide.copy.068'), { exact: true })).toBeVisible();
         expect(errors).toEqual([]);
     });
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    for (const saved of [{ name: 'ASIO', config: ASIO_CONFIG, shown: true }, { name: 'WASAPI', config: WASAPI_CONFIG, shown: false }]) {
+        test(`OBS連携ガイドで「分からない」を選ぶと、保存された接続が ${saved.name} のとき ${saved.shown ? 'WASAPI へ変える案内と接続のページを開くボタンが出る' : '案内もボタンも出ない'} ${locale}`, async ({ page }) => {
+            const t = (key: MessageKey) => message(locale, key);
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 }, saved.config);
+            const dialog = page.getByRole('dialog');
+            await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+            await page.keyboard.press('ArrowDown');
+            await page.keyboard.press('ArrowDown');
+            await expect(dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true })).toBeChecked();
+            await dialog.getByRole('button', { name: t('guide.copy.078'), exact: true }).click();
+            await expect(dialog.getByRole('heading', { name: t('guide.copy.016'), exact: true })).toBeVisible();
+            const notice = dialog.getByText(t('guide.obs.asioNotice'), { exact: true });
+            const open = dialog.getByRole('button', { name: t('processInput.chooseConnection'), exact: true });
+            if (!saved.shown) {
+                await expect(notice).toHaveCount(0);
+                await expect(open).toHaveCount(0);
+            } else {
+                await expect(notice).toBeVisible();
+                await expect(open).toBeEnabled();
+            }
+            expect(errors).toEqual([]);
+        });
+    }
 }
 
 test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {

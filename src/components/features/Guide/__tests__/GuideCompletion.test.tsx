@@ -175,3 +175,49 @@ it.each(['ja', 'en'] as const)('OBSガイドは案内を先に出し、機器を
     expect(next).toHaveAccessibleDescription(locale === 'ja' ? '機器を選ぶと進めます' : 'Choose a device to continue');
     expect(screen.getByText(locale === 'ja' ? '機器を選ぶと進めます' : 'Choose a device to continue').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+it.each([
+    { locale: 'ja', unknown: 'どの機器か分からない場合の手順を選ぶ', usb: 'USBマイク・PC直結のマイクの手順を選ぶ', mixer: 'ループバック対応のミキサーの手順を選ぶ', notice: 'この方法は WASAPI で使います。いま ASIO を使っているので、接続のページで接続方式を WASAPI に変えてから進めてください。', open: '接続方式を変える' },
+    { locale: 'en', unknown: 'Choose the steps if you are not sure which device you have', usb: 'Choose the steps for a USB or directly connected mic', mixer: 'Choose the steps for a loopback-capable mixer', notice: 'This method works with WASAPI. You are using ASIO now, so change the connection type to WASAPI on the Connection page before you continue.', open: 'Change connection type' },
+] as const)('保存された接続が ASIO のとき、仮想ケーブルの方法に WASAPI へ変える案内と接続のページを開くボタンを出す（$locale）', ({ locale, unknown, usb, mixer, notice, open }) => {
+    const store = createLocaleStore(() => locale, () => true);
+    const settings = vi.fn();
+    const renderGuide = () => render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} /></LocaleProvider>);
+    try {
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Focusrite USB ASIO', output: 'Focusrite USB ASIO', sampleRate: 48000, bufferSize: 512 }));
+        const view = renderGuide();
+        fireEvent.click(screen.getByRole('radio', { name: unknown }));
+        expect(screen.getByText(notice)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: open }));
+        expect(settings).toHaveBeenCalledOnce();
+        view.unmount();
+        renderGuide();
+        fireEvent.click(screen.getByRole('radio', { name: usb }));
+        expect(screen.getByText(notice)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '前の手順へ戻る' : 'Go back one step' }));
+        fireEvent.click(screen.getByRole('radio', { name: mixer }));
+        expect(screen.queryByText(notice)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: open })).not.toBeInTheDocument();
+    } finally {
+        localStorage.removeItem('vst_host_audio_config');
+    }
+});
+
+it.each(['ja', 'en'] as const)('保存された接続が WASAPI か未保存なら、WASAPI へ変える案内を出さない（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const unknown = locale === 'ja' ? 'どの機器か分からない場合の手順を選ぶ' : 'Choose the steps if you are not sure which device you have';
+    const open = locale === 'ja' ? '接続方式を変える' : 'Change connection type';
+    try {
+        for (const saved of [JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'Speakers', sampleRate: 48000, bufferSize: 512 }), null]) {
+            if (saved) localStorage.setItem('vst_host_audio_config', saved); else localStorage.removeItem('vst_host_audio_config');
+            const view = render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+            fireEvent.click(screen.getByRole('radio', { name: unknown }));
+            expect(screen.getByRole('status')).toBeInTheDocument();
+            expect(screen.queryByText(/WASAPI/)).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: open })).not.toBeInTheDocument();
+            view.unmount();
+        }
+    } finally {
+        localStorage.removeItem('vst_host_audio_config');
+    }
+});

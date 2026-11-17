@@ -22,7 +22,7 @@ export function DeviceChoiceCard({ name, value, label, title, description, badge
     if (layout === 'row') return <ChoiceCard name={name} value={value} aria-label={label} checked={checked} onChange={onChange} onActivate={onActivate}>
         <span data-device-layout="row" className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 [overflow-wrap:anywhere]">
             <span className="row-span-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">{icon}</span>
-            <span className="flex min-w-0 items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <span role="heading" aria-level={4} className="min-w-0 font-bold text-foreground">{title}</span>
                 <span className="flex shrink-0 items-center gap-2">
                     <span className={badgeClass}>{warning && <MdWarning aria-hidden="true" className="h-4 w-4 shrink-0" />}{badge}</span>
