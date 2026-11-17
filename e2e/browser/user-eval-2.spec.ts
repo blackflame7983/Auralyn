@@ -26,31 +26,39 @@ test('接続・音づくり・VST・設定の見出しは同じ要素と同じ�
         await rail.getByRole('button', { name: item.button, exact: true }).click();
         const heading = page.getByRole('heading', { level: 1, name: item.title, exact: true });
         await expect(heading).toBeVisible();
-        boxes.push(await heading.evaluate(h1 => {
+        boxes.push(await heading.evaluate((h1, title) => {
             const header = h1.closest('header');
             const lead = header?.querySelector('p.page-heading-lead');
             const titleBox = h1.getBoundingClientRect();
             const leadBox = lead?.getBoundingClientRect();
             const headerBox = header?.getBoundingClientRect();
             if (!header || !lead || !leadBox || !headerBox) {
-                return { tag: h1.tagName, headerClass: header?.className ?? '', leadTag: lead?.tagName ?? '', sameRow: false, leadAfter: false, headerLeft: -1 };
+                return { title, tag: h1.tagName, headerClass: header?.className ?? '', leadTag: lead?.tagName ?? '', sameRow: false, leadAfter: false, leadBelow: false, leadWide: false, headerLeft: -1 };
             }
             return {
+                title,
                 tag: h1.tagName,
                 headerClass: header.className,
                 leadTag: lead.tagName,
                 sameRow: Math.abs(titleBox.top - leadBox.top) < 16,
                 leadAfter: leadBox.left >= titleBox.right - 8,
+                leadBelow: leadBox.top >= titleBox.bottom - 4,
+                leadWide: leadBox.width >= headerBox.width - 8,
                 headerLeft: Math.round(headerBox.left),
             };
-        }));
+        }, item.title));
     }
     for (const box of boxes) {
         expect(box.tag).toBe('H1');
         expect(box.leadTag).toBe('P');
         expect(box.headerClass).toContain('page-heading');
-        expect(box.sameRow).toBe(true);
-        expect(box.leadAfter).toBe(true);
+        if (box.title === 'VST') {
+            expect(box.leadBelow).toBe(true);
+            expect(box.leadWide).toBe(true);
+        } else {
+            expect(box.sameRow).toBe(true);
+            expect(box.leadAfter).toBe(true);
+        }
     }
     const lefts = boxes.map(box => box.headerLeft);
     expect(Math.max(...lefts) - Math.min(...lefts)).toBeLessThanOrEqual(2);

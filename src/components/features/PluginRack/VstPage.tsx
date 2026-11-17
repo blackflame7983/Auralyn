@@ -73,7 +73,7 @@ export function VstPage({
     const missing = empty ? null : unrestoredNamesText(t, unrestored);
     return <PagePortal>
         <div data-vst-page className="flex h-full min-h-0 flex-col overflow-hidden">
-            <PageHeading title={t('rail.vst')} lead={t('vst.lead')} headingRef={headingRef} actions={
+            <PageHeading title={t('rail.vst')} lead={t('vst.lead')} leadBelow headingRef={headingRef} actions={
                 <div className="flex flex-wrap items-center gap-2">
                     {!empty && <Button ref={addRef} id="add-effect-btn" type="button" variant="default" onClick={onAdd} className="h-auto min-h-10 shrink-0 gap-2 whitespace-normal">
                         <MdAdd aria-hidden="true" className="h-5 w-5" />{t('rack.addEffects')}

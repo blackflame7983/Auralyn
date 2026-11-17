@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { shortWrappedLines } from './helpers/shortLines';
 
 test.use({ liveHome: true });
 
@@ -59,4 +60,60 @@ test('見つからないフォルダーを知らせ、足したフォルダー�
     await expect(folders.getByText('見つかりません', { exact: true })).toBeVisible();
     await expect(folders.getByRole('button', { name: 'D:\\Custom\\VST3 を外す' })).toBeVisible();
     await expect(folders.getByRole('button', { name: 'D:\\Missing\\VST3 を外す' })).toBeVisible();
+});
+
+const session = JSON.stringify([
+    { path: 'eq.vst3', name: 'Equalizer', vendor: 'Example', version: '1', enabled: true, muted: false, gain: 1 },
+]);
+
+async function openVst(page: import('@playwright/test').Page, options: { locale: 'ja' | 'en'; music?: boolean; plugins?: boolean; width: number; height: number }) {
+    await page.addInitScript(({ locale, music, plugins, saved }) => {
+        localStorage.setItem('vst_host_locale', locale);
+        if (music) localStorage.setItem('auralyn_display_purpose', 'music');
+        if (plugins) localStorage.setItem('vst_host_session_plugins', saved);
+    }, { locale: options.locale, music: Boolean(options.music), plugins: Boolean(options.plugins), saved: session });
+    await page.setViewportSize({ width: options.width, height: options.height });
+    await page.goto(options.plugins ? '/?previewPlugins=1' : '/');
+    await page.getByRole('navigation', { name: options.locale === 'ja' ? '行き先' : 'Destinations' }).getByRole('button', { name: 'VST', exact: true }).click();
+    await expect(page.locator('[data-vst-page]')).toBeVisible();
+    if (options.plugins) await expect(page.getByRole('heading', { name: 'Equalizer', level: 3 })).toBeVisible();
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    for (const [width, height] of [[900, 600], [1024, 768]] as const) {
+        test(`VSTの説明は ${width}×${height} の${locale}で1〜2文字の行にならない`, async ({ page }) => {
+            await openVst(page, { locale, width, height });
+            await expect(shortWrappedLines(page.locator('.page-heading-lead'))).resolves.toEqual([]);
+        });
+        test(`並びがあるときも VSTの説明は ${width}×${height} の${locale}で1〜2文字の行にならない`, async ({ page }) => {
+            await openVst(page, { locale, width, height, plugins: true });
+            await expect(shortWrappedLines(page.locator('.page-heading-lead'))).resolves.toEqual([]);
+        });
+    }
+}
+
+test('音楽鑑賞でも説明は見出しの下にあり、1〜2文字の行にならない', async ({ page }) => {
+    await openVst(page, { locale: 'ja', music: true, width: 1024, height: 768 });
+    const heading = page.locator('.page-heading');
+    const place = await heading.evaluate(header => {
+        const title = header.querySelector('h1')?.getBoundingClientRect();
+        const lead = header.querySelector('.page-heading-lead')?.getBoundingClientRect();
+        if (!title || !lead) return null;
+        return { below: lead.top >= title.bottom - 4, wide: lead.width >= header.getBoundingClientRect().width - 8 };
+    });
+    expect(place).toEqual({ below: true, wide: true });
+    await expect(shortWrappedLines(page.locator('.page-heading-lead'))).resolves.toEqual([]);
+});
+
+test('ホームの追加から開くと、空の案内のVSTを追加に焦点が移る', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/');
+    const toggle = page.locator('#home-vst-open');
+    await expect(toggle).toHaveText('追加');
+    await toggle.click();
+    const vstPage = page.locator('[data-vst-page]');
+    await expect(vstPage).toBeVisible();
+    await expect(vstPage.getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
+    await expect(vstPage.locator('.page-heading').getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(0);
+    await expect(page.locator('#add-effect-btn')).toBeFocused();
 });

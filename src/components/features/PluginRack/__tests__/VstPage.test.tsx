@@ -32,6 +32,9 @@ it.each(['ja', 'en'] as const)('VSTが無いとき、処理の順にVSTの位置
     const { onAdd, onOpenPresets, onOpenTemplates } = renderPage(locale);
     const heading = document.querySelector('.page-heading');
     expect(heading).not.toBeNull();
+    const row = heading?.querySelector('[data-page-heading-row]');
+    expect(row?.querySelector('.page-heading-lead')).toBeNull();
+    expect(heading?.querySelector(':scope > .page-heading-lead')).not.toBeNull();
     const bar = within(heading as HTMLElement);
     expect(bar.queryByRole('button', { name: message(locale, 'rack.addEffects') })).not.toBeInTheDocument();
     fireEvent.click(bar.getByRole('button', { name: message(locale, 'rack.manageProfiles') }));
