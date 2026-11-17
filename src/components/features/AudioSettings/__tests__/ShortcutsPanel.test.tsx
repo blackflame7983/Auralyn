@@ -441,6 +441,7 @@ it('英語でも未設定を示し、代替の一覧選択にキーボードで�
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const input = screen.getByRole('button', { name: 'Enter keys for Emergency mute (on)' });
     await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.click(screen.getByText('Other actions'));
     expect(input.closest('fieldset')).toHaveTextContent('Not set');
     const choose = screen.getByRole('button', { name: 'Choose keys for Emergency mute (on) from a list' });
     choose.focus();
@@ -566,6 +567,7 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
     vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [] });
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    fireEvent.click(screen.getByText(locale === 'ja' ? 'その他の操作' : 'Other actions'));
     const names = locale === 'ja'
         ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（切替）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
         : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Bypass VST (toggle)', 'Bypass VST (start)', 'Bypass VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
@@ -601,4 +603,21 @@ it('保存欄は一覧の外へ出し、スクロールの中身に被さらな�
         expect(save.closest('.overflow-y-auto')).toBeNull();
         expect(save.parentElement).toHaveClass('bg-muted/20', 'border-t');
     });
+});
+
+it('その他の操作は、割り当てが無ければ閉じ、あれば開き、件数を出す', async () => {
+    open();
+    await waitFor(() => expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toBeEnabled());
+    const closed = screen.getByText('その他の操作').closest('details');
+    expect(closed).not.toHaveAttribute('open');
+    expect(closed?.querySelector('summary')).toHaveTextContent('その他の操作');
+    expect(closed?.querySelector('summary')?.textContent).not.toContain('設定済み');
+    cleanup();
+    open(false, [
+        { action: 'muteToggle', shortcut: 'Alt+KeyM' },
+        { action: 'muteOn', shortcut: 'Control+KeyA' },
+        { action: 'gainUp', shortcut: 'Control+KeyB' },
+    ]);
+    const summary = await screen.findByText('その他の操作（2件 設定済み）');
+    await waitFor(() => expect(summary.closest('details')).toHaveAttribute('open'));
 });

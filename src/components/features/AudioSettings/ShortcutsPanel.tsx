@@ -1,12 +1,11 @@
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
 import { Button } from '@/components/ui/button';
-import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { useShortcutSync } from '@/hooks/useShortcutSync';
 import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
 import { formatShortcut } from '@/lib/shortcutLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -61,68 +60,30 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
     const [capturing, setCapturing] = useState<Action | null>(null);
     const [armed, setArmed] = useState(false);
     const [listOpen, setListOpen] = useState<Partial<Record<Action, boolean>>>({});
+    const [otherOpen, setOtherOpen] = useState(false);
+    const otherDecided = useRef(false);
     const session = useRef<{ active: boolean; token: string | null }>({ active: false, token: null });
     const captureQueue = useRef<Promise<void>>(Promise.resolve());
     const acceptRef = useRef<(shortcut: string, action: Action) => void>(() => {});
+    const captureRef = useRef<(action: Action | null) => void>(() => {});
+    const onLoadedRef = useRef<(loaded: Values) => void>(() => {});
     const capture = (action: Action | null) => { setArmed(false); setCapturing(action); onCaptureChange?.(action !== null); };
-    useEffect(() => () => onCaptureChange?.(false), [onCaptureChange]);
-    useEffect(() => {
-        if (!capturing) return;
-        let cancelled = false;
-        let unlisten: (() => void) | undefined;
-        let token: string | null = null;
-        const current = { active: false, token: null as string | null };
-        session.current = current;
-        const timer = window.setTimeout(() => { if (!cancelled) capture(null); }, 30000);
-        const onWindowBlur = () => capture(null);
-        const onVisibilityChange = () => { if (isAppHidden()) capture(null); };
-        window.addEventListener('blur', onWindowBlur);
-        addAppVisibilityListener(onVisibilityChange);
-        const begin = async () => {
-            try {
-                unlisten = await listen<{ token: string; shortcut: string }>('shortcut-captured', event => {
-                    if (!cancelled && current.active && event.payload.token === current.token) acceptRef.current(event.payload.shortcut, capturing);
-                });
-                if (cancelled) { unlisten(); return; }
-                const response = await invoke<unknown>('begin_shortcut_capture');
-                if (typeof response !== 'string' || !/^[0-9]+$/.test(response) || BigInt(response) > 18446744073709551615n) throw new Error('Invalid capture token');
-                token = response;
-                if (cancelled) { await invoke('end_shortcut_capture', { token }).catch(() => {}); return; }
-                current.token = token;
-                current.active = true;
-                setArmed(true);
-            } catch {
-                if (!cancelled) { setMessage([notice('shortcuts.captureFailed')]); capture(null); }
-            }
-        };
-        captureQueue.current = captureQueue.current.then(begin, begin);
-        return () => {
-            cancelled = true;
-            current.active = false;
-            window.clearTimeout(timer);
-            window.removeEventListener('blur', onWindowBlur);
-            removeAppVisibilityListener(onVisibilityChange);
-            unlisten?.();
-            if (token) void invoke('end_shortcut_capture', { token }).catch(() => {});
-        };
-    }, [capturing]);
-    useEffect(() => {
-        let active = true;
-        invoke<Status>('get_shortcuts').then(status => {
-            if (!active || !status) return;
-            const loaded = Object.fromEntries(status.bindings.map(b => [b.action, b.shortcut]));
-            setValues(loaded); setSaved(loaded);
-            setRegistrationFailed(status.errors.some(error => error.code === 'registerFailed'));
-            setMessage(status.errors.flatMap(error => shortcutErrorNotices(error, 'settings.ShortcutsPanel.373'))); setReady(true);
-        }).catch(error => { if (active) setMessage(shortcutErrorNotices(error, 'settings.ShortcutsPanel.373')); });
-        return () => { active = false; };
-    }, []);
+    captureRef.current = capture;
+    onLoadedRef.current = loaded => {
+        if (otherDecided.current) return;
+        otherDecided.current = true;
+        const other = actionGroups.find(group => group.title === 'shortcuts.other');
+        if (other?.actions.some(action => loaded[action]?.trim())) setOtherOpen(true);
+    };
     const dirty = (Object.keys(actions) as Action[]).some(action => {
         const current = values[action]?.trim() ?? '';
         const previous = saved[action]?.trim() ?? '';
         return (current ? normalized(current) : '') !== (previous ? normalized(previous) : '');
     });
-    useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+    useShortcutSync({
+        capturing, captureRef, acceptRef, session, captureQueue, onCaptureChange, setMessage, setArmed,
+        setValues, setSaved, setRegistrationFailed, setReady, onLoadedRef, dirty, onDirtyChange,
+    });
     const applyRecommended = () => {
         const next = { ...values };
         const result: SettingsNotice[] = [];
@@ -210,9 +171,12 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
         <ConfirmDialog isOpen={confirmRecommended} title={t('shortcuts.confirmRecommended')}
             description={t('shortcuts.recommendedDescription', { bindings: recommended.map(({ action, shortcut }) => `${t(actions[action])}: ${formatShortcut(shortcut)}`).join(' / ') })}
             confirmLabel={t('shortcuts.fillRecommended')} onCancel={() => setConfirmRecommended(false)} onConfirm={applyRecommended} />
-        {actionGroups.map(group => <section key={group.title} className="space-y-2" aria-labelledby={`${headingId}-${group.title}`}>
-        <h4 id={`${headingId}-${group.title}`} className="text-ui-control font-semibold">{t(group.title)}</h4>
-        <div className="divide-y divide-border">{group.actions.map(action => {
+        {actionGroups.map(group => {
+            const assigned = group.actions.filter(action => values[action]?.trim()).length;
+            const heading = group.title === 'shortcuts.other' && assigned > 0
+                ? `${t(group.title)}${t('shortcuts.otherCount', { count: assigned })}`
+                : t(group.title);
+            const rows = <div className="divide-y divide-border">{group.actions.map(action => {
             const label = t(actions[action]);
             const pair = split(values[action] ?? '');
             return <fieldset key={action} className="min-w-0 py-0.5 text-ui-support" disabled={!ready || busy}>
@@ -252,8 +216,18 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
                 </div>
 
             </fieldset>;
-        })}</div>
-        </section>)}
+        })}</div>;
+            if (group.title === 'shortcuts.other') {
+                return <details key={group.title} open={otherOpen} onToggle={event => setOtherOpen(event.currentTarget.open)} className="space-y-2">
+                    <summary className="cursor-pointer text-ui-control font-semibold">{heading}</summary>
+                    {rows}
+                </details>;
+            }
+            return <section key={group.title} className="space-y-2" aria-labelledby={`${headingId}-${group.title}`}>
+                <h4 id={`${headingId}-${group.title}`} className="text-ui-control font-semibold">{heading}</h4>
+                {rows}
+            </section>;
+        })}
         {/* 置き場があるときは一覧の外へ出す。無いときは、これまでどおり一覧の下に貼る。 */}
         <MeasuredSaveBar relocate className={saveSlot
             ? 'flex flex-wrap items-center gap-2 border-t border-border bg-muted/20 px-4 py-2'
