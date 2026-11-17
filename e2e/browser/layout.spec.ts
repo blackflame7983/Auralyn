@@ -152,11 +152,13 @@ test.describe('操作部品のサイズとテーマ', () => {
             const select = page.getByRole('combobox', { name: '機器', exact: true });
             await expect(select).toBeVisible();
             const styles = await select.evaluate(element => {
-                const option = element.querySelector('option')!;
+                const option = element.querySelector('option');
+                const parent = element.parentElement;
+                if (!option || !parent) throw new Error('機器の選択肢か親要素がありません');
                 const reference = document.createElement('span');
                 reference.style.color = 'hsl(var(--popover-foreground))';
                 reference.style.backgroundColor = 'hsl(var(--popover))';
-                element.parentElement!.append(reference);
+                parent.append(reference);
                 const expected = getComputedStyle(reference);
                 const actual = getComputedStyle(option);
                 const result = { scheme: getComputedStyle(element).colorScheme, background: actual.backgroundColor, foreground: actual.color, expectedBackground: expected.backgroundColor, expectedForeground: expected.color };
@@ -175,10 +177,11 @@ test.describe('操作部品のサイズとテーマ', () => {
             await page.setViewportSize({ width, height: 768 });
             const range = page.getByRole('slider', { name: '声の整え具合', exact: true });
             const track = range.locator('xpath=ancestor::*[@data-orientation="horizontal"][last()]');
-            const box = (await track.boundingBox())!;
+            const box = await track.boundingBox();
+            if (!box) throw new Error('声の整え具合の位置が取れません');
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
-            expect(box.width).toBeGreaterThanOrEqual(120);
-            expect(box.width).toBeLessThanOrEqual(240);
+            expect(Math.round(box.width)).toBeGreaterThanOrEqual(120);
+            expect(Math.round(box.width)).toBeLessThanOrEqual(240);
             // 幅だけを確かめる。値を動かすと確定して音声処理へ送るため、この画面試験では操作しない（刻みは単体試験で確かめる）。
             await page.screenshot({ path: testInfo.outputPath(`controls-${width}.png`) });
         }

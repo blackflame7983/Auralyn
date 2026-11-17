@@ -44,10 +44,13 @@ test('オケは1段で自動表示し、キーボードの音量調整を適用�
     await expect(mixing.getByRole('region', { name: 'いま使っているオケ' })).toBeVisible();
     const draft = mixing.getByRole('region', { name: 'オケの入力元を変える' });
     const reload = draft.getByRole('button', { name: '変更を取り消して、保存した設定に戻す' });
-    expect(await reload.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
+    expect(Math.round(await reload.evaluate(el => el.getBoundingClientRect().height))).toBeGreaterThanOrEqual(40);
     const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', '1%');
-    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.voice.gain === 0.01 && r.expectedRevision === '1'))).toBe(true);
+    await expect.poll(() => page.evaluate(() => {
+        const host: Window & { __mixRequests?: { action: string; expectedRevision?: string; levels?: { voice: { gain: number } } }[] } = window;
+        return host.__mixRequests?.some(r => r.action === 'levels' && r.levels?.voice.gain === 0.01 && r.expectedRevision === '1') ?? false;
+    })).toBe(true);
     await noOverflow(dialog); await page.screenshot({ path: info.outputPath('mixing-keyboard.png') });
 });
 

@@ -1,6 +1,6 @@
 import { type ComponentProps } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ModalLayer } from '../ModalLayer';
@@ -10,6 +10,13 @@ import { useUIState } from '@/hooks/useUIState';
 vi.mock('@/components/features/AudioSettings/AudioSettingsModal', () => ({
     AudioSettingsModal: ({ initialTab, initialSection, isAudioRunning, currentConfig, allowConnectionRetry }: { initialTab: string; initialSection?: string; isAudioRunning?: boolean; currentConfig: { host: string }; allowConnectionRetry?: boolean }) => <><h2>設定タブ：{initialTab}</h2><p>設定欄：{initialSection ?? 'none'} / {isAudioRunning ? 'running' : 'stopped'} / {currentConfig.host}</p><p>再試行：{String(allowConnectionRetry)}</p></>,
 }));
+// ModalLayer は各モーダルを初回表示で遅延importする。並列実行で読み込みが長引いても各試験の待ちに混ざらないよう、先に済ませる。
+beforeAll(async () => {
+    await Promise.all([
+        import('../../features/VoiceCheck/VoiceCheckModal'),
+        import('../../features/Templates/TemplateWizardModal'),
+    ]);
+}, 60_000);
 let streamRunning: boolean;
 let adviceKey: string;
 function AppModals() {

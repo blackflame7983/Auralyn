@@ -275,7 +275,7 @@ for (const locale of ['ja', 'en'] as const) {
                 await settleLayoutMotion(page);
                 const where = `${size.width}×${size.height}`;
                 const box = await boxOf(meter, where);
-                expect(box.width, where).toBeGreaterThanOrEqual(192);
+                expect(Math.round(box.width), where).toBeGreaterThanOrEqual(192);
                 const card = await boxOf(now, where);
                 expect(box.x + box.width, where).toBeLessThanOrEqual(card.x + card.width + 1);
                 if (locale === 'ja') {

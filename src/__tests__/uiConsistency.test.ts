@@ -21,7 +21,8 @@ function count(source: string, file: string): Counts {
     if (file.endsWith('.css')) {
         // トークンの定義値は直書き件数に含めない。他の数値時間は遅延も含めて数える。
         result.motion += [...clean.replace(/--motion-(?:fast|base|panel|aurora|step|ripple|attention)\s*:[^;]+;/g, '').matchAll(/(?<![\w-])(?:\d*\.)?\d+(?:ms|s)\b/g)].length;
-    } else {
+    } else if (/<\s*(?:button|select|input)\b/.test(source)) {
+        // 標準要素を含まないファイルは構文木を作らない。数百ファイルの構文解析が負荷時に時間切れになる。
         const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
         const visit = (node: ts.Node) => {
             if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {

@@ -29,6 +29,12 @@ function Harness() {
     </>;
 }
 
+function savedInputChannels(): number[] | undefined {
+    const raw = localStorage.getItem('vst_host_audio_config');
+    if (raw === null) throw new Error('保存された音声設定がありません');
+    return (JSON.parse(raw) as { inputChannels?: number[] }).inputChannels;
+}
+
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it.each([
@@ -88,7 +94,7 @@ it.each([
         if (command === 'migration_bootstrap') return { reviewRequired: nativeReview, ui: null };
         if (command === 'migration_complete_review') {
             expect(started && channelsApplied).toBe(true);
-            if (host === 'ASIO') expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
+            if (host === 'ASIO') expect(savedInputChannels()).toEqual([6, 7]);
             if (rejectOnce && failAt === 'complete') {
                 rejectOnce = false;
                 throw new Error('試験用のcomplete失敗');
@@ -124,12 +130,13 @@ it.each([
         expect(enginePaths).toEqual([]);
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    await screen.findByRole('button', { name: '接続を保存して開始' });
+    // 設定画面全体の初回描画を待つ。並列実行では既定の1秒を超えるため、後続の小さな待ちとは分ける。
+    await screen.findByRole('button', { name: '接続を保存して開始' }, { timeout: 5000 });
     if (operation !== '通常再起動') {
         expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {
             fireEvent.click(await screen.findByRole('radio', { name: '入力チャンネル 7/8' }));
-            expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([0, 1]);
+            expect(savedInputChannels()).toEqual([0, 1]);
             expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
             expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
@@ -158,7 +165,7 @@ it.each([
         expect(enginePaths).toEqual([]);
         expect(nativeReview).toBe(true);
         if (host === 'ASIO' && failAt !== 'complete') {
-            expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([0, 1]);
+            expect(savedInputChannels()).toEqual([0, 1]);
         }
         // 次回のbootstrapでも確認待ちが消えず、自動復元を許さない。
         await bootstrapMigration();
@@ -176,8 +183,10 @@ it.each([
     const completions = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'migration_complete_review');
     expect(completions).toHaveLength(operation === '通常再起動' ? 0 : failAt === 'complete' ? 2 : 1);
     if (host === 'ASIO') {
-        expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
-        expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [6, 7] }) }));
+        expect(savedInputChannels()).toEqual([6, 7]);
+        const routing: unknown = expect.objectContaining({ inputChannels: [6, 7] });
+        const startRequest: unknown = expect.objectContaining({ channelRouting: routing });
+        expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), startRequest);
         expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
     }
     const loads = vi.mocked(invoke).mock.calls.filter(([command, args]) => command === 'session_rack' && (args as { request: SessionRackRequest }).request.action === 'add');

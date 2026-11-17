@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
-import { createElement, useEffect } from 'react';
+import { createElement, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUIState } from '@/hooks/useUIState';
 import { applyPreviewScreen, previewScreenNames, type PreviewScreenControls } from '../previewScreen';
@@ -10,7 +10,14 @@ import { realisticAudioConfig } from '../tauriMock';
 vi.mock('@/lib/streamMixPanel', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/streamMixPanel')>(), openStreamMixPanel: vi.fn() }));
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+type SettingsModal = typeof import('@/components/features/AudioSettings/AudioSettingsModal')['AudioSettingsModal'];
+let AudioSettingsModal: SettingsModal;
+// 設定画面は大きいため、読み込みを各試験の待ち時間に混ぜず、先に済ませる。
+beforeAll(async () => {
+    ({ AudioSettingsModal } = await import('@/components/features/AudioSettings/AudioSettingsModal'));
+}, 60_000);
+
+afterEach(async () => { cleanup(); await act(async () => {}); localStorage.clear(); });
 
 function controls(): PreviewScreenControls {
     return {
@@ -66,7 +73,6 @@ describe('プレビューの画面指定', () => {
 
     it.each([['settings-appearance', '外観'], ['settings-system', 'システム']] as const)(
         '%s を開いた実際の設定画面でも移動先を保持する', async (requested, label) => {
-            const { AudioSettingsModal } = await import('@/components/features/AudioSettings/AudioSettingsModal');
             vi.mocked(invoke).mockImplementation(async command => {
                 if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
                 if (command === 'get_engine_runtime_stats') return {};
@@ -75,7 +81,12 @@ describe('プレビューの画面指定', () => {
             });
             function PreviewSettings() {
                 const ui = useUIState();
-                useEffect(() => { applyPreviewScreen(requested, ui); }, []);
+                const applied = useRef(false);
+                useEffect(() => {
+                    if (applied.current) return;
+                    applied.current = true;
+                    applyPreviewScreen(requested, ui);
+                }, [ui]);
                 return ui.isSettingsOpen ? createElement(AudioSettingsModal, {
                     isOpen: true, initialTab: ui.settingsTab, tabRequest: ui.settingsTabRequest,
                     onClose: () => ui.setIsSettingsOpen(false), onConfigChange: vi.fn(),
