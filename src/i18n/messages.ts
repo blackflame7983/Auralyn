@@ -1638,6 +1638,8 @@ const ja = {
     "guide.wizard.openDiagnostics": "音のトラブルを診断",
 
     "guide.rawDetail": "元の詳細（未翻訳）",
+    "guide.obs.intro": "OBS へ声を送る手順を、お使いの機器に合わせて案内します。",
+    "guide.obs.nextNeedsDevice": "機器を選ぶと進めます",
     "guide.copy.000": "OBS連携ガイド",
     "guide.copy.001": "OBS連携ガイド",
     "guide.copy.002": "OBS連携ガイドを閉じる",
@@ -5207,6 +5209,8 @@ const en: Record<MessageKey, string> = {
     "guide.wizard.openDiagnostics": "Diagnose audio problems",
 
     "guide.rawDetail": "Original detail (untranslated)",
+    "guide.obs.intro": "These steps send your voice to OBS, matched to the equipment you use.",
+    "guide.obs.nextNeedsDevice": "Choose a device to continue",
     "guide.copy.000": "OBS connection guide",
     "guide.copy.001": "OBS connection guide",
     "guide.copy.002": "Close OBS connection guide",

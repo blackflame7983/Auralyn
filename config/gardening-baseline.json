@@ -4077,20 +4077,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Guide/OBSGuideModal.tsx",
-      "rule": "auralyn/architecture",
-      "hash": "4987e6380eb57914bec8fb92e53d2fd418f9d8a07dbe5ed91aeb9affdb8807a5",
-      "count": 1,
-      "reason": "既存の表示側依存を隔離する。編集時に共有モデルまたはAPIアダプターへ移す。"
-    },
-    {
-      "file": "src/components/features/Guide/OBSGuideModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "4269a53d00be3e5b0de376961d44129cc34774d0abba5b88cf44fe3a62e36cf0",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/Guide/ObsTimingCheck.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "ea09f461090076fa6ff91c4d7abbc5fbd75b5fd4a33f9ae86fa48546989340f8",
