@@ -185,9 +185,9 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: '音づくり' })).toHaveFocus());
     expect(screen.queryByRole('heading', { name: '歌の調整', level: 2 })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'モード登録' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'モードの登録' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'モードの登録' }), { key: 'Enter' });
-    expect(screen.getByRole('heading', { name: 'モード登録' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'モードの登録' })).toBeVisible();
     expect(screen.getByRole('button', { name: '適用済み設定を歌モードへ登録' })).toBeVisible();
     expect(screen.queryByRole('combobox', { name: '表示言語 / Language' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });

@@ -3056,7 +3056,7 @@ const ja = {
     "settings.noiseAdvancedActive": "詳細で調整中（{mode}）",
     "settings.noiseDetails": "ノイズ低減の詳細",
     "home.adjustOutput": "出力音量を調整",
-    "settings.mode.registration": "モード登録",
+    "settings.mode.registration": "モードの登録",
     "settings.mode.registrationScope": "適用済みの内蔵設定を登録します。VSTと未適用の下書きは含みません。雑談は残響をOFFにして登録してください。",
     "settings.mode.registerAction": "設定を登録",
     "settings.mode.advanced": "切替・操作ロックの操作",
