@@ -14,7 +14,7 @@
     "requirements-dev.txt": "ea7a3a35375c95ff012fb01931a0b252b862b304e9a1457656df4d091e732481",
     "src-tauri/Cargo.toml": "9902a3d2aee1945b45bff54373ab9307bd8826c6644d690c50339a3e6db34192",
     "src-tauri/clippy.toml": "d17e5c311153066ff9e94a78b6fcc9cd3ef168ee2e62a19f24fdcd1e652ee8f2",
-    "config/gardening-baseline.json": "b7d7358b2c30147bca1d0d71909305eee74c8d456a7d5c51e8afb38172d2a234",
+    "config/gardening-baseline.json": "bef17280bf3658c08d9682ecf495f1ad45880a97830ec6a364bfdefa8f89d6ba",
     "config/gardening-python-baseline.json": "7c1051f6e2bc3943b7c1dbe4da229694455681b8875a346c99279e555edb733f",
     "config/gardening-rust-baseline.json": "7dc36821b2910a1cf4ee9e88fa3e52b5c5e144da03ae98c7cdd14b359cd9671c",
     "config/verification-features.json": "f85382a54c1902ba1ca9d57bbd1b8dd786ddbda618c956702216d42c0e7f7618",

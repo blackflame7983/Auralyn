@@ -9,8 +9,9 @@ import { listen } from '@tauri-apps/api/event';
 import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
 import { readAudioPreferences } from '@/lib/audioPreferences';
-import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { usageDeviceFromPreferences, writeUsageDevice } from '@/lib/usageDevices';
+import { DISPLAY_PURPOSE_KEY } from '@/lib/displayPurpose';
+import { USAGE_DEVICES_KEY } from '@/lib/usageDevices';
+import { rememberSetupUsage, snapshotStorage } from '@/lib/usageSwitch';
 import { resolveAudioDevice } from '@/lib/audioDevices';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
@@ -419,7 +420,11 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
                 setInputLevel(0);
             }
 
-            const directedSource = initialGoal ? { kind: 'device' as const, config: { purpose: initialGoal === 'music' ? 'music' as const : 'voice' as const } } : undefined;
+            // 使い道の切り替えから開いた、または音楽鑑賞を選んだときは、最終的に選んだ目的で入力の用途・記録・表示をそろえる。
+            const finalGoal = config.goal ?? initialGoal;
+            const directedSource = finalGoal && (initialGoal || finalGoal === 'music')
+                ? { kind: 'device' as const, config: { purpose: finalGoal === 'music' ? 'music' as const : 'voice' as const } } : undefined;
+            const rewindUsage = snapshotStorage(['vst_host_audio_config', 'vst_host_wizard_done', 'vst_host_setup_goal', 'vst_host_beginner_mode', USAGE_DEVICES_KEY, DISPLAY_PURPOSE_KEY]);
             const startedConfig = await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
                 config.input.id, config.output.id, undefined, initialRouting(), ...(directedSource ? [{ source: directedSource }] : []));
             const actualConfig = { ...startedConfig, routing: startedConfig.routing ?? initialRouting() };
@@ -485,11 +490,12 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             }
             if (directedSource) {
-                const purpose = directedSource.config.purpose;
-                const saved = readAudioPreferences();
-                const record = saved && usageDeviceFromPreferences(saved, purpose);
-                if (record) writeUsageDevice(purpose, record);
-                saveDisplayPurpose(purpose);
+                // 記録や表示を残せなければ、直前に書いた音声設定も戻し、保存値同士を食い違わせない。
+                try { rememberSetupUsage(directedSource.config.purpose); } catch (error) {
+                    rewindUsage();
+                    window.dispatchEvent(new Event('preparation-purpose-changed'));
+                    throw error;
+                }
             }
             hasTouchedEngineRef.current = false;
 
