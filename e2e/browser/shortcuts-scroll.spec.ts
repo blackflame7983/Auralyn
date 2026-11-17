@@ -16,6 +16,10 @@ for (const size of [{ width: 960, height: 640 }, { width: 1280, height: 800 }]) 
         const dialog = page.locator('[data-settings-page]');
         await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
         await expect(dialog.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeVisible();
+        // 「その他の操作」は最初は閉じている（#680）。すべての行が並ぶ、スクロールが要る状態で確かめる。
+        const other = dialog.locator('details').filter({ has: page.locator('summary', { hasText: 'その他の操作' }) });
+        await other.locator('summary').filter({ hasText: 'その他の操作' }).click();
+        await expect(other).toHaveJSProperty('open', true);
         const scrollers = await dialog.evaluate(root => [root, ...root.querySelectorAll('*')].filter(el => {
             const style = getComputedStyle(el);
             return /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1;

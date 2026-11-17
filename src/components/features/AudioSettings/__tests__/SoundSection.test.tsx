@@ -92,6 +92,16 @@ it('音楽鑑賞では指定した小区分でも音量の保護だけを出し�
     render(<AudioSettingsModal isOpen initialTab="sound" initialSection="singing" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     expect(await screen.findByRole('heading', { level: 2, name: '音量の保護' })).toBeVisible();
     expect(screen.getByText(message('ja', 'sound.musicLead'))).toBeVisible();
+    const note = message('ja', 'settings.apply.protectionDraft');
+    const details = screen.getByText(message('ja', 'peak.details')).closest('details');
+    expect(details).not.toHaveAttribute('open');
+    expect(details).toHaveTextContent(note);
+    const parent = screen.getByRole('heading', { level: 2, name: '音量の保護' }).parentElement;
+    if (!parent) throw new Error('音量の保護の見出しの親がありません');
+    const outside = parent.cloneNode(true);
+    if (!(outside instanceof HTMLElement)) throw new Error('音量の保護の複製に失敗しました');
+    outside.querySelectorAll('details').forEach(node => node.remove());
+    expect(outside.textContent).not.toContain(note);
     expect(screen.queryByRole('tab', { name: '基本' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'ノイズ低減' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTを開く' }));

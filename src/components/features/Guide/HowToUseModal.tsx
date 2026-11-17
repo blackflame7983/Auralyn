@@ -64,11 +64,11 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         usage: t('purpose.section'), layout: t('purpose.label'),
     };
     const headings = {
-        stage: 'help.home.stage.title',
+        stage: purpose === 'music' ? 'help.home.stage.musicTitle' : 'help.home.stage.title',
         meters: purpose === 'music' ? 'help.home.meters.musicTitle' : 'help.home.meters.title',
-        sound: purpose === 'music' ? 'wizard.musicSound' : 'help.home.sound.title',
-        check: 'prep.title',
-        footer: 'help.home.footer.title',
+        sound: purpose === 'music' ? 'help.home.sound.musicTitle' : 'help.home.sound.title',
+        check: purpose === 'music' ? 'help.home.check.musicTitle' : 'help.home.check.title',
+        footer: purpose === 'music' ? 'help.home.footer.musicTitle' : 'help.home.footer.title',
     } as const satisfies Record<HomeGuideGroup, MessageKey>;
     return <Modal title={t('help.title')} onClose={onClose}>
         <div className="modal-overlay-base">

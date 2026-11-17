@@ -39,7 +39,10 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await settleLayoutMotion(page);
     await expect(page.getByRole('complementary', { name: '本番中の操作', exact: true }).getByRole('heading', { name: 'マイク', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '大型レベルメーターを開く', exact: true })).toHaveCount(0);
-    await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+    await page.evaluate(() => {
+        const host: Window & { __e2eEmit?: (event: string, payload: unknown) => void } = window;
+        host.__e2eEmit?.('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] });
+    });
     await page.getByRole('button', { name: '音量を測る', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toContainText('音量を測る');
     await actions.click();
@@ -48,19 +51,25 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(dialog).toHaveAttribute('data-settings-page', 'sound');
     const section = dialog.locator('#live-mode-settings');
     // タブが区分の名前を持つので、見出しの繰り返しは説明の一文に変えた（#542）。
-    await expect(dialog.getByRole('tab', { name: '歌・雑談', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByRole('tab', { name: 'モードの登録', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(dialog.locator('#sound-section-heading')).toHaveText('いま適用している音を、歌と雑談の切り替え先として登録します。');
     await expect(dialog.locator('#sound-section-heading')).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });
     await expect(saveSinging).toBeInViewport();
     await expect(saveTalk).toBeInViewport();
-    await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => {
+        const host: Window & { __e2eModeWrites?: unknown[] } = window;
+        return host.__e2eModeWrites?.length ?? 0;
+    })).toBe(0);
     await section.getByRole('button', { name: 'モード登録と構成の保存の違い' }).click();
     const help = page.getByRole('dialog', { name: 'モード登録と構成の保存の違い' });
     await expect(help).toContainText('雑談では残響をOFFにします');
     await page.keyboard.press('Escape');
-    await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => {
+        const host: Window & { __e2eModeWrites?: unknown[] } = window;
+        return host.__e2eModeWrites?.length ?? 0;
+    })).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('live-registration.png') });
     await saveSinging.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
@@ -77,7 +86,10 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(2);
     await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
     await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeEnabled();
-    await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(2);
+    await expect.poll(() => page.evaluate(() => {
+        const host: Window & { __e2eModeWrites?: unknown[] } = window;
+        return host.__e2eModeWrites?.length ?? 0;
+    })).toBe(2);
     await expect(register).toHaveCount(0);
     await actions.click();
     await expect(page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true })).toBeVisible();

@@ -159,11 +159,11 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     await expect(modes).toContainText('声 ON・残響 OFF');
     await modes.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     // タブ名と同じ見出しは重ねない。着地は選択中のタブ、焦点はページの説明へ移す（#542）。
-    await expect(page.getByRole('tab', { name: '歌向け', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '歌の調整', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sound-section-heading')).toHaveText('適用するまで、配信・通話の音は変わりません。');
     await expect(page.locator('#sound-section-heading')).toBeFocused();
-    await page.getByRole('button', { name: '歌・雑談へ戻る', exact: true }).click();
-    await expect(page.getByRole('tab', { name: '歌・雑談', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'モードの登録へ戻る', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'モードの登録', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sound-section-heading')).toHaveText('いま適用している音を、歌と雑談の切り替え先として登録します。');
     await expect(page.locator('#sound-section-heading')).toBeFocused();
 });

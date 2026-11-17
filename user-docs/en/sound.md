@@ -2,7 +2,7 @@
 title: "Adjusting sound"
 description: "Make small changes and check them by recording and listening."
 order: 6
-uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Singing and talking", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search", "Standard", "Warm", "Bright"]
+uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Bypass VST", "Save modes", "Sing", "Talk", "Custom sound", "Voice Check", "Open VST", "Add", "Add VST", "Folders to search", "Standard", "Warm", "Bright"]
 ---
 
 ## Noise reduction {#noise-reduction}
@@ -13,7 +13,7 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Byp
 
 ## Voice shaping {#voice-shaping}
 
-1. Adjust “Shape voice” in “Sound”. The type names are “Standard”, “Warm”, and “Bright”. On Home, an enabled card shows ON before the type name. Off stays OFF. You can choose the type and amount while off. Choosing does not turn it on, and the sound does not change.
+1. Adjust “Shape voice” in “Sound”. The type names are “Standard”, “Warm”, and “Bright”. On Home, an enabled card shows ON before the type name. Off stays OFF. You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on.
 2. Check changes to bass, volume differences and tone one at a time.
 3. Record and listen after each small change. If the voice becomes thin or sharp, reduce the adjustment and compare.
 
@@ -26,9 +26,9 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Byp
 
 While the saved chain is protected, current VST changes are not saved automatically. Read the notice on screen.
 
-## Singing and talking {#modes}
+## Save modes {#modes}
 
-1. Save singing and talking adjustments in “Sound”, under “Singing and talking”.
+1. Save singing and talking adjustments in “Sound”, under “Save modes”.
 2. Switch with “Sing” and “Talk” on Home.
 3. If the mode also switches VSTs, sound may pause briefly. Check before going live.
 

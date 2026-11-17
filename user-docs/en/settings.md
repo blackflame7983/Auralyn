@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Singing and talking", "Singing", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes"]
 ---
 
 ## Connection {#audio}
@@ -21,9 +21,9 @@ Split-output routing is saved and applied independently in its own section. Disc
 
 ## Sound {#sound}
 
-“Sound” is split into “Basics”, “Singing and talking”, “Singing”, and “Loudness protection”. Make small changes following [Adjusting sound](./sound.md#noise-reduction).
+“Sound” is split into “Basics”, “Save modes”, “Singing tuning”, and “Loudness protection”. Make small changes following [Adjusting sound](./sound.md#noise-reduction).
 
-Noise reduction and voice adjustments in “Basics” apply as you change them. You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on. This note appears once, at the top of “Basics”. “Singing” stays a draft until you preview it and apply it with the button at the bottom of the page.
+Noise reduction and voice adjustments in “Basics” apply as soon as you change the items that are on. These are the same values as the cards on Home. You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on. This note appears once, at the top of “Basics”. “Singing tuning” stays a draft until you preview it and apply it with the button at the bottom of the page.
 In “Loudness protection”, turn “Reduce loud peaks” and “Broadcast true-peak limit” on or off with the switch beside each heading. They ease sudden loud sound. Ceiling and release are under “Detailed settings” and do not take effect until you apply them there. “Detailed settings” is open when “Show detailed numbers” is on. Leaving for another page or section while those values are unapplied asks you to confirm. Adjustments already applied stay in place when you leave. While listening to music, “Broadcast true-peak limit” stays hidden while off. It appears only while on, and you can turn it off with the switch. While “Lock controls” is on, the switches, numbers, and apply control cannot be changed. Unlock to change them. The status line does not repeat on or off. It appears only when the status cannot be read, a change is still being applied, or the audio is stopped. The ceiling, the release time, and the amount reduced just now appear only when “Show detailed numbers” is on. While listening to music, “Reduce loud peaks” explains that it limits the sound that reaches your ears. The section you can open is “Scope of protection, and how long the setting lasts”.
 
 ## OBS {#obs}

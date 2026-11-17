@@ -66,7 +66,7 @@ it('歌と残響の未適用下書きを同じ入力要素に維持し、locale�
     const store = createLocaleStore(() => 'ja', () => true);
     const preview = vi.fn();
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} onPreviewSinging={preview} /></LocaleProvider>);
-    fireEvent.keyDown(await screen.findByRole('tab', { name: '歌向け' }), { key: 'Enter' });
+    fireEvent.keyDown(await screen.findByRole('tab', { name: '歌の調整' }), { key: 'Enter' });
     fireEvent.click(await screen.findByText('数値を細かく調整'));
     const low = await screen.findByRole('spinbutton', { name: '低音の整理（Hz）' });
     fireEvent.change(low, { target: { value: '130' } });
