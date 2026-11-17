@@ -7,6 +7,12 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 const fixture = (enabled = false): PeakStatus => ({ config: { enabled, ceilingDb: -3, releaseMs: 150 }, running: true, pending: false, revision: '2', reductionDb: 0, addedLatencySamples: 0 });
+function summaryClass(root: HTMLElement, title: string) {
+    const summary = [...root.querySelectorAll('summary')].find(item => item.textContent === title);
+    expect(summary).toBeInstanceOf(HTMLElement);
+    if (!(summary instanceof HTMLElement)) throw new Error(title);
+    return summary.className;
+}
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 it('読取りでは有効化せず、保持値を編集へ読み込み、明示操作だけで適用する', async () => {
@@ -33,6 +39,7 @@ it.each(['ja', 'en'] as const)('音楽鑑賞の音量の保護は配信の話を
     expect(voice).toHaveTextContent(message(locale, 'peak.scope'));
     expect(voice).toHaveTextContent(message(locale, 'peak.limits'));
     expect(voice).toHaveTextContent(message(locale, 'peak.limitsTitle'));
+    expect(summaryClass(voice, message(locale, 'peak.limitsTitle'))).toBe(summaryClass(voice, message(locale, 'peak.details')));
     if (locale === 'ja') expect(voice).toHaveTextContent('配信');
     await act(async () => { view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PeakProtectionPanel music /></LocaleProvider>); });
     const music = screen.getByRole('region', { name: message(locale, 'peak.title') });
@@ -40,6 +47,7 @@ it.each(['ja', 'en'] as const)('音楽鑑賞の音量の保護は配信の話を
     expect(music).toHaveTextContent(message(locale, 'peak.scopeMusic'));
     expect(music).toHaveTextContent(message(locale, 'peak.limitsMusic'));
     expect(music).toHaveTextContent(message(locale, 'peak.limitsTitle'));
+    expect(summaryClass(music, message(locale, 'peak.limitsTitle'))).toBe(summaryClass(music, message(locale, 'peak.details')));
     expect(music).not.toHaveTextContent(message(locale, 'peak.lead'));
     expect(music).not.toHaveTextContent(message(locale, 'peak.scope'));
     expect(music).not.toHaveTextContent('配信');
