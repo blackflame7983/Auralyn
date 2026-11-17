@@ -80,7 +80,6 @@
     { "key": "presets.copy.170", "term": "プロファイル", "reason": "OBSの状態を含む広い保存で、声・VST・入出力の構成とは別（#626）" },
     { "key": "presets.copy.174", "term": "プロファイル", "reason": "OBSの状態を含む広い保存で、声・VST・入出力の構成とは別（#626）" },
     { "key": "help.title", "term": "使い方", "reason": "ヘルプの入口名。接続の使い道とは別（#723）" },
-    { "key": "help.setup.body", "term": "使い方", "reason": "セットアップの手順の説明で、接続の使い道とは別（#723）" },
     { "key": "help.keys.f1", "term": "使い方", "reason": "ヘルプを開くキーの説明（#723）" },
     { "key": "singing.guideHelp", "term": "使い方", "reason": "歌向け調整の説明で、接続の使い道とは別（#723）" },
     { "key": "singing.reverbHelp", "term": "使い方", "reason": "残響の説明で、接続の使い道とは別（#723）" },
