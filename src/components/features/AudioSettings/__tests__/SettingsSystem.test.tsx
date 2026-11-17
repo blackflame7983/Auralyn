@@ -67,6 +67,17 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'clear_plugin_blacklist' || command === 'stop_audio')).toBe(false);
 });
 
+it('システムのセットアップを開くは、使い道の目的を渡さず最初の画面から始める', async () => {
+    const onOpenWizard = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} onOpenWizard={onOpenWizard} />);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    const open = screen.getByRole('button', { name: 'セットアップを開く' });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    expect(onOpenWizard).toHaveBeenCalledOnce();
+    expect(onOpenWizard).toHaveBeenCalledWith();
+});
+
 it.each(['ja', 'en'] as const)('ライトテーマにも説明を表示する (%s)', locale => {
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);

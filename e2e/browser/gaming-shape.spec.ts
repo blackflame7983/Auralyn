@@ -112,7 +112,7 @@ test('ゲーミングの切り欠きでもフォーカスの輪が全周に出�
     const surface = page.locator('[data-settings-page]');
     await expect(surface.getByRole('heading', { level: 1 })).toHaveCSS('font-style', 'italic');
     await expect(surface.locator('header p').first()).toHaveCSS('font-style', 'normal');
-    await expect(surface.getByRole('heading', { name: message('ja', 'settings.connection.summary') })).toHaveCSS('font-style', 'italic');
+    await expect(surface.getByRole('heading', { name: message('ja', 'streamMix.title'), exact: true })).toHaveCSS('font-style', 'italic');
 
     const card = surface.locator('fieldset.rounded-card').first();
     await expect(card).toHaveCSS('corner-shape', /bevel|superellipse\(0\)/);

@@ -176,7 +176,8 @@ test('ホームの表示が音楽鑑賞向けで配信向けの設定が既定�
     const dialog = await settings(page);
     await expect(dialog.getByRole('button', { name: 'ホームで開く' })).toHaveCount(0);
     await expect(dialog.getByRole('checkbox', { name: 'ホームにパネルを出す' })).toHaveCount(0);
-    await expect(dialog.getByText('自分用と配信用に分ける')).toHaveCount(0);
+    // 欄の名前としては出さない。出せない理由の一文の中の言及（#723）は残る。
+    await expect(dialog.getByText('自分用と配信用に分ける', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('歌・モニター')).toHaveCount(0);
     await expect(dialog.getByRole('heading', { name: '配信ミックス' })).toHaveCount(0);
     await expect(dialog.getByText('使い道を配信・通話にすると使えます。')).toBeVisible();
