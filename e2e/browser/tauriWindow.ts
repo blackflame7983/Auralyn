@@ -22,6 +22,15 @@ declare global {
         __e2eStarts?: StartRequest[];
         __e2eStartFailure?: boolean;
         __e2eArmed?: boolean;
+        /** 再起動を保留している間 true。__e2eReleaseRestart で再開する。 */
+        __e2eRestartHeld?: boolean;
+        __e2eReleaseRestart?: () => void;
+        /** 再起動の直後に VST の実ラック確認を失敗させる。 */
+        __e2eVstFailure?: boolean;
+        /** 機器一覧の応答を保留している間 true。__e2eReleaseDevices で返す。 */
+        __e2eDevicesHeld?: boolean;
+        __e2eBlockDevices?: boolean;
+        __e2eReleaseDevices?: () => void;
         __e2eOutputGainWrites?: number[];
         __e2eSetOutputGain?: (value: number) => void;
         __e2eSetOutputMuted?: (muted: boolean) => void;

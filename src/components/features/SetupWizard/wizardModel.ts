@@ -1,6 +1,7 @@
 import type { AudioConfig, AudioDevice } from '../../../api/audio';
 import { isPlaybackInput } from '@/lib/audioDevices';
 import type { InputSource } from '@/lib/inputSource';
+import type { AudioPreferences } from '@/lib/audioPreferences';
 
 export const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
@@ -34,6 +35,8 @@ export interface SetupWizardModalProps {
     onClose: () => void;
     onSkip?: () => void;
     onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig, inputSource?: InputSource) => void | Promise<void>;
+    /** 適用に失敗したとき、onApplyConfig で更新した画面の保持値を元の接続へ戻す。 */
+    onRestoreConfig?: (previous: AudioPreferences) => void | Promise<void>;
     onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
@@ -42,6 +45,9 @@ export interface SetupWizardModalProps {
     /** 使い道の初回だけ、目的を決めた状態で入力の手順から開く。 */
     initialGoal?: UserGoal;
 }
+
+/** 適用に失敗したあと、元へ戻す対象。音声の接続・画面が持つ接続・保存した設定。 */
+export type RewindTarget = 'audio' | 'screen' | 'saved';
 
 export type WizardState = 'welcome' | 'usage_selection' | 'input_selection' | 'output_selection' | 'confirmation' | 'configuring' | 'complete';
 export type UserGoal = 'obs' | 'discord' | 'listening' | 'music' | 'other';

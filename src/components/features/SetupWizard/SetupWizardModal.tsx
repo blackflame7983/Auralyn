@@ -37,7 +37,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const [railThumb, railThumbRef] = useState<HTMLSpanElement | null>(null);
     const inputDeviceId = useId();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
-    const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
+    const { audioStartError, rewindFailed, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
@@ -394,6 +394,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                             {config.goal !== 'music' && /アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError) && <MicrophonePermissionGuide expanded />}
                             {config.goal === 'music' && audioStartError && <p role="alert" className="text-ui-support text-destructive-text">{t('wizard.musicFailure')}</p>}
+                            {rewindFailed.length > 0 && <p role="alert" className="text-ui-support text-destructive-text">{t('wizard.rewindFailed', { targets: rewindFailed.map(target => t(`wizard.rewind.${target}`)).join(t('wizard.rewindSeparator')) })}</p>}
                             <AudioFlow inputKind={config.goal === 'music' ? 'playback' : 'microphone'}
                                 processingWarning={audioStartError ? t('home.startFailed') : undefined}
                                 label={t('prep.signalPath')}

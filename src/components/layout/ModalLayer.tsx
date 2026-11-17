@@ -11,6 +11,8 @@ import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
 import type { SoundPlace } from '@/hooks/useUIState';
+import { checkRestoredRack, type SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
+import { PLUGIN_SESSION_KEY } from '@/hooks/usePluginSessionPersistence';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -134,9 +136,11 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
         if (ui.leave) ui.leave(apply);
         else apply();
     };
-    const handleEngineRestart = async () => {
+    const handleEngineRestart = async (): Promise<SessionRestoreOutcome> => {
         pluginsApi.resetPlugins();
         await pluginsApi.restoreSession();
+        // 復元の関数は失敗を内部で通知して正常に終わる。結果は、復元後の実ラックで確かめる。
+        return await checkRestoredRack(localStorage.getItem(PLUGIN_SESSION_KEY));
     };
 
     const handlePluginSelect = async (vstPlugin: VstPlugin) => {
@@ -290,6 +294,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                             markWizardDone();
                         }}
+                        onRestoreConfig={previous => handleConfigUpdate({ ...previous, inputSource: previous.inputSource, outputRouting: previous.outputRouting ?? { mode: 'legacy' } })}
                         onOpenSettings={() => {
                             ui.setIsWizardOpen(false);
                             ui.setWizardGoal?.(null);

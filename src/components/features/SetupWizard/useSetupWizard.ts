@@ -6,18 +6,21 @@ import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
-import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
+import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type RewindTarget, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
-import { readAudioPreferences } from '@/lib/audioPreferences';
+import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
+import { deviceInput } from '@/lib/inputSource';
 import { DISPLAY_PURPOSE_KEY } from '@/lib/displayPurpose';
 import { USAGE_DEVICES_KEY } from '@/lib/usageDevices';
-import { rememberSetupUsage, snapshotStorage } from '@/lib/usageSwitch';
+import { currentUsage, rememberSetupUsage, snapshotStorage } from '@/lib/usageSwitch';
 import { resolveAudioDevice } from '@/lib/audioDevices';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
-export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, initialGoal }: SetupWizardModalProps) {
+export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig, onCompleted, initialGoal }: SetupWizardModalProps) {
 
     const [audioStartError, setAudioStartError] = useState('');
+    // 失敗したあと、元へ戻せなかった対象。空なら、音声・画面が持つ接続・保存した設定のすべてを戻せている。
+    const [rewindFailed, setRewindFailed] = useState<RewindTarget[]>([]);
     // 選択は、完了後に VST のページを開くかどうか。数値の詳細は VST を選んだときだけ有効にする。
     const [panelChoice, setPanelChoice] = useState(false);
 
@@ -45,37 +48,45 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
         void performClose();
     };
 
+    // 開いた時点の音声へ戻す。入力の用途を持つ音声へ切り替えたあとは、用途を明示しないと再開を拒まれる。
+    const revertEngine = async (explicitSource: boolean): Promise<boolean> => {
+        const init = initialStateRef.current;
+        if (!init) return true;
+        try {
+            if (init.is_running && init.config) {
+                const source = init.config.input_source ?? (explicitSource ? deviceInput() : undefined);
+                await audioApi.start(
+                    init.config.host,
+                    init.config.input || undefined,
+                    init.config.output || undefined,
+                    init.config.buffer_size || undefined,
+                    init.config.sample_rate || undefined,
+                    init.config.input_id, init.config.output_id, undefined, init.config.routing,
+                    ...(source ? [{ source }] as const : [])
+                );
+                toast.info(createElement(LocalizedMessage, { id: 'guide.copy.241' }));
+            } else {
+                await audioApi.stop();
+                toast.info(createElement(LocalizedMessage, { id: 'guide.copy.242' }));
+            }
+            return true;
+        } catch (e) {
+            console.error("Failed to revert audio state", e);
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.243' }));
+            return false;
+        }
+    };
+
     const performClose = async (next = onClose) => {
         if (operationRef.current || isCheckingConnection) return;
         operationRef.current = true;
         setIsBusy(true);
 
         // Revert if needed
-        if (hasTouchedEngineRef.current && initialStateRef.current) {
-            const init = initialStateRef.current;
-            // Reverting to initial state
-            try {
-                if (init.is_running && init.config) {
-                    await audioApi.start(
-                        init.config.host,
-                        init.config.input || undefined,
-                        init.config.output || undefined,
-                        init.config.buffer_size || undefined,
-                        init.config.sample_rate || undefined,
-                        init.config.input_id, init.config.output_id, undefined, init.config.routing
-                    );
-                    toast.info(createElement(LocalizedMessage, { id: 'guide.copy.241' }));
-                } else {
-                    await audioApi.stop();
-                    toast.info(createElement(LocalizedMessage, { id: 'guide.copy.242' }));
-                }
-            } catch (e) {
-                console.error("Failed to revert audio state", e);
-                toast.error(createElement(LocalizedMessage, { id: 'guide.copy.243' }));
-                operationRef.current = false;
-                setIsBusy(false);
-                return;
-            }
+        if (hasTouchedEngineRef.current && initialStateRef.current && !await revertEngine(false)) {
+            operationRef.current = false;
+            setIsBusy(false);
+            return;
         }
 
         operationRef.current = false;
@@ -405,13 +416,35 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
         setState(target);
     };
 
+    const rewindSetup = async ({ rewindStorage, previousConfig, explicitSource }: { rewindStorage: () => boolean; previousConfig: AudioPreferences | null; explicitSource: boolean }): Promise<RewindTarget[]> => {
+        const failed: RewindTarget[] = [];
+        if (await revertEngine(explicitSource)) {
+            hasTouchedEngineRef.current = false;
+            setIsTestingSound(false);
+            setInputLevel(0);
+        } else failed.push('audio');
+        if (previousConfig && onRestoreConfig) {
+            try { await onRestoreConfig(previousConfig); } catch { failed.push('screen'); }
+        }
+        // 親の保持値が書き戻した保存値も含め、最後に元の文字列そのものへ戻す。
+        if (!rewindStorage()) failed.push('saved');
+        window.dispatchEvent(new Event('preparation-purpose-changed'));
+        return failed;
+    };
+
     const finalApply = async () => {
         if (!config.input || !config.output || !initialStateReady || operationRef.current || isCheckingConnection || (config.goal === 'music' && isVirtualOutput(config.output))) return;
         operationRef.current = true;
         setIsBusy(true);
         setAudioStartError('');
+        setRewindFailed([]);
         hasTouchedEngineRef.current = true;
         setState('configuring');
+        // 失敗したときに、音声・画面が持つ接続・保存した設定を一体で元へ戻せるよう、始める前の状態を控える。
+        const previousConfig = readAudioPreferences();
+        const leaving = currentUsage();
+        const rewindStorage = snapshotStorage(['vst_host_audio_config', 'vst_host_wizard_done', 'vst_host_setup_goal', 'vst_host_beginner_mode', USAGE_DEVICES_KEY, DISPLAY_PURPOSE_KEY]);
+        let engineStarted = false;
         try {
             // Ensure stopped before final apply
             if (isTestingSound) {
@@ -420,13 +453,17 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
                 setInputLevel(0);
             }
 
-            // 使い道の切り替えから開いた、または音楽鑑賞を選んだときは、最終的に選んだ目的で入力の用途・記録・表示をそろえる。
+            // 入り口によらず、最終的に選んだ目的で入力の用途・記録・表示をそろえる。今の入力が音楽の用途のままでは、用途を明示しない開始は拒まれる。
             const finalGoal = config.goal ?? initialGoal;
-            const directedSource = finalGoal && (initialGoal || finalGoal === 'music')
-                ? { kind: 'device' as const, config: { purpose: finalGoal === 'music' ? 'music' as const : 'voice' as const } } : undefined;
-            const rewindUsage = snapshotStorage(['vst_host_audio_config', 'vst_host_wizard_done', 'vst_host_setup_goal', 'vst_host_beginner_mode', USAGE_DEVICES_KEY, DISPLAY_PURPOSE_KEY]);
+            const finalPurpose = finalGoal === 'music' ? 'music' as const : 'voice' as const;
+            const directedSource = finalGoal ? { kind: 'device' as const, config: { purpose: finalPurpose } } : undefined;
+            // 使い道の切り替えか音楽鑑賞のとき、または今のホームの表示と食い違うときだけ、記録と表示を決める。声のまま使い続ける通常の再設定は触らない。
+            const recordUsage = !!directedSource && (!!initialGoal || finalGoal === 'music' || leaving.display !== finalPurpose);
+            // 保存値と画面の保持値へ渡すのは、入力の用途が変わるときだけ。声のまま使い続ける再設定は、従来どおり用途を書き換えない。
+            const persistedSource = directedSource && (recordUsage || (previousConfig?.inputSource?.config.purpose ?? 'voice') !== finalPurpose) ? directedSource : undefined;
             const startedConfig = await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
                 config.input.id, config.output.id, undefined, initialRouting(), ...(directedSource ? [{ source: directedSource }] : []));
+            engineStarted = true;
             const actualConfig = { ...startedConfig, routing: startedConfig.routing ?? initialRouting() };
             if (config.goal === 'music') {
                 const stats = await audioApi.getEngineRuntimeStats();
@@ -459,13 +496,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
                 const expected: Record<string, string> = {
                     vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size,
                         inputChannels: actualConfig.routing.inputChannels, outputRouting: actualConfig.routing.outputRouting,
-                        ...(directedSource ? { inputSource: directedSource } : {}) }),
+                        ...(persistedSource ? { inputSource: persistedSource } : {}) }),
                     vst_host_wizard_done: 'true', vst_host_setup_goal: 'music',
                     ...(panelChoice ? { vst_host_beginner_mode: 'false' } : {}),
                 };
                 const previous = Object.fromEntries(Object.keys(expected).map(key => [key, localStorage.getItem(key)]));
                 try {
-                    await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(directedSource ? [directedSource] as const : []));
+                    await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(persistedSource ? [persistedSource] as const : []));
                     localStorage.setItem('vst_host_setup_goal', 'music');
                     if (panelChoice) saveBeginnerMode(false);
                     if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
@@ -484,18 +521,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
                 }
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
-                await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(directedSource ? [directedSource] as const : []));
+                await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig, ...(persistedSource ? [persistedSource] as const : []));
                 if (config.goal) localStorage.setItem('vst_host_setup_goal', config.goal);
                 if (panelChoice) saveBeginnerMode(false);
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             }
-            if (directedSource) {
-                // 記録や表示を残せなければ、直前に書いた音声設定も戻し、保存値同士を食い違わせない。
-                try { rememberSetupUsage(directedSource.config.purpose); } catch (error) {
-                    rewindUsage();
-                    window.dispatchEvent(new Event('preparation-purpose-changed'));
-                    throw error;
-                }
+            if (directedSource && recordUsage) {
+                rememberSetupUsage(directedSource.config.purpose, leaving);
             }
             hasTouchedEngineRef.current = false;
 
@@ -505,6 +537,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
             setAudioStartError(String(e));
             console.error(e);
             toast.error(createElement(LocalizedMessage, { id: 'guide.copy.255' }));
+            // 開始した音声・画面が持つ接続・保存した設定を一体で元へ戻し、戻せなかった対象は画面に出す。
+            if (engineStarted) setRewindFailed(await rewindSetup({ rewindStorage, previousConfig, explicitSource: true }));
             setState('confirmation');
         } finally {
             operationRef.current = false;
@@ -513,7 +547,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted, in
     };
 
 
-    return { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
+    return { audioStartError, rewindFailed, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,

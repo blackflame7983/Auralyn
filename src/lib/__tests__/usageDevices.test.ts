@@ -3,7 +3,7 @@ import { readDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { deviceInput, type InputSource } from '@/lib/inputSource';
 import type { AudioPreferences } from '@/lib/audioPreferences';
 import { parseUsageDevice, readUsageDevices, USAGE_DEVICES_KEY, usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
-import { commitUsageSwitch, preferencesFromUsage } from '@/lib/usageSwitch';
+import { commitDisplaySwitch, commitUsageSwitch, currentUsage, preferencesFromUsage, rememberSetupUsage } from '@/lib/usageSwitch';
 
 const musicSource: InputSource = { kind: 'device', config: { purpose: 'music' } };
 const record = (purpose: 'voice' | 'music' = 'music'): UsageDeviceRecord => ({
@@ -214,3 +214,51 @@ function viRestore() {
     const calls: { engine: boolean; host: string }[] = [];
     return { calls, fn: async (config: AudioPreferences, engine: boolean) => { calls.push({ engine, host: config.host }); localStorage.setItem('vst_host_audio_config', JSON.stringify(config)); } };
 }
+
+const voicePrefs: AudioPreferences = { host: 'WASAPI', input: 'Mic', output: 'Speakers', sampleRate: 48000, bufferSize: 512, inputSource: deviceInput() };
+const musicPrefs: AudioPreferences = { host: 'WASAPI', input: 'CABLE Output', output: 'USB Headphones', sampleRate: 48000, bufferSize: 512, inputSource: musicSource };
+
+it('保留した切り替えを確定すると、離れる使い道の記録と表示を残す', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music');
+    expect(readDisplayPurpose()).toBe('music');
+    expect(readUsageDevices().voice).toMatchObject({ input: 'Mic', output: 'Speakers' });
+});
+
+it('保留した切り替えの確定で表示を残せなければ、離れる使い道の記録も元へ戻して投げる', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+        if (key === 'auralyn_display_purpose') throw new Error('容量不足');
+        return original.call(this, key, value);
+    };
+    try {
+        expect(() => commitDisplaySwitch({ display: 'voice', preferences: voicePrefs }, 'music')).toThrow('容量不足');
+    } finally {
+        Storage.prototype.setItem = original;
+    }
+    expect(readDisplayPurpose()).toBe('voice');
+    expect(localStorage.getItem(USAGE_DEVICES_KEY)).toBeNull();
+});
+
+it('どちらの記録も無い利用者が初めて音楽鑑賞のセットアップを終えると、離れる配信の接続も記録する', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    localStorage.setItem('vst_host_audio_config', JSON.stringify(voicePrefs));
+    const leaving = currentUsage();
+    localStorage.setItem('vst_host_audio_config', JSON.stringify(musicPrefs));
+    rememberSetupUsage('music', leaving);
+    expect(readDisplayPurpose()).toBe('music');
+    expect(readUsageDevices().music).toMatchObject({ input: 'CABLE Output', output: 'USB Headphones' });
+    expect(readUsageDevices().voice).toMatchObject({ input: 'Mic', output: 'Speakers' });
+});
+
+it('離れる接続を渡さない、または同じ使い道のままのセットアップは、もう一方の記録を作らない', () => {
+    localStorage.setItem('auralyn_display_purpose', 'voice');
+    localStorage.setItem('vst_host_audio_config', JSON.stringify(voicePrefs));
+    rememberSetupUsage('voice', currentUsage());
+    expect(readUsageDevices().music).toBeUndefined();
+    expect(readUsageDevices().voice).toMatchObject({ input: 'Mic' });
+    localStorage.removeItem(USAGE_DEVICES_KEY);
+    rememberSetupUsage('voice');
+    expect(readUsageDevices().music).toBeUndefined();
+});

@@ -119,3 +119,38 @@ it('アプリの音声の記録は、自動で再開しないことと選び直�
     await waitFor(() => expect(onApplied).toHaveBeenCalledWith(app));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 });
+it('確定のあと機器の一覧の応答が遅れて切り替えが一時的に押せなくなっても、押せるようになった時点で焦点を切り替えるボタンへ戻す', async () => {
+    localStorage.setItem(USAGE_DEVICES_KEY, JSON.stringify({ version: 1, music }));
+    const onApply = vi.fn(async () => {});
+    const view = (blockedReason?: string) => <LocaleProvider store={createLocaleStore(() => 'ja', () => true)}>
+        <UsageSwitch display="voice" inputPurpose="voice" running={false} locked={false} blockedReason={blockedReason} onApply={onApply} onOpenSetup={vi.fn()} />
+    </LocaleProvider>;
+    const { rerender } = render(view());
+    const opener = screen.getByRole('button', { name: '切り替える' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('alertdialog', { name: '使い道を切り替えます' });
+    // 確定の直後に選択の読み直しが始まり、応答が来るまで押せない。
+    fireEvent.click(within(dialog).getByRole('button', { name: '切り替える' }));
+    rerender(view(message('ja', 'purpose.blockedLoading')));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(opener).toBeDisabled();
+    expect(document.body).toHaveFocus();
+    rerender(view());
+    await waitFor(() => expect(opener).toBeEnabled());
+    await waitFor(() => expect(opener).toHaveFocus());
+});
+
+it('切り替えの応答を待つ間だけ、使用中であることを親へ知らせ、閉じたら解く', async () => {
+    localStorage.setItem(USAGE_DEVICES_KEY, JSON.stringify({ version: 1, music }));
+    let finish!: () => void;
+    const onApply = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const onBusyChange = vi.fn();
+    renderSwitch({ onApply, onBusyChange });
+    fireEvent.click(screen.getByRole('button', { name: '切り替える' }));
+    const dialog = await screen.findByRole('alertdialog', { name: '使い道を切り替えます' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '切り替える' }));
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+    finish();
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});

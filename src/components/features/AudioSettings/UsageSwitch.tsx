@@ -15,7 +15,7 @@ function routeOf(record: UsageDeviceRecord) {
     return { input, output: record.output };
 }
 
-export function UsageSwitch({ display, inputPurpose, running, locked, blockedReason, onApply, onApplied, onOpenSetup }: {
+export function UsageSwitch({ display, inputPurpose, running, locked, blockedReason, onApply, onApplied, onBusyChange, onOpenSetup }: {
     display: DisplayPurpose;
     inputPurpose: InputPurpose;
     running: boolean;
@@ -25,6 +25,8 @@ export function UsageSwitch({ display, inputPurpose, running, locked, blockedRea
     onApply: (record: UsageDeviceRecord) => Promise<void>;
     /** 切り替えが済み、確認の小窓を閉じたあとに呼ぶ。次に焦点を移す先があるときに使う。 */
     onApplied?: (record: UsageDeviceRecord) => void;
+    /** 切り替えの応答を待っている間だけ true。画面を離れる操作を止める側が使う。 */
+    onBusyChange?: (busy: boolean) => void;
     onOpenSetup: (goal: UsageSetupGoal) => void;
 }) {
     const t = useMessages();
@@ -64,6 +66,7 @@ export function UsageSwitch({ display, inputPurpose, running, locked, blockedRea
     const confirm = async () => {
         if (!pending || busy) return;
         setBusy(true);
+        onBusyChange?.(true);
         setError(null);
         try {
             await onApply(pending);
@@ -71,9 +74,12 @@ export function UsageSwitch({ display, inputPurpose, running, locked, blockedRea
             if (onApplied && pending.inputSource.kind === 'process_loopback') afterClose.current = () => onApplied(pending);
             else setRefocus(true);
         } catch (cause) {
-            setError({ reason: cause instanceof Error ? cause.message : String(cause), restored: !(cause instanceof UsageSwitchError) || cause.restored });
+            const reason = cause instanceof Error ? cause.message : String(cause);
+            const restoreReason = cause instanceof UsageSwitchError ? cause.restoreReason : '';
+            setError({ reason: restoreReason ? `${reason} ${restoreReason}` : reason, restored: !(cause instanceof UsageSwitchError) || cause.restored });
         } finally {
             setBusy(false);
+            onBusyChange?.(false);
         }
     };
     const route = pending ? routeOf(pending) : null;

@@ -54,7 +54,7 @@ export function snapshotStorage(keys: readonly string[]): () => boolean {
 
 /** 切り替えに失敗したとき、元の状態へ戻せたか。戻せなかったときは音が止まったままのことがある。 */
 export class UsageSwitchError extends Error {
-    constructor(cause: unknown, public readonly restored: boolean) {
+    constructor(cause: unknown, public readonly restored: boolean, /** 元へ戻せなかった理由。戻せたときや理由が無いときは空。 */ public readonly restoreReason = '') {
         super(cause instanceof Error ? cause.message : String(cause));
     }
 }
@@ -68,17 +68,26 @@ function rememberLeaving(previousDisplay: DisplayPurpose, target: DisplayPurpose
     if (leaving) writeUsageDevice(previousDisplay, leaving);
 }
 
+/** 切り替える前の使い道と接続。保存が済んでから、離れる使い道の記録として残す。 */
+export interface LeavingUsage {
+    display: DisplayPurpose;
+    preferences: AudioPreferences | null;
+}
+
+export const currentUsage = (): LeavingUsage => ({ display: readDisplayPurpose(), preferences: readAudioPreferences() });
+
 /**
- * 音声を触らず、使い道の表示だけを切り替える。アプリの音声の記録へ切り替えるときに使う。
- * 失敗したら、保存値を元に戻して例外を投げる。
+ * 保留していた表示の切り替えを、接続の保存が済んだ時点で確定する。
+ * 離れる使い道の記録と表示のどちらかを残せなければ、両方を元の文字列へ戻して例外を投げる。
  */
-export function switchDisplayOnly(target: DisplayPurpose): void {
-    const rewind = snapshotUsageStorage();
+export function commitDisplaySwitch(leaving: LeavingUsage, target: DisplayPurpose): void {
+    const rewind = snapshotStorage([DISPLAY_PURPOSE_KEY, USAGE_DEVICES_KEY]);
     try {
-        rememberLeaving(readDisplayPurpose(), target, readAudioPreferences());
+        rememberLeaving(leaving.display, target, leaving.preferences);
         saveDisplayPurpose(target);
     } catch (error) {
-        throw new UsageSwitchError(error, rewind());
+        rewind();
+        throw error;
     }
 }
 
@@ -120,30 +129,39 @@ export async function commitUsageSwitch({ target, record, running, restart, save
         writeUsageDevice(target, applied);
         return applied;
     } catch (error) {
-        throw new UsageSwitchError(error, await rollback());
+        const outcome = await rollback();
+        throw new UsageSwitchError(error, outcome.restored, outcome.reason);
     }
 
     // 再起動が失敗しても、元のエンジンは止まっていることがある。動いていれば触らず、止まっていれば戻す。
-    async function rollback(): Promise<boolean> {
+    async function rollback(): Promise<{ restored: boolean; reason: string }> {
         const stillRunning = running && !restarted && engineIntact ? await engineIntact().catch(() => false) : false;
         const engine = running && !stillRunning;
         let restored = true;
+        let reason = '';
         if (previous?.host) {
             if (engine || saveStarted) {
-                try { await restore(previous, engine); } catch { restored = false; }
+                try { await restore(previous, engine); } catch (cause) {
+                    restored = false;
+                    reason = cause instanceof Error ? cause.message : String(cause);
+                }
             }
         } else if (engine) {
             restored = false;
         }
-        return rewind() && restored;
+        return { restored: rewind() && restored, reason };
     }
 }
 
-/** セットアップで決めた使い道の機器と表示を残す。いまの音声設定が、その用途の記録にできないときは投げる。 */
-export function rememberSetupUsage(purpose: DisplayPurpose): void {
+/**
+ * セットアップで決めた使い道の機器と表示を残す。いまの音声設定が、その用途の記録にできないときは投げる。
+ * セットアップの前の接続（leaving）は、離れる使い道の記録としてあわせて残す。
+ */
+export function rememberSetupUsage(purpose: DisplayPurpose, leaving?: LeavingUsage | null): void {
     const saved = readAudioPreferences();
     const record = saved && usageDeviceFromPreferences(saved, purpose);
     if (!record) throw new Error('使い道の機器を保存できません');
+    if (leaving) rememberLeaving(leaving.display, purpose, leaving.preferences);
     writeUsageDevice(purpose, record);
     saveDisplayPurpose(purpose);
 }

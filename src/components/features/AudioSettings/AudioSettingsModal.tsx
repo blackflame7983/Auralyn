@@ -14,7 +14,7 @@ import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { Button } from '@/components/ui/button';
 import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
-import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { MonitorTrial, monitorTrialInUse } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
@@ -46,7 +46,8 @@ import { UsageSwitch } from './UsageSwitch';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { usageDeviceFromPreferences, usageRouting, writeUsageDevice, type UsageDeviceRecord } from '@/lib/usageDevices';
-import { commitUsageSwitch, switchDisplayOnly, type UsageSetupGoal } from '@/lib/usageSwitch';
+import { commitDisplaySwitch, commitUsageSwitch, currentUsage, type LeavingUsage, type UsageSetupGoal } from '@/lib/usageSwitch';
+import type { SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -85,7 +86,8 @@ interface AudioSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
-  onEngineRestarted?: () => Promise<void> | void;
+  /** 再起動で失われた VST を保存した構成から戻し、結果を返す。completed 以外は、戻せていないものとして扱う。 */
+  onEngineRestarted?: () => Promise<SessionRestoreOutcome>;
   onOpenWizard?: (goal?: UsageSetupGoal) => void;
   onOpenOBSGuide?: () => void;
   onOpenTroubleshoot?: () => void;
@@ -125,6 +127,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const singingModel = providedSinging ?? localSinging;
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
+  // 使い道の切り替えの応答を待つ間。画面は残したまま、画面を離れる操作だけを止める。
+  const [usageSwitching, setUsageSwitching] = useState(false);
+  // アプリの音声の記録へ切り替えた下書き。接続を保存するまで、表示も離れる使い道の記録も確定しない。
+  const [pendingUsage, setPendingUsage] = useState<{ target: DisplayPurpose; leaving: LeavingUsage } | null>(null);
+  useWhenTrue(isOpen, () => setPendingUsage(null));
   const [connectionRetry, setConnectionRetry] = useState(false);
   // システム再起動の途中失敗は、接続画面からの再試行でもVST復元まで引き継ぐ。
   const retryRestart = useRef(false);
@@ -212,7 +219,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [isAdvancedMode, setIsAdvancedMode] = useAdvancedModePreference(isOpen, selectedBufferSize);
   const streamMixShown = useStreamMixPanel();
   // パネルはホームが歌・雑談の表示のときだけ出る。音楽鑑賞では押しても何も出ないため、理由を示して止める。
-  const [displayPurpose] = useDisplayPurpose();
+  const [savedDisplay] = useDisplayPurpose();
+  const displayPurpose = pendingUsage?.target ?? savedDisplay;
   const streamMixAvailable = displayPurpose === 'voice';
   const liveOutputActive = useLiveOutputInUse(displayPurpose);
   const monitorActive = displayPurpose === 'music' && monitorTrialInUse();
@@ -227,7 +235,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const onPeakPending = useCallback((source: 'peak' | 'broadcast', pending: boolean) => {
     setPeakPending(current => current[source] === pending ? current : { ...current, [source]: pending });
   }, []);
-  useSettingsLeaveGuard({ isApplying, activeTab, hasConnectionChanges, shortcutsDirty, protectionPending });
+  useSettingsLeaveGuard({ isApplying: isApplying || usageSwitching, activeTab, hasConnectionChanges, shortcutsDirty, protectionPending });
   const isBeginnerMode = useBeginnerModeSync();
 
   const { settingsBody, scrollerEl, saveSlot, bindScroller, bindSlot } = useSettingsScroller();
@@ -263,17 +271,32 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (record.host.toLowerCase() === 'asio' && inputDevice) connection.setRoutingForDevice(connectionDeviceKey(record.host, inputDevice), routing);
     if (draft) editConnection('host', 'output', 'buffer', 'rate'); else setEditedFields(new Set());
   };
+  // 再起動で失われた VST を戻す。移行の確認の完了は、確認の通知が復元を始めるため、ここでは重ねない。
+  const restoreVst = async (reviewPending: boolean) => {
+    if (reviewPending || !onEngineRestarted) return;
+    if (await onEngineRestarted() !== 'completed') throw new Error(t('purpose.vstIncomplete'));
+  };
+  // アプリの音声は、いま起動しているアプリの候補を引き直さないと再開できない。見つからなければ、戻せなかったと伝える。
+  const restoreSourceRequest = async (config: AudioPreferences): Promise<InputSourceRequest | undefined> => {
+    const source = config.inputSource;
+    if (!source) return undefined;
+    if (source.kind !== 'process_loopback') return { source };
+    const found = (await audioApi.processInputSources()).find(candidate => candidate.appKey.toLowerCase() === source.config.appKey.toLowerCase());
+    if (!found) throw new Error(t('purpose.appNotRunning', { app: source.config.appName }));
+    return { source, candidateId: found.id };
+  };
   const applyUsage = async (record: UsageDeviceRecord) => {
     const target = displayPurpose === 'voice' ? 'music' : 'voice';
     if (record.inputSource.kind === 'process_loopback') {
-      // アプリの音声は、起動中のアプリを選び直さないと始められない。音は変えず、表示と入力の用途だけを下書きにして選択へ案内する。
-      switchDisplayOnly(target);
+      // アプリの音声は、起動中のアプリを選び直さないと始められない。音も保存値も変えず、表示と入力の用途を下書きにして選択へ案内する。
+      setPendingUsage({ target, leaving: currentUsage() });
       setInputSource({ source: withInputPurpose(record.inputSource, target) });
       setNeedsDeviceChoice(false);
       editConnection('source');
       showUsageSelection(record, true);
       return;
     }
+    const reviewPending = localStorage.getItem(REVIEW_KEY) === 'true';
     const applied = await commitUsageSwitch({
       target, record, running: streamRunning,
       restart: async next => {
@@ -283,16 +306,19 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       },
       save: async (config, options) => {
         await onConfigChange(config, options);
-        if (options?.audioStarted && onEngineRestarted && localStorage.getItem(REVIEW_KEY) !== 'true') await onEngineRestarted();
+        if (options?.audioStarted) await restoreVst(reviewPending);
       },
       restore: async (config, engine) => {
         try {
-          if (engine) await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId,
-            undefined, channelRoutingFor(config), config.inputSource ? { source: config.inputSource } : undefined);
+          if (engine) {
+            const source = await restoreSourceRequest(config);
+            await audioApi.restart(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId,
+              undefined, channelRoutingFor(config), source);
+          }
         } finally {
           await onConfigChange({ ...config, outputRouting: config.outputRouting ?? { mode: 'legacy' } });
         }
-        if (engine && onEngineRestarted && localStorage.getItem(REVIEW_KEY) !== 'true') await onEngineRestarted();
+        if (engine) await restoreVst(reviewPending);
       },
       engineIntact: async () => !!(await runningConnection()),
     });
@@ -300,9 +326,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setNeedsDeviceChoice(false);
     showUsageSelection(applied, false);
   };
+  // 接続を保存できたら、保留していた表示の切り替えと、離れる使い道の記録を確定する。残せなければ表示を元のままにして知らせる。
+  const commitPendingUsage = (): boolean => {
+    if (!pendingUsage) return true;
+    try {
+      commitDisplaySwitch(pendingUsage.leaving, pendingUsage.target);
+      setPendingUsage(null);
+      return true;
+    } catch (cause) {
+      setPendingUsage(null);
+      setError(notice('purpose.commitFailed', { reason: cause instanceof Error ? cause.message : String(cause) }));
+      return false;
+    }
+  };
   const liveModel = providedLive ?? localLive;
   // 保存のボタンと同じ条件で、切り替えも止める。移行の確認を飛ばして確認済みにしない。
-  const usageBlockedReason = reviewRequired && !migrationConfirmed ? t('purpose.blockedReview') : devicesLoading ? t('purpose.blockedLoading') : undefined;
+  const usageBlockedReason = pendingUsage ? t('purpose.blockedPending') : reviewRequired && !migrationConfirmed ? t('purpose.blockedReview') : devicesLoading ? t('purpose.blockedLoading') : undefined;
   const { tuningOpen, setTuningOpen, tuningDetails, hostSelect, chooseConnection } = useTuningSection({
     isOpen, initialSection, loading, hasError: !!error, activeTab, tabRequest, isBeginnerMode, glitchCount: engineStats?.glitchCount });
 
@@ -347,7 +386,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       rememberAppliedUsage();
       setConnectionRetry(false);
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
-      onClose();
+      if (commitPendingUsage()) onClose();
     } catch (err) {
       if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
@@ -374,7 +413,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       }
       retryRestart.current = false;
       setConnectionRetry(false);
-      onClose();
+      if (commitPendingUsage()) onClose();
       // Optional: formatting toast success
     } catch (err) {
       setConnectionRetry(true);
@@ -546,7 +585,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             ) : (
               <div className="space-y-6">
               <UsageSwitch display={displayPurpose} inputPurpose={inputSource.source.config.purpose} running={streamRunning}
-                locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
+                locked={liveModel.snapshot?.armed === true} blockedReason={usageBlockedReason} onApply={applyUsage} onBusyChange={setUsageSwitching} onApplied={() => setAppFocus(request => request + 1)} onOpenSetup={goal => onOpenWizard?.(goal)} />
               {error && <div className="space-y-4">
                 <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
