@@ -395,3 +395,10 @@ it('U03: エラー時もデバイス選択フォームを維持し、また未�
     fireEvent.click(screen.getByRole('button', { name: '接続を保存して再起動' }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
 });
+
+it.each(['ja', 'en'] as const)('入出力プリセットは、声やVSTを一緒に保存する場所を案内する（%s）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />
+    </LocaleProvider>);
+    expect(await screen.findByText(message(locale, 'settings.apply.connectionPreset'))).toBeVisible();
+});

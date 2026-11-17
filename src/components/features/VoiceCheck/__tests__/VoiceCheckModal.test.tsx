@@ -42,6 +42,7 @@ it('録音範囲の折りたたみは、文字の幅に合う枠を持つ', asyn
 it('録音前は録音に絞り、完了後に再生と必要時に開く比較を表示する', async () => {
     open();
     await waitFor(() => expect(record()).toBeEnabled());
+    expect(record()).toHaveFocus();
     expect(screen.queryByText('試聴先と再生')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '加工前' })).not.toBeInTheDocument();
     expect(screen.queryByText('同じ録音でノイズ低減を比較')).not.toBeInTheDocument();
@@ -54,8 +55,9 @@ it('録音前は録音に絞り、完了後に再生と必要時に開く比較�
     // 試聴先と再生は折りたたまず、録音の次に出す（#559）。
     expect(await screen.findByRole('region', { name: '試聴先と再生' })).toBeVisible();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeVisible();
-    expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).toBeVisible();
-    const comparison = screen.getByText('同じ録音でノイズ低減を比較').closest('details')!;
+    expect(await screen.findByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).toBeVisible();
+    const comparison = screen.getByText('同じ録音でノイズ低減を比較').closest('details');
+    if (!(comparison instanceof HTMLDetailsElement)) throw new Error('比較の欄がありません');
     expect(comparison).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('同じ録音でノイズ低減を比較'));
     expect(screen.getByRole('button', { name: '弱めで生成' })).toBeVisible();
@@ -68,9 +70,15 @@ it('試聴エラーは録音前でも開き、停止と再試行の操作を表�
     // 失敗したときだけ試聴先を開き、再生できない理由も出す（#559）。
     expect(await screen.findByRole('region', { name: '試聴先と再生' })).toBeVisible();
     expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
-    // 失敗・停止未確認では停止を再送できるようにする。
-    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
-    expect(screen.getByText('再生できないとき')).toBeVisible();
+    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeDisabled();
+    const notes = screen.getByText('試聴先と注意').closest('details');
+    if (!(notes instanceof HTMLDetailsElement)) throw new Error('試聴先と注意の欄がありません');
+    expect(notes).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('試聴先と注意'));
+    const trouble = screen.getByText('再生できないとき').closest('details');
+    if (!(trouble instanceof HTMLDetailsElement)) throw new Error('再生できないときの欄がありません');
+    expect(trouble).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('再生できないとき'));
     expect(screen.getByText(/ほかのアプリが試聴先を占有していると再生できません/)).toHaveTextContent('Voicemeeter');
     const warning = screen.getByRole('alert');
     expect(warning).toHaveTextContent('試聴の停止を確認できません');
@@ -136,10 +144,12 @@ it('通常出力の切替を求めず独立した試聴先と取り込み確認�
     await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(screen.getByRole('button', { name: '試聴先を取得・更新' })).toBeEnabled());
     expect(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' })).toBeInTheDocument();
-    // 再生できない理由は失敗時だけ。出力先の注意は閉じて置き、開くと読める（#559）。
-    expect(screen.queryByText(/ほかのアプリが試聴先を占有していると再生できません/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '試聴先を設定する' })).not.toBeInTheDocument();
-    const caution = screen.getByText('試聴先の注意').closest('details')!;
+    const trouble = screen.getByText('再生できないとき').closest('details');
+    if (!(trouble instanceof HTMLDetailsElement)) throw new Error('再生できないときの欄がありません');
+    expect(trouble).not.toHaveAttribute('open');
+    const caution = screen.getByText('試聴先の注意').closest('details');
+    if (!(caution instanceof HTMLDetailsElement)) throw new Error('試聴先の注意の欄がありません');
     expect(caution).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('試聴先の注意'));
     expect(screen.getByText(/マイクの音・出力音量・ミュートは変わりません/)).toBeInTheDocument();
@@ -224,11 +234,11 @@ it('保存した試聴先が消えても代替せず、物理出力を選び直�
     await screen.findByRole('option', { name: 'Headphones' });
     const select = screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' });
     expect(select).toHaveValue('missing-device');
-    expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
     expect(screen.getByText(/再生するには、試聴先を選び/)).toBeVisible();
     fireEvent.change(select, { target: { value: 'hp' } });
-    expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ })).not.toBeChecked();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
     expect(screen.queryByText(/再生するには、試聴先を選び/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '選んだ試聴先で再生' }));
@@ -246,10 +256,10 @@ it('AutoGainの所有と停止操作を区別し、取り込み確認があっ�
     fireEvent.click(refresh);
     await screen.findByRole('option', { name: 'Headphones' });
     fireEvent.change(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' }), { target: { value: 'hp' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ }));
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
     expect(screen.getByText(/こちらからは停止しません/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeDisabled();
     expect(vi.mocked(voicePreviewApi.request).mock.calls.some(([request]) => request.action === 'start')).toBe(false);
 });
 
@@ -333,6 +343,7 @@ it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭
     expect(playingStatusPolls).toBe(2);
     const playingStop = screen.getByRole('button', { name: locale === 'ja' ? '再生を停止（再生は先頭から）' : 'Stop playback (replay starts from the beginning)' });
     expect(playingStop).toBeEnabled();
+    expect(screen.getByRole('button', { name: locale === 'ja' ? '試聴を停止' : 'Stop listening' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /一時停止|Pause/i })).not.toBeInTheDocument();
     fireEvent.click(playingStop);
     await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'stop' })));
@@ -348,6 +359,9 @@ it('U01: 非仮想モニター出力を自動選択してチェックなしで�
         ],
     }));
     open();
+    const notes = await screen.findByText('試聴先と注意');
+    expect(notes.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(notes);
     const select = await screen.findByRole('combobox', { name: 'ボイスチェックの試聴先' });
     await waitFor(() => expect(select).toHaveValue('hp'));
     expect(screen.queryByText(/試聴先に仮想ケーブルが選ばれています/)).not.toBeInTheDocument();
@@ -362,7 +376,7 @@ it('U01: 非仮想モニター出力を自動選択してチェックなしで�
     fireEvent.change(select, { target: { value: 'cable' } });
     expect(screen.getByText(/試聴先に仮想ケーブルが選ばれています/)).toBeVisible();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OBS・通話アプリが取り込んでいない/ }));
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
 });
 

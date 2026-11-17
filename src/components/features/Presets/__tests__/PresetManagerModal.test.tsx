@@ -162,3 +162,17 @@ it.each(['ja', 'en'] as const)('保存・復帰のタブは動作が分かり、
     expect(screen.queryByText(/\bprofile\b/i)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') })).toBeVisible();
 });
+
+it.each(['ja', 'en'] as const)('呼び出す範囲は保存済みの構成の中にあり、機器を含める保存は入出力プリセットを案内する（%s）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const heading = await screen.findByRole('heading', { name: message(locale, 'presets.savedProfiles') });
+    const recall = screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') });
+    expect(heading.parentElement).toContainElement(recall);
+    const saveScope = screen.getByRole('radiogroup', { name: message(locale, 'profilePurpose.title') });
+    expect(saveScope.parentElement?.contains(recall)).toBe(false);
+    expect(screen.queryByText(message(locale, 'profilePurpose.devicesOnlyElsewhere'))).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: message(locale, 'profilePurpose.equipment') }));
+    const hint = screen.getByText(message(locale, 'profilePurpose.devicesOnlyElsewhere'));
+    expect(hint).toBeVisible();
+    expect(recall).not.toContainElement(hint);
+});

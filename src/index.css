@@ -308,7 +308,7 @@
 }
 
 /* ページの見出しと、区画・カードの見出しだけ斜体。本文・数値・ボタンは直立。 */
-.gaming :is(h1, h2.home-title, h3.home-card-name, h2.text-ui-heading, h3.text-ui-heading, h4.text-ui-heading, legend.text-ui-heading, summary.text-ui-heading) {
+.gaming :is(h1, h2.home-title, h3.home-card-name, summary.home-card-name, h2.text-ui-heading, h3.text-ui-heading, h4.text-ui-heading, legend.text-ui-heading, summary.text-ui-heading) {
   font-style: italic;
 }
 .gaming :is(button, [role="button"], input, textarea, select) {

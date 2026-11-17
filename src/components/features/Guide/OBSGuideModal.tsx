@@ -4,10 +4,8 @@ import { SingingRouteChoice, SingingRouteGuide, type SingingRoute } from './Sing
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import { ObsMixCheck } from './ObsMixCheck';
-import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { ShortcutError } from '@/lib/shortcutNotice';
-import { formatShortcut } from '@/lib/shortcutLabel';
+import React, { useState } from 'react';
+import { useMuteShortcut } from '@/hooks/useMuteShortcut';
 import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic } from 'react-icons/md';
 
 interface OBSGuideModalProps {
@@ -35,21 +33,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
         if (value === 'processed' && useHardwareMixer === null && step > 0) setStep(0);
     };
     const totalSteps = 4; // 0 to 3
-    const [muteShortcut, setMuteShortcut] = useState<string | null>(null);
-    useEffect(() => {
-        let active = true;
-        setMuteShortcut(null);
-        if (isOpen && step === 3) {
-            void Promise.resolve(invoke<{ bindings: { action: string; shortcut: string }[]; errors: ShortcutError[] }>('get_shortcuts'))
-                .then(status => {
-                    const binding = status.bindings.find(item => item.action === 'muteToggle');
-                    if (active && binding && !status.errors.some(error => error.shortcut === binding.shortcut || !error.shortcut)) {
-                        setMuteShortcut(formatShortcut(binding.shortcut));
-                    }
-                }).catch(() => { /* 未取得・未登録のキーは案内しない。 */ });
-        }
-        return () => { active = false; };
-    }, [isOpen, step]);
+    const muteShortcut = useMuteShortcut(isOpen && step === 3);
+    const nextNeedsDevice = step === 0 && route === 'processed' && useHardwareMixer === null;
 
     if (!isOpen) return null;
 
@@ -98,16 +83,17 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 {/* Content Area */}
                 <div className="modal-body-base pr-4">
                     {step === 0 && (
-                        <div className="space-y-6">
+                        <div className="space-y-3">
+                            <p className="text-ui-support text-muted-foreground">{t('guide.obs.intro')}</p>
                             <SingingRouteChoice value={route} onChange={chooseRoute} />
                             {route === 'processed' ? <>
                                 <div className="space-y-2 text-left">
                                     <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
                                     <p className="text-muted-foreground">{t('guide.copy.004')}</p>
                                 </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <DeviceChoiceCard name="obs-device" value="true" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} />
-                                    <DeviceChoiceCard name="obs-device" value="false" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
+                                <div className="grid gap-2">
+                                    <DeviceChoiceCard layout="row" name="obs-device" value="true" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} />
+                                    <DeviceChoiceCard layout="row" name="obs-device" value="false" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
                                 </div>
                             </> : <p className="text-ui-support text-muted-foreground">{t('singingRoute.directInstructions')}</p>}
                         </div>
@@ -280,14 +266,18 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     >
                         <MdArrowBack className="w-4 h-4" /> {t('guide.copy.076')}</Button>
 
+                    <div className="flex flex-col items-end gap-1">
+                    {nextNeedsDevice && <p id="obs-guide-next-reason" className="text-ui-support text-muted-foreground">{t('guide.obs.nextNeedsDevice')}</p>}
                     <Button variant="default"
                         onClick={nextStep}
                         aria-label={step === (totalSteps - 1) ? t('guide.copy.077') : t('guide.copy.078')}
-                        disabled={step === 0 && route === 'processed' && useHardwareMixer === null}
+                        aria-describedby={nextNeedsDevice ? 'obs-guide-next-reason' : undefined}
+                        disabled={nextNeedsDevice}
                          className="gap-2"
                     >
                         {step === (totalSteps - 1) ? t('guide.copy.079') : <>{t('guide.copy.080')}<MdArrowForward className="w-4 h-4" /></>}
                     </Button>
+                    </div>
                 </div>
 
             </div>

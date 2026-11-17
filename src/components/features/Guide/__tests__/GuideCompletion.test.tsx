@@ -120,3 +120,18 @@ it('Discordの注意チップは警告アイコンを持ち、OBSの通常チッ
         expect(chip.querySelector('svg')).toBeNull();
     }
 });
+
+it.each(['ja', 'en'] as const)('OBSガイドは案内を先に出し、機器を選ぶまで次へ進めない理由をボタンの近くに出す（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    const intro = screen.getByText(locale === 'ja' ? 'OBS へ声を送る手順を、お使いの機器に合わせて案内します。' : 'These steps send your voice to OBS, matched to the equipment you use.');
+    const route = screen.getByRole('radio', { name: locale === 'ja' ? /加工した声を Auralyn から聴く/ : /processed voice from Auralyn/i });
+    const device = screen.getByRole('radio', { name: locale === 'ja' ? 'ループバック対応のミキサーの手順を選ぶ' : 'Choose the steps for a loopback-capable mixer' });
+    expect(intro.compareDocumentPosition(route) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(route.compareDocumentPosition(device) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(device.closest('[data-choice-card]')?.querySelector('[data-device-layout="row"]')).not.toBeNull();
+    const next = screen.getByRole('button', { name: locale === 'ja' ? '次の手順へ進む' : 'Go to the next step' });
+    expect(next).toBeDisabled();
+    expect(next).toHaveAccessibleDescription(locale === 'ja' ? '機器を選ぶと進めます' : 'Choose a device to continue');
+    expect(screen.getByText(locale === 'ja' ? '機器を選ぶと進めます' : 'Choose a device to continue').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

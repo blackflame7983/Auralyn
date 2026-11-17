@@ -14,9 +14,22 @@ interface DeviceChoiceCardProps {
     onChange: () => void;
     onActivate: () => void;
     warning?: boolean;
+    layout?: 'stack' | 'row';
 }
 
-export function DeviceChoiceCard({ name, value, label, title, description, badge, icon, checked, onChange, onActivate, warning = false }: DeviceChoiceCardProps) {
+export function DeviceChoiceCard({ name, value, label, title, description, badge, icon, checked, onChange, onActivate, warning = false, layout = 'stack' }: DeviceChoiceCardProps) {
+    const badgeClass = `inline-flex items-center gap-1 rounded-control px-2 py-1 text-ui-support font-bold ${warning ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`;
+    if (layout === 'row') return <ChoiceCard name={name} value={value} aria-label={label} checked={checked} onChange={onChange} onActivate={onActivate}>
+        <span data-device-layout="row" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 [overflow-wrap:anywhere]">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">{icon}</span>
+            <span className="min-w-0 flex-1 basis-48">
+                <span role="heading" aria-level={4} className="block font-bold text-foreground">{title}</span>
+                <span className="block text-ui-support text-muted-foreground">{description}</span>
+            </span>
+            <span className={badgeClass}>{warning && <MdWarning aria-hidden="true" className="h-4 w-4 shrink-0" />}{badge}</span>
+            {checked && <MdCheckCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-selection" />}
+        </span>
+    </ChoiceCard>;
     return <ChoiceCard name={name} value={value} aria-label={label} checked={checked} onChange={onChange} onActivate={onActivate}>
         <span className="block min-w-0 [overflow-wrap:anywhere]">
             <span className="mb-4 flex items-start justify-between gap-3">

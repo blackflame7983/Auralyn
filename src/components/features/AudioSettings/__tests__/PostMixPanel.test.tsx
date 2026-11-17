@@ -16,6 +16,10 @@ async function setup(value = snapshot(), mainRunning = false) {
     expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('配信音を仕上げるVST'));
     await screen.findByText(/転送の待ち時間/); return request;
 }
+it('中の見出しは、ホームの区画見出しより小さい', () => {
+    render(<PostMixPanel mainRunning={false} />);
+    expect(screen.getByText('配信音を仕上げるVST')).toHaveClass('home-card-name');
+});
 it('読込だけでは復元せず、一覧の明示取得と選択で追加する', async () => {
     const request = await setup();
     vi.spyOn(audioApi, 'scanPluginCatalog').mockResolvedValue({ plugins: [{ id: 'vst', name: 'EQ', path: 'eq.vst3', vendor: '', category: 'Fx', version: '' }], failures: [], stats: { reused: 0, scanned: 1, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null });

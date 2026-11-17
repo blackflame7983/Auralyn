@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "How you use it", "Home layout", "Open Connection", "Audio will briefly cut out", "No connection changes", "Save and restore settings"]
 ---
 
 ## Connection {#audio}
@@ -16,7 +16,7 @@ In “Connection” on the left rail, choose microphone, output, connection meth
 3. When something has changed, review the changes before saving. “Audio will briefly cut out” appears only while audio is running and the connection has changed. When nothing has changed, only “No connection changes” is shown.
 
 The button at the bottom saves connection settings. Saving a change while audio is running restarts audio. While audio is stopped, it starts audio.
-Input/output presets save the connection settings you are editing. Loading a preset does not apply it to audio; review it and apply it using the button at the bottom.
+Input/output presets save the connection settings you are editing. Loading a preset does not apply it to audio; review it and apply it using the button at the bottom. To save your voice and VST settings together, use “Save and restore settings” on the VST page.
 Split-output routing is saved and applied independently in its own section. Discarding edits there only restores that section's unapplied values.
 
 ## Sound {#sound}
