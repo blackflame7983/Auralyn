@@ -144,7 +144,7 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 npm run capture:ux-eval
 ```
 
-開発サーバーは `playwright.config.ts` と同じです。手元では `http://127.0.0.1:1427` の `npm run dev` になります。`CI` または `E2E_PREVIEW` が立っているときは本番ビルドを配るため、`?mock=` の模擬は入りません。撮影はそれらの変数を付けずに実行します。
+撮影は、`CI` や `E2E_PREVIEW` が立っていても、いつも開発サーバー（`npm run dev`、`http://127.0.0.1:1427`）を起動します。`?mock=` の模擬は開発サーバーにしか入らないためです。ほかの試験が 1427 を使っているときは、`UX_EVAL_PORT` で別のポートを指定します。
 
 出力先は `test-results/ux-eval/<日付>-<ブランチ名の最後の区間>-<短いSHA>/` です。日付は実行したマシンのローカル日付、SHA は `git rev-parse --short=8 HEAD` の8文字です。ブランチ `codex/ux-eval-capture-716` なら区間は `ux-eval-capture-716` です。フォルダーごと別の場所にするときは、環境変数 `UX_EVAL_OUT` にそのパスを指定します。
 

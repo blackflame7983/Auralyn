@@ -118,8 +118,7 @@ async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
     await expect(page.getByText(splash, { exact: true })).toHaveCount(0);
     await expect(page.locator('html')).toHaveAttribute('data-auralyn-preview', shot.screen ?? 'home');
     await expect(page.locator('html')).toHaveAttribute('lang', shot.locale);
-    const themeClass = shot.theme === 'gaming' ? 'gaming' : shot.theme;
-    await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${themeClass}\\b`));
+    await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${shot.theme}\\b`));
     if (shot.surface === 'home') await expect(page.locator('.home-content')).toBeVisible();
     if (shot.surface === 'wizard' || shot.surface === 'dialog') await expect(page.getByRole('dialog').first()).toBeVisible();
     if (shot.surface === 'vst') await expect(page.locator('[data-vst-page]')).toBeVisible();
