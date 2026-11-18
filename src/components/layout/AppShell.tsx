@@ -283,7 +283,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     canStart={canStart} starting={starting} onStart={() => { void startAudio(); }}
                     modeSwitch={liveModeSwitch} showListen={configured}
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
-                    listenDisabled={!audioReady} onListen={openListen} listenRef={listenButton}
+                    listenDisabled={!audioReady} listenDisabledReason={audioReady ? undefined : t(engineProcessReady === null ? 'loudness.audioUnknown' : 'header.compareNeedsAudio')} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
                         input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
                         vstBypassed={isABBypassed} compareUnavailable={compareReason} onCompareVst={() => { if (!compareDisabled) void handleABToggle(); }}

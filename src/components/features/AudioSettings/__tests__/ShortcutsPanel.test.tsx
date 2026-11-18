@@ -386,6 +386,33 @@ it('未設定と編集状態を示し、入力待ち中は保存できず取り�
     expect(discard).toBeDisabled();
 });
 
+it.each([
+    ['ja', 'キー設定に変更はありません'],
+    ['en', 'No key changes'],
+] as const)('変更が無いあいだは、保存と取り消しが押せない理由を近くに見せる（%s）', async (locale, reason) => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_shortcuts') return { bindings: initial, errors: [] };
+        if (command === 'begin_shortcut_capture') return '1';
+    });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><ShortcutsPanel /></LocaleProvider>);
+    const save = screen.getByRole('button', { name: locale === 'ja' ? 'キー設定を保存' : 'Save key settings' });
+    const discard = screen.getByRole('button', { name: locale === 'ja' ? 'キー設定の編集を取り消す' : 'Discard key edits' });
+    const key = screen.getByLabelText(locale === 'ja' ? '緊急ミュート（切替）の通常キー' : 'Emergency mute (toggle) regular key');
+    await waitFor(() => expect(key).toBeEnabled());
+    expect(save).toBeDisabled();
+    expect(discard).toBeDisabled();
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(save).toHaveAccessibleDescription(reason);
+    expect(discard).toHaveAccessibleDescription(reason);
+    fireEvent.change(key, { target: { value: 'KeyN' } });
+    expect(save).toBeEnabled();
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    expect(save).not.toHaveAttribute('aria-describedby');
+    expect(discard).not.toHaveAttribute('aria-describedby');
+    fireEvent.click(discard);
+    expect(screen.getByText(reason)).toBeVisible();
+});
+
 it('同じ組合せの別表記は変更とみなさない', async () => {
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_shortcuts') return { bindings: [{ action: 'muteToggle', shortcut: 'Alt+Control+KeyM' }], errors: [] };

@@ -12,7 +12,7 @@ import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
 // 中央の先頭の1行。低頻度の操作は置かない。経路は入りきらないとき先頭から隠し、送り先は切らずに残す（短い形に替える）。
 export function StatusBand({
     stats, host, sampleRate, bufferSize, isRunning, processReady,
-    elapsed, route, routeCompact, modeSwitch, showListen, listenLabel, listenDisabled, onListen, listenRef, listenPanel,
+    elapsed, route, routeCompact, modeSwitch, showListen, listenLabel, listenDisabled, listenDisabledReason, onListen, listenRef, listenPanel,
     canStart = false, starting = false, onStart = () => {},
 }: {
     stats?: EngineRuntimeStats | null;
@@ -28,6 +28,7 @@ export function StatusBand({
     showListen: boolean;
     listenLabel: string;
     listenDisabled: boolean;
+    listenDisabledReason?: string;
     onListen: () => void;
     listenRef?: Ref<HTMLButtonElement>;
     listenPanel?: ReactNode;
@@ -47,9 +48,13 @@ export function StatusBand({
                     wrapChip={(chip, state) => <StatusMenu kind={statusSessionKind(processReady, isRunning, host)} label={t('band.statusButton', { state })} canStart={canStart} starting={starting} onStart={onStart}>{chip}</StatusMenu>} />
                 {route ? <FittingRoute route={route} compact={routeCompact} /> : <span className="min-w-0 flex-1" />}
                 {modeSwitch && <span className="shrink-0">{modeSwitch}</span>}
-                {showListen && <Button type="button" variant="outline" size="sm" ref={listenRef} onClick={onListen} disabled={listenDisabled} className="home-action shrink-0 gap-1.5">
-                    <MdHearing aria-hidden="true" className="h-4 w-4" />{listenLabel}
-                </Button>}
+                {showListen && <>
+                    <Button type="button" variant="outline" size="sm" ref={listenRef} onClick={onListen} disabled={listenDisabled}
+                        title={listenDisabledReason} aria-describedby={listenDisabledReason ? 'band-listen-reason' : undefined} className="home-action shrink-0 gap-1.5 disabled:pointer-events-auto disabled:cursor-not-allowed">
+                        <MdHearing aria-hidden="true" className="h-4 w-4" />{listenLabel}
+                    </Button>
+                    {listenDisabledReason && <span id="band-listen-reason" className="sr-only">{listenDisabledReason}</span>}
+                </>}
             </div>
             {listenPanel}
         </div>
