@@ -265,7 +265,7 @@ function AppContent() {
         liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
         liveModeSwitch={displayPurpose === 'voice' ? <LiveModeSwitch model={liveModel} embedded /> : undefined}
         liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded hideSwitch onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
-        liveProtect={<LiveProtectButton model={liveModel} safetyOnly={displayPurpose === 'music'} />}
+        liveProtect={<LiveProtectButton model={liveModel} audioReady={audioReady} safetyOnly={displayPurpose === 'music'} />}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
         vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={togglePlugin} onEdit={editPlugin} />}

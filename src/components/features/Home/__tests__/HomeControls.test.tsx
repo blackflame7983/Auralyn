@@ -68,7 +68,7 @@ it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽�
     const snapshot = liveSnapshot({ armed: kind === 'protected', error: kind === 'snapshotError' ? 'fixture error' : null,
         transaction: kind === 'recovery' ? { id: 'tx', phase: 'recovery_required', target: null, error: null, recoveryAvailable: true } : null });
     const request = vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
-    function MusicSafety() { const model = useLiveModes(); return <><LiveModeBar model={model} safetyOnly /><LiveProtectButton model={model} safetyOnly /></>; }
+    function MusicSafety() { const model = useLiveModes(); return <><LiveModeBar model={model} safetyOnly /><LiveProtectButton model={model} audioReady safetyOnly /></>; }
     render(<MusicSafety />);
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'snapshot' }));
     await act(async () => {});
@@ -93,7 +93,7 @@ it.each([
 ])('右の列の操作ロックは、配信・通話では登録に関係なく出し、音楽鑑賞ではロック中だけ出す ($name)', async ({ music, registered, armed, shown }) => {
     const snapshot = liveSnapshot({ armed, definitions: registered ? registeredDefinitions : liveSnapshot().definitions });
     const request = vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
-    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} safetyOnly={music} /><LiveProtectButton model={model} safetyOnly={music} /></>; }
+    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} safetyOnly={music} /><LiveProtectButton model={model} audioReady safetyOnly={music} /></>; }
     render(<Column />);
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'snapshot' }));
     await act(async () => {});
@@ -106,7 +106,7 @@ it('歌・雑談を登録していない配信でも、操作ロックを押す�
     let armed = false;
     vi.spyOn(liveModesApi, 'request').mockImplementation(async () => liveSnapshot({ running: true, armed }));
     const protect = vi.spyOn(liveModesApi, 'protect').mockImplementation(async next => { armed = next; return liveSnapshot({ running: true, armed }); });
-    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} /></>; }
+    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady /></>; }
     render(<Column />);
     const lock = await screen.findByRole('button', { name: '操作をロック' });
     await act(async () => fireEvent.click(lock));
@@ -118,7 +118,7 @@ it('登録していなくても、ロック中は定期確認して、バック�
     vi.useFakeTimers();
     let armed = true;
     const request = vi.spyOn(liveModesApi, 'request').mockImplementation(async () => liveSnapshot({ armed, running: true }));
-    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} /></>; }
+    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady /></>; }
     render(<Column />);
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'true');
@@ -127,6 +127,50 @@ it('登録していなくても、ロック中は定期確認して、バック�
     expect(request.mock.calls.length).toBeGreaterThan(2);
     expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'false');
     vi.useRealTimers();
+});
+
+it.each([
+    { locale: 'ja' as const, lock: '操作をロック' },
+    { locale: 'en' as const, lock: 'Lock controls' },
+])('音声が動いていない間は操作ロックを押せず、理由を title と読み上げで伝える ($locale)', async ({ locale, lock }) => {
+    vi.spyOn(liveModesApi, 'request').mockResolvedValue(liveSnapshot({ running: false, armed: false }));
+    const protect = vi.spyOn(liveModesApi, 'protect');
+    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady={false} /></>; }
+    render(<LocaleContext.Provider value={{ locale, setLocale: vi.fn() }}><Column /></LocaleContext.Provider>);
+    const button = await screen.findByRole('button', { name: lock });
+    const reason = message(locale, 'liveBar.protectNeedsAudio');
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', reason);
+    expect(button).toHaveAccessibleDescription(expect.stringContaining(reason));
+    expect(screen.queryByText(reason)).toHaveClass('sr-only');
+    fireEvent.click(button);
+    expect(protect).not.toHaveBeenCalled();
+});
+
+it('音声が動いている間は、操作ロックに停止中の理由を付けず押せる', async () => {
+    vi.spyOn(liveModesApi, 'request').mockResolvedValue(liveSnapshot({ running: true, armed: false }));
+    function Column() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady /></>; }
+    render(<Column />);
+    const button = await screen.findByRole('button', { name: '操作をロック' });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('title', '操作をロック');
+    expect(screen.queryByText(message('ja', 'liveBar.protectNeedsAudio'))).not.toBeInTheDocument();
+});
+
+it('ロック中に音声が止まっても、操作ロックの解除は押せる', async () => {
+    const locked = liveSnapshot({ running: true, armed: true });
+    vi.spyOn(liveModesApi, 'request').mockResolvedValue(locked);
+    const protect = vi.spyOn(liveModesApi, 'protect').mockImplementation(async armed => ({ ...locked, armed }));
+    function Column({ ready }: { ready: boolean }) { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady={ready} /></>; }
+    const view = render(<Column ready />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'true'));
+    view.rerender(<Column ready={false} />);
+    const button = screen.getByRole('button', { name: '操作をロック' });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(message('ja', 'liveBar.protectNeedsAudio'))).not.toBeInTheDocument();
+    await act(async () => fireEvent.click(button));
+    expect(protect).toHaveBeenCalledExactlyOnceWith(false, 'host1');
 });
 
 it('ノイズ低減の強さは現在の抑制強度と声を守る設定を保ったまま切り替える', async () => {
@@ -217,7 +261,7 @@ it.each([
     const snapshot = liveSnapshot({ running: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } });
     vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
     const protect = vi.spyOn(liveModesApi, 'protect').mockImplementation(async armed => ({ ...snapshot, armed }));
-    function Bar() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} /></>; }
+    function Bar() { const model = useLiveModes(); return <><LiveModeBar model={model} /><LiveProtectButton model={model} audioReady /></>; }
     render(<LocaleContext.Provider value={{ locale: labels.locale, setLocale: vi.fn() }}><Bar /></LocaleContext.Provider>);
     await screen.findByRole('region', { name: labels.region });
     expect(screen.getByRole('radio', { name: labels.sing })).toBeEnabled();
