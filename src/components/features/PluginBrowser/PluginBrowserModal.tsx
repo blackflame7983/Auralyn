@@ -203,6 +203,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [includeFailed, setIncludeFailed] = useState(false);
+  // 登録が無いあいだは、タブも検索も同じ空の結果にしかならず、PC内を探せると誤解させる。出さずに、前回の絞り込みも使わない（#773、#632）。
+  const hasPlugins = plugins.length > 0;
+  const viewTab: TabType = hasPlugins ? activeTab : 'all';
+  const viewQuery = hasPlugins ? searchQuery : '';
+  const viewCategory = hasPlugins ? selectedCategory : null;
   const { favorites, setFavorites, recentPaths, setRecentPaths } = usePluginBrowserLists(plugins);
   useScanEmptyCatalog(isOpen, plugins.length, () => onScan());
   const clearCategory = useCallback(() => setSelectedCategory(null), []);
@@ -256,19 +261,19 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
 
   // Filter plugins based on search, tab, and category
   const getFilteredPlugins = () => {
-    const query = searchQuery.toLowerCase();
+    const query = viewQuery.toLowerCase();
     const matchesSearch = (plugin: VstPlugin) =>
       [plugin.name, plugin.vendor, plugin.category].some(value => value.toLowerCase().includes(query));
     let filtered = plugins.filter(matchesSearch);
 
     // Category filter
-    if (selectedCategory && activeTab === 'all') {
-      filtered = filtered.filter(p => getSimpleCategory(p.category) === selectedCategory);
+    if (viewCategory && viewTab === 'all') {
+      filtered = filtered.filter(p => getSimpleCategory(p.category) === viewCategory);
     }
 
-    if (activeTab === 'favorites') {
+    if (viewTab === 'favorites') {
       filtered = filtered.filter(plugin => favorites.some(stored => storedKeyMatches(plugin, stored, plugins)));
-    } else if (activeTab === 'recent') {
+    } else if (viewTab === 'recent') {
       const seen = new Set<string>();
       const recentPlugins: VstPlugin[] = [];
       for (const stored of recentPaths) {
@@ -317,7 +322,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <TabsList aria-label={t('pluginBrowser.filter')} className="flex gap-1 mb-4 p-1 bg-muted rounded-card">
+        {hasPlugins && <TabsList aria-label={t('pluginBrowser.filter')} className="flex gap-1 mb-4 p-1 bg-muted rounded-card">
           {tabs.map(tab => (
             <TabsTrigger value={tab.id} key={tab.id} className="flex-1 gap-1.5">
               {tab.icon}
@@ -330,11 +335,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               )}
             </TabsTrigger>
           ))}
-        </TabsList>
+        </TabsList>}
 
         <TabsContent value={activeTab} className="m-0 flex min-h-0 flex-1 flex-col">{/* Search & Refresh */}
-        <div className="flex gap-4 mb-3">
-          <div className="relative flex-1">
+        {(hasPlugins || !scanCatalogEmpty) && <div className="flex gap-4 mb-3">
+          {hasPlugins && <div className="relative flex-1">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Field label={null}><Input
               ref={searchRef}
@@ -345,7 +350,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4"
             /></Field>
-          </div>
+          </div>}
           {!scanCatalogEmpty && <Button variant="outline"
             onClick={() => onScan()}
             disabled={isLoading || Boolean(retryingPath)}
@@ -355,21 +360,19 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             <MdRefresh aria-hidden="true" className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             {t('pluginBrowser.refresh')}
           </Button>}
-        </div>
-        {(!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) || !scanCatalogEmpty) && <div className="mb-3 flex flex-wrap items-center gap-2">
-          {!(activeTab === 'all' && scanCatalogEmpty && !searchQuery && !selectedCategory) && <Button variant={scanCatalogEmpty ? 'default' : 'outline'} size="sm" className="h-auto min-h-9 whitespace-normal"
+        </div>}
+        {!scanCatalogEmpty && <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
             disabled={isLoading || Boolean(retryingPath)}
             onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}
           >
-            {t(scanCatalogEmpty ? 'pluginBrowser.findVsts' : 'pluginBrowser.fullScan')}
-          </Button>}
-          {!scanCatalogEmpty && <>
-            <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
-              <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
-              {t('pluginBrowser.includeFailed')}
-            </label>
-            <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
-          </>}
+            {t('pluginBrowser.fullScan')}
+          </Button>
+          <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
+            <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
+            {t('pluginBrowser.includeFailed')}
+          </label>
+          <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
         </div>}
         <ScanFolders disabled={isLoading || Boolean(retryingPath)} skippedRoots={skippedRoots} onChanged={() => onScan()} />
 
@@ -428,14 +431,14 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             </div>
           ) : filteredPlugins.length === 0 ? (
             <div className="flex min-w-0 flex-col items-center justify-center min-h-40 py-6 text-center wrap-anywhere text-muted-foreground">
-              {searchQuery || selectedCategory ? <>
-                <h3 className="text-ui-control font-semibold">{searchQuery ? t('pluginBrowser.searchNoMatch', { query: searchQuery }) : t('pluginBrowser.noMatch')}</h3>
-                <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t(searchQuery ? 'pluginBrowser.clearSearch' : 'pluginBrowser.resetFilters')}</Button>
-                {activeTab !== 'all' && <button type="button" className="mt-2 underline text-primary" onClick={() => { setActiveTab('all'); setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.showAll')}</button>}
+              {viewQuery || viewCategory ? <>
+                <h3 className="text-ui-control font-semibold">{viewQuery ? t('pluginBrowser.searchNoMatch', { query: viewQuery }) : t('pluginBrowser.noMatch')}</h3>
+                <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t(viewQuery ? 'pluginBrowser.clearSearch' : 'pluginBrowser.resetFilters')}</Button>
+                {viewTab !== 'all' && <button type="button" className="mt-2 underline text-primary" onClick={() => { setActiveTab('all'); setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.showAll')}</button>}
               </> : <>
-                {activeTab === 'favorites' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noFavorites')}</h3>}
-                {activeTab === 'recent' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noRecent')}</h3>}
-                {activeTab === 'all' && <>
+                {viewTab === 'favorites' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noFavorites')}</h3>}
+                {viewTab === 'recent' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noRecent')}</h3>}
+                {viewTab === 'all' && <>
                   <h3 className="text-ui-control font-semibold">{t(failures.length > 0 ? 'pluginBrowser.emptyFailed' : 'pluginBrowser.notFound')}</h3>
                   {failures.length > 0 ? <>
                     <p>{t('pluginBrowser.failedCount', { count: failures.length })}</p>
@@ -446,7 +449,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     <Button variant="default" className="mt-3 h-auto min-h-10 whitespace-normal" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.findVsts')}</Button>
                   </>}
                 </>}
-                {activeTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}
+                {viewTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}
               </>}
             </div>
           ) : (

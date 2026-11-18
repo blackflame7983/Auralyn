@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { VstPlugin } from '@/api/audio';
@@ -44,26 +45,40 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
 });
 
-it('登録が無いときは、最近・お気に入り・検索中でも「VSTを探す」を主な操作にする（#706）', () => {
+it.each(['ja', 'en'] as const)('登録が無いあいだは、タブと検索を出さず「VSTを探す」だけを主な操作にする（%s、#706、#773）', locale => {
     const scan = vi.fn();
-    render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()} />);
-    const expectFind = () => {
-        expect(screen.queryByRole('button', { name: 'すべて再スキャン' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: '更新' })).not.toBeInTheDocument();
-        const find = screen.getByRole('button', { name: 'VSTを探す' });
-        expect(find).toHaveClass('bg-primary');
-        return find;
-    };
-    for (const tab of ['最近', 'お気に入り']) {
-        fireEvent.mouseDown(screen.getByRole('tab', { name: tab }), { button: 0, ctrlKey: false });
-        scan.mockClear();
-        fireEvent.click(expectFind());
-        expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
-    }
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'すべて' }), { button: 0, ctrlKey: false });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()} /></LocaleProvider>);
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: message(locale, 'pluginBrowser.search') })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(message(locale, 'pluginBrowser.searchPlaceholder'))).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message(locale, 'pluginBrowser.fullScan') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message(locale, 'pluginBrowser.refresh') })).not.toBeInTheDocument();
+    const find = screen.getByRole('button', { name: message(locale, 'pluginBrowser.findVsts') });
+    expect(find).toHaveClass('bg-primary');
+    fireEvent.click(find);
+    expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
+});
+
+it('登録が1件以上あるときは、3つのタブと検索を出す（#773）', () => {
+    openBrowser();
+    expect(screen.getByRole('tablist', { name: 'プラグインの絞り込み' })).toBeInTheDocument();
+    for (const tab of ['すべて', '最近', 'お気に入り']) expect(screen.getByRole('tab', { name: new RegExp(`^${tab}`) })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'プラグイン検索' })).toBeInTheDocument();
+});
+
+it('お気に入りや検索で絞ったあとに登録が0件になっても、前回の絞り込みを残さず「VSTを探す」を出す', () => {
+    const props = { isOpen: true, onClose: vi.fn(), isLoading: false, onScan: vi.fn(), onPluginSelect: vi.fn() };
+    const view = render(<PluginBrowserModal {...props} plugins={plugins} />);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'お気に入り' }), { button: 0, ctrlKey: false });
     fireEvent.change(screen.getByRole('textbox', { name: 'プラグイン検索' }), { target: { value: 'no-such-plugin' } });
-    expect(screen.getByRole('heading', { name: '「no-such-plugin」に一致する候補はありません。' })).toBeInTheDocument();
-    expectFind();
+    view.rerender(<PluginBrowserModal {...props} plugins={[]} />);
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'プラグイン検索' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'お気に入りがありません' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /に一致する候補はありません/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'VSTを探す' })).toHaveClass('bg-primary');
 });
 
 it('登録があるときは更新とすべて再スキャンを出す', () => {

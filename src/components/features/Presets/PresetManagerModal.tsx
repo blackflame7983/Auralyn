@@ -404,6 +404,28 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         p.name.toLowerCase().includes(query) || profileDisplayName(p.name, locale).toLowerCase().includes(query)
     );
 
+    const hasProfiles = profiles.length > 0;
+    const listStatus = (
+        <>
+            {loadError && <div role="alert" className="rounded-control border border-border p-3 text-ui-support">
+                <p>{renderNotice(t, loadError)}</p>
+                <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
+            </div>}
+            {isLoading ? (
+                <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
+                    <div aria-hidden="true" className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                    {t('common.loading')}
+                </div>
+            ) : !hasProfiles && !loadError ? (
+                <div className="text-center py-6 text-muted-foreground">
+                    <MdFolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-ui-support">{t('presets.copy.070')}</p>
+                    <p className="mt-2 text-ui-support">{t('presets.copy.072')}</p>
+                </div>
+            ) : null}
+        </>
+    );
+
     if (!isOpen) return null;
 
     return (
@@ -506,45 +528,40 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="profile-list-region flex-none overflow-hidden flex flex-col">
                     <div className="p-4 pb-2 border-t border-border space-y-3">
                         <h3 className="text-ui-heading font-semibold">{t('presets.savedProfiles')}</h3>
-                        <fieldset className="space-y-3 text-ui-support">
+                        {/* 保存済みが無いあいだは、空の案内と取り込みを先頭に置き、範囲の選択と検索は出さない（#773、#632）。 */}
+                        {!hasProfiles && listStatus}
+                        {hasProfiles && <fieldset className="space-y-3 text-ui-support">
                             <legend className="text-ui-heading font-semibold mb-3">{t('profilePurpose.apply')}</legend>
                             <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
                             {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
-                        </fieldset>
+                        </fieldset>}
                         <Button variant="outline" size="sm" onClick={() => { void handleImport(); }} className="gap-1.5">
                             <MdFileUpload className="w-3.5 h-3.5" />
                             {t('presets.copy.065')}
                         </Button>
-                        <label htmlFor="profile-search" className="block text-ui-control font-medium">{t('presets.copy.066')}</label>
-                        <div className="relative">
-                            <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <Input
-                                id="profile-search"
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder={t('presets.copy.067')}
-                                className="pl-9"
-                            />
-                        </div>
+                        {hasProfiles && <>
+                            <label htmlFor="profile-search" className="block text-ui-control font-medium">{t('presets.copy.066')}</label>
+                            <div className="relative">
+                                <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                    id="profile-search"
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder={t('presets.copy.067')}
+                                    className="pl-9"
+                                />
+                            </div>
+                        </>}
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
-                        {loadError && <div role="alert" className="rounded-control border border-border p-3 text-ui-support">
-                            <p>{renderNotice(t, loadError)}</p>
-                            <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
-                        </div>}
-                        {isLoading ? (
-                            <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
-                                <div aria-hidden="true" className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                                {t('common.loading')}
-                            </div>
-                        ) : filteredProfiles.length === 0 && !loadError ? (
+                    {hasProfiles && <div className="max-h-64 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
+                        {listStatus}
+                        {isLoading ? null : filteredProfiles.length === 0 && !loadError ? (
                             <div className="text-center py-12 text-muted-foreground">
                                 <MdFolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                                <p className="text-ui-support">{profiles.length ? t('presets.copy.069') : t('presets.copy.070')}</p>
-                                {profiles.length ? <button type="button" onClick={() => { setSearchTerm(''); document.getElementById('profile-search')?.focus(); }} className="mt-2 underline text-ui-support">{t('presets.copy.071')}</button>
-                                    : <p className="mt-2 text-ui-support">{t('presets.copy.072')}</p>}
+                                <p className="text-ui-support">{t('presets.copy.069')}</p>
+                                <button type="button" onClick={() => { setSearchTerm(''); document.getElementById('profile-search')?.focus(); }} className="mt-2 underline text-ui-support">{t('presets.copy.071')}</button>
                             </div>
                         ) : (
                             filteredProfiles.map(profile => {
@@ -603,7 +620,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                 );
                             })
                         )}
-                    </div>
+                    </div>}
                 </div>
                 </>}
                 </TabsContent></Tabs>{/* 共有PCでの一時利用はまれな操作なので、使用中でなければ一覧の後ろに置く。 */}

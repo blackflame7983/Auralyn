@@ -163,10 +163,58 @@ it.each(['ja', 'en'] as const)('保存・復帰のタブは動作が分かり、
     expect(screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') })).toBeVisible();
 });
 
+it.each(['ja', 'en'] as const)('保存済みが0件のあいだは、空の案内と取り込みを先頭に置き、範囲の選択と検索を出さない（%s、#773）', async locale => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') return [];
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const empty = await screen.findByText(message(locale, 'presets.copy.070'));
+    const guide = screen.getByText(message(locale, 'presets.copy.072'));
+    const heading = screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') });
+    const importButton = screen.getByRole('button', { name: message(locale, 'presets.copy.065') });
+    const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(heading, empty)).toBe(true);
+    expect(before(empty, guide)).toBe(true);
+    expect(before(guide, importButton)).toBe(true);
+    expect(screen.queryByRole('group', { name: message(locale, 'profilePurpose.apply') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: message(locale, 'presets.copy.066') })).not.toBeInTheDocument();
+    expect(screen.queryByText(message(locale, 'presets.copy.066'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('保存済みが1件以上なら、これまでの並び（範囲、取り込み、検索、一覧）で出す（%s、#773）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const row = await screen.findByRole('button', { name: message(locale, 'presets.copy.073', { arg0: meta.name }) });
+    const nodes = [
+        screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') }),
+        screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') }),
+        screen.getByRole('button', { name: message(locale, 'presets.copy.065') }),
+        screen.getByRole('textbox', { name: message(locale, 'presets.copy.066') }),
+        row,
+    ];
+    nodes.slice(1).forEach((node, index) => expect(nodes[index].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
+    expect(screen.queryByText(message(locale, 'presets.copy.070'))).not.toBeInTheDocument();
+});
+
+it('保存済みが0件で一覧を取得できないときも、範囲の選択と検索は出さず、再試行を出す', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') throw new Error('read failed');
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    open();
+    expect(await screen.findByRole('alert')).toHaveTextContent('一覧を取得できません');
+    expect(screen.getByRole('button', { name: '一覧を再読み込み' })).toBeVisible();
+    expect(screen.queryByText('構成がありません')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '呼び出す範囲' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '構成を検索' })).not.toBeInTheDocument();
+});
+
 it.each(['ja', 'en'] as const)('呼び出す範囲は保存済みの構成の中にあり、機器を含める保存は入出力プリセットを案内する（%s）', async locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
     const heading = await screen.findByRole('heading', { name: message(locale, 'presets.savedProfiles') });
-    const recall = screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') });
+    const recall = await screen.findByRole('group', { name: message(locale, 'profilePurpose.apply') });
     expect(heading.parentElement).toContainElement(recall);
     const saveScope = screen.getByRole('radiogroup', { name: message(locale, 'profilePurpose.title') });
     expect(saveScope.parentElement?.contains(recall)).toBe(false);
