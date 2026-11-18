@@ -404,25 +404,22 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         p.name.toLowerCase().includes(query) || profileDisplayName(p.name, locale).toLowerCase().includes(query)
     );
 
+    // 保持している保存済みの有無と、いま一覧の操作欄を出せるか（取得に失敗していない）は別に決める。
     const hasProfiles = profiles.length > 0;
+    const listUsable = hasProfiles && !loadError;
+    const showEmptyNotice = !hasProfiles && !loadError && !isLoading;
     const listStatus = (
         <>
             {loadError && <div role="alert" className="rounded-control border border-border p-3 text-ui-support">
                 <p>{renderNotice(t, loadError)}</p>
                 <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
             </div>}
-            {isLoading ? (
+            {isLoading && (
                 <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
                     <div aria-hidden="true" className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                     {t('common.loading')}
                 </div>
-            ) : !hasProfiles && !loadError ? (
-                <div className="text-center py-6 text-muted-foreground">
-                    <MdFolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-ui-support">{t('presets.copy.070')}</p>
-                    <p className="mt-2 text-ui-support">{t('presets.copy.072')}</p>
-                </div>
-            ) : null}
+            )}
         </>
     );
 
@@ -474,7 +471,14 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
  <TabsList aria-label={t('presets.copy.056')} className="m-2 grid h-auto grid-cols-3">
  {(['preset', 'bundle', 'recovery'] as const).map(value => <TabsTrigger key={value} value={value} className="min-w-0 text-center">{t(`presets.tab.${value}`)}</TabsTrigger>)}
  </TabsList><TabsContent value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'}>
-                <p className="px-4 py-3 text-ui-support text-muted-foreground">{t(recoveryOpen ? 'presets.intro.recovery' : bundleOpen ? 'presets.intro.bundle' : 'presets.intro.preset')}</p>
+                <div className="space-y-2 px-4 py-3 text-ui-support text-muted-foreground">
+                    <p>{t(recoveryOpen ? 'presets.intro.recovery' : bundleOpen ? 'presets.intro.bundle' : 'presets.intro.preset')}</p>
+                    {/* 空のときだけ、下の欄を見る前に案内する。スクロールの先に隠さない（#773）。 */}
+                    {showEmptyNotice && !recoveryOpen && !bundleOpen && <div>
+                        <p className="font-medium text-foreground">{t('presets.copy.070')}</p>
+                        <p className="text-balance [word-break:auto-phrase]">{t('presets.copy.072')}</p>
+                    </div>}
+                </div>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
                     <div className="flex items-center gap-1">
@@ -528,9 +532,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="profile-list-region flex-none overflow-hidden flex flex-col">
                     <div className="p-4 pb-2 border-t border-border space-y-3">
                         <h3 className="text-ui-heading font-semibold">{t('presets.savedProfiles')}</h3>
-                        {/* 保存済みが無いあいだは、空の案内と取り込みを先頭に置き、範囲の選択と検索は出さない（#773、#632）。 */}
-                        {!hasProfiles && listStatus}
-                        {hasProfiles && <fieldset className="space-y-3 text-ui-support">
+                        {/* 操作欄を出せないあいだ（保存済みが無い、または取得に失敗）は、失敗と読み込みを先頭に置き、範囲の選択と検索は出さない（#773、#632）。 */}
+                        {!listUsable && listStatus}
+                        {listUsable && <fieldset className="space-y-3 text-ui-support">
                             <legend className="text-ui-heading font-semibold mb-3">{t('profilePurpose.apply')}</legend>
                             <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
                             {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
@@ -539,7 +543,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                             <MdFileUpload className="w-3.5 h-3.5" />
                             {t('presets.copy.065')}
                         </Button>
-                        {hasProfiles && <>
+                        {listUsable && <>
                             <label htmlFor="profile-search" className="block text-ui-control font-medium">{t('presets.copy.066')}</label>
                             <div className="relative">
                                 <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -556,7 +560,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
 
                     {hasProfiles && <div className="max-h-64 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
-                        {listStatus}
+                        {listUsable && listStatus}
                         {isLoading ? null : filteredProfiles.length === 0 && !loadError ? (
                             <div className="text-center py-12 text-muted-foreground">
                                 <MdFolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
