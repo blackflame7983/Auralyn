@@ -29,6 +29,7 @@ import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
 import { formatAudioRoute, usageDestination } from '@/lib/audioRouteLine';
+import { engineInputName } from '@/lib/inputSource';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
 import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
@@ -189,6 +190,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
+    // 実行中の入力を優先する。アプリの音声は機器名を持たないので、アプリ名を入力の名前にする（#756）。
+    const inputName = engineInputName(preparation.observation.config) ?? currentInput;
     const chrome = deriveHomeChrome({ configured });
     // 音楽鑑賞の「音が届いているか確かめる」欄は、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
@@ -222,7 +225,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const muteAnnouncement = preparation.observation.availability === 'muted' && !liveStripShown ? t('prep.muted') : '';
     const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
     const routeInConnectionDiagram = configured && page === 'home' && wideHome;
-    const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
+    const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={inputName} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onMeasureNoise={onMeasureNoise} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} vstCount={vstCount} unconfigured={!configured} />;
     const railCurrent: RailDestination = page;
@@ -233,7 +236,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const usage = preparation.context.usage;
     const destination = usage ? usageDestination(t, usage, preparation.context.receiver) : undefined;
     const route = configured && !routeInConnectionDiagram ? formatAudioRoute(
-        preparation.observation.config?.input ?? currentInput,
+        inputName,
         preparation.observation.config?.output ?? currentOutput,
         destination?.full,
         purpose === 'music',
@@ -283,7 +286,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
                     listenDisabled={!audioReady} listenDisabledReason={audioReady ? undefined : t(engineProcessReady === null ? 'loudness.audioUnknown' : 'header.compareNeedsAudio')} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
-                        input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
+                        input={inputName} output={preparation.observation.config?.output ?? currentOutput}
                         vstBypassed={isABBypassed} compareUnavailable={compareReason} onCompareVst={() => { if (!compareDisabled) void handleABToggle(); }}
                         onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
                 />
@@ -323,7 +326,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured && purpose === 'music' && <MusicHomeDesk onLoadPreset={onLoadPreset} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
-                            input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
+                            input={inputName} output={preparation.observation.config?.output ?? currentOutput} />}
                         {configured && <div className="home-connect-column min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped} pinnedOpen={routeInConnectionDiagram}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
@@ -331,7 +334,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t(music ? 'shell.stoppedMusic' : 'shell.stopped') : t('shell.unconfigured')}
                             host={currentHost} sampleRate={currentSampleRate}
-                            inputName={currentInput} outputName={currentOutput}
+                            inputName={inputName} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
                             onSetup={onOpenWizard}
@@ -351,7 +354,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <MuteAnnouncement text={muteAnnouncement} />
                     <EmergencyMuteButton onOpenSettings={onOpenSettings} />
                     <MasterBar
-                        input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={currentInput} />}
+                        input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={inputName} />}
                         lock={liveProtect}
                         outputName={currentOutput}
                         outputMuted={preparation.observation.availability === 'muted'}

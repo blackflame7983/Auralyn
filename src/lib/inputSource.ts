@@ -10,6 +10,15 @@ export function usesAppAudio(saved: InputSource | undefined, engine: InputSource
     return saved?.kind === 'process_loopback' || engine?.kind === 'process_loopback';
 }
 
+/**
+ * 実行中の入力の、利用者に見せる名前。アプリの音声は機器名を持たない（input が null）ので、アプリ名を返す。
+ * 機器入力は機器名。どちらも無いときだけ undefined（入力が未設定）。
+ */
+export function engineInputName(config: { input?: string | null; input_source?: InputSource } | null | undefined): string | undefined {
+    if (config?.input_source?.kind === 'process_loopback') return config.input_source.config.appName;
+    return config?.input || undefined;
+}
+
 export function withInputPurpose(source: InputSource, purpose: InputPurpose): InputSource {
     return source.kind === 'process_loopback'
         ? { kind: 'process_loopback', config: { ...source.config, purpose } }
