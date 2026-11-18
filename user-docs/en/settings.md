@@ -2,7 +2,7 @@
 title: "Settings reference"
 description: "Find the right page and understand when to change it."
 order: 8
-uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Appearance", "Gaming", "Hotkeys", "System", "Use", "Switch", "Align", "Open Connection", "Audio will briefly cut out", "No connection changes", "Save and restore settings"]
+uiLabels: ["Settings", "Connection", "Connection and dropout settings", "Sound", "Basics", "Save modes", "Singing tuning", "Loudness protection", "Reduce loud peaks", "Scope of protection, and how long the setting lasts", "Broadcast true-peak limit", "Detailed settings", "Show detailed numbers", "Lock controls", "OBS", "Connect to OBS", "Open OBS guide", "Not connected", "Connected", "Appearance", "Gaming", "Hotkeys", "System", "Use", "Switch", "Align", "Open Connection", "Audio will briefly cut out", "No connection changes", "Save and restore settings"]
 ---
 
 ## Connection {#audio}
@@ -28,7 +28,7 @@ In “Loudness protection”, turn “Reduce loud peaks” and “Broadcast true
 
 ## OBS {#obs}
 
-Use “Settings” → “OBS”. The first heading, “Connect to OBS”, is where you set the endpoint and credentials. A connection does not confirm audio reception. [Check in OBS](./obs.md#verify).
+Use “Settings” → “OBS”. The first heading, “Connect to OBS”, is where you set the endpoint and credentials. Next to the heading, the current connection state (such as “Not connected” or “Connected”) is shown. If this is your first time, “Open OBS guide” beside it walks you through preparing OBS. A connection does not confirm audio reception. [Check in OBS](./obs.md#verify).
 
 Save scene linking settings in their own section. Once enabled and saved, linking responds to the next actual scene change. Connecting or reconnecting alone does not switch settings.
 
