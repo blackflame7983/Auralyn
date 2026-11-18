@@ -72,7 +72,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             {!music && !currentVoice && <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-ui-support text-muted-foreground">{t('home.modeMark')}</span>}
             <h2 className="min-w-0 truncate text-ui-heading font-medium" title={customHeading ? t('liveBar.customHint') : heading} aria-describedby={customHeading ? customHintId : undefined}>{heading}</h2>
             {customHeading && <span id={customHintId} data-now-custom="aside" className="text-ui-support text-muted-foreground">{t('home.customAside')}</span>}
-            {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t('prep.muted')}</span>}
+            {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t(music ? 'home.notPlaying' : 'home.notSending')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <IncomingStatus running={running} music={music} label={t(music ? 'music.source' : 'unsetFlow.mic')} />

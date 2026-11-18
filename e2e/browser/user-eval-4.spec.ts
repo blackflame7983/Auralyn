@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { settleLayoutMotion } from './layoutMotion';
+import { setOutputMuted } from './e2eHooks';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -15,15 +16,15 @@ test.beforeEach(async ({ page }) => {
 test('配信のいまの状態に、モードと送る音とミュートが出る', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.goto('/');
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    await setOutputMuted(page, false);
     const now = page.getByRole('region', { name: 'いまの状態', exact: true });
     await expect(now.getByText('モード', { exact: true })).toBeVisible();
     await expect(now.getByRole('heading', { name: 'いまの調整', exact: true })).toBeVisible();
     await expect(now.locator('[data-now-mute]')).toHaveCount(0);
     await expect(now.getByRole('meter', { name: '送る音', exact: true })).toBeVisible();
     await expect(now.locator('[data-now-incoming]')).toBeVisible();
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
-    await expect(now.locator('[data-now-mute="muted"]')).toHaveText('出力ミュート・音量ゼロ');
+    await setOutputMuted(page, true);
+    await expect(now.locator('[data-now-mute="muted"]')).toHaveText('音を送っていません');
 });
 
 test('受信待ちは声の流れを出さず、無音は平らな波形、音が来ているときだけ時間の流れを描く', async ({ page }) => {

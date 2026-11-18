@@ -8,8 +8,10 @@ export interface PreparationContext {
     location: 'home' | 'venue'; usage: PreparationUse | ''; signal: 'unknown' | 'separate' | 'mixed'; receiver: string;
 }
 export type Availability = 'unknown' | 'unconfigured' | 'stopped' | 'failed' | 'pending' | 'muted' | 'ready';
+/** muted の原因。札を押したときの移動先を、札を描いたのと同じスナップショットで決める。緊急ミュートと同時なら緊急ミュートを先にする。 */
+export type MuteCause = 'muted' | 'zeroGain';
 export interface PreparationObservation {
-    availability: Availability; config: AudioStateInfo['config']; keys: Record<PreparationStage, string> | null;
+    availability: Availability; muteCause?: MuteCause; config: AudioStateInfo['config']; keys: Record<PreparationStage, string> | null;
     routing?: LiveOutputConfig; inputGain?: number; obs: ObsAudioReachResult | null; obsCurrent: boolean;
 }
 export interface Confirmation { at: number; key: string; target: string; expired: boolean }
@@ -75,7 +77,9 @@ export function buildPreparationObservation(state: AudioStateInfo, stats: Engine
     const input = [state.config.host, state.config.input, state.config.sample_rate, state.config.buffer_size, p.inputGain, p.inputChannels];
     const sound = key([p.engineEpoch, stats.latencyMetadata.streamEpoch, input, p.processingRevision, p.nrBackend, p.nrModel, context.location, context.signal]);
     const listen = key([sound, state.config.output, p.outputRouting, p.outputGain, p.outputRevision, p.routingRevision, p.muted, live.config, live.broadcastEpoch]);
-    return { ...base, availability: p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready', inputGain: p.inputGain, routing: live.config,
+    const availability: Availability = p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready';
+    const muteCause: MuteCause | undefined = availability === 'muted' ? p.muted ? 'muted' : 'zeroGain' : undefined;
+    return { ...base, availability, muteCause, inputGain: p.inputGain, routing: live.config,
         keys: { sound, listen, receiver: key([listen, context.usage, context.receiver.trim(), obs?.verification?.operationId, obsCurrent]) } };
 }
 

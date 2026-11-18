@@ -30,7 +30,10 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await expect(column.getByRole('meter', { name: 'マイクの入力レベル', exact: true })).toHaveAttribute('aria-valuetext', /音声停止中/);
         await expect(column.getByRole('meter', { name: '出力', exact: true })).toHaveCount(0);
         const peak = column.locator('p', { hasText: '出力のピーク（音声停止中）' });
-        await expect(peak).toHaveText('出力のピーク（音声停止中） —');
+        await expect(peak).toContainText('出力のピーク（音声停止中） —');
+        // #766: 見える名前「ピーク」を付け、停止中の「—」も同じ行にそろえる。
+        await expect(peak.getByText('ピーク', { exact: true })).toBeVisible();
+        await expect(peak.getByText('—', { exact: true })).toBeVisible();
         await expect(column.locator('[role="meter"] [data-meter-status]')).toHaveCount(0);
         await expect(peak).toBeVisible();
         await expect(column.locator('p', { hasText: '−∞ dBFS' })).toHaveCount(0);

@@ -14,7 +14,6 @@ interface HomePanelsProps {
     diagnosticAttention?: boolean;
     stoppedInStrip?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
-    onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
     model: PreparationModel;
     onOpenOBSGuide?: () => void;
@@ -42,7 +41,7 @@ interface HomePanelsProps {
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
 export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName, host, sampleRate,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange, pinnedOpen = false }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onSetup, onExpandedChange, pinnedOpen = false }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -52,8 +51,8 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const stripStatus = !configured ? null : audioReady ? t('device.engine') : statusText ?? null;
     const resolvedStatus = statusText ?? t(availabilityLabel(model.observation.availability, music));
     const statusCovered = stripStatus !== null && resolvedStatus === stripStatus;
-    // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。
-    const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);
+    // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。ミュート中は主ボタンを出さないので、入口を残す（#766）。
+    const configureIsPrimary = !['ready', 'unknown', 'pending', 'muted'].includes(model.observation.availability);
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     const broadcastId = model.observation.routing?.deviceId;
@@ -61,7 +60,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     // 受け側へ届いたかは Auralyn からは分からない。未確認の間は案内にとどめ、前の確認の記録が失効したとき（設定の変更・停止・再開始など）だけ注意にする。
     const receiverState = music || model.context.usage === 'listening' ? null : confirmationState(model.records, 'receiver');
     return <div className="home-panels space-y-4">
-        <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText} pinnedOpen={pinnedOpen}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
             {music && <p className="basis-full text-ui-support text-muted-foreground">{t('music.playbackValues', {
