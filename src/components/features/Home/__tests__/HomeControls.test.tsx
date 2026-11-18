@@ -135,7 +135,7 @@ it('声を整えるがOFFでも種類を保存し、ONにはしない', async ()
     render(<VoiceQuickControls running />);
     const bright = await screen.findByRole('radio', { name: '明瞭' });
     await waitFor(() => expect(bright).toBeEnabled());
-    expect(screen.getByRole('radio', { name: '低め' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: '温かめ' })).toHaveAttribute('aria-checked', 'true');
     await act(async () => fireEvent.click(bright));
     expect(request).toHaveBeenCalledWith({ action: 'apply', epoch: 'e1', expectedRevision: '3', config: { ...saved, active: false, preset: 'bright', amount: 0.4 } });
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();

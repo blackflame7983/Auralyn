@@ -35,7 +35,7 @@ Compare before and after processing in Voice Check.
 
 The name of the tone used while shaping your voice.
 
-The choices are Standard, Warm, and Bright. This is separate from sending sound to OBS.
+The choices are Standard, Warm, and Bright. Warm keeps more low end and does not change voice pitch. This is separate from sending sound to OBS.
 
 ### VST {#term-vst}
 

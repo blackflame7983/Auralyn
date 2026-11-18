@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { EngineRuntimeStats } from '@/api/audio';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -49,7 +49,7 @@ const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, 
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
 beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn = true; quick.preset = 'broadcast'; quick.readable = true; quick.deesser = null; });
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
 
 it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
@@ -115,6 +115,55 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     expect(rows[1]).toHaveTextContent('builtin-switch'); expect(rows[1]).toHaveTextContent('builtin-amount');
     expect(rows[1].querySelector('[data-home-tier="2"]')).toHaveTextContent('builtin-presets');
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
+});
+
+it('声を整えるカードは、声の種類を整え具合のスライダーより上に置く（音づくりと同じ順、#770）', () => {
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    const card = screen.getAllByRole('listitem')[1];
+    const presets = within(card).getByText('builtin-presets');
+    const amount = within(card).getByText('builtin-amount');
+    expect(presets.closest('[data-home-tier="2"]')).not.toBeNull();
+    expect(presets.compareDocumentPosition(amount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+function voiceOnStats() {
+    const current = stats();
+    const stage = current.latencyMetadata?.stageBreakdown;
+    if (!stage) throw new Error('声の段の内訳がありません');
+    stage.builtinVoiceEnabled = true;
+    return current;
+}
+
+const stubTier2 = (visible: boolean) => vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: visible && query === '(min-height: 800px)', media: query, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+}));
+
+it.each(['ja', 'en'] as const)('声の種類の選択欄が見えるときは、見出し行をONだけにし、見えないときは種類の名前を添える (%s)', locale => {
+    const current = voiceOnStats();
+    const status = () => screen.getAllByRole('listitem')[1].querySelector('[data-tone]')?.textContent?.trim();
+    const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: current, running: true }}>
+        <SoundChain {...props()} audioReady />
+    </RuntimeStatsContext.Provider></LocaleProvider>;
+    stubTier2(false);
+    const view = render(content());
+    expect(status()).toBe(message(locale, 'chain.voiceOn', { name: message(locale, 'settings.AudioSettingsModal.098') }));
+    view.unmount();
+    stubTier2(true);
+    render(content());
+    expect(status()).toBe(message(locale, 'flow.enabled'));
+});
+
+it('2段目が見えても、歌向けの声では選択欄が無いので見出し行に名前を残す', () => {
+    quick.preset = 'singing';
+    const current = voiceOnStats();
+    stubTier2(true);
+    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent(message('ja', 'chain.voiceOn', { name: message('ja', 'chain.singingShort') }));
+});
+
+it.each(['ja', 'en'] as const)('声の種類の名前は、声の高さと取れない音色の語にする (%s)', locale => {
+    expect(message(locale, 'settings.AudioSettingsModal.099')).toBe(locale === 'ja' ? '温かめ' : 'Warm');
+    expect(message(locale, 'home.preset.warmHint')).toMatch(locale === 'ja' ? /声の高さを変える機能ではありません/ : /does not change voice pitch/);
 });
 
 it.each(['ja', 'en'] as const)('声の処理と残響がOFFでも歯擦音があれば段はONで、折り畳みは歯擦音のみと示す (%s)', locale => {
@@ -471,18 +520,18 @@ it('周囲の音を測るは2段目に置き、測定の状態は出さない', 
 });
 
 it('2段目が隠れるとき、焦点はカードの見出しへ移る', () => {
-    let listener: (() => void) | undefined;
+    const listeners = new Set<() => void>();
     const media = {
         matches: true,
-        addEventListener: (_type: string, fn: () => void) => { listener = fn; },
-        removeEventListener: () => { listener = undefined; },
+        addEventListener: (_type: string, fn: () => void) => { listeners.add(fn); },
+        removeEventListener: (_type: string, fn: () => void) => { listeners.delete(fn); },
     };
     vi.stubGlobal('matchMedia', () => media);
     try {
         render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady onMeasureNoise={vi.fn()} /></RuntimeStatsContext.Provider>);
         screen.getByRole('button', { name: message('ja', 'home.measureNoise') }).focus();
         media.matches = false;
-        listener?.();
+        act(() => { listeners.forEach(listener => listener()); });
         expect(screen.getByRole('heading', { name: message('ja', 'settings.AudioSettingsModal.105') })).toHaveFocus();
     } finally {
         vi.unstubAllGlobals();
