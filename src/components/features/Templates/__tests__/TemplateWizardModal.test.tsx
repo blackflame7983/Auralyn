@@ -142,6 +142,48 @@ it.each(['ja', 'en'] as const)('操作ロックに断られたときは、通知
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
+const lockPlugins = [
+    { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+    { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+];
+
+async function lockedApply(armed?: boolean) {
+    const view = (live?: boolean) => <TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={lockPlugins}
+        onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} liveArmed={live} />;
+    const result = render(view(armed));
+    fireEvent.click(screen.getAllByRole('button', { name: message('ja', 'templates.useThis') })[0]);
+    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    const reason = await screen.findByRole('alert');
+    return { ...result, view, reason };
+}
+
+it('ロックの理由は日本語を語の途中で折り返さない', async () => {
+    const { reason } = await lockedApply();
+    expect(reason.className).toContain('[word-break:auto-phrase]');
+});
+
+it('ロックに断られたあとで割り当てを変えると、理由を消す', async () => {
+    await lockedApply();
+    fireEvent.change(screen.getByRole('combobox', { name: 'コンプレッサーに使うVST' }), { target: { value: 'limiter' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('ロックに断られたあとで操作ロックが外れたら、画面を開いたまま理由を消す', async () => {
+    const { rerender, view } = await lockedApply(true);
+    rerender(view(true));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    rerender(view(false));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('ロックの状態が未取得のあいだは、理由を消さない', async () => {
+    const { rerender, view } = await lockedApply(true);
+    rerender(view(undefined));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+});
+
 it('適用が失敗（ロック以外）したときは、画面側が失敗の通知を1件出す', async () => {
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[
         { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },

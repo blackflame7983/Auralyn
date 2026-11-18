@@ -494,6 +494,7 @@ test.describe('操作ロック中に、ダイアログの中から VST を追加
             await expect(dialog).toBeVisible();
             await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
             await expect(dialog).not.toContainText(backendLockReason);
+            if (locale === 'ja') await expect(reason).toHaveCSS('word-break', 'auto-phrase');
             expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['load_plugin']);
         });
 
@@ -512,6 +513,7 @@ test.describe('操作ロック中に、ダイアログの中から VST を追加
             await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
             await expect(dialog).not.toContainText(backendLockReason);
             await expect(dialog.getByRole('button', { name: labels.apply, exact: true })).toBeEnabled();
+            if (locale === 'ja') await expect(reason).toHaveCSS('word-break', 'auto-phrase');
             expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['load_plugin']);
         });
     }

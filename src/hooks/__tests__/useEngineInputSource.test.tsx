@@ -54,6 +54,21 @@ it('止まっているあいだは実際の入力元を持ち越さず、再開�
     expect(result.current?.kind).toBe('device');
 });
 
+it('止まる前に出した確認の応答が止まったあとに届いても、再開時の入力元として使わない', async () => {
+    const { result, rerender } = renderHook(({ running }) => useEngineInputSource(running), { initialProps: { running: true } });
+    let reply: (value: AudioStateInfo) => void = () => {};
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockReturnValue(new Promise<AudioStateInfo>(resolve => { reply = resolve; }));
+    let late: Promise<unknown> = Promise.resolve();
+    act(() => { late = audioApi.getAudioState(); });
+    rerender({ running: false });
+    await act(async () => { reply(state(app)); await late; });
+    rerender({ running: true });
+    expect(result.current).toBeUndefined();
+    await pollOnce(state(device));
+    expect(result.current?.kind).toBe('device');
+});
+
 it('入力が途中でアプリの音声へ変わったら、次の確認で追従する', async () => {
     const { result } = renderHook(() => useEngineInputSource(true));
     await pollOnce(state(device));

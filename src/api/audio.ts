@@ -1,5 +1,5 @@
 import type { InputSource, InputSourceRequest, ProcessInputCandidate } from '@/lib/inputSource';
-import { publishEngineAudioState } from '@/lib/engineInputSource';
+import { beginEngineAudioStateRead, publishEngineAudioState } from '@/lib/engineInputSource';
 import { readExtraScanFolders } from '@/lib/vstScanFolders';
 import { invoke } from "@tauri-apps/api/core";
 import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
@@ -262,12 +262,13 @@ export const audioApi = {
         return await invoke("set_channel_scan", { active });
     },
     getAudioState: async (): Promise<AudioStateInfo> => {
+        const readGeneration = beginEngineAudioStateRead();
         try {
             const state = await invoke<AudioStateInfo>("get_audio_state");
-            publishEngineAudioState(state);
+            publishEngineAudioState(state, readGeneration);
             return state;
         } catch (error) {
-            publishEngineAudioState(null);
+            publishEngineAudioState(null, readGeneration);
             throw error;
         }
     },

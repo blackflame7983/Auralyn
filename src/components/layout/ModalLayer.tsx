@@ -1,4 +1,5 @@
 import { useSingingDraft } from '../../hooks/useSingingDraft';
+import { useClearOnLiveUnlock } from '../../hooks/useClearOnLiveUnlock';
 import type { LiveModesModel } from '../../hooks/useLiveModes';
 import { Suspense, lazy, useState } from 'react';
 import { useObsUsage } from '../../hooks/useObsUsage';
@@ -127,9 +128,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
     const leaveGeneration = useLeaveGeneration();
     const [singingPreview, setSingingPreview] = useState(false);
     const t = useMessages();
-    // 追加の画面を開いたまま操作ロックに断られたとき、理由はその画面の中の案内の欄に出す。閉じたら消す。
+    // 追加の画面を開いたまま操作ロックに断られたとき、理由はその画面の中の案内の欄に出す。閉じる・ロックが外れる・別の操作を始めると消す。
     const [liveLockedAdd, setLiveLockedAdd] = useState(false);
     if (liveLockedAdd && !ui.isBrowserOpen) setLiveLockedAdd(false);
+    useClearOnLiveUnlock(liveModel?.snapshot?.armed, () => setLiveLockedAdd(false));
     const { returnToTiming, setReturnToTiming, returnToBundle, setReturnToBundle } = useModalReturnFlags({ settingsOpen: ui.isSettingsOpen, presetManagerOpen: ui.isPresetManagerOpen, obsGuideOpen: ui.isOBSGuideOpen });
     // lazy画面の読込中も、明示的なガイド↔接続設定の往復だけ接続寿命を引き継ぐ。
     useObsUsage(ui.isOBSGuideOpen || (returnToTiming && ui.isSettingsOpen) || ui.isPresetManagerOpen || (returnToBundle && ui.isSettingsOpen));
@@ -218,8 +220,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         error={pluginsApi.scanError}
                         notice={liveLockedAdd ? t('pluginNotices.liveLockedBody') : pluginsApi.error}
                         protectionNotice={pluginsApi.sessionProtectionReason}
-                        onScan={request => { void pluginsApi.scanPlugins(request); }}
-                        onRetry={pluginsApi.retryPluginScan ? path => { void pluginsApi.retryPluginScan?.(path); } : undefined}
+                        onScan={request => { setLiveLockedAdd(false); void pluginsApi.scanPlugins(request); }}
+                        onRetry={pluginsApi.retryPluginScan ? path => { setLiveLockedAdd(false); void pluginsApi.retryPluginScan?.(path); } : undefined}
                         skippedRoots={pluginsApi.skippedRoots}
                     />
                 </Suspense>
@@ -353,6 +355,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onApplyTemplate={pluginsApi.applyTemplate}
                         onScan={() => { void pluginsApi.scanPlugins(); }}
                         isScanning={pluginsApi.isScanning}
+                        liveArmed={liveModel?.snapshot?.armed}
                         onOpenSoundSettings={() => {
                             ui.setIsTemplateWizardOpen(false);
                             ui.openSoundSettings();
