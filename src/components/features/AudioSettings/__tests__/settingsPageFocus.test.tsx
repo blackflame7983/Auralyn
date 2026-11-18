@@ -156,6 +156,20 @@ it('音質調整の指定で来たときは、描画のあとに操作できる�
     expect(frames.size).toBe(0);
 });
 
+it('接続方式の指定で来たときは、畳んだ音質調整を開き、描画のあとに接続方式の選択へ焦点を移す', () => {
+    const select = document.createElement('select');
+    const details = document.createElement('details');
+    details.innerHTML = '<div data-tuning-control><span tabindex="0">調整</span></div>';
+    document.body.append(select, details);
+    const { result, rerender } = renderHook(({ loading }) => useTuningSection({ ...tuningInput, initialSection: 'connectionType', loading }), { initialProps: { loading: true } });
+    act(() => { result.current.hostSelect.current = select; result.current.tuningDetails.current = details; });
+    expect(result.current.tuningOpen).toBe(true);
+    expect(frames.size).toBe(0);
+    rerender({ loading: false });
+    flushFrames();
+    expect(document.activeElement).toBe(select);
+});
+
 const focusInput = { isOpen: true, initialSection: undefined as 'liveOutput' | undefined, activeTab: 'audio' as SettingsTab, tabRequest: 0, soundPlace: 'basic' as SoundPlace, focusNonce: 0 };
 
 function withHeading(options: Partial<typeof focusInput> = {}) {

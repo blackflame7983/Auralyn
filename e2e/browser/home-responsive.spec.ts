@@ -149,12 +149,9 @@ for (const locale of ['ja', 'en']) {
                 })).toBe(true);
             }
             const tops = await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
-            // 日本語は960でも3列。英語は内側520〜650pxで2列にし、単語の途中では切らない（#586）。
-            if (locale === 'ja') expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
-            else {
-                expect(new Set(tops.map(top => Math.round(top))).size).toBe(2);
-                expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
-            }
+            // 高さ640では日英とも3枚を1行に並べる（#700）。英語でも、はみ出さず単語の途中で切れない。2列にするのは高さ800px以上（下の試験、#586）。
+            expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            if (locale === 'en') expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
             const nowHeight = (await mustBox(live)).height;
             const builtin = page.locator('#home-builtin');
             // 高さ 640 は仮の境目 860 より低いので、2段目は残すが隠す。
@@ -179,6 +176,28 @@ for (const locale of ['ja', 'en']) {
     }
 }
 
+// 高さ800px以上では、英語の音調整は内側520〜650pxで2列にし、単語の途中では切らない（#586）。日本語は3列のまま。
+for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
+    test(`音調整のカードは高さ800pxで英語だけ2列にする ${locale} ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width: 960, height: 800 });
+        await page.addInitScript(({ locale, theme }) => {
+            localStorage.setItem('vst_host_locale', locale);
+            localStorage.setItem('vst_host_theme', theme);
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('vst_host_setup_goal', 'obs');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        }, { locale, theme });
+        await page.goto('/');
+        await setOutputMuted(page, false);
+        const cards = page.locator('.sound-module-item');
+        await expect(cards).toHaveCount(3);
+        await settleLayoutMotion(page);
+        const tops = new Set((await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top))).map(top => Math.round(top)));
+        expect(tops.size).toBe(locale === 'en' ? 2 : 1);
+        expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
+    });
+}
 for (const theme of ['light', 'dark']) test(`音の流れはテーマにかかわらず描き、オーロラの帯は出さない ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.addInitScript(theme => {

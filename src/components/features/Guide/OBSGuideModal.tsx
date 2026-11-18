@@ -1,24 +1,29 @@
 import { DeviceChoiceCard } from './DeviceChoiceCard';
 import { Button } from '@/components/ui/button';
-import { SingingRouteChoice, SingingRouteGuide, type SingingRoute } from './SingingRouteGuide';
+import { SingingRouteGuide, type SingingRoute } from './SingingRouteGuide';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import { ObsMixCheck } from './ObsMixCheck';
 import React, { useState } from 'react';
 import { useMuteShortcut } from '@/hooks/useMuteShortcut';
-import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic } from 'react-icons/md';
+import { readAudioPreferences } from '@/lib/audioPreferences';
+import { isAsioHost } from '../SetupWizard/wizardModel';
+import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic, MdTune, MdHelpOutline } from 'react-icons/md';
+
+type ObsDevice = 'mixer' | 'usb' | 'unknown';
 
 interface OBSGuideModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings: () => void;
+    onChooseConnection: () => void;
     onOpenObsSettings?: () => void;
     initialTimingOpen?: boolean;
     onOpenTroubleshoot?: () => void;
     onOpenVoiceCheck?: () => void;
 }
 
-export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenTroubleshoot, onOpenVoiceCheck, onOpenObsSettings, initialTimingOpen = false }) => {
+export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onChooseConnection, onOpenTroubleshoot, onOpenVoiceCheck, onOpenObsSettings, initialTimingOpen = false }) => {
     const t = useMessages();
     // step 0: Device Type Selection (Hardware Mixer vs Software)
     // step 1: Driver/Software Setup
@@ -27,14 +32,18 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     const [step, setStep] = useState(initialTimingOpen ? 3 : 0);
     const [route, setRoute] = useState<SingingRoute>('processed');
     const [timingRequested, setTimingRequested] = useState(initialTimingOpen);
-    const [useHardwareMixer, setUseHardwareMixer] = useState<boolean | null>(null);
+    const [device, setDevice] = useState<ObsDevice | null>(null);
+    // 「分からない」は、どのマイクでも成り立つ仮想ケーブルの経路で進める。
+    const useHardwareMixer = device === null ? null : device === 'mixer';
+    // 仮想ケーブルの方法は通常出力を CABLE Input にするため、出力を選べない ASIO のままでは進めない。
+    const needsWasapi = route === 'processed' && useHardwareMixer === false && isAsioHost(readAudioPreferences()?.host ?? '');
     const chooseRoute = (value: SingingRoute) => {
         setRoute(value); setTimingRequested(false);
-        if (value === 'processed' && useHardwareMixer === null && step > 0) setStep(0);
+        if (value === 'processed' && device === null && step > 0) setStep(0);
     };
     const totalSteps = 4; // 0 to 3
     const muteShortcut = useMuteShortcut(isOpen && step === 3);
-    const nextNeedsDevice = step === 0 && route === 'processed' && useHardwareMixer === null;
+    const nextNeedsDevice = step === 0 && device === null;
 
     if (!isOpen) return null;
 
@@ -84,18 +93,15 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 <div className="modal-body-base">
                     {step === 0 && (
                         <div className="space-y-2">
-                            <p className="text-ui-support text-muted-foreground">{t('guide.obs.intro')}</p>
-                            <SingingRouteChoice compact value={route} onChange={chooseRoute} />
-                            {route === 'processed' ? <>
-                                <div className="space-y-1 text-left">
-                                    <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
-                                    <p className="text-ui-support text-muted-foreground">{t('guide.copy.004')}</p>
-                                </div>
-                                <div className="grid gap-1.5">
-                                    <DeviceChoiceCard layout="row" name="obs-device" value="true" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} />
-                                    <DeviceChoiceCard layout="row" name="obs-device" value="false" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
-                                </div>
-                            </> : <p className="text-ui-support text-muted-foreground">{t('singingRoute.directInstructions')}</p>}
+                            <div className="space-y-1 text-left">
+                                <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
+                                <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('guide.copy.004')}</p>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <DeviceChoiceCard layout="row" name="obs-device" value="mixer" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdTune className="h-6 w-6" />} checked={device === 'mixer'} onChange={() => setDevice('mixer')} onActivate={nextStep} />
+                                <DeviceChoiceCard layout="row" name="obs-device" value="usb" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdMic className="h-6 w-6" />} checked={device === 'usb'} onChange={() => setDevice('usb')} onActivate={nextStep} />
+                                <DeviceChoiceCard layout="row" name="obs-device" value="unknown" label={t('guide.obs.unknownLabel')} title={t('guide.obs.unknownTitle')} description={t('guide.obs.unknownDescription')} badge={t('guide.copy.014')} icon={<MdHelpOutline className="h-6 w-6" />} checked={device === 'unknown'} onChange={() => setDevice('unknown')} onActivate={nextStep} />
+                            </div>
                         </div>
                     )}
 
@@ -104,6 +110,13 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                             <h3 className="text-ui-heading font-bold text-foreground">
                                 {route === 'direct' ? t('singingRoute.choose') : useHardwareMixer ? t('guide.copy.015') : t('guide.copy.016')}
                             </h3>
+                            {device === 'unknown' && route === 'processed' && <p role="status" className="text-ui-support text-balance text-foreground [word-break:auto-phrase]">{t('guide.obs.unknownNotice')}</p>}
+                            {needsWasapi && (
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-warning/20 bg-warning/5 p-3">
+                                    <p className="min-w-0 flex-1 text-ui-support text-foreground text-balance [word-break:auto-phrase]">{t('guide.obs.asioNotice')}</p>
+                                    <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>
+                                </div>
+                            )}
 
                             {route === 'direct' ? <p className="text-ui-support">{t('singingRoute.directInstructions')}</p> : useHardwareMixer ? (
                                 <div className="space-y-4">

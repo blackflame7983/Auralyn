@@ -10,11 +10,12 @@ export const SOURCE_HINT_AFTER_MS = 5000;
  * 音楽鑑賞で、再生元（仮想ケーブルなどの機器）から音が届かないときの一行の案内。
  * 再生アプリの出力先を、再生元と対になる側へ向けるよう伝える。届いているとき・停止中は出さない。
  * アプリの音声を再生元にしているときは、アプリから直接受けるので出さない。
+ * 再生元がアプリの音声かどうか判定できない（null）間も、出し過ぎないよう出さない。
  */
-export function MusicSourceHint({ running, source, fromApp }: { running: boolean; source?: string | null; fromApp: boolean }) {
+export function MusicSourceHint({ running, source, fromApp }: { running: boolean; source?: string | null; fromApp: boolean | null }) {
     const t = useMessages();
     const state = useInputMeterState(running);
-    const quiet = running && !fromApp && (state === 'waiting' || state === 'stale' || state === 'silent');
+    const quiet = running && fromApp === false && (state === 'waiting' || state === 'stale' || state === 'silent');
     const shown = useSustained(quiet, SOURCE_HINT_AFTER_MS);
     if (!shown) return null;
     const playback = cablePlaybackName(source);

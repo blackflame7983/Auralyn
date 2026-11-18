@@ -9,6 +9,7 @@ it('確認欄を開いても再生・録音・機器変更を始めず、設定�
     const settings = vi.fn(); const close = vi.fn();
     render(<MusicListeningCheck running input="CABLE Output" output="Headphones" vstBypassed={false} onCompareVst={vi.fn()} onSettings={settings} onClose={close} />);
     expect(screen.getByRole('heading', {name: '音が届いているか確かめる'})).toHaveFocus();
+    expect(screen.getByText('再生元', { selector: 'dt' })).toBeInTheDocument();
     expect(screen.getByText('CABLE Output')).toBeInTheDocument();
     expect(screen.getByText('Headphones')).toBeInTheDocument();
     expect(screen.getByText(/1\. 再生アプリで音を流す/)).toBeInTheDocument();

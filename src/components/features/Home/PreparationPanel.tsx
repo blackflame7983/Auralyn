@@ -113,7 +113,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     // 経路の文は上の帯に1回だけ出す（#669）。下の行のボタンは診断と接続の詳細だけ（#725）。
     // 状態の札があるときだけ左に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
     const collapsedStatus = !open && observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted');
-    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
+    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'prep-panel-open rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
         {!open && !collapsedStatus && <h2 className="home-title sr-only">{t('prep.title')}</h2>}
         <div className={open ? 'flex flex-wrap items-center justify-between gap-2' : 'home-route-row'}>
             {(open || collapsedStatus) && <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>

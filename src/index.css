@@ -881,15 +881,25 @@ html[data-app-hidden="true"] *::after {
    目安の曲線は説明で、操作ではない。値はスライダーが示す。 */
 @media (max-height: 700px) {
   .tone-guide { display: none; }
-  .sound-flow-body { height: 3.5rem; }
-  .sound-tool-list { margin-top: 0.5rem; }
+  .sound-flow-body { height: 2.75rem; }
+  .sound-flow > :first-child { margin-bottom: 0; }
+  .sound-tool-list { margin-top: 0.25rem; }
   .sound-module-card { gap: 0.5rem; }
   /* 最後の行の下の余白は、続きがあるように見えるフェードを出してしまう。 */
   .home-panels { margin-bottom: 0; }
+  /* 診断の前に行が増える状態（保存した構成の切り替え、送り先の選択で開く準備の欄）でも、診断を最初の表示に入れる。 */
+  .music-desk { margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; gap: 0.5rem; }
+  .prep-panel-open { padding-block: 0.25rem; }
 }
 @media (max-height: 799px) {
   .now-status { padding-block: 0.5rem; margin-bottom: 0.5rem; }
   .sound-flow { padding-block: 0.375rem; margin-bottom: 0.5rem; }
+}
+/* 英語の保存した構成・送り先の選択は、診断の前の行がさらに高い。区画の余白をもう一段詰める。上の高さ799の規則より後ろに置く。 */
+@media (max-height: 700px) {
+  .now-status { padding-block: 0.375rem; margin-bottom: 0.375rem; }
+  .sound-flow { padding-block: 0.25rem; margin-bottom: 0.375rem; }
+  .sound-chain { padding-block: 0.375rem; margin-bottom: 0.375rem; }
 }
 /* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
 [data-home-tier="2"]:empty {

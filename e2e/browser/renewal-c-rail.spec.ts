@@ -141,7 +141,7 @@ test('960と1024の日本語で音調整の見出しと状態は1行', async ({ 
     }
 });
 
-test('960の英語は音調整が2列で、見出しと状態が1行', async ({ page }) => {
+test('960×640の英語は音調整が3枚1行で、見出しと状態が1行', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('vst_host_locale', 'en'));
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
@@ -163,9 +163,9 @@ test('960の英語は音調整が2列で、見出しと状態が1行', async ({ 
         };
     });
     console.log(JSON.stringify({ english960: measured }));
-    // #586: 内側が520〜650pxの英語は、ノイズ低減と声を整えるを1段目、外部VSTを2段目にする。
+    // 高さ800px未満は、内側が520〜650pxの英語でも3枚を1行にする（#700）。高さ800px以上の2列は home-responsive.spec.ts（#586）。
     expect(measured.cards).toBe(3);
-    expect(measured.rows).toBe(2);
+    expect(measured.rows).toBe(1);
     expect(measured.lines).toBe(true);
     expect(measured.overflow).toBe(false);
 });

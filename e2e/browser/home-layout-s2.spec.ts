@@ -75,8 +75,10 @@ test.describe('英語の音調整', () => {
         });
     });
 
-    test('1024×768は2列で、外部VSTが1画面目に入る', async ({ page }) => {
-        await page.setViewportSize({ width: 1024, height: 768 });
+    // 高さ800px未満は3枚を1行に並べ（#700）、800px以上は2列にする（#586）。幅の範囲（内側520〜650px）は同じ。
+    for (const { height, columns } of [{ height: 768, columns: 3 }, { height: 800, columns: 2 }]) test(`1024×${height}は${columns}列で、外部VSTが1画面目に入る`, async ({ page }) => {
+        await page.setViewportSize({ width: 1024, height });
+
         await page.goto('/');
         await expect(page.getByText('Starting the audio engine…', { exact: true })).toHaveCount(0);
         const measured = await page.evaluate(() => {
@@ -99,11 +101,14 @@ test.describe('英語の音調整', () => {
         console.log(JSON.stringify({ english1024: measured }));
         expect(measured.inner).toBeGreaterThanOrEqual(520);
         expect(measured.inner).toBeLessThanOrEqual(650);
-        expect(measured.columns).toBe(2);
+        expect(measured.columns).toBe(columns);
         expect(Math.abs(measured.tops[0] - measured.tops[1])).toBeLessThanOrEqual(2);
-        expect(measured.tops[2]).toBeGreaterThan(measured.tops[0] + 8);
-        expect(Math.abs(measured.vst.left - measured.first.left)).toBeLessThanOrEqual(2);
-        expect(Math.abs(measured.vst.right - measured.second.right)).toBeLessThanOrEqual(2);
+        if (columns === 2) {
+            expect(measured.tops[2]).toBeGreaterThan(measured.tops[0] + 8);
+            expect(Math.abs(measured.vst.left - measured.first.left)).toBeLessThanOrEqual(2);
+            expect(Math.abs(measured.vst.right - measured.second.right)).toBeLessThanOrEqual(2);
+        } else expect(Math.abs(measured.tops[2] - measured.tops[0])).toBeLessThanOrEqual(2);
+
         expect(measured.vst.bottom).toBeLessThanOrEqual(measured.viewport + 1);
     });
 

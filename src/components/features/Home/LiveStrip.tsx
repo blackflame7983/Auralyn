@@ -40,9 +40,9 @@ function SendLevel({ running, label }: { running: boolean; label: string }) {
 }
 
 // ホーム先頭の「いまの状態」。出力の大きさはこの横バーで読む。右の列の出力に同じバーは置かない（#724）。主ボタンは多くて1つ。
-export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices }: {
+export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, savedInputFromApp = false, running, liveControls, liveModeName, onOpenStartErrorSettings, onOpenDevices }: {
     onStartAudio?: () => void; /** 札は上の帯に移した。呼び出し側の引数は残す。 */ stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
-    model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
+    model: PreparationModel; /** 保存済みの入力がアプリの音声か。実行中の状態を取れないときの補い。 */ savedInputFromApp?: boolean; running: boolean; liveControls?: ReactNode; liveModeName?: string; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
     /** 札は上の帯に移した。呼び出し側の引数は残す。 */
     engineProcessReady?: boolean | null;
 }) {
@@ -51,6 +51,9 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { usage } = model.context;
+    // 実行中の設定を取れない間は、再生元がアプリの音声か分からない。分からないときは案内を出さない。
+    const runningConfig = model.observation.config;
+    const inputFromApp = runningConfig ? runningConfig.input_source?.kind === 'process_loopback' || savedInputFromApp : null;
     // 音楽鑑賞の見出しは経路ではなく用途の名前。経路は上の帯に1回だけ出す（#651）。
     const heading = music ? t('home.musicHeading') : (liveModeName ?? t('liveBar.custom'));
     // 未登録の見出しは「いまの声」。モードの札は登録してから出す（#655）。
@@ -75,7 +78,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <IncomingStatus running={running} music={music} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
-        {music && <MusicSourceHint running={running} source={model.observation.config?.input} fromApp={model.observation.config?.input_source?.kind === 'process_loopback'} />}
+        {music && <MusicSourceHint running={running} source={runningConfig?.input} fromApp={inputFromApp} />}
         {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
             {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(music ? (starting ? 'home.startingListening' : 'home.startListening') : (starting ? 'home.starting' : 'home.startAudio'))}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}

@@ -34,7 +34,7 @@ export function MusicHomeDesk({ onLoadPreset }: {
     const recoveryNames = names?.filter(name => isRecoveryProfileName(name)) ?? [];
     const hasChoices = savedNames.length > 0 || recoveryNames.length > 0;
     if (!listFailed && !hasChoices) return null;
-    return <section aria-label={t('music.playback')} aria-busy={switching} className="mb-4 space-y-3 rounded-card border border-border bg-card p-4">
+    return <section aria-label={t('music.playback')} aria-busy={switching} className="music-desk mb-4 flex flex-col gap-3 rounded-card border border-border bg-card p-4">
         <h2 className="home-title">{t('music.playback')}</h2>
         {listFailed && <p role="alert" className="text-ui-support text-destructive-text">{t('music.presetListFailed')}</p>}
         {hasChoices && <Field label={t('music.presetLabel')}>

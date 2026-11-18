@@ -76,6 +76,13 @@ it('アプリの音声を再生元にしているときは出さない', () => {
     expect(hint()).toBeNull();
 });
 
+it('アプリの音声かどうか判定できない（null）あいだは出さない', () => {
+    vi.useFakeTimers();
+    render(<MusicSourceHint running source="CABLE Output" fromApp={null} />);
+    wait(SOURCE_HINT_AFTER_MS * 2);
+    expect(hint()).toBeNull();
+});
+
 it('英語でも同じ条件で、同じ形の一行を出す', () => {
     vi.useFakeTimers();
     render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}><MusicSourceHint running source="CABLE Output" fromApp={false} /></LocaleProvider>);

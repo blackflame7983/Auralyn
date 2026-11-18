@@ -78,6 +78,8 @@ interface AppShellProps {
     isEngineRunning: boolean;
     engineProcessReady?: boolean | null;
     currentInput?: string;
+    /** 保存済みの入力が再生中のアプリの音声か。実行中の状態を取れないときの補いにする。 */
+    currentInputFromApp?: boolean;
     currentOutput?: string;
     /** いまの状態に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
@@ -134,6 +136,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     isEngineRunning,
     engineProcessReady,
     currentInput,
+    currentInputFromApp = false,
     currentOutput,
     liveControls,
     liveProtect,
@@ -288,7 +291,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} savedInputFromApp={currentInputFromApp} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 配信・通話と音楽鑑賞で並びをそろえる：いまの状態 → 音の流れ →（配信だけ配信ミックス）→ 音調整 →（音楽だけ保存した構成）→ 診断と接続の詳細（#605 を置き換え）。 */}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
