@@ -7,6 +7,7 @@ import { audioApi } from '@/api/audio';
 import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
 import { withOutputControls } from '@/lib/preparationOutputControls';
+import { engineInputName } from '@/lib/inputSource';
 import {
     buildPreparationObservation, emptyObservation, expireConfirmations,
     normalizeReceiver, observationStamp, preparationReach, readPreparationContext, savePreparationContext, validPreparationSnapshot,
@@ -229,7 +230,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
                 || blockedRef.current || isAppHidden()) return;
             const receiverFallback = ctx.usage === 'obs' ? 'OBS' : ctx.usage === 'discord' ? 'Discord' : ctx.usage === 'other' ? (next.config?.output ?? '') : '';
             const key = next.keys[stage];
-            setRecords(old => ({ ...old, [stage]: { key, at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
+            setRecords(old => ({ ...old, [stage]: { key, at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : engineInputName(next.config) ?? '', expired: false } }));
 
         } finally { if (alive.current) setConfirming(false); }
     };

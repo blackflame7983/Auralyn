@@ -411,3 +411,12 @@ it('条件の通知が続いても（スライダーの操作ごとに2回ずつ
     expect(readsOf() - before).toBeLessThanOrEqual(8);
     expect(result.current.observation.muteCause).toBe('zeroGain');
 });
+it('アプリの音声で確認した記録の対象は、空ではなくアプリ名になる（#756）', async () => {
+    const source = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'chrome.exe', rawEndpointId: 'raw-1', purpose: 'music' } } as const;
+    vi.mocked(audioApi.getAudioState).mockResolvedValue({ ...audioState, config: { host: 'WASAPI', input: null, output: 'CABLE Input', sample_rate: 48000, buffer_size: 256, input_source: source } });
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    for (const stage of ['sound', 'listen'] as const) await act(async () => result.current.confirm(stage));
+    expect(result.current.records.sound?.target).toBe('chrome.exe');
+    expect(result.current.records.listen?.target).toBe('chrome.exe');
+});

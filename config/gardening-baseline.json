@@ -3350,34 +3350,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Home/InputGainControl.tsx",
-      "rule": "@typescript-eslint/no-misused-promises",
-      "hash": "471998286e98846636f04577dfda9682028c2201c6599f482a9a94d214d61eac",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/Home/InputGainControl.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "471998286e98846636f04577dfda9682028c2201c6599f482a9a94d214d61eac",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/Home/InputGainControl.tsx",
-      "rule": "auralyn/owned-timers",
-      "hash": "471998286e98846636f04577dfda9682028c2201c6599f482a9a94d214d61eac",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/components/features/Home/InputGainControl.tsx",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "471998286e98846636f04577dfda9682028c2201c6599f482a9a94d214d61eac",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/Home/MixingLiveControl.tsx",
       "rule": "@typescript-eslint/no-misused-promises",
       "hash": "1d11e4b0aa33d72e3ad338e5dceebdfa2a12593e52839e94d2de79968b1bd25f",

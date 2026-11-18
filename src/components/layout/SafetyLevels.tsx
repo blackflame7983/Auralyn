@@ -15,21 +15,21 @@ function DeviceName({ name }: { name?: string }) {
 }
 
 /** メーター購読を子に閉じ、マイク音量の再描画をレベル更新から分ける。 */
-function InputMeter({ running, music }: { running: boolean; music: boolean }) {
+function InputMeter({ running, music, fromApp }: { running: boolean; music: boolean; fromApp: boolean }) {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const reading = useSharedMeter(running, 'input');
-    return <MeterVisual reading={reading} label={t(music ? 'music.source' : 'home.inputLevel')} orientation="horizontal" height={16} fill="aurora" showValues statusOverlay numbers={!simple} />;
+    return <MeterVisual reading={reading} label={t(music ? 'music.source' : fromApp ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={16} fill="aurora" showValues statusOverlay numbers={!simple} />;
 }
 
-/** 右の列の入力。見出し、機器名、横メーター、マイク音量。 */
-export function SafetyInput({ running, music, name }: { running: boolean; music: boolean; name?: string }) {
+/** 右の列の入力。見出し、機器名、横メーター、マイク音量。配信でアプリの音声を入力にしているときは、マイクと呼ばない。 */
+export function SafetyInput({ running, music, name, fromApp = false }: { running: boolean; music: boolean; name?: string; fromApp?: boolean }) {
     const t = useMessages();
     return <div className="flex shrink-0 flex-col gap-1.5">
-        <h3 className="text-ui-control font-medium">{t(music ? 'music.source' : 'unsetFlow.mic')}</h3>
+        <h3 className="text-ui-control font-medium">{t(music ? 'music.source' : fromApp ? 'home.input' : 'unsetFlow.mic')}</h3>
         <DeviceName name={name} />
-        <InputMeter running={running} music={music} />
-        <InputGainControl />
+        <InputMeter running={running} music={music} fromApp={fromApp} />
+        <InputGainControl fromApp={fromApp} />
     </div>;
 }
 
