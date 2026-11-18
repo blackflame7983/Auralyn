@@ -40,7 +40,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
             </div>
             {action}
         </div>
-        {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。
+        {/* 全体の高さは 72px。高さ 700px 以下の窓では CSS で低くする（#700）。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。
             無音の言葉はいまの状態のメーターに任せ、ここでは平らな波形と凡例だけを出す（#624、#639）。 */}
         <div className="sound-flow-body flex h-[72px] flex-col">
             <div className="relative min-h-0 flex-1">
