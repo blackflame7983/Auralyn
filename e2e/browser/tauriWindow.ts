@@ -34,6 +34,9 @@ declare global {
         __e2eOutputGainWrites?: number[];
         __e2eSetOutputGain?: (value: number) => void;
         __e2eSetOutputMuted?: (muted: boolean) => void;
+        __e2ePresetOutputMuted?: (muted: boolean) => void;
+        /** get_audio_state の読取り回数。取り直しの回数と間隔を試験で数える（mute-refresh.spec.ts）。 */
+        __e2eStateReads?: { count: number };
         /** 入力の一定レベルを audio-level で流す。出力は模擬が出力ミュートと出力音量から決める（src/dev/tauriMock.ts）。 */
         __e2eEmitLevel?: (level: number) => void;
         __layoutMeterState?: { value: number | null };

@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installTauriMock, realisticAudioConfig, realisticDeviceNames, type TauriMockOptions } from '../tauriMock';
 
 interface MockWindow {
     __e2eMeterLevels?: (level: number) => { input: number[]; output: number[] };
     __e2eSetOutputMuted?: (muted: boolean) => void;
+    __e2ePresetOutputMuted?: (muted: boolean) => void;
     __e2eSetOutputGain?: (value: number) => void;
+    __e2eEmit?: (event: string, payload: unknown) => void;
     __TAURI_INTERNALS__?: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
 }
 
@@ -110,5 +112,47 @@ describe('模擬のメーターレベル', () => {
         expect(mockWindow().__e2eMeterLevels?.(0.2)).toEqual({ input: [0.2, 0.2], output: [0.1, 0.1] });
         mockWindow().__e2eSetOutputGain?.(0);
         expect(mockWindow().__e2eMeterLevels?.(0.2)?.output).toEqual([0, 0]);
+    });
+});
+// 実エンジンは、緊急ミュートの切替で global-mute-changed だけを送る。準備の画面へ直接知らせる経路を模擬に持たせると、
+// 本番で起きる取り直しの遅れを試験が隠す（#799）。
+describe('模擬の緊急ミュートは実エンジンと同じ通知だけを送る', () => {
+    const observe = () => {
+        installTauriMock(legacyOptions);
+        const emitted: Array<[string, unknown]> = [];
+        mockWindow().__e2eEmit = (event, payload) => { emitted.push([event, payload]); };
+        const direct = vi.fn();
+        window.addEventListener('preparation-external-change', direct);
+        return { emitted, direct, stop: () => window.removeEventListener('preparation-external-change', direct) };
+    };
+
+    it('__e2eSetOutputMuted は global-mute-changed を送り、準備の外部変更の通知は送らない', () => {
+        const { emitted, direct, stop } = observe();
+        mockWindow().__e2eSetOutputMuted?.(false);
+        mockWindow().__e2eSetOutputMuted?.(true);
+        stop();
+        expect(emitted).toEqual([['global-mute-changed', false], ['global-mute-changed', true]]);
+        expect(direct).not.toHaveBeenCalled();
+    });
+
+    it('準備用の __e2ePresetOutputMuted は、状態だけを変えて緊急ミュートの通知を送らない', () => {
+        const { emitted, direct, stop } = observe();
+        mockWindow().__e2ePresetOutputMuted?.(false);
+        stop();
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0.1, 0.1]);
+        expect(emitted).toEqual([]);
+        expect(direct).toHaveBeenCalledTimes(1);
+    });
+
+    it('set_global_mute と toggle_global_mute は、状態を変えて global-mute-changed を送る', async () => {
+        const { emitted, direct, stop } = observe();
+        const invoke = mockWindow().__TAURI_INTERNALS__?.invoke;
+        await invoke?.('set_global_mute', { active: false });
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0.1, 0.1]);
+        await invoke?.('toggle_global_mute');
+        stop();
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0, 0]);
+        expect(emitted).toEqual([['global-mute-changed', false], ['global-mute-changed', true]]);
+        expect(direct).not.toHaveBeenCalled();
     });
 });

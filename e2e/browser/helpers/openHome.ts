@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect } from '../tauriFixture';
 import '../tauriWindow';
-import { setOutputMuted } from '../e2eHooks';
+import { presetOutputMuted } from '../e2eHooks';
 import { waitForStableLayout } from './waitForStableLayout';
 
 export type Locale = 'ja' | 'en';
@@ -63,7 +63,7 @@ export async function openHome(
     await expect(page.getByText(splash(options.locale), { exact: true })).toHaveCount(0);
     await expect(page.locator('.home-content')).toBeVisible();
     if (options.state === 'running') {
-        await setOutputMuted(page, false);
+        await presetOutputMuted(page, false);
         if (options.levels ?? true) await streamLevels(page);
     }
     await waitForStableLayout(page);

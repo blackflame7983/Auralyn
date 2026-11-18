@@ -1,4 +1,4 @@
-import { startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
+import { createOutputChangeScheduler, startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
 import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
+import { withOutputControls } from '@/lib/preparationOutputControls';
 import {
     buildPreparationObservation, emptyObservation, expireConfirmations,
     normalizeReceiver, observationStamp, preparationReach, readPreparationContext, savePreparationContext,
@@ -30,6 +31,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
     runningRef.current = running;
     const eventStopped = useRef(false);
     const inFlight = useRef<Promise<PreparationObservation | null> | null>(null);
+    const probeSequence = useRef(0);
 
     const accept = useCallback((next: PreparationObservation) => {
         setObservation(next);
@@ -80,15 +82,27 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         return request;
     }, [accept]);
 
+    // 取得を止めている間は、札に出るミュートと音量ゼロだけを読み直す。最新の読取りだけを採る。
+    const probeOutputControls = useCallback(async () => {
+        if (!alive.current || !runningRef.current || eventStopped.current || isAppHidden()) return;
+        const sequence = ++probeSequence.current;
+        try {
+            const stats = await audioApi.getEngineRuntimeStats();
+            if (!alive.current || sequence !== probeSequence.current || !blockedRef.current || isAppHidden()) return;
+            setObservation(old => withOutputControls(old, stats));
+        } catch { /* 読めないときは直前の札を保つ。失敗の扱いは再開時の取り直しに任せる。 */ }
+    }, []);
+
     useEffect(() => {
         alive.current = true;
         let active = true;
         // 診断などで読み取りを止めている間は、背後の画面を確認待ちにしない。再開時に読み直す。
         const refreshConditions = () => { if (!active) return; generation.current += 1; if (blockedRef.current) return; setChecking(true); setObservation(old => ({ ...old, availability: 'pending' })); void refresh(); };
-        const stop = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('stopped')); };
-        const fail = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('failed')); };
+        let lastGainSync: number | null = null;
+        const stop = () => { if (!active) return; lastGainSync = null; eventStopped.current = true; expireAll(); accept(emptyObservation('stopped')); };
+        const fail = () => { if (!active) return; lastGainSync = null; eventStopped.current = true; expireAll(); accept(emptyObservation('failed')); };
         const external = () => { if (!active) return; expireAll(); void refresh(); };
-        const started = () => { if (!active) return; eventStopped.current = false; external(); };
+        const started = () => { if (!active) return; lastGainSync = null; eventStopped.current = false; external(); };
         const obsInvalidated = () => {
             if (!active) return;
             generation.current += 1;
@@ -111,9 +125,19 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             }
             void refresh();
         };
+        // 緊急ミュートと出力音量は条件の通知を持たないため、変化の通知から取り直す。古い読取りは世代で捨て、連続する通知は1回へまとめる。
+        const outputScheduler = createOutputChangeScheduler(() => { if (blockedRef.current) void probeOutputControls(); else void refresh(); });
+        const outputChanged = () => { if (!active) return; generation.current += 1; outputScheduler.request(); };
+        // 同じ音量の再通知（音量の自動調整の状態確認など）では取り直さない。エンジンの再起動では値を忘れる。
+        const gainSynced = (event: Event) => {
+            const pct = event instanceof CustomEvent ? event.detail as unknown : null;
+            if (typeof pct === 'number' && Number.isFinite(pct)) { if (pct === lastGainSync) return; lastGainSync = pct; }
+            outputChanged();
+        };
         const subscriptions = [
             listen('audio-started', started), listen('audio-stopped', stop), listen('audio-error', fail), listen('audio-stream-error', fail),
             listen('audio-conditions-changed', refreshConditions), listen('global-bypass-changed', refreshConditions),
+            listen('global-mute-changed', outputChanged),
             listen('obs://reach-invalidated', obsInvalidated), listen('obs://timing-invalidated', obsInvalidated),
         ];
         void Promise.all(subscriptions).then(() => {
@@ -130,19 +154,21 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         });
         addAppVisibilityListener(visibility);
         window.addEventListener('preparation-external-change', external);
+        window.addEventListener('output-gain-sync', gainSynced);
         window.addEventListener('profile-fx-applied', refreshConditions);
         window.addEventListener('preparation-purpose-changed', purposeChanged);
         const stopRefresh = startPreparationRefresh(() => { void refresh(); });
         return () => {
             active = false; alive.current = false; listenersReady.current = false; generation.current += 1;
-            stopRefresh(); unsubscribe();
+            stopRefresh(); unsubscribe(); outputScheduler.cancel();
             removeAppVisibilityListener(visibility);
             window.removeEventListener('preparation-external-change', external);
+            window.removeEventListener('output-gain-sync', gainSynced);
             window.removeEventListener('profile-fx-applied', refreshConditions);
             window.removeEventListener('preparation-purpose-changed', purposeChanged);
             subscriptions.forEach(p => { void p.then(stop => stop()).catch(() => {}); });
         };
-    }, [accept, expireAll, refresh]);
+    }, [accept, expireAll, refresh, probeOutputControls]);
 
     useEffect(() => {
         generation.current += 1;

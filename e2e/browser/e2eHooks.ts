@@ -5,11 +5,20 @@ export interface E2eAudioLevel {
     output: number[];
 }
 
-/** 模擬の出力ミュートを切り替える。模擬が無いときは黙って通さず失敗する。 */
+/** 実エンジンと同じ global-mute-changed を送って出力ミュートを切り替える。模擬が無いときは黙って通さず失敗する。 */
 export async function setOutputMuted(page: Page, muted: boolean): Promise<void> {
     await page.evaluate(value => {
         const hook = window.__e2eSetOutputMuted;
         if (!hook) throw new Error('__e2eSetOutputMuted がありません');
+        hook(value);
+    }, muted);
+}
+
+/** 開く前からその状態だったことにする。通知は送らないので、緊急ミュートの表示や通知は出ない。遅れを調べる試験では使わない。 */
+export async function presetOutputMuted(page: Page, muted: boolean): Promise<void> {
+    await page.evaluate(value => {
+        const hook = window.__e2ePresetOutputMuted;
+        if (!hook) throw new Error('__e2ePresetOutputMuted がありません');
         hook(value);
     }, muted);
 }

@@ -102,7 +102,15 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     };
     const gainWrites: number[] = [];
     Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: (value: number) => { outputGain = value; window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 })); } });
-    Object.assign(window, { __e2eSetOutputMuted: (muted: boolean) => {
+    // 実エンジンは、緊急ミュートを切り替えると global-mute-changed だけを送る（audio.rs の set_global_mute）。準備の画面へ直接は知らせない。
+    const setMuted = (muted: boolean) => {
+        outputMuted = muted;
+        page.__e2eEmit?.('global-mute-changed', muted);
+    };
+    Object.assign(window, { __e2eSetOutputMuted: setMuted });
+    // 観測を始める前から、その状態だったことにする試験の準備用。実エンジンの通知を送らないので、緊急ミュートの通知の表示も出ない。
+    // 遅れを調べる試験では使わず、__e2eSetOutputMuted か実際の操作を使う。
+    Object.assign(window, { __e2ePresetOutputMuted: (muted: boolean) => {
         outputMuted = muted;
         window.dispatchEvent(new Event('preparation-external-change'));
     } });
@@ -179,6 +187,12 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 unexpected.push(command);
                 if (strict) throw new Error(`未定義のテストIPC: ${command}`);
                 return null;
+            case 'set_global_mute':
+                if (typeof args.active === 'boolean') setMuted(args.active);
+                return;
+            case 'toggle_global_mute':
+                setMuted(!outputMuted);
+                return;
             case 'set_output_gain':
                 if (typeof args.value !== 'number') return;
                 outputGain = args.value;

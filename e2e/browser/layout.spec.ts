@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import { mustBox } from './mustBox';
-import { setOutputGain, setOutputMuted } from './e2eHooks';
+import { presetOutputMuted, setOutputGain } from './e2eHooks';
 import { uiScale } from '../../src/lib/largeWindow';
 import { SUBPIXEL, settleLayoutMotion } from './layoutMotion';
 
@@ -98,7 +98,8 @@ test.describe('通常のホーム表示', () => {
             await page.setViewportSize({ width, height: 640 });
             const samples = [];
             for (const muted of [false, true, false]) {
-                await setOutputMuted(page, muted);
+                // 札の有無だけで高さを比べる。緊急ミュートの通知（トースト）の高さを混ぜないよう、準備用の入口で状態を切り替える。
+                await presetOutputMuted(page, muted);
                 const badge = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
                 // 幅の変更で区画が滑って移る間（#298）は測らず、配置が落ち着いてから比べる。
@@ -111,7 +112,7 @@ test.describe('通常のホーム表示', () => {
             const quietRow = samples[0].row;
             if (!quietRow) throw new Error('見出しの寸法が取れない');
             expect(quietRow.height).toBeLessThan(40);
-            await setOutputMuted(page, true);
+            await presetOutputMuted(page, true);
             const recovery = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
             await expect(recovery).toBeInViewport();
             await recovery.click();
