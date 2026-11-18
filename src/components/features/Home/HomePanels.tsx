@@ -5,6 +5,7 @@ import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabel } from './PreparationPanel';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { deviceDisplayName } from '@/lib/audioRouting';
+import { engineInputName } from '@/lib/inputSource';
 import { usageDestination } from '@/lib/audioRouteLine';
 import { AudioFlow } from '@/components/ui/AudioFlow';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
@@ -54,7 +55,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const statusCovered = stripStatus !== null && resolvedStatus === stripStatus;
     // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。ミュート中は主ボタンを出さないので、入口を残す（#766）。
     const configureIsPrimary = !['ready', 'unknown', 'pending', 'muted'].includes(model.observation.availability);
-    const actualInput = model.observation.config?.input ?? inputName;
+    const actualInput = engineInputName(model.observation.config) ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);

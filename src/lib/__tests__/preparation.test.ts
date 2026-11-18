@@ -1,4 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
+import type { InputSource } from '../inputSource';
 import { buildPreparationObservation, confirmationState, editPreparationReceiver, emptyObservation, expireConfirmations, nextPreparationStage, normalizeReceiver, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
 
 import { context, audioState, runtime, runtimeWith, liveStatus } from '@/__tests__/fixtures/preparation';
@@ -92,6 +93,25 @@ it.each([{ host: 'ASIO' }, { input: 'Other mic' }, { sample_rate: 44100 }, { buf
     const expired = expireConfirmations(confirmations(), observation);
     for (const stage of ['sound', 'listen', 'receiver'] as const) expect(confirmationState(expired, stage)).toBe('stale');
 });
+const appAudio = (appKey = 'a'.repeat(64)): InputSource => ({ kind: 'process_loopback', config: { appKey, appName: 'chrome.exe', rawEndpointId: 'raw-1', purpose: 'music' } });
+const observeInput = (config: { input_source?: InputSource }) =>
+    buildPreparationObservation({ ...audioState, config: { host: 'WASAPI', output: 'CABLE Input', sample_rate: 48000, buffer_size: 256, ...config, input: null } }, runtime(), liveStatus, context);
+it('アプリの音声は入力の機器名が無くても設定済みで、実行中なら準備できている（#756）', () => {
+    const observation = observeInput({ input_source: appAudio() });
+    expect(observation.availability).toBe('ready');
+    expect(nextPreparationStage(observation, {}, context)).toBe('sound');
+});
+it('入力が無く、アプリの音声でもないときは未設定のまま', () => {
+    expect(observeInput({}).availability).toBe('unconfigured');
+    expect(observeInput({ input_source: { kind: 'device', config: { purpose: 'voice' } } }).availability).toBe('unconfigured');
+});
+it('アプリの音声は、アプリを変えると音作りから再確認する', () => {
+    const before = observeInput({ input_source: appAudio() });
+    const records: Confirmations = Object.fromEntries(Object.entries(before.keys ?? {}).map(([stage, key]) => [stage, { key, at: 1, target: 'chrome.exe', expired: false }]));
+    const changed = expireConfirmations(records, observeInput({ input_source: appAudio('b'.repeat(64)) }));
+    for (const stage of ['sound', 'listen', 'receiver'] as const) expect(confirmationState(changed, stage)).toBe('stale');
+    expect(confirmationState(expireConfirmations(records, observeInput({ input_source: appAudio() })), 'sound')).toBe('confirmed');
+});
 it('同じ入力の出力先変更と分離設定は試聴以降だけを失効し、ASIO入力ch変更は全段階を失効する', () => {
     const output = buildPreparationObservation({ ...audioState, config: { ...audioState.config!, output: 'Headphones' } }, runtime(), liveStatus, context);
     expect(confirmationState(expireConfirmations(confirmations(), output), 'sound')).toBe('confirmed');
@@ -136,4 +156,10 @@ it('music は準備用途では listening として扱い、場所更新で元�
     expect(music.usage).toBe('listening');
     savePreparationContext({ ...music, location: 'venue' });
     expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+});
+it.each([true, false])('アプリの音声の取得が止まった状態（failed=%s）は、failed のときだけ ready にしない', failed => {
+    const stats = runtime();
+    stats.processInput = { capturedFrames: 10, nonzeroFrames: 10, failed, waitingForAudio: false, inputRateHz: 48000, correctionLimitPpm: 0 };
+    const observation = buildPreparationObservation({ ...audioState, config: { host: 'WASAPI', input: null, output: 'CABLE Input', sample_rate: 48000, buffer_size: 256, input_source: appAudio() } }, stats, liveStatus, context);
+    expect(observation.availability).toBe(failed ? 'failed' : 'ready');
 });
