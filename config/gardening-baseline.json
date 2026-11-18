@@ -958,13 +958,6 @@
       "reason": "導入前からある条件付き試験・抑制を固定する。新規の抑制には使わない。"
     },
     {
-      "file": "e2e/browser/screen-matrix.spec.ts",
-      "rule": "auralyn/no-double-assertion",
-      "hash": "671ec0654b8f236d367d6aa186eb0157c3755d6d258613d6c8ff6f039d71b8df",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "e2e/browser/settings-followup.spec.ts",
       "rule": "@typescript-eslint/no-explicit-any",
       "hash": "7a4eb8931f83d68cac935f33b18759d4ba912f50236dc088c946f6be59491b0e",
@@ -4170,34 +4163,6 @@
       "hash": "4d5df6860e55d03a5ccff8e16fafde2122caeea47306c31e55b6d5756beb8c9c",
       "count": 1,
       "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/__tests__/SetupWizardModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "1e04e4f72468fd1ffc6e041cb9f2128f4100ce61928b5650c523bacf5186f910",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/__tests__/SetupWizardModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "2b533d51b94fd2bcd458e287a844dfdb97e4e7de20be9f2de602f5a6a01a197b",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/__tests__/SetupWizardModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "7750c64f2aa8048071293de9984bcd14e463aea086b7c64f2302202417a51793",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/SetupWizard/__tests__/SetupWizardModal.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "89b22bdd239e60522580534af5d87a9a5206e570f928846647705dab268973eb",
-      "count": 11,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
       "file": "src/components/features/SetupWizard/ConnectionCheck.tsx",

@@ -26,6 +26,11 @@ let startError: string;
 let obsFails: boolean;
 
 const vstChoice = 'VSTで音を調整したい（完了後にVSTのページを開く）';
+const invokeBase = () => {
+    const base = vi.mocked(invoke).getMockImplementation();
+    if (!base) throw new Error('invoke の模擬実装がありません');
+    return base;
+};
 const openWizard = async () => {
     const onApplyConfig = vi.fn<SetupWizardModalProps['onApplyConfig']>();
     const onClose = vi.fn();
@@ -83,7 +88,8 @@ describe('セットアップの接続チェック', () => {
         expect(music.compareDocumentPosition(choices[3]) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
         expect(music).toBeChecked();
         expect(choices[2]).not.toBeChecked();
-        expect(choices[2]).toHaveAccessibleDescription('マイクの声を加工して手元で聴きます。アプリの音は「音楽を聴く」へ。');
+        expect(choices[2]).toHaveAccessibleDescription('マイクの声を加工して手元で聴きます。');
+        expect(music).toHaveAccessibleDescription('再生アプリの音を仮想ケーブル経由で取り込み、ヘッドホンで聴きます。');
         fireEvent.click(music);
         expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
@@ -104,7 +110,8 @@ describe('セットアップの接続チェック', () => {
 
     it.each(['ja', 'en'] as const)('入力の読込中は未選択より先に理由を伝え、完了すると解除する（%s）', async locale => {
         const store = createLocaleStore(() => 'ja', () => true);
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = vi.mocked(invoke).getMockImplementation();
+        if (!base) throw new Error('invoke の模擬実装がありません');
         let resolveDevices!: (value: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => void;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
             ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
@@ -156,7 +163,8 @@ describe('セットアップの接続チェック', () => {
         expect(next).not.toHaveFocus();
         fireEvent.click(next);
         expect(screen.queryByRole('button', { name: '設定を保存して開始' })).not.toBeInTheDocument();
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = vi.mocked(invoke).getMockImplementation();
+        if (!base) throw new Error('invoke の模擬実装がありません');
         let resolveDevices!: (value: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => void;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
             ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
@@ -206,7 +214,7 @@ describe('セットアップの接続チェック', () => {
         expect(onApplyConfig).not.toHaveBeenCalled(); expect(onClose).not.toHaveBeenCalled();
     });
     it('プロセスが常駐していても開始前が停止中なら、中断時に音声を開始しない', async () => {
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => {
             if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'ASIO', input: 'previous', output: 'previous' } });
             if (command === 'auto_gain') return Promise.resolve({ running: false, streamFailed: false });
@@ -248,8 +256,9 @@ describe('セットアップの接続チェック', () => {
     });
     it('拡大表示で外側をスクロールしても、手順切替時に先頭へ戻して見出しへフォーカスする', async () => {
         await openWizard();
-        const surface = document.querySelector<HTMLElement>('.modal-surface-base')!;
-        const body = document.querySelector<HTMLElement>('.modal-body-base')!;
+        const surface = document.querySelector<HTMLElement>('.modal-surface-base');
+        const body = document.querySelector<HTMLElement>('.modal-body-base');
+        if (!surface || !body) throw new Error('セットアップの面が見つかりません');
         surface.scrollTop = 300;
         body.scrollTop = 120;
         fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
@@ -320,7 +329,7 @@ describe('セットアップの接続チェック', () => {
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input: mic.name, output, outputId }));
     };
     const useEngineOutput = (output: string, host = 'WASAPI', outputId?: string) => {
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
             ? Promise.resolve({ is_running: true, config: { host, input: mic.name, output, output_id: outputId, sample_rate: 48000, buffer_size: 512 } })
             : base(command, args, options));
@@ -565,7 +574,7 @@ describe('セットアップの接続チェック', () => {
         await quickStart();
         fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
         await screen.findByRole('button', { name: 'マイクの確認を停止' });
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'stop_audio'
             ? Promise.reject(new Error('停止失敗')) : base(command, args, options));
         // 確認から入力へ戻る操作は、左の手順になった（#543）。
@@ -575,7 +584,7 @@ describe('セットアップの接続チェック', () => {
     });
 
     it('中断時は起動前の音声設定を復元してから閉じる', async () => {
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
             ? Promise.resolve({ is_running: true, config: { host: 'ASIO', input: '元の入力', output: '元の出力', buffer_size: 256, sample_rate: 44100 } })
             : base(command, args, options));
@@ -591,7 +600,7 @@ describe('セットアップの接続チェック', () => {
     });
 
     it('開始前の音声設定を取得できない場合は、テストと保存を禁止する', async () => {
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
             ? Promise.reject(new Error('取得失敗')) : base(command, args, options));
         await quickStart();
@@ -602,7 +611,7 @@ describe('セットアップの接続チェック', () => {
 
     it('確認中は閉じる・選び直す・保存と重複実行を抑止する', async () => {
         let finish!: (value: unknown) => void;
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'obs_check_audio_reach'
             ? new Promise(resolve => { finish = resolve; })
             : base(command, args, options));
@@ -616,7 +625,8 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByRole('button', { name: '出力先へ戻る' })).toBeDisabled();
         expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'セットアップを閉じる' })).toBeDisabled();
-        const errorListener = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-stream-error')![1];
+        const errorListener = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-stream-error')?.[1];
+        if (!errorListener) throw new Error('audio-stream-error の購読がありません');
         await act(async () => { errorListener({ event: 'audio-stream-error', id: 1, payload: 'device removed' }); });
         await act(async () => { finish({ reached: true }); });
         expect(screen.getByRole('status')).toHaveTextContent('音声が中断されました。');
@@ -718,7 +728,7 @@ describe('初回選択と表示設定', () => {
     });
     it('設定し直すときは、いま使っているマイクを選んだ状態で入力へ進み、重複した警告を出さない', async () => {
         inputs = [mic, device('Second microphone', true)];
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => {
             if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'WASAPI', input: 'Second microphone', output: 'スピーカー' } });
             if (command === 'get_audio_stream_state') return Promise.resolve({ running: true, streamFailed: false });
@@ -775,7 +785,7 @@ it('確認stepのlocale切替で入力出力・テスト状態とdialogを保持
 
 describe('入力ステップのレベル表示', () => {
     it('動作中の入力と同じマイクを選んでいる間だけ、音声を開始せずにレベルを示す', async () => {
-        const base = vi.mocked(invoke).getMockImplementation()!;
+        const base = invokeBase();
         vi.mocked(invoke).mockImplementation((command, args, options) => {
             if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'WASAPI', input: 'USB マイク', output: 'CABLE Input (VB-Audio)', sample_rate: 48000, buffer_size: 512 } });
             return base(command, args, options);
@@ -795,14 +805,18 @@ describe('入力ステップのレベル表示', () => {
 
 
 describe('自分の声を聴くと音楽鑑賞の確認', () => {
-    it.each(['ja', 'en'] as const)('自分の声を聴くはマイクの加工で、再生アプリの音は音楽を聴くへ案内する（%s）', async locale => {
+    it.each(['ja', 'en'] as const)('自分の声を聴くはマイクの加工で、再生アプリの音は音楽を聴くのカードが受け持つ（%s）', async locale => {
         const store = createLocaleStore(() => locale, () => true);
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
         const card = await screen.findByRole('radio', { name: message(locale, 'prep.local') });
         const hint = message(locale, 'wizard.listeningHint');
         expect(card).toHaveAccessibleDescription(hint);
         expect(hint).not.toMatch(/PCの音|PC audio/);
-        expect(screen.getByRole('radio', { name: message(locale, 'wizard.musicGoal') })).toBeEnabled();
+        // 音楽を聴くのカードに「再生アプリの音」と書き、自分の声を聴くのカードは幅が狭いのでマイクの説明だけにする（#720）。
+        const music = screen.getByRole('radio', { name: message(locale, 'wizard.musicGoal') });
+        expect(music).toBeEnabled();
+        expect(music).toHaveAccessibleDescription(message(locale, 'wizard.musicGoalHint'));
+        expect(message(locale, 'wizard.musicGoalHint')).toMatch(/再生アプリ|playback/);
     });
 
     const toConfirm = async (name: string) => {
@@ -1134,12 +1148,22 @@ describe('セットアップの見た目と動き（#294）', () => {
         }
     });
 
+    it('最初の画面は音楽鑑賞も含む「使い道」を問い、スキップで何が起きるかをボタンの近くに書く（#720）', async () => {
+        await openWizard();
+        expect(screen.getByRole('heading', { name: '何に使いますか？' })).toBeVisible();
+        expect(screen.getByText(message('ja', 'wizard.goalHint'))).toBeVisible();
+        const skip = within(screen.getByTestId('setup-actions')).getByRole('button', { name: 'セットアップをスキップ' });
+        expect(skip).toHaveAccessibleDescription(message('ja', 'wizard.skipHint', { action: message('ja', 'unsetFlow.chooseDestination') }));
+        expect(message('ja', 'wizard.skipHint', { action: message('ja', 'unsetFlow.chooseDestination') })).toContain('「送り先を決める」');
+        expect(skip).not.toHaveClass('bg-primary');
+    });
+
     it('手順レールはホームの流れと同じ名前で現在の手順を示し、進む・戻るの向きを中身へ渡す', async () => {
         await openWizard();
         const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
-        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3出力先', '4確認']);
-        expect(screen.getByRole('heading', { name: '送り先を選んでください' })).toBeVisible();
-        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1使い道', '2マイク', '3出力先', '4確認']);
+        expect(screen.getByRole('heading', { name: '何に使いますか？' })).toBeVisible();
+        expect(within(rail).getByText('使い道').closest('li')).toHaveAttribute('aria-current', 'step');
         // 高さは手順によらず固定し、中身だけをスクロールする。
         expect(document.querySelector('.setup-surface')).not.toBeNull();
         fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
@@ -1147,14 +1171,14 @@ describe('セットアップの見た目と動き（#294）', () => {
         expect(within(rail).getByText('マイク').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '1');
         fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
-        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect(within(rail).getByText('使い道').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
         // 同じ手順のまま再描画しても、動きの途中で向きを反転させない。
         fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'en' } });
-        expect(await screen.findByText('Destination')).toBeInTheDocument();
+        expect(await within(rail).findByText('Use')).toBeInTheDocument();
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
         fireEvent.change(screen.getByRole('combobox', { name: '表示言語 / Language' }), { target: { value: 'ja' } });
-        expect(await screen.findByText('送り先')).toBeInTheDocument();
+        expect(await within(rail).findByText('使い道')).toBeInTheDocument();
     });
 
     it('選んだカードは印を付けて示し、繰り返す点滅を使わない', async () => {
@@ -1203,7 +1227,7 @@ describe('セットアップでの ASIO（#291）', () => {
         const generic = { ...asio(true), name, id: 'asio:generic' };
         inputs = [generic, asio(true)];
         outputs = inputs.map(input => ({ ...input, is_input: false }));
-        const original = vi.mocked(invoke).getMockImplementation()!;
+        const original = invokeBase();
         let resolveState!: (state: unknown) => void;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
             ? new Promise(resolve => { resolveState = resolve; })
