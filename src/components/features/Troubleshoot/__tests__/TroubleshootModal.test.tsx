@@ -169,12 +169,13 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
     expect(vi.mocked(invoke).mock.calls.some(([name]) => name === 'play_test_tone' || name === 'probe_loopback')).toBe(false);
 });
 
-it('セットアップで選んだ用途を初期値にし、別の用途にも切り替えられる', () => {
+it('セットアップで選んだ送り先を初期値にし、別の送り先にも切り替えられる', () => {
     localStorage.setItem('vst_host_setup_goal', 'listening');
     render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
     expect(screen.getByRole('button', { name: /自分の声を聴く.*診断を開始/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /OBSで配信/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
+    expect(screen.getByText('セットアップまたは前回の診断で選んだ送り先で確かめます。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '確かめる送り先を変える' }));
     expect(screen.getByRole('button', { name: /OBSで配信/ })).toBeInTheDocument();
 });
 
@@ -195,7 +196,7 @@ it.each(['ja', 'en'] as const)('開始操作を明示し、操作がないフッ
     expect(dialog.querySelector('footer')).toContainElement(screen.getByRole('button', { name: message(locale, 'guide.copy.419') }));
 });
 
-it('診断から用途を切り替えると、保存後に準備欄へ共用の変更通知を送る', async () => {
+it('診断から送り先を切り替えると、保存後に準備欄へ共用の変更通知を送る', async () => {
     localStorage.setItem('vst_host_setup_goal', 'listening');
     vi.mocked(invoke).mockResolvedValue({ is_running: false, config: null });
     const observed: (string | null)[] = [];
@@ -203,7 +204,7 @@ it('診断から用途を切り替えると、保存後に準備欄へ共用の�
     window.addEventListener('preparation-purpose-changed', onPurpose);
     try {
         render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
-        fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
+        fireEvent.click(screen.getByRole('button', { name: '確かめる送り先を変える' }));
         fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
         await screen.findByRole('button', { name: '設定を開く' });
         expect(observed).toEqual(['obs']);

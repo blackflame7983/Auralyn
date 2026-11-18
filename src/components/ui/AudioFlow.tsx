@@ -5,6 +5,8 @@ export interface AudioFlowNode {
     label: string;
     value?: string;
     warning?: string;
+    /** 確認が要る事実ではない案内。注意色にせず、控えめな文字で出す。 */
+    hint?: string;
 }
 
 export interface AudioFlowProps {
@@ -23,6 +25,7 @@ function FlowNode({ node, icon: Icon, unknownLabel }: { node: AudioFlowNode; ico
         <div className="flex items-center gap-1.5 font-medium"><Icon aria-hidden="true" className="shrink-0" />{node.label}</div>
         <p className="mt-1 break-words text-muted-foreground">{node.value || unknownLabel}</p>
         {node.warning && <p className="mt-1 flex items-start gap-1 text-warning"><MdErrorOutline aria-hidden="true" className="mt-0.5 shrink-0" />{node.warning}</p>}
+        {node.hint && !node.warning && <p className="mt-1 text-muted-foreground">{node.hint}</p>}
     </div>;
 }
 
