@@ -50,7 +50,7 @@ export function StatusBand({
                 {modeSwitch && <span className="shrink-0">{modeSwitch}</span>}
                 {showListen && <>
                     <Button type="button" variant="outline" size="sm" ref={listenRef} onClick={onListen} disabled={listenDisabled}
-                        title={listenDisabledReason} aria-describedby={listenDisabledReason ? 'band-listen-reason' : undefined} className="home-action shrink-0 gap-1.5">
+                        title={listenDisabledReason} aria-describedby={listenDisabledReason ? 'band-listen-reason' : undefined} className="home-action shrink-0 gap-1.5 disabled:pointer-events-auto disabled:cursor-not-allowed">
                         <MdHearing aria-hidden="true" className="h-4 w-4" />{listenLabel}
                     </Button>
                     {listenDisabledReason && <span id="band-listen-reason" className="sr-only">{listenDisabledReason}</span>}
