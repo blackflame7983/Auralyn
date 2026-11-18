@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ObsConnectionSettings } from '../ObsConnectionSettings';
@@ -104,4 +104,84 @@ it('接続済みの再表示は要約を閉じて表示し、手動で開いた�
     expect(details).toHaveAttribute('open');
     view.rerender(<ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} />);
     expect(details).toHaveAttribute('open');
+});
+
+const guideLabel = { ja: 'OBS連携ガイドを開く', en: 'Open OBS guide' } as const;
+const renderIn = (locale: 'ja' | 'en', onOpenOBSGuide?: () => void) => render(
+    <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} onOpenOBSGuide={onOpenOBSGuide} />
+    </LocaleProvider>,
+);
+const headingRow = (locale: 'ja' | 'en') => {
+    const row = screen.getByRole('heading', { name: message(locale, 'obs.section.connect') }).parentElement;
+    if (!row) throw new Error('見出しの行が無い');
+    return row;
+};
+
+it.each([
+    ['ja', { checking: '確認中', disconnected: '未接続', connecting: '接続中', connected: '接続済み', failed: '接続に失敗', unknown: '確認できません' }],
+    ['en', { checking: 'Checking', disconnected: 'Not connected', connecting: 'Connecting', connected: 'Connected', failed: 'Connection failed', unknown: 'Cannot check' }],
+] as const)('OBSへの接続の見出しの横に、接続の状態の札を出す（%s）', async (locale, labels) => {
+    const statusReplies: ((connected: boolean) => void)[] = [];
+    let finishConnect!: () => void;
+    vi.mocked(invoke).mockImplementation(command => {
+        if (command === 'obs_connection_status') return new Promise<boolean>(done => { statusReplies.push(done); });
+        if (command === 'connect_obs') return new Promise<void>(done => { finishConnect = done; });
+        return Promise.resolve(undefined);
+    });
+    const view = renderIn(locale);
+    await waitFor(() => expect(statusReplies.length).toBeGreaterThan(0));
+    expect(within(headingRow(locale)).getByText(labels.checking)).toBeInTheDocument();
+    await act(async () => statusReplies.forEach(reply => reply(false)));
+    const status = within(headingRow(locale)).getByText(labels.disconnected);
+    expect(status.closest('[role="status"]')).not.toBeNull();
+    const connect = screen.getByRole('button', { name: message(locale, 'settings.ObsConnectionSettings.290') });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await act(async () => {});
+    expect(within(headingRow(locale)).getByText(labels.connecting)).toBeInTheDocument();
+    await act(async () => finishConnect());
+    expect(within(headingRow(locale)).getByText(labels.connected)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'settings.ObsConnectionSettings.292') }));
+    await waitFor(() => expect(within(headingRow(locale)).getByText(labels.disconnected)).toBeInTheDocument());
+    view.unmount();
+
+    vi.mocked(invoke).mockImplementation(command => command === 'obs_connection_status' ? Promise.resolve(false) : command === 'connect_obs' ? Promise.reject(new Error('timed out')) : Promise.resolve(undefined));
+    const failing = renderIn(locale);
+    const retry = await screen.findByRole('button', { name: message(locale, 'settings.ObsConnectionSettings.290') });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
+    await waitFor(() => expect(within(headingRow(locale)).getByText(labels.failed)).toBeInTheDocument());
+    failing.unmount();
+
+    vi.mocked(invoke).mockImplementation(command => command === 'obs_connection_status' ? Promise.reject(new Error('status')) : Promise.resolve(undefined));
+    renderIn(locale);
+    await waitFor(() => expect(within(headingRow(locale)).getByText(labels.unknown)).toBeInTheDocument());
+    expect(within(headingRow(locale)).queryByText(labels.disconnected)).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('OBS連携ガイドの入口は、見出しの近くで入力欄より前にある（%s）', async locale => {
+    vi.mocked(invoke).mockImplementation(command => Promise.resolve(command === 'obs_connection_status' ? false : undefined));
+    const guide = vi.fn();
+    renderIn(locale, guide);
+    const entrance = await screen.findByRole('button', { name: guideLabel[locale] });
+    expect(headingRow(locale)).toContainElement(entrance);
+    const host = screen.getByRole('textbox', { name: message(locale, 'settings.ObsConnectionSettings.281') });
+    expect(entrance.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(entrance);
+    expect(guide).toHaveBeenCalledTimes(1);
+});
+
+it('ガイドを開く操作が無いときは入口を出さず、接続の失敗でも入口は1つだけにする', async () => {
+    vi.mocked(invoke).mockImplementation(command => command === 'obs_connection_status' ? Promise.resolve(false) : command === 'connect_obs' ? Promise.reject(new Error('timed out')) : Promise.resolve(undefined));
+    const view = renderIn('ja');
+    await screen.findByRole('button', { name: '接続' });
+    expect(screen.queryByRole('button', { name: guideLabel.ja })).not.toBeInTheDocument();
+    view.unmount();
+    renderIn('ja', vi.fn());
+    const connect = await screen.findByRole('button', { name: '接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await screen.findByText(/接続に失敗しました。次を確認してください。/);
+    expect(screen.getAllByRole('button', { name: guideLabel.ja })).toHaveLength(1);
 });
