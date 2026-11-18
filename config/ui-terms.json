@@ -66,7 +66,7 @@
     { "use": "温かめ", "avoid": ["低め"], "locale": "ja", "ref": "#770" }
   ],
   "allow": [
-    { "key": "settings.AudioSettingsModal.075", "term": "低め", "reason": "接続の音の途切れにくさの段階名で、声の種類ではない（#770）" },
+    { "key": "settings.AudioSettingsModal.075", "term": "低め", "reason": "接続のバッファサイズの大小（音の途切れにくさの段階名）で、声の種類ではない（#770）" },
     { "key": "saveHelp.modeScope", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },
     { "key": "saveHelp.mode", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },
     { "key": "saveHelp.modeScope", "term": "profile", "reason": "A VST link switched with a mode, not the saved voice, VST and device setup (#626)" },

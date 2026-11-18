@@ -245,7 +245,7 @@ test.describe('ホームと設定の共通操作', () => {
                 return result;
             };
         });
-        // 声の種類は2段目。仮の境目は高さ 860 なので、同じ寸法の比較はそこ以上で続ける。
+        // 声の種類は2段目。境目は高さ 800（largeWindow.tier2MinHeight）なので、同じ寸法の比較はそこ以上で続ける。
         await page.setViewportSize({ width: 1280, height: 900 });
         await page.goto('/');
         const names = ['弱', '強', '標準', '温かめ', '明瞭'];

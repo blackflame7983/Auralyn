@@ -171,6 +171,8 @@ for (const size of sizes) {
                 expect(text, '機器名に日本語のスピーカーが残っている').not.toMatch(/(^|→\s*)スピーカー(\s*→|\s*$)/m);
                 for (const fragment of shot.expects) expect(text).toContain(fragment);
                 if (shot.name === 'home-voice') expect(text).not.toContain('いまの調整');
+                // 「標準」は OFF でも選択欄に出る。ON の評価画像であることは、スイッチの状態で確かめる（#770）。
+                if (shot.name === 'home-voice-builtin') await expect(page.locator('#home-builtin').getByRole('switch')).toHaveAttribute('aria-checked', 'true');
                 if (size.width >= 1400 && shot.surface === 'home') await connectColumnIsOnTheRight(page);
             });
         }
