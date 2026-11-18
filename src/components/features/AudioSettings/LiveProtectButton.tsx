@@ -2,15 +2,16 @@ import { MdLock } from 'react-icons/md';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
+import { useLiveProtectionWatch } from '@/hooks/useLiveProtectionWatch';
 
 /** 操作ロック。LiveModeBar と同じ model を使い、右の列にだけ置く。 */
 export function LiveProtectButton({ model, safetyOnly = false }: { model: LiveModesModel; safetyOnly?: boolean }) {
     const t = useMessages();
     const { snapshot: value, busy } = model;
+    useLiveProtectionWatch(model);
     if (!value) return null;
-    const registered = Boolean(value.definitions.singing || value.definitions.talk);
-    // 音楽鑑賞はロック中だけ出す（safetyOnly）。解除中の鍵はホームに残さない。
-    if (!(registered || value.armed) || (safetyOnly && !value.armed)) return null;
+    // 守るのは機器変更とVST・構成の置換で、歌・雑談の登録に限らない。音楽鑑賞はロック中だけ出す。
+    if (safetyOnly && !value.armed) return null;
     const blocked = busy || model.changesBlocked;
     return <button type="button" aria-disabled={blocked || undefined} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby="live-protect-state"
         onClick={() => { if (!blocked) void model.protect(!value.armed); }}

@@ -75,6 +75,7 @@ test.describe('右の本番中の操作', () => {
             { role: 'button' as const, name: '緊急ミュート' },
             { role: 'slider' as const, name: '出力音量' },
             { role: 'switch' as const, name: 'VSTを外して比較' },
+            { role: 'button' as const, name: '操作をロック' },
             { role: 'button' as const, name: '音声処理の詳細' },
         ];
         for (const size of [{ width: 960, height: 640 }, { width: 1024, height: 768 }, { width: 1920, height: 1080 }]) {
@@ -125,6 +126,7 @@ test.describe('右の本番中の操作', () => {
             { role: 'button', name: 'Emergency mute' },
             { role: 'slider', name: 'Output volume' },
             { role: 'switch', name: 'Bypass VST' },
+            { role: 'button', name: 'Lock controls' },
             { role: 'button', name: 'Audio processing details' },
         ]);
     });
@@ -186,6 +188,7 @@ test.describe('右の本番中の操作', () => {
                 { role: 'button', name: '緊急ミュート' },
                 { role: 'slider', name: '出力音量' },
                 { role: 'switch', name: 'VSTを外して比較' },
+                ...(purpose === 'voice' ? [{ role: 'button' as const, name: '操作をロック' }] : []),
                 { role: 'button', name: '音声処理の詳細' },
             ]);
         });
@@ -233,6 +236,7 @@ test.describe('右の本番中の操作', () => {
                 { role: 'button', name: 'Emergency mute' },
                 { role: 'slider', name: 'Output volume' },
                 { role: 'switch', name: 'Bypass VST' },
+                ...(purpose === 'voice' ? [{ role: 'button' as const, name: 'Lock controls' }] : []),
                 { role: 'button', name: 'Audio processing details' },
             ]);
         });
@@ -306,6 +310,59 @@ test.describe('右の本番中の操作', () => {
             expect(band).toBeGreaterThan(rail);
             expect(main).toBeGreaterThan(band);
         }
+    });
+});
+
+test.describe('歌・雑談を登録していない右の列（#764）', () => {
+    test.use({ liveHome: true, registeredModes: false });
+
+    for (const locale of ['ja', 'en'] as const) {
+        const labels = locale === 'ja'
+            ? { landmark: columnName, mute: '緊急ミュート', volume: '出力音量', compare: 'VSTを外して比較', lock: '操作をロック', details: '音声処理の詳細' }
+            : { landmark: 'Live controls', mute: 'Emergency mute', volume: 'Output volume', compare: 'Bypass VST', lock: 'Lock controls', details: 'Audio processing details' };
+        const controls = [
+            { role: 'button' as const, name: labels.mute },
+            { role: 'slider' as const, name: labels.volume },
+            { role: 'switch' as const, name: labels.compare },
+        ];
+        for (const size of [{ width: 900, height: 600 }, { width: 1024, height: 768 }]) {
+            test(`配信は未登録でも操作ロックを出し、${size.width}×${size.height} の右の列が切れない（${locale}）`, async ({ page }) => {
+                await page.addInitScript(l => {
+                    localStorage.setItem('vst_host_locale', l);
+                    localStorage.setItem('vst_host_wizard_done', 'true');
+                    localStorage.setItem('auralyn_vst_panel_open', 'false');
+                    localStorage.setItem('vst_host_setup_goal', 'obs');
+                    localStorage.setItem('auralyn_display_purpose', 'voice');
+                    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+                }, locale);
+                await page.goto('/');
+                await expect(page.getByRole('button', { name: labels.mute, exact: true })).toBeVisible();
+                const lock = page.getByRole('complementary', { name: labels.landmark }).getByRole('button', { name: labels.lock, exact: true });
+                await expect(lock).toBeVisible();
+                await expect(lock).toHaveAttribute('aria-pressed', 'false');
+                await expectColumnFits(page, size.width, size.height, labels.landmark, [...controls, { role: 'button', name: labels.lock }, { role: 'button', name: labels.details }]);
+            });
+        }
+    }
+
+    test('音楽鑑賞は未登録で解除中なら操作ロックを出さず、右の列の操作は切れない', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_setup_goal', 'listening');
+            localStorage.setItem('auralyn_display_purpose', 'music');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await ready(page);
+        await expect(column(page).getByRole('switch', { name: 'VSTを外して比較', exact: true })).toBeVisible();
+        await expect(column(page).getByRole('button', { name: '操作をロック', exact: true })).toHaveCount(0);
+        await expectColumnFits(page, 900, 600, columnName, [
+            { role: 'button', name: '緊急ミュート' },
+            { role: 'slider', name: '出力音量' },
+            { role: 'switch', name: 'VSTを外して比較' },
+            { role: 'button', name: '音声処理の詳細' },
+        ]);
     });
 });
 
