@@ -96,11 +96,6 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                     </ul>
                                 </div>)}
                                 <p>{t('help.home.other', labels)}</p>
-                                <div>
-                                    <h3 className="font-semibold">{t('help.home.lookTitle')}</h3>
-                                    <p className="mt-1">{t('help.home.look', labels)}</p>
-                                    <UserDocLink name="help.appearance" compact />
-                                </div>
                             </>}
                             {section === 'setup' && <>
                                 <div>
@@ -115,7 +110,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                     <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => toSymptom(purpose === 'music' ? 'silent' : 'receiver')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
                                 </div>
                                 <h3 className="font-semibold">{t('help.setup.flowTitle')}</h3>
-                                <p>{t('help.setup.body', labels)}</p>
+                                <p className="[word-break:auto-phrase]">{t('help.setup.body', labels)}</p>
                             </>}
                             {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>

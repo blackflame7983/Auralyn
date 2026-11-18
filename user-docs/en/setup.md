@@ -2,7 +2,7 @@
 title: "First setup"
 description: "Choose how you will use it and your devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup", "Skip setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "What will you use it for?", "Running", "Start audio", "Start listening", "Playback source", "Bypass VST"]
+uiLabels: ["Connection details", "Open Setup", "Skip setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "Use", "Microphone", "Output device", "Check", "PC audio", "What will you use it for?", "Running", "Start audio", "Start listening", "Playback source", "Bypass VST"]
 ---
 
 ## What to do first {#first-steps}
@@ -24,6 +24,8 @@ If it does not arrive, see [Others cannot hear you](./troubleshooting.md#not-rec
 If there is no sound, see [No sound](./troubleshooting.md#no-sound).
 
 ## Choose what to use it for {#purpose}
+
+The steps on the left of Setup run “Use”, “Microphone”, “Output device” and “Check”. For music, the second step is “PC audio”.
 
 1. Open “Connection details” and select “Open Setup”.
 2. The first screen asks “What will you use it for?”. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”. Selecting a card moves to the next step.
