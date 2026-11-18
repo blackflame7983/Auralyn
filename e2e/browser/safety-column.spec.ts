@@ -414,8 +414,8 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
 
     for (const locale of ['ja', 'en'] as const) {
         const labels = locale === 'ja'
-            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VST の削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
-            : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', body: 'While controls are locked, you can\'t remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.', lock: 'Lock controls', landmark: 'Live controls' };
+            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VST の追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
+            : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', body: 'While controls are locked, you can\'t add, remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.', lock: 'Lock controls', landmark: 'Live controls' };
         test(`ロック中に VST を削除しようとすると、アプリの文で理由と解除のしかたを見せ、バックエンドの原文は出さず、ラックは変わらない（${locale}）`, async ({ page }) => {
             await page.addInitScript(installLockedVstRack, backendLockReason);
             await page.addInitScript(({ l }) => {

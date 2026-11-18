@@ -130,6 +130,22 @@ it('登録していなくても、ロック中は定期確認して、バック�
     vi.useRealTimers();
 });
 
+it('歌・雑談を登録済みで、ホーム以外のページ（帯が無い）でロック中でも、定期確認して保護の失効に追従する', async () => {
+    vi.useFakeTimers();
+    let armed = true;
+    const request = vi.spyOn(liveModesApi, 'request').mockImplementation(async () => liveSnapshot({ armed, running: true, definitions: registeredDefinitions }));
+    function Column({ home }: { home: boolean }) { const model = useLiveModes(); return <>{home && <LiveModeBar model={model} />}<LiveProtectButton model={model} audioReady inputFromApp={false} /></>; }
+    const view = render(<Column home />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'true');
+    view.rerender(<Column home={false} />);
+    armed = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(request.mock.calls.length).toBeGreaterThan(2);
+    expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'false');
+    vi.useRealTimers();
+});
+
 it.each([
     { locale: 'ja' as const, lock: '操作をロック' },
     { locale: 'en' as const, lock: 'Lock controls' },

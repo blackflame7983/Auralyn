@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { audioApi } from '../../api/audio';
+import { audioApi, type VstPlugin } from '../../api/audio';
 import { usePlugins } from '../usePlugins';
 import { installSessionRackFixture } from './sessionRackFixture';
 import { PLUGIN_SESSION_KEY as KEY, PLUGIN_SESSION_BACKUP_KEY as BACKUP } from '../usePluginSessionPersistence';
@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: v
 
 // バックエンドが操作ロック中に返す原文（src-tauri の PROTECTED）。
 const BACKEND_REASON = '本番保護中はデバイス変更・スキャン・ラック／プロファイル置換はできません。停止・ミュートは利用できます。変更する場合は本番保護を解除してください';
+const vst = (path: string): VstPlugin => ({ id: path, name: `実名 ${path}`, path, vendor: '', version: '', category: 'Fx' });
 const item = (path: string) => ({ path, name: `実名 ${path}`, enabled: true, muted: false, gain: .8, state: `opaque-${path}` });
 
 function language(locale: Locale) {
@@ -106,4 +107,63 @@ it('削除を元に戻す操作がロックに阻まれたときも、アプリ�
     const { title, description } = lastError();
     expect(title).toBe(message('ja', 'pluginNotices.restoreFailed'));
     expectAppOwnedLockNotice(description, 'ja');
+});
+
+async function emptyRack(locale: Locale) {
+    localStorage.setItem(KEY, '[]');
+    const { wrapper } = language(locale);
+    const view = renderHook(() => usePlugins(), { wrapper });
+    await act(async () => {});
+    expect(view.result.current.plugins).toEqual([]);
+    return view;
+}
+
+it.each(['ja', 'en'] as const)('空のラックにテンプレートを適用してロックに断られると、スロットごとの失敗は出さず、アプリの文を1件だけ出す ($locale)', async locale => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue(BACKEND_REASON);
+    const { result } = await emptyRack(locale);
+    let applied: unknown;
+    await act(async () => { applied = await result.current.applyTemplate({ '0': vst('comp'), '1': vst('limit'), '2': vst('eq') }); });
+    expect(applied).toBe('blocked');
+    expect(audioApi.loadPlugin).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    const { title, description } = lastError();
+    expect(title).toBe(message(locale, 'pluginNotices.applyTemplateFailed'));
+    expectAppOwnedLockNotice(description, locale);
+    expect(result.current.plugins).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+});
+
+it('保護以外の理由でスロットが読み込めないときは、これまでどおりスロットごとに通知して続ける', async () => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue('Plugin not found');
+    const { result } = await emptyRack('ja');
+    let applied: unknown;
+    await act(async () => { applied = await result.current.applyTemplate({ '0': vst('comp'), '1': vst('limit') }); });
+    expect(applied).toBe(false);
+    expect(toast.error).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe(message('ja', 'pluginNotices.loadCountFailed', { count: 2 }));
+});
+
+it.each(['ja', 'en'] as const)('操作ロック中に VST を追加しようとすると、バックエンドの原文は出さず、アプリの文だけを1件出す ($locale)', async locale => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue(BACKEND_REASON);
+    const { result } = await rack(locale);
+    let added: unknown;
+    await act(async () => { added = await result.current.addPlugin(vst('c')); });
+    expect(added).toBe(false);
+    expect(result.current.plugins.map(plugin => plugin.id)).toEqual(['a', 'b']);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    const { title, description } = lastError();
+    expect(title).toBe(message(locale, 'pluginNotices.addFailed'));
+    expectAppOwnedLockNotice(description, locale);
+    expect(console.error).toHaveBeenCalledWith('Failed to load plugin:', BACKEND_REASON);
+    expect(result.current.error).toBeNull();
+    expect(localStorage.getItem('vst_host_pending_plugin')).toBeNull();
+});
+
+it('保護以外の理由で追加に失敗したときは、これまでどおり原文つきの失敗文にする', async () => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue('Plugin not found');
+    const { result } = await rack('ja');
+    await act(async () => { await result.current.addPlugin(vst('c')); });
+    expect(result.current.error).toBe(message('ja', 'pluginNotices.loadFailed', { detail: 'Plugin not found' }));
+    expect(toast.error).not.toHaveBeenCalled();
 });

@@ -3,9 +3,12 @@ import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { TemplateWizardModal } from '../TemplateWizardModal';
 
-afterEach(cleanup);
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
+
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイスチェーンへ進める', () => {
     const settings = vi.fn();
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={vi.fn()}
@@ -113,4 +116,32 @@ it.each(['ja', 'en'] as const)('この構成を使うが主な操作で、無い
     const details = screen.getByText(message(locale, 'templates.beforeSummary')).closest('details');
     expect(details).toHaveTextContent(message(locale, 'templates.beforeBody'));
     expect(details?.textContent).not.toMatch(locale === 'ja' ? /別に用意/ : /Provide the VST/);
+});
+
+it('操作ロックに断られたときは、フックが出した通知に任せ、画面側の失敗の通知は足さずに閉じない', async () => {
+    const close = vi.fn();
+    render(<TemplateWizardModal isOpen onClose={close} availablePlugins={[
+        { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+        { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+    ]} onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /雑談/ }));
+    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    await waitFor(() => expect(apply).toBeEnabled());
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+});
+
+it('適用が失敗（ロック以外）したときは、画面側が失敗の通知を1件出す', async () => {
+    render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[
+        { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+        { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+    ]} onApplyTemplate={async () => false} onScan={vi.fn()} isScanning={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /雑談/ }));
+    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
 });

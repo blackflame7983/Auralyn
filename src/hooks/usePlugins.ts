@@ -9,7 +9,7 @@ import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
 import { toast } from 'sonner';
-import { notifyLiveLock } from '@/lib/liveLock';
+import { isLiveLockRejection, notifyLiveLock, type TemplateApplyResult } from '@/lib/liveLock';
 import { REVIEW_KEY } from '../api/migration';
 import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, PLUGIN_SESSION_PROTECTED_KEY } from './usePluginSessionPersistence';
 import { liveModesApi } from '../api/liveModes';
@@ -659,7 +659,7 @@ export const usePlugins = () => {
         } catch (e) {
             console.error("Failed to load plugin:", e);
             localStorage.removeItem('vst_host_pending_plugin'); // Also clear on caught error
-            setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
+            if (!notifyLiveLock(t, e, 'pluginNotices.addFailed')) setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
             return false;
         } finally {
             setIsLoading(false);
@@ -940,7 +940,7 @@ export const usePlugins = () => {
         }
     }, [rejectDuringRestore]);
 
-    const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>) => {
+    const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>): Promise<TemplateApplyResult> => {
         if (rejectDuringRestore()) return false;
         const releaseRestore = beginRackRestore();
         setIsLoading(true);
@@ -984,6 +984,10 @@ export const usePlugins = () => {
                         gain: 1.0,
                     });
                 } catch (e) {
+                    if (isLiveLockRejection(e)) {
+                        setPlugins(loadedPlugins);
+                        throw e;
+                    }
                     failedCount += 1;
                     console.error(`Failed to load plugin for slot ${idx}`, e);
                     toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.slotFailed', { slot: idx + 1, name: vst.name }, false)));
@@ -998,7 +1002,8 @@ export const usePlugins = () => {
             return true;
         } catch (e) {
             console.error("Failed to apply template:", e);
-            if (!notifyLiveLock(t, e, 'pluginNotices.applyTemplateFailed')) setError(pluginNotice('pluginNotices.applyTemplateFailed'));
+            if (notifyLiveLock(t, e, 'pluginNotices.applyTemplateFailed')) return 'blocked';
+            setError(pluginNotice('pluginNotices.applyTemplateFailed'));
             return false;
         } finally {
             releaseRestore();

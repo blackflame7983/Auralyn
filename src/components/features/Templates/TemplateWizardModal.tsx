@@ -23,6 +23,7 @@ const roleLabel: Record<TemplateRole, MessageKey> = {
 };
 import { VstPlugin } from '../../../api/audio';
 import { toast } from 'sonner';
+import type { TemplateApplyResult } from '@/lib/liveLock';
 
 function NoticeText({ value }: { value: SettingsNotice }) { const t = useMessages(); return <>{renderNotice(t, value)}</>; }
 
@@ -30,7 +31,7 @@ interface TemplateWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
     availablePlugins: VstPlugin[];
-    onApplyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    onApplyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | TemplateApplyResult>;
     onOpenSoundSettings?: () => void;
     onScan: () => void;
     isScanning: boolean;
@@ -96,6 +97,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             });
 
             const applied = await onApplyTemplate(finalMapping);
+            if (applied === 'blocked') return;
             if (applied === false) { toast.error(React.createElement(NoticeText, { value: notice('presets.copy.083') })); return; }
             onClose();
             toast.info(React.createElement(NoticeText, { value: notice('presets.copy.084') }), { description: React.createElement(NoticeText, { value: notice('presets.copy.085') }), duration: 10000 });

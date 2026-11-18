@@ -5,6 +5,7 @@ import { useObsUsage } from '../../hooks/useObsUsage';
 import { useModalReturnFlags, useRegisteredCloser } from '../../hooks/useModalReturn';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
+import type { TemplateApplyResult } from '@/lib/liveLock';
 import { channelRoutingFor } from '@/lib/audioChannelRouting';
 import { registerSettingsCloser, useLeaveGeneration } from './pageLeave';
 import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
@@ -102,7 +103,7 @@ interface PluginsApi {
     applyProfile: (name: string, substitutions?: { inputDevice?: string; outputDevice?: string }) => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     restoreBackupProfile: () => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     runBundle?: (request: import('../../api/bundles').BundleOperation) => Promise<import('../../api/bundles').BundleResult | null>;
-    applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | TemplateApplyResult>;
     resetPlugins: () => void;
     recoverSession: (excludePath?: string | null, start?: () => Promise<unknown>) => Promise<void>;
     keepSessionStopped: () => Promise<void>;
