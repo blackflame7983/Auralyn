@@ -28,11 +28,9 @@ import { useRackOpener } from './useRackOpener';
 import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
-import { formatAudioRoute, routeDestination } from '@/lib/audioRouteLine';
+import { formatAudioRoute, usageDestination } from '@/lib/audioRouteLine';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
 import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
-import type { MessageKey } from '@/i18n/messages';
-import type { PreparationUse } from '@/lib/preparation';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
@@ -230,11 +228,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
         else onOpenSettings();
     };
-    const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
     const usage = preparation.context.usage;
-    const receiverName = preparation.context.receiver.trim();
-    const shortDestinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obsShort', discord: 'prep.callShort', other: 'prep.otherShort', listening: 'prep.localShort' };
-    const destination = usage ? routeDestination(t(destinations[usage]), t(shortDestinations[usage]), usage !== 'listening' ? receiverName : '') : undefined;
+    const destination = usage ? usageDestination(t, usage, preparation.context.receiver) : undefined;
     const route = configured && !routeInConnectionDiagram ? formatAudioRoute(
         preparation.observation.config?.input ?? currentInput,
         preparation.observation.config?.output ?? currentOutput,

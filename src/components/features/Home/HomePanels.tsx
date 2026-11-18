@@ -5,6 +5,7 @@ import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabel } from './PreparationPanel';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { deviceDisplayName } from '@/lib/audioRouting';
+import { usageDestination } from '@/lib/audioRouteLine';
 import { AudioFlow } from '@/components/ui/AudioFlow';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { confirmationState } from '@/lib/preparation';
@@ -68,11 +69,11 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
                 host: host ? displayAudioHost(host) : t('master.unset'),
                 rate: sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${sampleRate / 1000} kHz` : t('master.unset'),
             })}</p>}
-            <div className="basis-full"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
+            <div className="basis-full min-w-0"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
                 input={{ label: t(music ? 'music.source' : 'home.input'), value: actualInput ? deviceDisplayName(actualInput) : undefined, warning: !actualInput ? t('flow.checkInput') : undefined }}
                 output={{ label: t(broadcastId ? 'flow.monitorOutput' : 'home.output'), value: actualOutput ? deviceDisplayName(actualOutput) : undefined, warning: !actualOutput ? t('flow.checkOutput') : undefined }}
                 branches={broadcastId ? [{ label: t('flow.broadcastOutput'), value: broadcastName ?? t('flow.unknown') }] : undefined}
-                receiver={{ label: t(music && !broadcastId ? 'flow.musicReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('wizard.music') : model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : undefined,
+                receiver={{ label: t(music && !broadcastId ? 'flow.musicReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('wizard.music') : model.context.usage ? usageDestination(t, model.context.usage, model.context.receiver).full : undefined,
                     warning: receiverState === 'stale' ? t('flow.receiverUnknown') : undefined, hint: receiverState === 'unconfirmed' ? t('flow.receiverCheckHint') : undefined }} /></div>
             {!statusCovered && !homeActionInStrip && model.observation.availability !== 'muted' && <p role="status" className="text-ui-support text-muted-foreground">{resolvedStatus}</p>}
             {(music || configured && !configureIsPrimary) && <Button variant="outline" size="default" type="button" onClick={onOpenSettings} className="home-action">{t('home.changeDevices')}</Button>}

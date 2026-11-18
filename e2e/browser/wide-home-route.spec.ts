@@ -10,16 +10,17 @@ type Locale = 'ja' | 'en';
 type Purpose = 'voice' | 'music';
 const wide = largeWindow.connectColumnMinWidth;
 
-async function openHome(page: Page, size: { width: number; height: number }, locale: Locale, purpose: Purpose) {
+async function openHome(page: Page, size: { width: number; height: number }, locale: Locale, purpose: Purpose, receiver = '', usage: 'obs' | 'local' = 'obs') {
     await page.setViewportSize(size);
-    await page.addInitScript(({ l, p }) => {
+    await page.addInitScript(({ l, p, r, u }) => {
+        if (r) localStorage.setItem('auralyn_preparation_context', JSON.stringify({ location: 'home', usage: u === 'local' ? 'listening' : 'obs', signal: 'unknown', receiver: r }));
         localStorage.setItem('vst_host_locale', l);
         localStorage.setItem('vst_host_wizard_done', 'true');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
-        localStorage.setItem('vst_host_setup_goal', p === 'music' ? 'listening' : 'obs');
+        localStorage.setItem('vst_host_setup_goal', p === 'music' ? 'listening' : u);
         localStorage.setItem('auralyn_display_purpose', p);
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
-    }, { l: locale, p: purpose });
+    }, { l: locale, p: purpose, r: receiver, u: usage });
     await page.goto('/');
     await expect(page.getByText(locale === 'ja' ? '音声エンジンを起動しています…' : 'Starting the audio engine…', { exact: true })).toHaveCount(0);
     await expect(page.locator('.home-content')).toBeVisible();
@@ -67,6 +68,58 @@ for (const locale of ['ja', 'en'] as const) for (const purpose of ['voice', 'mus
         }
     });
 }
+
+const longReceivers = {
+    '空白のある長い名前': Array.from({ length: 12 }, (_, index) => `Studio-Capture-${index}`).join(' ').slice(0, 200),
+    '区切りの無い長い名前': 'N'.repeat(200),
+};
+
+test.describe('受け側の名前（#763）', () => {
+    test.use({ liveHome: true, builtinEnabled: true });
+
+    for (const locale of ['ja', 'en'] as const) {
+        test(`${locale} 1440×900：名前は図の送り先に、上の帯と同じ形で出る。1399pxでは上の帯に出る`, async ({ page }, info) => {
+            const destination = `${message(locale, 'prep.obs')} · My OBS`;
+            await openHome(page, { width: 1440, height: 900 }, locale, 'voice', 'My OBS');
+            await expect(bandRoute(page, locale)).toHaveCount(0);
+            await expect(diagram(page, locale).getByText(destination, { exact: true })).toBeVisible();
+            await page.screenshot({ path: info.outputPath(`receiver-${locale}-1440x900.png`) });
+            await page.setViewportSize({ width: wide - 1, height: 900 });
+            await expect(bandRoute(page, locale)).toHaveAttribute('title', new RegExp(`${destination}$`));
+            await expect(diagram(page, locale)).toHaveCount(0);
+        });
+
+        for (const [kind, name] of Object.entries(longReceivers)) {
+            test(`${locale} 1440×900：${kind}でも図の中で切れず、はみ出さず、周りと重ならず、全文が読める`, async ({ page }, info) => {
+                await openHome(page, { width: 1440, height: 900 }, locale, 'voice', name);
+                const flow = diagram(page, locale);
+                const text = flow.locator('p', { hasText: name });
+                await expect(text).toBeVisible();
+                await expect(text).toHaveText(`${message(locale, 'prep.obs')} · ${name}`);
+                const fit = await flow.evaluate((section, target) => {
+                    const region = section.closest('section[aria-label]')?.parentElement?.getBoundingClientRect();
+                    const nodes = [...section.querySelectorAll('ol > li')].map(node => node.getBoundingClientRect());
+                    const line = [...section.querySelectorAll('p')].find(p => (p.textContent ?? '').includes(target));
+                    if (!line || !region) throw new Error('送り先の文が見つからない');
+                    const box = line.getBoundingClientRect();
+                    const overlaps = nodes.filter((a, i) => nodes.some((b, j) => j > i && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1)).length;
+                    return { clipped: line.scrollWidth > line.clientWidth + 1, outside: box.right > section.getBoundingClientRect().right + 1 || box.left < section.getBoundingClientRect().left - 1, overlaps };
+                }, name);
+                expect(fit).toEqual({ clipped: false, outside: false, overlaps: 0 });
+                const connectionBox = await connection(page, locale).evaluate(element => ({ overflow: element.scrollWidth - element.clientWidth }));
+                expect(connectionBox.overflow).toBeLessThanOrEqual(1);
+                await page.screenshot({ path: info.outputPath(`receiver-long-${kind === '空白のある長い名前' ? 'spaced' : 'unbroken'}-${locale}-1440x900.png`) });
+            });
+        }
+    }
+
+    test('自分の声を聴く用途では、受け側の名前が残っていても図に出さない', async ({ page }) => {
+        await openHome(page, { width: 1440, height: 900 }, 'ja', 'voice', 'My OBS', 'local');
+        await expect(diagram(page, 'ja')).toBeVisible();
+        await expect(diagram(page, 'ja')).toContainText(message('ja', 'prep.local'));
+        await expect(diagram(page, 'ja')).not.toContainText('My OBS');
+    });
+});
 
 test.describe('境目と、窓の幅の変更', () => {
     test.use({ liveHome: true, builtinEnabled: true });
