@@ -96,6 +96,11 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                     </ul>
                                 </div>)}
                                 <p>{t('help.home.other', labels)}</p>
+                                <div>
+                                    <h3 className="font-semibold">{t('help.home.lookTitle')}</h3>
+                                    <p className="mt-1">{t('help.home.look', labels)}</p>
+                                    <UserDocLink name="help.appearance" compact />
+                                </div>
                             </>}
                             {section === 'setup' && <>
                                 <div>

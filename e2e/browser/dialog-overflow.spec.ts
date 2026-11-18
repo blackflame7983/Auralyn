@@ -155,6 +155,8 @@ for (const locale of ['ja', 'en'] as const) {
 test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {
     await openScreen(page, 'help', 'ja', { width: 900, height: 600 });
     const dialog = page.getByRole('dialog', { name: message('ja', 'help.title'), exact: true });
+    // 最初の節は短い手順だけになり溢れないので、長い「ホームの見方」で確かめる（#719・#775）。
+    await dialog.getByRole('button', { name: message('ja', 'help.section.home'), exact: true }).click();
     const fade = dialog.locator('[data-scroll-more="dialog"]');
     await expect(fade).toBeVisible();
     await expect(fade).toHaveAttribute('aria-hidden', 'true');

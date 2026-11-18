@@ -19,7 +19,7 @@ If it does not arrive, see [Others cannot hear you](./troubleshooting.md#not-rec
 
 1. In the Setup that opens first, choose “Listen to music (apply VST to PC audio)” for Use, then your playback source and listening device. If you closed it, open it again from “Open Setup” in “Connection details”.
 2. If the status on the top band says “Running”, audio is already on. If it is stopped, press “Start listening” on Home.
-3. Play a song in your music app. If the “Playback source” bar on the right of the screen moves, sound is coming in. When you have added a VST, press “Bypass VST” to compare; if the sound changes, the VST is applied.
+3. Play a song in your music app. If you hear it on your own headphones or speakers and the “Playback source” bar on the right of the screen moves, sound is coming in. When you have added a VST, press “Bypass VST” to compare; if the sound changes, the VST is applied.
 
 If there is no sound, see [No sound](./troubleshooting.md#no-sound).
 

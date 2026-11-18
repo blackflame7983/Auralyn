@@ -156,6 +156,8 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
         }
     });
     expect(within(dialog).getByText(message(locale, 'help.home.other', labels))).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { level: 3, name: message(locale, 'help.home.lookTitle') })).toBeInTheDocument();
+    expect(within(dialog).getByText(message(locale, 'help.home.look', labels))).toBeInTheDocument();
     expect(within(dialog).queryByText(music.stage[0])).not.toBeInTheDocument();
     localStorage.setItem('auralyn_display_purpose', 'music');
     fireEvent(window, new Event('auralyn-display-purpose-changed'));
@@ -181,6 +183,7 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.setup') }));
     expect(within(dialog).queryAllByRole('list').map(list => list.tagName)).toEqual(['OL']);
     expect(within(dialog).getByText(message(locale, 'help.setup.body', labels))).toBeInTheDocument();
+    expect(within(dialog).queryByText(message(locale, 'help.home.look', labels))).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの設定」の短い手順で、画面の作りの説明は後ろの節にある（%s）', locale => {
@@ -202,6 +205,9 @@ it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの
     expect(steps[2]).toContain('OBS');
     for (const step of steps) expect(step).not.toMatch(/\{[A-Za-z]+\}/);
     expect(within(dialog).queryByText(message(locale, 'help.home.stage.title'))).not.toBeInTheDocument();
+    // 見た目と動きの説明は、はじめの設定には置かない。
+    expect(within(dialog).queryByText(new RegExp(message(locale, 'header.gaming')))).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('heading', { name: message(locale, 'help.home.lookTitle') })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.receiver') }));
     expect(nav.getByRole('button', { name: message(locale, 'help.section.trouble') })).toHaveAttribute('aria-current', 'page');
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
@@ -222,6 +228,8 @@ it.each(['ja', 'en'] as const)('音楽鑑賞では、最初の手順の最後が
     expect(steps[1]).not.toContain(message(locale, 'home.startAudio'));
     expect(steps[2]).toContain(message(locale, 'music.source'));
     expect(steps[2]).toContain(message(locale, 'header.compare'));
+    // 確かめる先は、配信の受け側ではなく、手元のヘッドホンやスピーカー。
+    expect(steps[2]).toContain(locale === 'ja' ? '手元のヘッドホンやスピーカー' : 'your own headphones or speakers');
     expect(steps.join('')).not.toContain('OBS');
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.silent') }));
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
@@ -263,6 +271,10 @@ it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュ
             expect(item.getByText(term.summary)).toBeInTheDocument();
             fireEvent.click(item.getByRole('button'));
             expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(glossaryDocName(term.anchor), locale));
+        }
+        if (section === 'home') {
+            fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) }));
+            expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl('help.appearance', locale));
         }
         if (section === 'trouble') {
             const symptoms = ['troubleshooting.no-sound', 'troubleshooting.not-received', 'troubleshooting.dropouts', 'troubleshooting.still-running'] as const;
