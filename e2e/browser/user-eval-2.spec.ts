@@ -104,19 +104,21 @@ test('960×640 でボイスチェックの録音にスクロールなしで届�
     expect(place.bottom).toBeLessThanOrEqual(640);
 });
 
-test('再生の確認からVSTを外した比較を1回で切り替える', async ({ page }) => {
+test('音が届いているか確かめるからVSTを外した比較を1回で切り替える', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.addInitScript(() => {
         localStorage.setItem('auralyn_display_purpose', 'music');
-        const original = (window as any).__TAURI_INTERNALS__.invoke;
-        (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: unknown) => command === 'set_global_bypass' ? Promise.resolve() : original(command, args);
+        const internals = window.__TAURI_INTERNALS__;
+        if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
+        const original = internals.invoke;
+        internals.invoke = (command, args) => command === 'set_global_bypass' ? Promise.resolve() : original(command, args);
     });
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-    const open = page.getByRole('button', { name: '再生の確認', exact: true });
+    const open = page.getByRole('button', { name: '音が届いているか確かめる', exact: true });
     await expect(open).toBeEnabled();
     await open.click();
-    const panel = page.getByRole('region', { name: '再生の確認', exact: true });
+    const panel = page.getByRole('region', { name: '音が届いているか確かめる', exact: true });
     await panel.getByRole('switch', { name: 'VSTを外して比較', exact: true }).click();
     await expect(page.locator('#ab-compare-btn')).toHaveAttribute('aria-checked', 'true');
 });

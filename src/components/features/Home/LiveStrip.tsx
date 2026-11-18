@@ -7,6 +7,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { OUTPUT_LOUD_DB, OUTPUT_QUIET_DB, outputVerdict } from '@/lib/outputVerdict';
 import { useInputMeterState, useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
+import { MusicSourceHint } from './MusicSourceHint';
 
 /** 入ってきた音の状態。レベルの平滑化では描き直さず、状態が変わったときだけ読む。 */
 function IncomingStatus({ running, label, music }: { running: boolean; label: string; music: boolean }) {
@@ -74,6 +75,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <IncomingStatus running={running} music={music} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
+        {music && <MusicSourceHint running={running} source={model.observation.config?.input} fromApp={model.observation.config?.input_source?.kind === 'process_loopback'} />}
         {showNowAction && <div className="now-action flex min-h-10 flex-wrap items-center gap-2">
             {startButton && <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting}>{t(music ? (starting ? 'home.startingListening' : 'home.startListening') : (starting ? 'home.starting' : 'home.startAudio'))}</Button>}
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}

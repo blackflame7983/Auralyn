@@ -8,7 +8,7 @@ it('確認欄を開いても再生・録音・機器変更を始めず、設定�
     const start = vi.spyOn(audioApi, 'start');
     const settings = vi.fn(); const close = vi.fn();
     render(<MusicListeningCheck running input="CABLE Output" output="Headphones" vstBypassed={false} onCompareVst={vi.fn()} onSettings={settings} onClose={close} />);
-    expect(screen.getByRole('heading', {name: '再生の確認'})).toHaveFocus();
+    expect(screen.getByRole('heading', {name: '音が届いているか確かめる'})).toHaveFocus();
     expect(screen.getByText('CABLE Output')).toBeInTheDocument();
     expect(screen.getByText('Headphones')).toBeInTheDocument();
     expect(screen.getByText(/1\. 再生アプリで音を流す/)).toBeInTheDocument();
@@ -20,7 +20,7 @@ it('確認欄を開いても再生・録音・機器変更を始めず、設定�
     expect(start).not.toHaveBeenCalled();
 });
 
-it('再生の確認から、右の列と同じVST外しを1回で切り替える', () => {
+it('音が届いているか確かめるから、右の列と同じVST外しを1回で切り替える', () => {
     const start = vi.spyOn(audioApi, 'start');
     const compare = vi.fn();
     render(<MusicListeningCheck running vstBypassed={false} onCompareVst={compare} onSettings={vi.fn()} onClose={vi.fn()} />);

@@ -8,7 +8,8 @@ import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { afterFrame } from '@/hooks/internal/afterFrame';
 import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useSustained } from '@/hooks/useSustained';
 import { useInputMeterState } from '../LevelMeter/MeterContext';
 import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
@@ -213,12 +214,7 @@ function TroubleshootEntry({ running, music, attention, onOpen }: { running: boo
     const t = useMessages();
     const state = useInputMeterState(running);
     const quiet = running && (state === 'waiting' || state === 'stale' || !music && state === 'silent');
-    const [quietLong, setQuietLong] = useState(false);
-    useEffect(() => {
-        if (!quiet) { setQuietLong(false); return; }
-        const timer = window.setTimeout(() => setQuietLong(true), SILENCE_ATTENTION_MS);
-        return () => window.clearTimeout(timer);
-    }, [quiet]);
+    const quietLong = useSustained(quiet, SILENCE_ATTENTION_MS);
     const prominent = attention || quietLong;
     return <Button variant="ghost" size="sm" type="button" onClick={onOpen} aria-haspopup="dialog" aria-description={prominent ? t('prep.diagnosticAttention') : undefined}
         className={cn('gap-1 h-auto whitespace-normal',

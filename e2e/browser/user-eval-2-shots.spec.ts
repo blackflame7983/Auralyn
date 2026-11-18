@@ -1,12 +1,13 @@
 import { mkdirSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
+import { emitAudioLevel } from './e2eHooks';
 
 // 段階2の画面記録。通常の試験と CI では撮らない。
 const recordShots = process.env.USER_EVAL_SHOTS === '1';
 const dir = 'docs/verification/user-eval-2';
 
-test.describe('段階2の画面記録', () => {
-    test.skip(!recordShots, '画面の記録は USER_EVAL_SHOTS=1 のときだけ撮る');
+// 画面の記録は USER_EVAL_SHOTS=1 のときだけ登録する。
+if (recordShots) test.describe('段階2の画面記録', () => {
     test.beforeAll(() => mkdirSync(dir, { recursive: true }));
 
     test.beforeEach(async ({ page }) => {
@@ -20,7 +21,7 @@ test.describe('段階2の画面記録', () => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto('/?mock=live-home');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.16], output: [0.12, 0.1] }));
+        await emitAudioLevel(page, { input: [0.2, 0.16], output: [0.12, 0.1] });
         await expect(page.getByRole('button', { name: '音量を測る', exact: true })).toBeVisible();
         await page.screenshot({ path: `${dir}/home-ja-1024x768.png`, animations: 'disabled' });
     });
@@ -30,10 +31,10 @@ test.describe('段階2の画面記録', () => {
         await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
         await page.goto('/?mock=live-home');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        const open = page.getByRole('button', { name: '再生の確認', exact: true });
+        const open = page.getByRole('button', { name: '音が届いているか確かめる', exact: true });
         await expect(open).toBeEnabled();
         await open.click();
-        await expect(page.getByRole('region', { name: '再生の確認', exact: true })).toBeVisible();
+        await expect(page.getByRole('region', { name: '音が届いているか確かめる', exact: true })).toBeVisible();
         await page.screenshot({ path: `${dir}/music-playback-ja-1024x768.png`, animations: 'disabled' });
     });
 
