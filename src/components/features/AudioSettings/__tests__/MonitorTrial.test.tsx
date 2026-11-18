@@ -21,20 +21,22 @@ beforeEach(() => {
 });
 it('申告0と不明・無効段を区別して比較案を作り、停止中の旧内訳は使わない', () => {
     const data = stats();
-    data.latencyMetadata!.nrConfiguredEnabled = true;
-    data.latencyMetadata!.stageBreakdown = { current: true, vst: [
+    const metadata = data.latencyMetadata;
+    if (!metadata) throw new Error('latencyMetadata がありません');
+    metadata.nrConfiguredEnabled = true;
+    metadata.stageBreakdown = { current: true, vst: [
         { id: 'zero', name: 'zero', state: 'active', declaredSamples: 0 },
         { id: 'unknown', name: 'unknown', state: 'active', declaredSamples: null },
         { id: 'delay', name: 'delay', state: 'active', declaredSamples: 256 },
         { id: 'off', name: 'off', state: 'bypassed', declaredSamples: 1024 },
     ] } as never;
     expect(monitorAdvice(data)).toEqual([{ kind: 'nr' }, { kind: 'vstUnknown', name: 'unknown' }, { kind: 'vstDelay', name: 'delay', samples: 256 }]);
-    data.latencyMetadata!.streamRunning = false; expect(monitorAdvice(data)).toEqual([]);
+    metadata.streamRunning = false; expect(monitorAdvice(data)).toEqual([]);
 });
 it('候補確認まで音声を変更せず、保護拒否後は開始しない', async () => {
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
     fireEvent.click(screen.getByText('現在の実設定から候補を作る'));
-    await screen.findByText(/buffer要求 512 → 128/);
+    await screen.findByText(/バッファ要求 512 → 128/);
     expect(audioApi.start).not.toHaveBeenCalled();
     vi.mocked(liveModesApi.preflight).mockRejectedValueOnce(new Error('protected'));
     fireEvent.click(screen.getByText('この候補で試験を開始'));
@@ -50,23 +52,23 @@ it('試験中の条件変更後は採用・自動復元せず原本を残す', a
     const onApplied = vi.fn().mockResolvedValue(undefined);
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValueOnce(stats()).mockResolvedValueOnce(stats()).mockResolvedValueOnce(stats('trial')).mockResolvedValue(stats('external'));
     render(<MonitorTrial devices={devices} onApplied={onApplied} />);
-    fireEvent.click(screen.getByText('現在の実設定から候補を作る')); await screen.findByText(/buffer要求 512 → 128/);
+    fireEvent.click(screen.getByText('現在の実設定から候補を作る')); await screen.findByText(/バッファ要求 512 → 128/);
     fireEvent.click(screen.getByText('この候補で試験を開始')); await screen.findByText('この構成を採用');
     fireEvent.click(screen.getByRole('checkbox', { name: /同じ声・伴奏で/ })); fireEvent.click(screen.getByText('この構成を採用'));
     await screen.findByRole('alert'); expect(audioApi.start).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem('auralyn_monitor_trial_result')).toBeNull();
-    expect(JSON.parse(localStorage.getItem('auralyn_monitor_trial_original_v1')!)).toMatchObject({version: 1, original: {bufferSize: 512}});
+    expect(JSON.parse(localStorage.getItem('auralyn_monitor_trial_original_v1') ?? 'null')).toMatchObject({version: 1, original: {bufferSize: 512}});
 });
 it('復元失敗後も再表示した画面から明示的に原本を復元できる', async () => {
     sessionStorage.setItem('auralyn_monitor_trial_original', JSON.stringify(original));
     const onApplied = vi.fn().mockResolvedValue(undefined);
     render(<MonitorTrial devices={devices} onApplied={onApplied} />);
     const restore = screen.getByText('保存した元の設定へ戻す'); expect(restore).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: /現在の入出力設定を/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /保存済みの入出力設定に戻して/ }));
     await waitFor(() => expect(restore).toBeEnabled());
     vi.mocked(audioApi.start).mockRejectedValueOnce(new Error('missing')); fireEvent.click(restore);
     await screen.findByRole('alert'); expect(localStorage.getItem('auralyn_monitor_trial_original_v1')).not.toBeNull();
-    fireEvent.click(screen.getByRole('checkbox', { name: /現在の入出力設定を/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /保存済みの入出力設定に戻して/ }));
     await waitFor(() => expect(restore).toBeEnabled()); vi.mocked(audioApi.start).mockResolvedValueOnce({sample_rate: 48000, buffer_size: 512, channels: 2}); fireEvent.click(restore);
     await waitFor(() => expect(localStorage.getItem('auralyn_monitor_trial_original_v1')).toBeNull());
     expect(onApplied).toHaveBeenCalledTimes(1);
@@ -76,10 +78,10 @@ it('要求が128でもdriverが512を受理した場合は実際のrateとbuffer
     vi.mocked(audioApi.start).mockResolvedValue({ sample_rate: 44100, buffer_size: 512, channels: 2 });
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValueOnce(stats()).mockResolvedValueOnce(stats()).mockResolvedValue(stats('trial', 512));
     render(<MonitorTrial devices={devices} onApplied={onApplied} />);
-    fireEvent.click(screen.getByText('現在の実設定から候補を作る')); await screen.findByText(/buffer要求 512 → 128/);
+    fireEvent.click(screen.getByText('現在の実設定から候補を作る')); await screen.findByText(/バッファ要求 512 → 128/);
     fireEvent.click(screen.getByText('この候補で試験を開始'));
     await screen.findByText('受理された設定：44100 Hz ／ 512 frame。要求値と異なる場合があります。');
-    expect(screen.getByText(/試験buffer要求：128 frame/)).toBeInTheDocument();
+    expect(screen.getByText(/試験バッファ要求：128 サンプル/)).toBeInTheDocument();
     expect(onApplied).toHaveBeenLastCalledWith(expect.objectContaining({ sampleRate: 44100, bufferSize: 512 }));
 });
 
@@ -89,7 +91,7 @@ it('再起動後の原本は自動適用せず、機器消失時も保持して�
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
     expect(audioApi.start).not.toHaveBeenCalled();
     expect(screen.getByText('現在の実設定から候補を作る')).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', {name:/現在の入出力設定を/}));
+    fireEvent.click(screen.getByRole('checkbox', {name:/保存済みの入出力設定に戻して/}));
     await waitFor(() => expect(screen.getByRole('button', {name:'保存した元の設定へ戻す'})).toBeEnabled());
     fireEvent.click(screen.getByRole('button', {name:'保存した元の設定へ戻す'}));
     await screen.findByRole('alert');
@@ -110,7 +112,7 @@ it('壊れた原本は新試験を防ぎ、現在の状態の明示採用まで�
 it('再確認後に現在の入出力が変わった場合は復元せず、原本を保持する', async () => {
     localStorage.setItem('auralyn_monitor_trial_original_v1', JSON.stringify({version:1, original}));
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
-    fireEvent.click(screen.getByRole('checkbox', {name:/現在の入出力設定を/}));
+    fireEvent.click(screen.getByRole('checkbox', {name:/保存済みの入出力設定に戻して/}));
     const restore = screen.getByRole('button', {name:'保存した元の設定へ戻す'});
     await waitFor(() => expect(restore).toBeEnabled());
     vi.mocked(audioApi.getAudioState).mockResolvedValue({is_running:true,config:{host:'WASAPI',input:'other mic',output:'phones',sample_rate:48000,buffer_size:512}});
@@ -122,7 +124,7 @@ it('再確認後に現在の入出力が変わった場合は復元せず、原�
 it('復元の受理値が原本と異なる場合は原本を保持し、期待した現在状態を渡す', async () => {
     localStorage.setItem('auralyn_monitor_trial_original_v1', JSON.stringify({version:1, original}));
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
-    fireEvent.click(screen.getByRole('checkbox', {name:/現在の入出力設定を/}));
+    fireEvent.click(screen.getByRole('checkbox', {name:/保存済みの入出力設定に戻して/}));
     const restore = screen.getByRole('button', {name:'保存した元の設定へ戻す'});
     await waitFor(() => expect(restore).toBeEnabled());
     fireEvent.click(restore);
@@ -140,7 +142,7 @@ it('原本を永続保存できない場合は試験を開始しない', async (
     });
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
     fireEvent.click(screen.getByText('現在の実設定から候補を作る'));
-    await screen.findByText(/buffer要求 512 → 128/);
+    await screen.findByText(/バッファ要求 512 → 128/);
     fireEvent.click(screen.getByText('この候補で試験を開始'));
     await screen.findByRole('alert');
     expect(audioApi.start).not.toHaveBeenCalled();
@@ -159,7 +161,7 @@ it('保存設定と現在の実機 ID が異なる場合、候補を作らず開
 it('復元後の実機 ID を確認できない場合は原本を保持する', async () => {
     localStorage.setItem('auralyn_monitor_trial_original_v1', JSON.stringify({version:1, original}));
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
-    fireEvent.click(screen.getByRole('checkbox', {name:/現在の入出力設定を/}));
+    fireEvent.click(screen.getByRole('checkbox', {name:/保存済みの入出力設定に戻して/}));
     const restore = screen.getByRole('button', {name:'保存した元の設定へ戻す'});
     await waitFor(() => expect(restore).toBeEnabled());
     vi.mocked(audioApi.start).mockImplementationOnce(async () => {

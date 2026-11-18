@@ -265,7 +265,7 @@ it('ノイズ低減の強さは現在の抑制強度と声を守る設定を保�
 it('学習・会場モード中は強さを上書きせず、詳しい調整へ案内する', async () => {
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ noiseReductionMode: 'smart' }));
     render(<VoiceQuickControls running />);
-    expect(await screen.findByText(/現在は「測定値で調整」で低減しています/)).toBeInTheDocument();
+    expect(await screen.findByText(/現在「測定値で調整」で低減中/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '強' })).not.toBeInTheDocument();
 });
 
@@ -281,7 +281,7 @@ it('内蔵ボイスチェーンのON/OFFは適用済みの歌向け設定と残�
         epoch: 'e1', revision: '3', appliedRevision: '3', config: req.action === 'apply' ? req.config : singing, pending: false, undoToken: null, error: null,
     }));
     render(<VoiceQuickControls running />);
-    expect(await screen.findByText(/歌向けの設定を使っています/)).toBeInTheDocument();
+    expect(await screen.findByText(/歌向けの設定を使用中/)).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole('switch', { name: '声を整える' })));
     expect(request).toHaveBeenCalledWith({ action: 'apply', epoch: 'e1', expectedRevision: '3', config: { ...singing, active: false } });
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();

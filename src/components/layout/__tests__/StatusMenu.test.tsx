@@ -58,9 +58,9 @@ it.each(['ja', 'en'] as const)('停止中はいまの状態と同じ開始と終
     expect(screen.queryByRole('menuitem', { name: message(locale, 'home.startAudio') })).not.toBeInTheDocument();
 });
 
-it('音楽鑑賞の実行中は、再生元を放す説明にする', async () => {
+it('音楽鑑賞の実行中は、再生元と聴く機器の接続を止める説明にする', async () => {
     open('running', 'ja', { music: true });
-    expect(await screen.findByRole('menuitem', { name: /Auralyn の音を止める/ })).toHaveTextContent('再生元と聴く機器を放します。再生アプリの音は止まりません。');
+    expect(await screen.findByRole('menuitem', { name: /Auralyn の音を止める/ })).toHaveTextContent('再生元と聴く機器の接続を止めます。再生アプリの音は止まりません。');
 });
 
 it.each(['unknown', 'unconfigured'] as const)('分からないときと未設定は終了だけを出す（%s）', async kind => {

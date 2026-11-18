@@ -2533,20 +2533,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/AudioSettings/__tests__/MonitorTrial.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "9c165eefabe2f20ccab3ab716cec4da4b9fb6563a06a2b173c33b17f8b883790",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/components/features/AudioSettings/__tests__/MonitorTrial.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "c08fc8dc385739678b0805821aaa7cd9e9c8f4caef35b090af8d47ad8078f9f3",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/__tests__/NoiseMeasurementPanel.test.tsx",
       "rule": "@typescript-eslint/no-floating-promises",
       "hash": "4d4397c0a3f10abd5bf4ff914dc1e49ac8d2d1af51aae37331940c1608c803a5",
@@ -4950,20 +4936,6 @@
       "file": "src/hooks/__tests__/useLayoutMotion.test.tsx",
       "rule": "@typescript-eslint/no-unsafe-member-access",
       "hash": "8a7aceb15ca6d7c6b8055982966cda26f0d229cf78d86140954169b5753dd7b3",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/__tests__/useLiveModes.test.tsx",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "955c826d1d4b4bb3ff71785c129147bb29b37cf2a00563a4ac0d5feb407e4bfa",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
-      "file": "src/hooks/__tests__/useLiveModes.test.tsx",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "f8a65947da20ec9d09b3ce82314a2cb79d4e45789f4f0aacd04c1fff9f1d32a1",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },

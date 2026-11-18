@@ -41,7 +41,7 @@ it('処理分離は明示選択した専用内蔵設定だけを追加し、VST�
     fireEvent.click(screen.getByText('現在の構成・稼働状態を取得')); await screen.findByRole('combobox');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ }));
-    expect(screen.getByText(/この自分用設定と追加出力を変更・復元しません/)).toBeInTheDocument();
+    expect(screen.getByText(/この自分用設定と追加出力は変更・復元しません/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンにし/ })); fireEvent.click(screen.getByText('出力構成を保存・反映'));
     expect(vi.mocked(liveOutputApi.request).mock.lastCall?.[0]).toMatchObject({ splitProcessing: true, monitorSinging: { preset: 'singing' }, monitorTalk: { reverb: { enabled: false } } });
 });
