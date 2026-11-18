@@ -80,6 +80,9 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
         const previous = saved[action]?.trim() ?? '';
         return (current ? normalized(current) : '') !== (previous ? normalized(previous) : '');
     });
+    // 読み込み中・保存中・入力待ち・登録失敗の再試行では、押せない理由が「変更なし」ではない。
+    const showUnchanged = ready && !busy && !capturing && !dirty && !registrationFailed;
+    const unchangedId = `${headingId}-unchanged`;
     useShortcutSync({
         capturing, captureRef, acceptRef, session, captureQueue, onCaptureChange, setMessage, setArmed,
         setValues, setSaved, setRegistrationFailed, setReady, onLoadedRef, dirty, onDirtyChange,
@@ -232,8 +235,9 @@ export function ShortcutsPanel({ onCaptureChange, onDirtyChange }: { onCaptureCh
         <MeasuredSaveBar relocate className={saveSlot
             ? 'flex flex-wrap items-center gap-2 border-t border-border bg-muted/20 px-4 py-2'
             : 'sticky bottom-0 -mx-4 px-4 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2'}>
-            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</Button>
-            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</Button>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} aria-describedby={showUnchanged ? unchangedId : undefined} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</Button>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || !dirty || !!capturing} aria-describedby={showUnchanged ? unchangedId : undefined} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</Button>
+            {showUnchanged && <p id={unchangedId} className="min-w-0 break-words text-balance [word-break:auto-phrase] text-ui-support text-muted-foreground">{t('shortcuts.unchanged')}</p>}
             {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-ui-support">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
         </MeasuredSaveBar>
     </section>;

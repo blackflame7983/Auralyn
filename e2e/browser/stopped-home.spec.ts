@@ -141,6 +141,44 @@ test.describe('停止中のホームの細部', () => {
     });
 });
 
+for (const locale of ['ja', 'en'] as const) for (const purpose of ['voice', 'music'] as const) test.describe(`停止中の上の帯の確認ボタン（#772、${purpose}、${locale}）`, () => {
+    test.use({ liveHome: true, stoppedHome: true, registeredModes: false });
+    const labels = locale === 'ja'
+        ? { starting: '音声エンジンを起動しています…', start: purpose === 'voice' ? '音声を開始' : '聴き始める', reason: '音声を開始すると使えます', band: '状態の帯', check: purpose === 'voice' ? 'ボイスチェック' : '音が届いているか確かめる' }
+        : { starting: 'Starting the audio engine…', start: purpose === 'voice' ? 'Start audio' : 'Start listening', reason: 'Start audio to use this.', band: 'Status band', check: purpose === 'voice' ? 'Voice Check' : 'Check that sound is arriving' };
+
+    test('900×600で、押せないが、ホバーが届いて title の理由が出る', async ({ page }) => {
+        await page.setViewportSize({ width: 900, height: 600 });
+        await page.addInitScript(({ l, p }) => {
+            localStorage.setItem('vst_host_locale', l);
+            localStorage.setItem('vst_host_theme', 'dark');
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_setup_goal', 'obs');
+            localStorage.setItem('auralyn_display_purpose', p);
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+        }, { l: locale, p: purpose });
+        await page.goto('/');
+        await expect(page.getByText(labels.starting, { exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: labels.start, exact: true }).first()).toBeVisible();
+        const check = page.getByRole('region', { name: labels.band, exact: true }).getByRole('button', { name: labels.check, exact: true });
+        await expect(check).toBeVisible();
+        await expect(check).toBeDisabled();
+        await expect(check).toHaveAttribute('title', labels.reason);
+        await expect(check).toHaveAccessibleDescription(labels.reason);
+        // title のツールチップはホバーが届かないと出ない。中心の点が、このボタン（または子孫）でなければならない。
+        const hit = await check.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            return { reaches: top !== null && element.contains(top), pointerEvents: getComputedStyle(element).pointerEvents };
+        });
+        expect(hit).toEqual({ reaches: true, pointerEvents: 'auto' });
+        await check.hover();
+        await expect(check).toBeDisabled();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+    });
+});
+
 for (const registeredModes of [false, true]) for (const locale of ['ja', 'en'] as const) test.describe(`停止中の操作ロック（#764、登録=${registeredModes}、${locale}）`, () => {
     test.use({ liveHome: true, stoppedHome: true, registeredModes });
     const labels = locale === 'ja'
