@@ -66,6 +66,33 @@ it('ミュート・音量ゼロでは機器の再設定ではなく本番操作�
     expect(model.confirm).not.toHaveBeenCalled();
 });
 
+it('ミュートの主ボタンは塗りにせず、注意の枠で示す（#762）', () => {
+    const model = fixture(); model.observation.availability = 'muted';
+    render(<PreparationPanel model={model} {...callbacks()} onCheckOutput={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
+    const button = screen.getByRole('button', { name: message('ja', 'prep.checkOutput') });
+    expect(button).not.toHaveClass('bg-primary');
+    expect(button).toHaveClass('border-warning');
+});
+it('ミュートでないときの主ボタンは塗りのままにする（#762）', () => {
+    const model = fixture();
+    render(<PreparationPanel model={model} {...callbacks()} onCheckOutput={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
+    const button = screen.getByRole('button', { name: message('ja', 'shell.sound') });
+    expect(button).toHaveClass('bg-primary');
+    expect(button).not.toHaveClass('border-warning');
+});
+it.each(['ja', 'en'] as const)('常に開いている接続の確認には、押しても何も起きない「接続の詳細」を出さない（%s、#762）', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PreparationPanel model={fixture()} {...callbacks()} pinnedOpen /></LocaleProvider>);
+    expect(screen.getByRole('heading', { level: 2, name: message(locale, 'prep.title') })).toBeVisible();
+    expect(screen.queryByRole('button', { name: message(locale, 'prep.steps') })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: message(locale, 'header.noSound') })).toBeVisible();
+});
+it('開閉できる接続の確認では、「接続の詳細」を出し続ける（#762）', () => {
+    render(<PreparationPanel model={fixture()} {...callbacks()} />);
+    expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
+});
+
 it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネルの外にあり、次の操作・明示確認を分ける (%s)', locale => {
     const model = fixture(); model.context.location = 'venue'; model.context.signal = 'mixed';
     const props = callbacks();

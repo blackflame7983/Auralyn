@@ -605,6 +605,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
       <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => requestLeave(() => { openStreamMixPanel(); onClose(); })}>{t('streamMix.openHome')}</Button>
     </div>
+    <p className="text-ui-support text-muted-foreground">{t('streamMix.instant')}</p>
   </section>;
   const monitorSettings = <details className="rounded-card border border-border p-4 space-y-3">
     <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>

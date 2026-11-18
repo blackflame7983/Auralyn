@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { PluginList } from '@/components/features/PluginRack/PluginList';
 import { PluginBrowserModal } from '@/components/features/PluginBrowser/PluginBrowserModal';
-import { MixingError, ScopeDisclosure, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { MixingError, ScopeDisclosure, framesToMs, mixingCard, mixingRowSummary, useQueuedChange, useRevisionedResource } from './mixingUi';
 import { useCancelWhenStale, useReadWhenOpened } from './useMixingPanelEffects';
 
 type Change = Exclude<PostMixRequest, { action: 'snapshot' }>;
@@ -72,7 +72,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     // 警告の中のボタン名は、画面のボタンと同じ文言から組む。
     const staleNotice = t('postMix.stale', { load: t('postMix.load') });
     return <details ref={panel} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary className="home-card-name cursor-pointer">{t('postMix.title')}</summary>
+        <summary className={mixingRowSummary}>{t('postMix.title')}</summary>
         <ScopeDisclosure settings summary="mixingUi.postScope" detail="postMix.scope" />
         <Button  variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
         {snapshot && <div className="space-y-3 text-ui-support">

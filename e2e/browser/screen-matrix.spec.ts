@@ -28,8 +28,11 @@ interface Context {
     size: string;
 }
 
-const homeSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1024, height: 768, name: '1024x768' }, { width: 1280, height: 800, name: '1280x800' }];
+// 1440x900 は接続の列が常に開く広い窓。英語で見出しと診断の入口が重なった（#762）。
+const homeSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1024, height: 768, name: '1024x768' }, { width: 1280, height: 800, name: '1280x800' }, { width: 1440, height: 900, name: '1440x900' }];
 const pageSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1280, height: 800, name: '1280x800' }];
+// 配信ミックスはホームのパネルなので、接続の列が常に開く広い窓でも重なりを見る（#762）。
+const streamMixSizes = [...pageSizes, { width: 1440, height: 900, name: '1440x900' }];
 const pageScreens: ScreenId[] = ['sound', 'sound-singing', 'vst', 'connect', 'appearance', 'shortcuts', 'obs', 'system', 'stream-mix'];
 
 const previewScreen: Record<ScreenId, string | null> = {
@@ -310,7 +313,7 @@ test.describe('画面の状態をまとめて開く', () => {
                     await page.addInitScript(installTauriMock, mockOptions('live'));
                     await page.addInitScript(applyStorage, { locale, purpose, entries: Object.entries(storage) });
                     const problems: string[] = [];
-                    for (const size of pageSizes) {
+                    for (const size of screen === 'stream-mix' ? streamMixSizes : pageSizes) {
                         problems.push(...await runMatrix(page, retried, { screen, state: 'live', purpose, locale, size: size.name }, size.width, size.height, errors));
                     }
                     assertProblems(problems);

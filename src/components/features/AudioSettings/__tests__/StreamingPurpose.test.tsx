@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
@@ -99,4 +99,16 @@ it.each(['ja', 'en'] as const)('配信向けの欄が出ない理由は、何が
     const text = message(locale, 'streamMix.voiceOnly');
     expect(text).toContain(message(locale, 'liveOutput.title'));
     expect(text).toContain(message(locale, 'streamMix.title'));
+});
+
+it.each(['ja', 'en'] as const)('接続のページの配信ミックスの欄は、すぐ反映することと、準備の場所を書く（%s）', async locale => {
+    open(locale);
+    const heading = (await screen.findAllByText(message(locale, 'streamMix.title'), { exact: true })).find(node => node.tagName === 'H3');
+    const section = heading?.closest('section');
+    if (!section) throw new Error('streamMix section not found');
+    expect(section).toHaveTextContent(message(locale, 'streamMix.instant'));
+    expect(section).toHaveTextContent(message(locale, 'streamMix.settingsHint'));
+    expect(message(locale, 'streamMix.settingsHint')).toContain(message(locale, 'liveOutput.title'));
+    expect(within(section).getByRole('checkbox', { name: message(locale, 'streamMix.show') })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: message(locale, 'streamMix.openHome') })).toBeInTheDocument();
 });
