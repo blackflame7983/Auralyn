@@ -67,8 +67,11 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
         return copy ? t(copy[field]) : template.slots[index][field] ?? '';
     };
     const { step, setStep, selectedTemplate, setSelectedTemplate, mapping, setMapping, loading, setLoading } = useTemplateWizard(isOpen, availablePlugins, onScan);
+    // 通知の層はこの画面の裏に隠れる。操作ロックに断られた理由は、画面の中に1行で出す。
+    const [liveLocked, setLiveLocked] = React.useState(false);
     const choose = (template: ChainTemplate) => {
         setSelectedTemplate(template);
+        setLiveLocked(false);
         setStep(2);
     };
 
@@ -82,6 +85,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             return;
         }
 
+        setLiveLocked(false);
         setLoading(true);
         try {
             // Convert index-based mapping to something useful? 
@@ -97,7 +101,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             });
 
             const applied = await onApplyTemplate(finalMapping);
-            if (applied === 'blocked') return;
+            if (applied === 'blocked') { setLiveLocked(true); return; }
             if (applied === false) { toast.error(React.createElement(NoticeText, { value: notice('presets.copy.083') })); return; }
             onClose();
             toast.info(React.createElement(NoticeText, { value: notice('presets.copy.084') }), { description: React.createElement(NoticeText, { value: notice('presets.copy.085') }), duration: 10000 });
@@ -241,6 +245,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                         </div>
                     ) : null}
                 </div>
+
+                {step === 2 && liveLocked && <p role="alert" className="shrink-0 border-t border-border px-6 py-3 text-ui-support text-warning wrap-anywhere">{t('pluginNotices.liveLockedBody')}</p>}
 
                 {/* Footer */}
                 {step === 2 && (

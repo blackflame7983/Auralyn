@@ -118,17 +118,14 @@ async function emptyRack(locale: Locale) {
     return view;
 }
 
-it.each(['ja', 'en'] as const)('空のラックにテンプレートを適用してロックに断られると、スロットごとの失敗は出さず、アプリの文を1件だけ出す ($locale)', async locale => {
+it.each(['ja', 'en'] as const)('空のラックにテンプレートを適用してロックに断られると、スロットごとの失敗は出さず、理由はテンプレートの画面へ任せて通知を出さない ($locale)', async locale => {
     vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue(BACKEND_REASON);
     const { result } = await emptyRack(locale);
     let applied: unknown;
     await act(async () => { applied = await result.current.applyTemplate({ '0': vst('comp'), '1': vst('limit'), '2': vst('eq') }); });
     expect(applied).toBe('blocked');
     expect(audioApi.loadPlugin).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledTimes(1);
-    const { title, description } = lastError();
-    expect(title).toBe(message(locale, 'pluginNotices.applyTemplateFailed'));
-    expectAppOwnedLockNotice(description, locale);
+    expect(toast.error).not.toHaveBeenCalled();
     expect(result.current.plugins).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(result.current.isLoading).toBe(false);
@@ -158,6 +155,29 @@ it.each(['ja', 'en'] as const)('操作ロック中に VST を追加しようと�
     expect(console.error).toHaveBeenCalledWith('Failed to load plugin:', BACKEND_REASON);
     expect(result.current.error).toBeNull();
     expect(localStorage.getItem('vst_host_pending_plugin')).toBeNull();
+});
+
+it('追加の画面の中から呼ばれてロックに断られたときは、通知を出さず、理由の表示を呼び出し側へ任せる', async () => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue(BACKEND_REASON);
+    const { result } = await rack('ja');
+    const onLocked = vi.fn();
+    let added: unknown;
+    await act(async () => { added = await result.current.addPlugin(vst('c'), { onLocked }); });
+    expect(added).toBe(false);
+    expect(onLocked).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+    expect(result.current.plugins.map(plugin => plugin.id)).toEqual(['a', 'b']);
+    expect(localStorage.getItem('vst_host_pending_plugin')).toBeNull();
+});
+
+it('追加の画面の中から呼ばれても、ロック以外の失敗では呼び出し側へ任せず、原文つきの失敗文にする', async () => {
+    vi.spyOn(audioApi, 'loadPlugin').mockRejectedValue('Plugin not found');
+    const { result } = await rack('ja');
+    const onLocked = vi.fn();
+    await act(async () => { await result.current.addPlugin(vst('c'), { onLocked }); });
+    expect(onLocked).not.toHaveBeenCalled();
+    expect(result.current.error).toBe(message('ja', 'pluginNotices.loadFailed', { detail: 'Plugin not found' }));
 });
 
 it('保護以外の理由で追加に失敗したときは、これまでどおり原文つきの失敗文にする', async () => {

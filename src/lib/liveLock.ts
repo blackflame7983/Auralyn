@@ -12,11 +12,12 @@ export function isLiveLockRejection(error: unknown): boolean {
     return String(error).includes(LIVE_LOCK_REJECTION_MARKER);
 }
 
-/** テンプレートの適用結果。'blocked' は操作ロックに断られ、理由の通知を適用した側がすでに出したことを表す。 */
+/** テンプレートの適用結果。'blocked' は操作ロックに断られたことを表す。理由は、適用を呼んだテンプレートの画面が自分の中に出す。 */
 export type TemplateApplyResult = boolean | 'blocked';
 
 /**
  * 操作ロックに断られた変更は、一般の失敗文に置き換えず、アプリの言葉で理由と解除のしかたを通知で見せる。
+ * 通知の層はダイアログの裏に隠れるので、ダイアログの中で起きた拒否は呼び出した画面が同じ文（pluginNotices.liveLockedBody）を自分の中に出す。
  * バックエンドの原文は画面に出さない（呼び出し側が開発者向けに console へ残す）。
  * ロックの拒否だったときだけ通知して true を返す。ラックはロックされても変わらないので、呼び出し側は元の状態のまま戻す。
  */

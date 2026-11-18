@@ -626,7 +626,7 @@ export const usePlugins = () => {
         }
     }, [applyCatalog]);
 
-    const addPlugin = useCallback(async (vstPlugin: VstPlugin) => {
+    const addPlugin = useCallback(async (vstPlugin: VstPlugin, options?: { onLocked?: () => void }) => {
         if (rejectDuringRestore()) return false;
         setIsLoading(true);
         try {
@@ -659,7 +659,9 @@ export const usePlugins = () => {
         } catch (e) {
             console.error("Failed to load plugin:", e);
             localStorage.removeItem('vst_host_pending_plugin'); // Also clear on caught error
-            if (!notifyLiveLock(t, e, 'pluginNotices.addFailed')) setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
+            // 追加の画面の中から呼ばれたときは、通知の層が画面の裏に隠れるので、理由の表示を呼び出し側へ任せる。
+            if (options?.onLocked && isLiveLockRejection(e)) options.onLocked();
+            else if (!notifyLiveLock(t, e, 'pluginNotices.addFailed')) setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
             return false;
         } finally {
             setIsLoading(false);
@@ -1002,7 +1004,8 @@ export const usePlugins = () => {
             return true;
         } catch (e) {
             console.error("Failed to apply template:", e);
-            if (notifyLiveLock(t, e, 'pluginNotices.applyTemplateFailed')) return 'blocked';
+            // テンプレートの画面の中で呼ばれる。理由は、その画面が開いたまま自分の中に出す。
+            if (isLiveLockRejection(e)) return 'blocked';
             setError(pluginNotice('pluginNotices.applyTemplateFailed'));
             return false;
         } finally {

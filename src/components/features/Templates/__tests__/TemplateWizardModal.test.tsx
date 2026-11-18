@@ -118,20 +118,28 @@ it.each(['ja', 'en'] as const)('この構成を使うが主な操作で、無い
     expect(details?.textContent).not.toMatch(locale === 'ja' ? /別に用意/ : /Provide the VST/);
 });
 
-it('操作ロックに断られたときは、フックが出した通知に任せ、画面側の失敗の通知は足さずに閉じない', async () => {
+it.each(['ja', 'en'] as const)('操作ロックに断られたときは、通知ではなく画面の中の1行で理由を出し、閉じない。選び直すと消える（%s）', async locale => {
     const close = vi.fn();
-    render(<TemplateWizardModal isOpen onClose={close} availablePlugins={[
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><TemplateWizardModal isOpen onClose={close} availablePlugins={[
         { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
         { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
-    ]} onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /雑談/ }));
-    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    ]} onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} /></LocaleProvider>);
+    fireEvent.click(screen.getAllByRole('button', { name: message(locale, 'templates.useThis') })[0]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const apply = screen.getByRole('button', { name: message(locale, 'presets.copy.106') });
     await waitFor(() => expect(apply).toBeEnabled());
     fireEvent.click(apply);
-    await waitFor(() => expect(apply).toBeEnabled());
+    const reason = await screen.findByRole('alert');
+    expect(reason).toHaveTextContent(message(locale, 'pluginNotices.liveLockedBody'));
+    expect(screen.getByRole('dialog')).toContainElement(reason);
+    expect(apply).toBeEnabled();
     expect(toast.error).not.toHaveBeenCalled();
     expect(toast.info).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'presets.copy.097') }));
+    fireEvent.click(screen.getAllByRole('button', { name: message(locale, 'templates.useThis') })[0]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 it('適用が失敗（ロック以外）したときは、画面側が失敗の通知を1件出す', async () => {

@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { test, expect } from './tauriFixture';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { uiScale } from '../../src/lib/largeWindow';
 import { installOneVstRack } from './oneVstRack';
 import { installLockedVstRack } from './lockedVstRack';
@@ -417,7 +417,7 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
             ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VST の追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
             : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', body: 'While controls are locked, you can\'t add, remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.', lock: 'Lock controls', landmark: 'Live controls' };
         test(`ロック中に VST を削除しようとすると、アプリの文で理由と解除のしかたを見せ、バックエンドの原文は出さず、ラックは変わらない（${locale}）`, async ({ page }) => {
-            await page.addInitScript(installLockedVstRack, backendLockReason);
+            await page.addInitScript(installLockedVstRack, { reason: backendLockReason });
             await page.addInitScript(({ l }) => {
                 localStorage.setItem('vst_host_locale', l);
                 localStorage.setItem('vst_host_wizard_done', 'true');
@@ -444,6 +444,75 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
             await expect(cards.getByText('E2E VST A', { exact: true }).first()).toBeVisible();
             await expect(cards.getByText('E2E VST B', { exact: true }).first()).toBeVisible();
             expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['remove_plugin']);
+        });
+    }
+});
+
+/** 通知の層は画面の下に敷かれ、モーダルの裏に隠れる。理由はダイアログの中に、最前面で見えること。 */
+async function expectFrontmost(target: Locator) {
+    await expect(target).toBeVisible();
+    await expect.poll(() => target.evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        const top = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return top !== null && element.contains(top);
+    })).toBe(true);
+}
+
+test.describe('操作ロック中に、ダイアログの中から VST を追加・適用したとき（#764）', () => {
+    test.use({ liveHome: true, registeredModes: false });
+
+    for (const locale of ['ja', 'en'] as const) {
+        const labels = locale === 'ja'
+            ? { mute: '緊急ミュート', add: 'VSTを追加', addNamed: 'E2E Compressor を追加', templates: 'VST構成テンプレート', use: 'この構成を使う', apply: 'VST構成を置き換える',
+                body: '操作をロックしている間は、VST の追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。' }
+            : { mute: 'Emergency mute', add: 'Add VST', addNamed: 'Add E2E Compressor', templates: 'VST setup templates', use: 'Use this setup', apply: 'Replace the VST setup',
+                body: 'While controls are locked, you can\'t add, remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.' };
+
+        const open = async (page: Page, rack: { empty?: boolean }) => {
+            await page.addInitScript(installLockedVstRack, { reason: backendLockReason, catalog: true, ...rack });
+            await page.addInitScript(({ l }) => {
+                localStorage.setItem('vst_host_locale', l);
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', 'obs');
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+            }, { l: locale });
+            await page.setViewportSize({ width: 900, height: 600 });
+            await page.goto('/');
+            await expect(page.getByRole('button', { name: labels.mute, exact: true })).toBeVisible();
+            await page.locator('#home-vst-open').click();
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+        };
+
+        test(`ロック中に「${labels.add}」から追加すると、理由は開いたまま追加の画面の中に見え、通知を二重に出さない（${locale}）`, async ({ page }) => {
+            await open(page, {});
+            await page.locator('[data-vst-page]').getByRole('button', { name: labels.add, exact: true }).first().click();
+            const dialog = page.getByRole('dialog', { name: labels.add });
+            await dialog.getByRole('button', { name: labels.addNamed, exact: true }).click();
+            const reason = dialog.getByText(labels.body, { exact: true });
+            await expectFrontmost(reason);
+            await expect(dialog).toBeVisible();
+            await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+            await expect(dialog).not.toContainText(backendLockReason);
+            expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['load_plugin']);
+        });
+
+        test(`ロック中にテンプレートを適用すると、理由は開いたままテンプレートの画面の中に見え、通知を二重に出さない（${locale}）`, async ({ page }) => {
+            await open(page, { empty: true });
+            await page.locator('[data-vst-page]').getByRole('button', { name: labels.templates, exact: true }).click();
+            const dialog = page.getByRole('dialog');
+            await dialog.getByRole('button', { name: labels.use, exact: true }).first().click();
+            const slots = dialog.getByRole('combobox');
+            await slots.nth(1).selectOption({ label: 'E2E Compressor' });
+            await slots.nth(2).selectOption({ label: 'E2E Limiter' });
+            await dialog.getByRole('button', { name: labels.apply, exact: true }).click();
+            const reason = dialog.getByText(labels.body, { exact: true });
+            await expectFrontmost(reason);
+            await expect(dialog).toBeVisible();
+            await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+            await expect(dialog).not.toContainText(backendLockReason);
+            await expect(dialog.getByRole('button', { name: labels.apply, exact: true })).toBeEnabled();
+            expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['load_plugin']);
         });
     }
 });
