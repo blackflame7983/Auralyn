@@ -161,14 +161,14 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => choose(template)}
-                                        className="flex min-w-0 w-full flex-col text-left hover:text-primary"
+                                        className="flex min-w-0 w-full flex-1 flex-col text-left hover:text-primary"
                                     >
                                         <span className="text-ui-heading font-bold">{templateText(template, 'name')}</span>
                                         <span className="mt-2 text-ui-support text-muted-foreground">{templateText(template, 'description')}</span>
                                         <span className="mt-2 text-ui-support text-foreground"><span className="text-muted-foreground">{t('templates.suits')}</span> {t(templateUse[template.id])}</span>
                                         <span className="mt-2 text-ui-support text-foreground">{t('templates.needsVst', { kinds: neededKinds(template) })}</span>
                                     </button>
-                                    <Button type="button" onClick={() => choose(template)}>{t('templates.useThis')}</Button>
+                                    <Button type="button" onClick={() => choose(template)}>{t('templates.chooseVsts')}</Button>
                                     <details className="text-ui-support text-muted-foreground">
                                         <summary className="cursor-pointer">{t('templates.chainDetails')}</summary>
                                         <div className="mt-1 flex flex-wrap gap-1">
