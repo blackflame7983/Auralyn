@@ -134,9 +134,9 @@ function inPage<T>(locator: Locator, run: (root: HTMLElement | SVGElement, visib
     return locator.evaluate(bound);
 }
 
-// ダイアログが開いている画面は、最前面のダイアログだけを調べる。背後のホームは aria-hidden で隠れている。
+// ダイアログ（確認の alertdialog を含む）が開いている画面は、最前面のダイアログだけを調べる。背後のホームは aria-hidden で隠れている。
 export async function shortLineRoot(page: Page): Promise<Locator> {
-    const dialogs = page.getByRole('dialog');
+    const dialogs = page.getByRole('dialog').or(page.getByRole('alertdialog'));
     return await dialogs.count() > 0 ? dialogs.last() : page.locator('body');
 }
 

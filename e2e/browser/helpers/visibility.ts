@@ -2,13 +2,14 @@
 // createVisibility はブラウザの中で動く。関数を文字列にして送るので、外側の変数を参照しない。
 
 export interface PageVisibility {
-    /** 閉じたメニュー・aria-hidden・inert・opacity 0 などを除いた、画面に出ている要素か。 */
+    /** 閉じたメニュー・aria-hidden・opacity 0 などを除いた、画面に出ている要素か。inert は操作を止めるだけで見えているので、数える。 */
     isVisible(element: Element): boolean;
     /** テキストノードが画面に出ているか。親が display: contents のときは、箱を持つ祖先で見る。 */
     isTextVisible(node: Node): boolean;
     /**
      * from から親をたどり、overflow で切り取る祖先の箱を集める。
      * reachableByScroll が true のときは、スクロールで届く文字を数えるため、最初のスクロール領域（auto・scroll）より外の切り取りを見ない。
+     * ただし、スクロール領域そのものが大きさを持たないか、外側の切り取りで見えないときは、中の文字も見えない。
      */
     clipLimits(from: Element | null, reachableByScroll?: boolean): DOMRect[];
     /** 切り取りの箱との共通部分。1px 未満しか残らなければ null。 */
@@ -24,7 +25,7 @@ export function createVisibility(): PageVisibility {
         // 閉じたメニューの中は見えない。ボタン自身の data-state="closed" は、ツールチップが閉じている印なので外さない。
         const closed = element.closest('[data-state="closed"]');
         const closedPanel = closed !== null && !closed.matches('button, a, summary, [role="button"], [role="radio"], [role="tab"], [role="switch"], [role="menuitem"]');
-        if (element.closest('[aria-hidden="true"], .sr-only, [hidden], [inert]') || closedPanel) visible = false;
+        if (element.closest('[aria-hidden="true"], .sr-only, [hidden]') || closedPanel) visible = false;
         else {
             const details = element.closest('details');
             if (details && !details.open) {
@@ -56,7 +57,11 @@ export function createVisibility(): PageVisibility {
         for (let node = from; node; node = node.parentElement) {
             const style = getComputedStyle(node);
             if (style.display === 'contents' || !clips(style)) continue;
-            if (reachableByScroll && /\b(auto|scroll)\b/.test(`${style.overflowX} ${style.overflowY}`)) break;
+            if (reachableByScroll && /\b(auto|scroll)\b/.test(`${style.overflowX} ${style.overflowY}`)) {
+                const box = node.getBoundingClientRect();
+                if (box.width < 1 || box.height < 1 || clipRect(box, clipLimits(node.parentElement)) === null) limits.push(new DOMRect(0, 0, 0, 0));
+                break;
+            }
             limits.push(node.getBoundingClientRect());
         }
         return limits;

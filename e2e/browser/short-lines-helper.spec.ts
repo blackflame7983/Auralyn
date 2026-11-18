@@ -32,11 +32,12 @@ test.describe('見えていない文字は数えない', () => {
         'visibility: hidden': `<div style="visibility: hidden">${wrapped}</div>`,
         'aria-hidden': `<div aria-hidden="true">${wrapped}</div>`,
         hidden: `<div hidden>${wrapped}</div>`,
-        inert: `<div inert>${wrapped}</div>`,
         '閉じた details': `<details><summary>見出し</summary>${wrapped}</details>`,
         '閉じた disclosure-panel': `<div style="display: grid; grid-template-rows: 0fr"><div style="min-height: 0; overflow: hidden"><div>${wrapped}</div></div></div>`,
         'height: 0 と overflow: hidden': `<div style="height: 0; overflow: hidden">${wrapped}</div>`,
         '親の overflow: clip': `<div style="height: 0; overflow: clip">${wrapped}</div>`,
+        '大きさの無いスクロール領域': `<div style="height: 0; overflow: auto"><p>${wrapped}</p></div>`,
+        '外側の高さ0の切り取りの中のスクロール領域': `<div style="height: 0; overflow: hidden"><div style="height: 4em; overflow-y: auto">${wrapped}</div></div>`,
     };
 
     async function renderBox(page: Page, html: string) {
@@ -51,6 +52,11 @@ test.describe('見えていない文字は数えない', () => {
             expect(await unphrasedJapaneseBlocks(box)).toEqual([]);
         });
     }
+
+    test('inert は操作を止めるだけで見えているので、その文字は数える', async ({ page }) => {
+        const box = await renderBox(page, `<div inert>${wrapped}</div>`);
+        expect(await shortWrappedLines(box)).toEqual(['ij']);
+    });
 
     test('見えている短い行は、隠れた文字が混ざっていても知らせる', async ({ page }) => {
         const box = await renderBox(page, `abcdefghij<span aria-hidden="true"> HIDDEN</span>`);
@@ -86,6 +92,11 @@ test.describe('shortLineRoot', () => {
     test('aria-hidden で隠れたダイアログは、最前面に数えない', async ({ page }) => {
         await page.setContent('<div role="dialog" id="first">一つ目</div><div role="dialog" id="second" aria-hidden="true">二つ目</div>');
         await expect(await shortLineRoot(page)).toHaveAttribute('id', 'first');
+    });
+
+    test('確認の alertdialog も、最前面のダイアログとして対象にする', async ({ page }) => {
+        await page.setContent('<main id="home">ホーム</main><div role="alertdialog" id="confirm">確認</div>');
+        await expect(await shortLineRoot(page)).toHaveAttribute('id', 'confirm');
     });
 });
 
