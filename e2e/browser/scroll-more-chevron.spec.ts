@@ -128,4 +128,44 @@ for (const theme of themes) {
         expectReadable(await readChevron(page, '[data-scroll-more="dialog"]', 'card'), `ダイアログ ${theme}`);
         await clickThroughChevron(page, '[data-scroll-more="dialog"]');
     });
+
+    test(`山形の背面は、どのテーマでも丸い ${theme}`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale: 'ja', purpose: 'voice', theme, size: { width: 900, height: 420 } });
+        const chevron = page.locator('[data-scroll-more=""] .scroll-more-chevron');
+        await expect(chevron).toBeVisible();
+        const shape = await chevron.evaluate(element => getComputedStyle(element).getPropertyValue('corner-shape'));
+        expect(['round', 'superellipse(1)']).toContain(shape);
+    });
+}
+
+test('強制カラーでは、山形と背面がシステムの色に従う', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await openHome(page, { state: 'running', locale: 'ja', purpose: 'voice', theme: 'dark', size: { width: 900, height: 420 } });
+    const chevron = page.locator('[data-scroll-more=""] .scroll-more-chevron');
+    await expect(chevron).toBeVisible();
+    const colors = await chevron.evaluate(element => {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'background-color: Canvas; color: CanvasText;';
+        document.body.append(probe);
+        const system = getComputedStyle(probe);
+        const expected = { canvas: system.backgroundColor, text: system.color };
+        probe.remove();
+        const style = getComputedStyle(element);
+        return { ...expected, ground: style.backgroundColor, border: style.borderTopColor, glyph: style.fill };
+    });
+    expect(colors.ground).toBe(colors.canvas);
+    expect(colors.border).toBe(colors.text);
+    expect(colors.glyph).toBe(colors.text);
+});
+
+// 準備と経路の下の余白は、その下に本番中の操作が出るときだけ、それの上に置く。接続が右の列へ移る広い窓では要らない。
+for (const { width, height, gap } of [{ width: 1024, height: 768, gap: '16px' }, { width: 1440, height: 900, gap: '0px' }]) {
+    test(`音楽鑑賞の通知の上の余白 ${width}px`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale: 'ja', purpose: 'music', theme: 'dark', size: { width, height } });
+        const rack = page.locator('#home-rack');
+        await expect(rack).toBeEmpty();
+        await expect(rack).toHaveCSS('margin-top', '0px');
+        await rack.evaluate(element => { element.append(document.createElement('div')); });
+        await expect(rack).toHaveCSS('margin-top', gap);
+    });
 }
