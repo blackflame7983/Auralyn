@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { audioApi } from '../../api/audio';
 import { usePlugins } from '../usePlugins';
+import { rackRestoreBusy } from '../../lib/liveRouting';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), loading: vi.fn(() => 'toast') } }));
 const plugin = { id: 'available', path: 'plugin.vst3', name: 'Plugin', vendor: '', version: '', category: 'Fx' };
@@ -113,6 +114,25 @@ it('同じクラスの複数インスタンスも再読込後の並びで対応�
     expect(audioApi.restorePlugin).toHaveBeenNthCalledWith(2, expect.objectContaining({ path: 'same.vst3', classId: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }));
     expect(audioApi.openEditor).toHaveBeenLastCalledWith('restored-2');
     expect(result.current.plugins.map(item => item.id)).toEqual(['restored-1', 'restored-2']);
+});
+
+it('エンジン再起動後の再読込のあいだは、ラックの置き換え中の状態を保ち、終わったら外す', async () => {
+    const { result } = await loaded();
+    const busyDuring: boolean[] = [];
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async () => { busyDuring.push(rackRestoreBusy()); return { id: 'restored-id', name: 'Plugin', prepared: false }; });
+    vi.mocked(audioApi.openEditor).mockRejectedValueOnce(new Error('loaded_count=0'));
+    expect(rackRestoreBusy()).toBe(false);
+    await act(async () => { await result.current.openEditor('original-id'); });
+    expect(busyDuring).toEqual([true]);
+    expect(rackRestoreBusy()).toBe(false);
+});
+
+it('再読込が失敗しても、ラックの置き換え中の状態を残さない', async () => {
+    const { result } = await loaded();
+    vi.mocked(audioApi.openEditor).mockRejectedValueOnce(new Error('loaded_count=0'));
+    vi.mocked(audioApi.restorePlugin).mockRejectedValue(new Error('prepare failed'));
+    await act(async () => { await result.current.openEditor('original-id'); });
+    expect(rackRestoreBusy()).toBe(false);
 });
 
 it('全体editor fallbackの一括復元失敗では旧分割APIへ戻さない', async () => {

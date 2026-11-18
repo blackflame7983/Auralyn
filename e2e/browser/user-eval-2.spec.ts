@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { installOneVstRack } from './oneVstRack';
 
 test.use({ liveHome: true });
 
@@ -106,13 +107,8 @@ test('960×640 でボイスチェックの録音にスクロールなしで届�
 
 test('音が届いているか確かめるからVSTを外した比較を1回で切り替える', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.addInitScript(() => {
-        localStorage.setItem('auralyn_display_purpose', 'music');
-        const internals = window.__TAURI_INTERNALS__;
-        if (!internals) throw new Error('__TAURI_INTERNALS__ がありません');
-        const original = internals.invoke;
-        internals.invoke = (command, args) => command === 'set_global_bypass' ? Promise.resolve() : original(command, args);
-    });
+    await page.addInitScript(installOneVstRack);
+    await page.addInitScript(() => { localStorage.setItem('auralyn_display_purpose', 'music'); });
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     const open = page.getByRole('button', { name: '音が届いているか確かめる', exact: true });

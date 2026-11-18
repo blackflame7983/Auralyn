@@ -29,3 +29,14 @@ it('音が届いているか確かめるから、右の列と同じVST外しを1
     expect(compare).toHaveBeenCalledOnce();
     expect(start).not.toHaveBeenCalled();
 });
+
+it('比べるVSTが無いあいだは、確かめる欄の比較を無効にして、見える理由を結ぶ', () => {
+    const compare = vi.fn();
+    render(<MusicListeningCheck running vstBypassed={false} compareUnavailable="VSTを追加すると比べられます" onCompareVst={compare} onSettings={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByRole('switch', { name: 'VSTを外して比較' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAccessibleDescription('VSTを追加すると比べられます');
+    expect(screen.getByText('VSTを追加すると比べられます')).toBeVisible();
+    fireEvent.click(toggle);
+    expect(compare).not.toHaveBeenCalled();
+});

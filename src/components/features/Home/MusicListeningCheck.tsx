@@ -6,12 +6,14 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 
-export function MusicListeningCheck({ running, input, output, vstBypassed, onCompareVst, onSettings, onClose }: {
+export function MusicListeningCheck({ running, input, output, vstBypassed, compareUnavailable, onCompareVst, onSettings, onClose }: {
     running: boolean;
     input?: string;
     output?: string;
     /** 右の列の「VSTを外して比較」と同じ状態。新しい購読は足さない。 */
     vstBypassed: boolean;
+    /** 比べるVSTが無いときの理由。あれば比較は無効にして、この文を見せる。 */
+    compareUnavailable?: string;
     onCompareVst: () => void;
     onSettings: () => void;
     onClose: () => void;
@@ -30,9 +32,9 @@ export function MusicListeningCheck({ running, input, output, vstBypassed, onCom
         <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
                 <p className="text-ui-control font-semibold">{t('header.compare')}</p>
-                <p className="text-ui-support text-muted-foreground">{vstBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
+                <p id="listen-compare-hint" className="text-ui-support text-muted-foreground">{compareUnavailable ?? (vstBypassed ? t('header.compareEndHint') : t('header.compareStartHint'))}</p>
             </div>
-            <Switch checked={vstBypassed} onCheckedChange={() => onCompareVst()} aria-label={t('header.compare')} />
+            <Switch checked={vstBypassed} disabled={compareUnavailable !== undefined} onCheckedChange={() => onCompareVst()} aria-label={t('header.compare')} aria-describedby="listen-compare-hint" />
         </div>
         <p className="text-ui-support text-muted-foreground">{t('music.listenScope')}</p>
         <div className="flex flex-wrap gap-2"><Button variant="outline" size="default" type="button" onClick={onSettings} className="home-action">{t('music.listenSettings')}</Button><Button variant="outline" size="default" type="button" onClick={onClose} className="home-action">{t('common.close')}</Button></div>
