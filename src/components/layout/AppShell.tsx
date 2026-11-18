@@ -237,7 +237,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     ) : null;
     const elapsed = useSessionElapsed(isEngineRunning);
     const nothingToCompare = vstActiveCount === 0;
-    const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass(nothingToCompare);
+    const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass(nothingToCompare && isEngineRunning && engineProcessReady === true);
     // 比較は配信も音楽鑑賞も、右の列に常に出す。未設定のホームだけ、比較中に限る。
     const compareInColumn = chrome.footer.compare === 'always' || isABBypassed;
     // 止まっているあいだは比べられない。比較のオンオフはここでは変えない（#612）。

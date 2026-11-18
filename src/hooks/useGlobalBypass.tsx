@@ -5,8 +5,9 @@ import { audioApi } from '@/api/audio';
 import { LocalizedMessage } from '@/i18n/LocaleProvider';
 
 // 右の列の「VSTを外して比較」と、外からの同じ切替を1つの状態にそろえる。
-// nothingToCompare: 比べるVSTが1つも無い。比較中ならエンジンの比較も終わらせ、あとで足したVSTが外れたままにならないようにする。
-export function useGlobalBypass(nothingToCompare = false) {
+// endComparison: 音声が動いていて、比べるVSTが1つも無い。比較中ならエンジンの比較も終わらせ、あとで足したVSTが外れたままにならないようにする。
+// 止まっているあいだは送らない（#612）。動き出したときに、まだ無ければ終わらせる。
+export function useGlobalBypass(endComparison = false) {
     const [bypassed, setBypassed] = useState(false);
     const toggle = useCallback(async () => {
         try {
@@ -26,7 +27,7 @@ export function useGlobalBypass(nothingToCompare = false) {
     }, []);
     const ending = useRef(false);
     useEffect(() => {
-        if (!bypassed || !nothingToCompare || ending.current) return;
+        if (!bypassed || !endComparison || ending.current) return;
         // 終わらせる送信の完了は、先に届く OFF イベントや再描画で取り消さない。進行中の間は重ねて送らない。
         ending.current = true;
         void audioApi.setGlobalBypass(false).then(() => {
@@ -36,6 +37,6 @@ export function useGlobalBypass(nothingToCompare = false) {
             console.error('A/B end failed', error);
             toast.error(<LocalizedMessage id="shell.compareFailed" />);
         }).finally(() => { ending.current = false; });
-    }, [bypassed, nothingToCompare]);
+    }, [bypassed, endComparison]);
     return { bypassed, toggle };
 }

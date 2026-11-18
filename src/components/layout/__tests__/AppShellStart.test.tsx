@@ -393,6 +393,36 @@ it('比較中にVSTが無くなり、終わらせる送信が失敗しても、�
     expect(compare).toBeEnabled();
 });
 
+it.each([
+    ['停止', { isEngineRunning: false, engineProcessReady: true }],
+    ['異常終了', { isEngineRunning: true, engineProcessReady: false }],
+    ['状態不明', { isEngineRunning: true, engineProcessReady: null }],
+] as const)('比較中に音声が止まり（%s）そのあいだにVSTが0件になっても、比較の解除は送らず、動き出して0件のままなら解除する', async (_, stopped) => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    const view = render(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    await act(async () => { view.rerender(<AppShell {...commonProps} {...stopped} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    await act(async () => { view.rerender(<AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>); });
+    expect(bypass).toHaveBeenCalledTimes(2);
+    expect(bypass).toHaveBeenLastCalledWith(false);
+    expect(compare).toHaveAttribute('aria-checked', 'false');
+});
+
+it('比較中に音声が止まっている間に最後のVSTがオフになっても、動き出してVSTが戻っていれば比較を解除しない', async () => {
+    const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
+    const view = render(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>);
+    const compare = screen.getByRole('switch', { name: message('ja', 'header.compare') });
+    await act(async () => { fireEvent.click(compare); });
+    await act(async () => { view.rerender(<AppShell {...commonProps} isEngineRunning={false} vstCount={1} vstActiveCount={0}><p>rack</p></AppShell>); });
+    await act(async () => { view.rerender(<AppShell {...commonProps} vstCount={1} vstActiveCount={1}><p>rack</p></AppShell>); });
+    expect(bypass).toHaveBeenCalledTimes(1);
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+});
+
 it.each(['ja', 'en'] as const)('VSTが無い理由は、比較スイッチの直下（ボタンの外）に見える文として出す（%s）', locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <AppShell {...commonProps} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>

@@ -223,6 +223,7 @@ export const usePlugins = () => {
         rackSync.current = null;
         restoreGeneration.current += 1;
         retryPending.current = true;
+        const release = beginRackRestore();
         let expectedGeneration = restoreGeneration.current;
         const isCurrent = () => expectedGeneration === restoreGeneration.current;
         setSessionPersistenceProtected(true);
@@ -249,6 +250,7 @@ export const usePlugins = () => {
             setSessionRestoreStatus('failed');
             setError(pluginNotice('pluginNotices.retryFailed', undefined, true));
         } finally {
+            release();
             retryPending.current = false;
             if (isCurrent()) setIsLoading(false);
         }
@@ -798,8 +800,14 @@ export const usePlugins = () => {
 
                 const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.restoringAfterRestart')));
                 try {
-                    setPlugins([]);
-                    const reloaded = await reloadAllFromUi();
+                    const release = beginRackRestore();
+                    let reloaded: Plugin[];
+                    try {
+                        setPlugins([]);
+                        reloaded = await reloadAllFromUi();
+                    } finally {
+                        release();
+                    }
                     const reopened = reloaded[targetIndex];
                     if (!reopened) {
                         throw new Error("復元後に対象プラグインが見つかりませんでした");
