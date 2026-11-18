@@ -9,6 +9,7 @@ import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
 import { toast } from 'sonner';
+import { notifyLiveLock } from '@/lib/liveLock';
 import { REVIEW_KEY } from '../api/migration';
 import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, PLUGIN_SESSION_PROTECTED_KEY } from './usePluginSessionPersistence';
 import { liveModesApi } from '../api/liveModes';
@@ -709,7 +710,7 @@ export const usePlugins = () => {
                     toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.restored')), { id: toastId });
                 } catch (e) {
                     console.error("Undo failed", e);
-                    toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
+                    if (!notifyLiveLock(t, e, 'pluginNotices.restoreFailed', toastId)) toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
                 }
             };
             toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.removed', { name: pluginToRemove.name }, false)), {
@@ -722,7 +723,7 @@ export const usePlugins = () => {
 
         } catch (e) {
             console.error("Failed to remove plugin", e);
-            setError(pluginNotice('pluginNotices.removeFailed'));
+            if (!notifyLiveLock(t, e, 'pluginNotices.removeFailed')) setError(pluginNotice('pluginNotices.removeFailed'));
         }
     }, [plugins, rejectDuringRestore, t]);
 
@@ -748,11 +749,11 @@ export const usePlugins = () => {
             await audioApi.reorderPlugins(ids);
         } catch (e) {
             console.error("Failed to reorder plugins:", e);
-            setError(pluginNotice('pluginNotices.reorderFailed'));
+            if (!notifyLiveLock(t, e, 'pluginNotices.reorderFailed')) setError(pluginNotice('pluginNotices.reorderFailed'));
             // Rollback
             setPlugins(previousPlugins);
         }
-    }, [plugins, rejectDuringRestore]);
+    }, [plugins, rejectDuringRestore, t]);
 
     const openEditor = useCallback(async (id: string) => {
         if (rejectDuringRestore()) return;
@@ -997,7 +998,7 @@ export const usePlugins = () => {
             return true;
         } catch (e) {
             console.error("Failed to apply template:", e);
-            setError(pluginNotice('pluginNotices.applyTemplateFailed'));
+            if (!notifyLiveLock(t, e, 'pluginNotices.applyTemplateFailed')) setError(pluginNotice('pluginNotices.applyTemplateFailed'));
             return false;
         } finally {
             releaseRestore();

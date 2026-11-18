@@ -3,6 +3,7 @@ import { test, expect } from './tauriFixture';
 import type { Page } from '@playwright/test';
 import { uiScale } from '../../src/lib/largeWindow';
 import { installOneVstRack } from './oneVstRack';
+import { installLockedVstRack } from './lockedVstRack';
 
 mkdirSync('docs/verification/design-renewal-stage-a', { recursive: true });
 
@@ -364,6 +365,86 @@ test.describe('歌・雑談を登録していない右の列（#764）', () => {
             { role: 'button', name: '音声処理の詳細' },
         ]);
     });
+});
+
+const appInput = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Game', rawEndpointId: 'endpoint-1', purpose: 'voice' } };
+const backendLockReason = '本番保護中はデバイス変更・スキャン・ラック／プロファイル置換はできません。停止・ミュートは利用できます。変更する場合は本番保護を解除してください';
+
+test.describe('アプリの音声を入力にしているときの操作ロック（#764）', () => {
+    test.use({ liveHome: true, registeredModes: false });
+
+    for (const locale of ['ja', 'en'] as const) {
+        const labels = locale === 'ja'
+            ? { landmark: columnName, mute: '緊急ミュート', volume: '出力音量', compare: 'VSTを外して比較', lock: '操作をロック', details: '音声処理の詳細', reason: 'アプリの音声の入力では、操作をロックできません' }
+            : { landmark: 'Live controls', mute: 'Emergency mute', volume: 'Output volume', compare: 'Bypass VST', lock: 'Lock controls', details: 'Audio processing details', reason: 'Controls can\'t be locked while the input is an app\'s audio.' };
+        test(`保存した設定がアプリの音声なら、鍵を無効にして理由を伝え、900×600 の右の列が切れない（${locale}）`, async ({ page }) => {
+            await page.addInitScript(({ l, source }) => {
+                localStorage.setItem('vst_host_locale', l);
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', 'obs');
+                localStorage.setItem('auralyn_display_purpose', 'voice');
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', output: 'スピーカー', outputId: 'headphones', inputSource: source, sampleRate: 48000, bufferSize: 512 }));
+            }, { l: locale, source: appInput });
+            await page.goto('/');
+            await expect(page.getByRole('button', { name: labels.mute, exact: true })).toBeVisible();
+            const lock = page.getByRole('complementary', { name: labels.landmark }).getByRole('button', { name: labels.lock, exact: true });
+            await expect(lock).toBeDisabled();
+            await expect(lock).toHaveAttribute('title', labels.reason);
+            await expect(lock).toHaveAccessibleDescription(new RegExp(labels.reason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+            await expectColumnFits(page, 900, 600, labels.landmark, [
+                { role: 'button', name: labels.mute }, { role: 'slider', name: labels.volume }, { role: 'switch', name: labels.compare },
+                { role: 'button', name: labels.lock }, { role: 'button', name: labels.details },
+            ]);
+        });
+    }
+
+    test('標準の機器入力なら、鍵は押せて、ツールチップが保護の範囲を伝える', async ({ page }) => {
+        await page.addInitScript(configuredStorage);
+        await page.goto('/');
+        await ready(page);
+        const lock = column(page).getByRole('button', { name: '操作をロック', exact: true });
+        await expect(lock).toBeEnabled();
+        await expect(lock).toHaveAttribute('title', /ロック中は機器変更やVSTラック・構成の置換はできません/);
+    });
+});
+
+test.describe('操作ロック中の VST の削除と並べ替え（#764）', () => {
+    test.use({ liveHome: true, registeredModes: false });
+
+    for (const locale of ['ja', 'en'] as const) {
+        const labels = locale === 'ja'
+            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', hint: '右の列の「操作をロック」を押してください', lock: '操作をロック', landmark: columnName }
+            : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', hint: 'press “Lock controls” in the right column', lock: 'Lock controls', landmark: 'Live controls' };
+        test(`ロック中に VST を削除しようとすると、保護の理由と解除のしかたを見せ、ラックは変わらない（${locale}）`, async ({ page }) => {
+            await page.addInitScript(installLockedVstRack, backendLockReason);
+            await page.addInitScript(({ l }) => {
+                localStorage.setItem('vst_host_locale', l);
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', 'obs');
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
+            }, { l: locale });
+            await page.setViewportSize({ width: 900, height: 600 });
+            await page.goto('/');
+            await expect(page.getByRole('button', { name: locale === 'ja' ? '緊急ミュート' : 'Emergency mute', exact: true })).toBeVisible();
+            await expect(page.getByRole('complementary', { name: labels.landmark }).getByRole('button', { name: labels.lock, exact: true })).toHaveAttribute('aria-pressed', 'true');
+            await page.locator('#home-vst-open').click();
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+            const cards = page.locator('[data-vst-page]');
+            await expect(cards.getByText('E2E VST A', { exact: true }).first()).toBeVisible();
+            await expect(cards.getByText('E2E VST B', { exact: true }).first()).toBeVisible();
+            await cards.getByRole('button', { name: labels.remove, exact: true }).click();
+            await page.getByRole('button', { name: labels.confirm, exact: true }).click();
+            const notice = page.locator('[data-sonner-toast]');
+            await expect(notice.getByText(labels.title, { exact: true })).toBeVisible();
+            await expect(notice).toContainText(backendLockReason);
+            await expect(notice).toContainText(labels.hint);
+            await expect(cards.getByText('E2E VST A', { exact: true }).first()).toBeVisible();
+            await expect(cards.getByText('E2E VST B', { exact: true }).first()).toBeVisible();
+            expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['remove_plugin']);
+        });
+    }
 });
 
 const shots: Record<string, Array<{ theme: 'dark' | 'light' | 'gaming'; width: number; height: number; panel?: boolean }>> = {
