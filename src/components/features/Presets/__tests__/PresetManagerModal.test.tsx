@@ -1,7 +1,7 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { PresetManagerModal } from '../PresetManagerModal';
@@ -163,10 +163,97 @@ it.each(['ja', 'en'] as const)('保存・復帰のタブは動作が分かり、
     expect(screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') })).toBeVisible();
 });
 
+it.each(['ja', 'en'] as const)('保存済みが0件のあいだは、空の案内を上部の説明に置き、保存の欄より前に出す。範囲の選択と検索は出さない（%s、#773）', async locale => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') return [];
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const empty = await screen.findByText(message(locale, 'presets.copy.070'));
+    const guide = screen.getByText(message(locale, 'presets.copy.072'));
+    const intro = screen.getByText(message(locale, 'presets.intro.preset'));
+    const saveHeading = screen.getByRole('heading', { name: message(locale, 'presets.copy.059') });
+    const heading = screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') });
+    const importButton = screen.getByRole('button', { name: message(locale, 'presets.copy.065') });
+    const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(intro, empty)).toBe(true);
+    expect(before(empty, guide)).toBe(true);
+    expect(before(guide, saveHeading)).toBe(true);
+    expect(before(saveHeading, heading)).toBe(true);
+    expect(before(heading, importButton)).toBe(true);
+    expect(screen.getAllByText(message(locale, 'presets.copy.070'))).toHaveLength(1);
+    expect(guide).not.toHaveTextContent(locale === 'ja' ? '上の欄' : 'above');
+    expect(screen.queryByRole('group', { name: message(locale, 'profilePurpose.apply') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: message(locale, 'presets.copy.066') })).not.toBeInTheDocument();
+    expect(screen.queryByText(message(locale, 'presets.copy.066'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('保存済みが1件以上なら、これまでの並び（範囲、取り込み、検索、一覧）で出す（%s、#773）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const row = await screen.findByRole('button', { name: message(locale, 'presets.copy.073', { arg0: meta.name }) });
+    const nodes = [
+        screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') }),
+        screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') }),
+        screen.getByRole('button', { name: message(locale, 'presets.copy.065') }),
+        screen.getByRole('textbox', { name: message(locale, 'presets.copy.066') }),
+        row,
+    ];
+    nodes.slice(1).forEach((node, index) => expect(nodes[index].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
+    expect(screen.queryByText(message(locale, 'presets.copy.070'))).not.toBeInTheDocument();
+});
+
+it('保存済みが0件で一覧を取得できないときも、範囲の選択と検索は出さず、再試行を出す', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') throw new Error('read failed');
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    open();
+    expect(await screen.findByRole('alert')).toHaveTextContent('一覧を取得できません');
+    expect(screen.getByRole('button', { name: '一覧を再読み込み' })).toBeVisible();
+    expect(screen.queryByText('構成がありません')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '呼び出す範囲' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '構成を検索' })).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('保存済みを保持したまま再取得に失敗したら、範囲と検索を隠して失敗と再読み込みを先頭に出し、再読み込みで選んだ範囲が戻る（%s、#773）', async locale => {
+    let failList = false;
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_profiles') { if (failList) throw new Error('read failed'); return [meta]; }
+        if (command === 'has_backup_profile') return false;
+        if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
+    });
+    const save = vi.fn(async () => { failList = true; return true; });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={save} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const scope = await screen.findByRole('group', { name: message(locale, 'profilePurpose.apply') });
+    const soundOnly = within(scope).getByRole('checkbox');
+    fireEvent.click(soundOnly);
+    expect(soundOnly).not.toBeChecked();
+    fireEvent.change(screen.getByRole('textbox', { name: message(locale, 'presets.copy.061') }), { target: { value: '新しい設定' } });
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'presets.copy.063') }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message(locale, 'presets.copy.016'));
+    const reload = screen.getByRole('button', { name: message(locale, 'presets.copy.068') });
+    expect(screen.queryByRole('group', { name: message(locale, 'profilePurpose.apply') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: message(locale, 'presets.copy.066') })).not.toBeInTheDocument();
+    const heading = screen.getByRole('heading', { name: message(locale, 'presets.savedProfiles') });
+    const importButton = screen.getByRole('button', { name: message(locale, 'presets.copy.065') });
+    const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(heading, alert)).toBe(true);
+    expect(follows(reload, importButton)).toBe(true);
+    expect(screen.queryByText(message(locale, 'presets.copy.070'))).not.toBeInTheDocument();
+    failList = false;
+    fireEvent.click(reload);
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByRole('textbox', { name: message(locale, 'presets.copy.066') })).toBeVisible();
+    expect(within(screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') })).getByRole('checkbox')).not.toBeChecked();
+});
+
 it.each(['ja', 'en'] as const)('呼び出す範囲は保存済みの構成の中にあり、機器を含める保存は入出力プリセットを案内する（%s）', async locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
     const heading = await screen.findByRole('heading', { name: message(locale, 'presets.savedProfiles') });
-    const recall = screen.getByRole('group', { name: message(locale, 'profilePurpose.apply') });
+    const recall = await screen.findByRole('group', { name: message(locale, 'profilePurpose.apply') });
     expect(heading.parentElement).toContainElement(recall);
     const saveScope = screen.getByRole('radiogroup', { name: message(locale, 'profilePurpose.title') });
     expect(saveScope.parentElement?.contains(recall)).toBe(false);

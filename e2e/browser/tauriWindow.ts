@@ -39,5 +39,7 @@ declare global {
         __postRequests?: { action: string; ids?: string[] }[];
         /** 配信用の出力先が未選択の応答を返させる（mixing.spec の模擬）。 */
         __liveOutputMissing?: boolean;
+        /** 保存済みの構成の一覧を取得できない応答を返させる（preset-empty-state.spec の模擬）。 */
+        __presetListFailure?: boolean;
     }
 }
