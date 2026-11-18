@@ -110,7 +110,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                     <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => toSymptom(purpose === 'music' ? 'silent' : 'receiver')}>{t(purpose === 'music' ? 'help.trouble.silent' : 'help.trouble.receiver')}</Button>
                                 </div>
                                 <h3 className="font-semibold">{t('help.setup.flowTitle')}</h3>
-                                <p>{t('help.setup.body', labels)}</p>
+                                <p className="[word-break:auto-phrase]">{t('help.setup.body', labels)}</p>
                             </>}
                             {section === 'vst' && <p>{t('help.vst.body')}</p>}
                             {section === 'trouble' && <>

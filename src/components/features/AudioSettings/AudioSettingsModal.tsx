@@ -13,6 +13,7 @@ import { singingDraftIsDirty, SingingGuideHelp } from './SingingControls';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { Button } from '@/components/ui/button';
+import { UserDocLink } from '@/components/ui/UserDocLink';
 import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { MonitorTrial, monitorTrialInUse } from './MonitorTrial';
@@ -1038,6 +1039,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </RadioGroup>
                 <p className="mt-3 text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.135')}</p>
+                <p className="mt-2 text-ui-support text-muted-foreground [word-break:auto-phrase]">{t('settings.appearanceMotion')}</p>
+                <UserDocLink name="help.appearance" compact />
               </div>
 
             </div>

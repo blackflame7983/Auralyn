@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { getUserDocUrl } from '@/lib/userDocs';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
@@ -172,6 +174,17 @@ it.each(['ja', 'en'] as const)('使い道は接続の先頭にあり、外観は
     expect(screen.getByText(message(locale, 'purpose.whereToSwitch'))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'purpose.openConnect') }));
     expect(await screen.findByRole('button', { name: message(locale, 'purpose.switch') })).toBeVisible();
+});
+
+it.each(['ja', 'en'] as const)('外観のタブは、テーマの近くに押したときの動きと動きを減らしたときの説明を置き、詳しくから外観の原稿を開く（%s）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    fireEvent.keyDown(await screen.findByRole('tab', { name: message(locale, 'settings.appearance') }), { key: 'Enter' });
+    const theme = screen.getByRole('heading', { name: message(locale, 'settings.AudioSettingsModal.130') });
+    const motion = screen.getByText(message(locale, 'settings.appearanceMotion'));
+    expect(theme.compareDocumentPosition(motion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(motion.textContent).not.toMatch(/\{[A-Za-z]+\}/);
+    fireEvent.click(within(motion.parentElement as HTMLElement).getByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) }));
+    expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl('help.appearance', locale));
 });
 
 it('表示と入力の用途が違うときは、そろえるまで下書きにしない', async () => {

@@ -4,8 +4,9 @@ import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { obsHistoryResultParts, obsTextParts } from '@/lib/obsUiText';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { InfoPopover } from '@/components/ui/InfoPopover';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { obsApi, type ObsSetupPlan, type ObsSetupHistory } from '@/api/obs';
+import { useObsSetupBusyReport, useObsSetupHistorySync, type ObsSetupFailure } from '@/hooks/useObsSetupSync';
 
 
 
@@ -13,12 +14,10 @@ export function ObsSafeSetup({
     connected = true,
     disabled,
     onBusyChange,
-    onOpenGuide,
 }: {
     connected?: boolean;
     disabled: boolean;
     onBusyChange: (busy: boolean) => void;
-    onOpenGuide?: () => void;
 }) {
     const t = useMessages();
     const reasonId = useId();
@@ -27,7 +26,7 @@ export function ObsSafeSetup({
     const [busy, setBusy] = useState(false);
     const unavailableReason = busy ? t('settings.obs.operationBusy') : !connected ? t('settings.obs.connectionRequired') : disabled ? t('settings.obs.operationBusy') : null;
     const [forgetting, setForgetting] = useState<number | null>(null);
-    const [error, setError] = useState<{ operation: 'history' | 'preview' | 'apply' | 'undo' | 'forget'; value: unknown } | null>(null);
+    const [error, setError] = useState<ObsSetupFailure | null>(null);
     const inFlight = useRef(false);
     const historyRevision = useRef(0);
     const historyDetails = useRef<HTMLDetailsElement>(null);
@@ -38,27 +37,9 @@ export function ObsSafeSetup({
         details.querySelector('summary')?.focus();
         details.scrollIntoView?.({ block: 'nearest' });
     };
-    useEffect(() => {
-        let active = true;
-        const revision = ++historyRevision.current;
-        setPlan(null);
-        obsApi
-            .setupHistory()
-            .then((items) => {
-                if (active && revision === historyRevision.current) setHistory(items);
-            })
-            .catch((e) => {
-                if (active && revision === historyRevision.current) setError({ operation: 'history', value: e });
-            });
-        return () => {
-            active = false;
-        };
-    }, [connected]);
-    useEffect(() => {
-        onBusyChange(busy);
-        return () => onBusyChange(false);
-    }, [busy, onBusyChange]);
-    const run = async (operation: NonNullable<typeof error>['operation'], action: () => Promise<void>, requiresConnection = true) => {
+    useObsSetupHistorySync({ connected, historyRevision, setPlan, setHistory, setError });
+    useObsSetupBusyReport(busy, onBusyChange);
+    const run = async (operation: ObsSetupFailure['operation'],action: () => Promise<void>, requiresConnection = true) => {
         if (inFlight.current || (requiresConnection && disabled)) return;
         inFlight.current = true;
         historyRevision.current += 1;
@@ -96,10 +77,6 @@ export function ObsSafeSetup({
                 onClick={() => void preview()}
             >
                 {t('settings.ObsSafeSetup.337')}</Button>
-            {onOpenGuide && (
-                <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={busy} aria-describedby={busy ? reasonId : undefined} onClick={onOpenGuide}>
-                    {t('settings.ObsSafeSetup.338')}</Button>
-            )}
             </div>
             {unavailableReason && <p id={reasonId} className="text-ui-support text-muted-foreground" role="status">{unavailableReason}</p>}
             {error && (
