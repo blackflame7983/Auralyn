@@ -255,7 +255,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const compareNeedsVst = nothingToCompare && !isABBypassed && !compareStopped
         ? t((vstCount ?? 0) === 0 ? 'header.compareNeedsVst' : 'header.compareNeedsVstOn') : undefined;
     const compareDisabled = compareStopped || compareNeedsVst !== undefined;
-    const compareNeedsAudio =t(music ? 'header.compareNeedsAudioMusic' : 'header.compareNeedsAudio');
+    const compareNeedsAudio = t(music ? 'header.compareNeedsAudioMusic' : 'header.compareNeedsAudio');
     const compareReason = compareStopped ? compareNeedsAudio : compareNeedsVst;
     const compareDescribedBy = [
         isABBypassed ? 'safety-compare-state' : '',
