@@ -9,6 +9,7 @@ import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
 import { toast } from 'sonner';
+import { isLiveLockRejection, notifyLiveLock, type TemplateApplyResult } from '@/lib/liveLock';
 import { REVIEW_KEY } from '../api/migration';
 import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, PLUGIN_SESSION_PROTECTED_KEY } from './usePluginSessionPersistence';
 import { liveModesApi } from '../api/liveModes';
@@ -625,7 +626,7 @@ export const usePlugins = () => {
         }
     }, [applyCatalog]);
 
-    const addPlugin = useCallback(async (vstPlugin: VstPlugin) => {
+    const addPlugin = useCallback(async (vstPlugin: VstPlugin, options?: { onLocked?: () => void }) => {
         if (rejectDuringRestore()) return false;
         setIsLoading(true);
         try {
@@ -658,7 +659,9 @@ export const usePlugins = () => {
         } catch (e) {
             console.error("Failed to load plugin:", e);
             localStorage.removeItem('vst_host_pending_plugin'); // Also clear on caught error
-            setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
+            // 追加の画面の中から呼ばれたときは、通知の層が画面の裏に隠れるので、理由の表示を呼び出し側へ任せる。
+            if (options?.onLocked && isLiveLockRejection(e)) options.onLocked();
+            else if (!notifyLiveLock(t, e, 'pluginNotices.addFailed')) setError(pluginNotice('pluginNotices.loadFailed', { detail: String(e) }, false));
             return false;
         } finally {
             setIsLoading(false);
@@ -709,7 +712,7 @@ export const usePlugins = () => {
                     toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.restored')), { id: toastId });
                 } catch (e) {
                     console.error("Undo failed", e);
-                    toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
+                    if (!notifyLiveLock(t, e, 'pluginNotices.restoreFailed', toastId)) toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.restoreFailed')), { id: toastId });
                 }
             };
             toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.removed', { name: pluginToRemove.name }, false)), {
@@ -722,7 +725,7 @@ export const usePlugins = () => {
 
         } catch (e) {
             console.error("Failed to remove plugin", e);
-            setError(pluginNotice('pluginNotices.removeFailed'));
+            if (!notifyLiveLock(t, e, 'pluginNotices.removeFailed')) setError(pluginNotice('pluginNotices.removeFailed'));
         }
     }, [plugins, rejectDuringRestore, t]);
 
@@ -748,11 +751,11 @@ export const usePlugins = () => {
             await audioApi.reorderPlugins(ids);
         } catch (e) {
             console.error("Failed to reorder plugins:", e);
-            setError(pluginNotice('pluginNotices.reorderFailed'));
+            if (!notifyLiveLock(t, e, 'pluginNotices.reorderFailed')) setError(pluginNotice('pluginNotices.reorderFailed'));
             // Rollback
             setPlugins(previousPlugins);
         }
-    }, [plugins, rejectDuringRestore]);
+    }, [plugins, rejectDuringRestore, t]);
 
     const openEditor = useCallback(async (id: string) => {
         if (rejectDuringRestore()) return;
@@ -939,7 +942,7 @@ export const usePlugins = () => {
         }
     }, [rejectDuringRestore]);
 
-    const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>) => {
+    const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>): Promise<TemplateApplyResult> => {
         if (rejectDuringRestore()) return false;
         const releaseRestore = beginRackRestore();
         setIsLoading(true);
@@ -983,6 +986,10 @@ export const usePlugins = () => {
                         gain: 1.0,
                     });
                 } catch (e) {
+                    if (isLiveLockRejection(e)) {
+                        setPlugins(loadedPlugins);
+                        throw e;
+                    }
                     failedCount += 1;
                     console.error(`Failed to load plugin for slot ${idx}`, e);
                     toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.slotFailed', { slot: idx + 1, name: vst.name }, false)));
@@ -997,6 +1004,8 @@ export const usePlugins = () => {
             return true;
         } catch (e) {
             console.error("Failed to apply template:", e);
+            // テンプレートの画面の中で呼ばれる。理由は、その画面が開いたまま自分の中に出す。
+            if (isLiveLockRejection(e)) return 'blocked';
             setError(pluginNotice('pluginNotices.applyTemplateFailed'));
             return false;
         } finally {

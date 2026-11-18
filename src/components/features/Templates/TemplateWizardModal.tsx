@@ -6,6 +6,7 @@ import React from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
 import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate, TemplateRole } from '../../../templates/chainTemplates';
 import { useTemplateWizard } from '@/hooks/useTemplateWizard';
+import { useClearOnLiveUnlock } from '@/hooks/useClearOnLiveUnlock';
 import type { MessageKey } from '@/i18n/messages';
 
 const templateUse: Record<string, MessageKey> = {
@@ -23,6 +24,7 @@ const roleLabel: Record<TemplateRole, MessageKey> = {
 };
 import { VstPlugin } from '../../../api/audio';
 import { toast } from 'sonner';
+import type { TemplateApplyResult } from '@/lib/liveLock';
 
 function NoticeText({ value }: { value: SettingsNotice }) { const t = useMessages(); return <>{renderNotice(t, value)}</>; }
 
@@ -30,10 +32,11 @@ interface TemplateWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
     availablePlugins: VstPlugin[];
-    onApplyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    onApplyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | TemplateApplyResult>;
     onOpenSoundSettings?: () => void;
     onScan: () => void;
     isScanning: boolean;
+    liveArmed?: boolean;
 }
 
 export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
@@ -43,7 +46,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     onApplyTemplate,
     onOpenSoundSettings,
     onScan,
-    isScanning
+    isScanning,
+    liveArmed
 }) => {
     const t = useMessages();
     const { locale } = useLocale();
@@ -66,8 +70,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
         return copy ? t(copy[field]) : template.slots[index][field] ?? '';
     };
     const { step, setStep, selectedTemplate, setSelectedTemplate, mapping, setMapping, loading, setLoading } = useTemplateWizard(isOpen, availablePlugins, onScan);
+    // 通知の層はこの画面の裏に隠れる。操作ロックに断られた理由は、画面の中に1行で出す。割り当てを変える・ロックが外れると消す。
+    const [liveLocked, setLiveLocked] = React.useState(false);
+    useClearOnLiveUnlock(liveArmed, () => setLiveLocked(false));
     const choose = (template: ChainTemplate) => {
         setSelectedTemplate(template);
+        setLiveLocked(false);
         setStep(2);
     };
 
@@ -81,6 +89,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             return;
         }
 
+        setLiveLocked(false);
         setLoading(true);
         try {
             // Convert index-based mapping to something useful? 
@@ -96,6 +105,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             });
 
             const applied = await onApplyTemplate(finalMapping);
+            if (applied === 'blocked') { setLiveLocked(true); return; }
             if (applied === false) { toast.error(React.createElement(NoticeText, { value: notice('presets.copy.083') })); return; }
             onClose();
             toast.info(React.createElement(NoticeText, { value: notice('presets.copy.084') }), { description: React.createElement(NoticeText, { value: notice('presets.copy.085') }), duration: 10000 });
@@ -208,6 +218,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                         `}
                                                         value={assigned ? assigned.path : ""}
                                                         onChange={(e) => {
+                                                            setLiveLocked(false);
                                                             const path = e.target.value;
                                                             const p = availablePlugins.find(pl => pl.path === path) || null;
                                                             setMapping(prev => ({ ...prev, [index]: p }));
@@ -239,6 +250,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                         </div>
                     ) : null}
                 </div>
+
+                {step === 2 && liveLocked && <p role="alert" className="shrink-0 border-t border-border px-6 py-3 text-ui-support text-warning wrap-anywhere text-balance [word-break:auto-phrase]">{t('pluginNotices.liveLockedBody')}</p>}
 
                 {/* Footer */}
                 {step === 2 && (

@@ -10,3 +10,10 @@ export function formatAudioRoute(input: string | undefined, output: string | und
     if (music || !destination) return `${from}${ROUTE_JOIN}${to}`;
     return `${from}${ROUTE_JOIN}${to}${ROUTE_JOIN}${destination}`;
 }
+
+// 送り先の表示。受け側の名前があれば「 · 」でつなぐ。短い形は、帯が狭いときに全文の代わりに出す（長い順）。
+export function routeDestination(label: string, shortLabel: string, receiver: string): { full: string; compact: string[] } {
+    const suffix = receiver ? ` · ${receiver}` : '';
+    const compact = [`${shortLabel}${suffix}`, shortLabel].filter((form, index, all) => form !== `${label}${suffix}` && all.indexOf(form) === index);
+    return { full: `${label}${suffix}`, compact };
+}
