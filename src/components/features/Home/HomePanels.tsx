@@ -58,7 +58,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const actualOutput = model.observation.config?.output ?? outputName;
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);
-    // 受け側へ届いたかは Auralyn からは分からない。未確認の間は案内にとどめ、前に確認した設定が変わって記録が失効したときだけ注意にする。
+    // 受け側へ届いたかは Auralyn からは分からない。未確認の間は案内にとどめ、前の確認の記録が失効したとき（設定の変更・停止・再開始など）だけ注意にする。
     const receiverState = music || model.context.usage === 'listening' ? null : confirmationState(model.records, 'receiver');
     return <div className="home-panels mb-4 space-y-4">
         <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
