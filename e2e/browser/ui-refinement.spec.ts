@@ -61,7 +61,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         await expect(modes.getByText(message('ja', 'liveBar.custom'))).toHaveCount(0);
         const customHeading = live.getByRole('heading', { name: message('ja', 'liveBar.custom'), exact: true });
         await expect(customHeading).toHaveAttribute('title', message('ja', 'liveBar.customHint'));
-        await expect(page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
+        await expect(page.getByRole('complementary', { name: message('ja', 'shell.safetyColumn'), exact: true }).getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', `${message('ja', 'liveBar.protect')}\n${message('ja', 'liveBar.protectHint')}`);
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         if (size.width === 1280) {
