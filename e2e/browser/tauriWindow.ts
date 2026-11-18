@@ -35,6 +35,8 @@ declare global {
         __e2eSetOutputGain?: (value: number) => void;
         __e2eSetOutputMuted?: (muted: boolean) => void;
         __e2ePresetOutputMuted?: (muted: boolean) => void;
+        /** 次の n 回の統計の読取りで、出力の操作が反映待ち（controlsPending）の状態を返す。 */
+        __e2ePendControls?: (reads: number) => void;
         /** get_audio_state の読取り回数。取り直しの回数と間隔を試験で数える（mute-refresh.spec.ts）。 */
         __e2eStateReads?: { count: number };
         /** 札の描き直しで消えた回数（mute-refresh.spec.ts の点滅の検出）。 */

@@ -23,6 +23,15 @@ export async function presetOutputMuted(page: Page, muted: boolean): Promise<voi
     }, muted);
 }
 
+/** 次の n 回の統計の読取りを、反映待ち（controlsPending）にする。実エンジンは、操作が音声スレッドに取り込まれるまで短い間そうなる。 */
+export async function pendControls(page: Page, reads: number): Promise<void> {
+    await page.evaluate(value => {
+        const hook = window.__e2ePendControls;
+        if (!hook) throw new Error('__e2ePendControls がありません');
+        hook(value);
+    }, reads);
+}
+
 /** 模擬の出力音量を書き換える。模擬が無いときは失敗する。 */
 export async function setOutputGain(page: Page, gain: number): Promise<void> {
     await page.evaluate(value => {

@@ -7,6 +7,9 @@ export function startPreparationRefresh(refresh: () => void): () => void {
 /** 出力音量・ミュートの変化から取り直すときの最短の間隔。スライダーの連続操作で取り直しを連打しない。 */
 export const OUTPUT_CHANGE_GAP_MS = 200;
 
+/** 反映待ち・読取りの失敗のとき、同じ通知から続けて読み直す回数の上限。上限のあとは、次の通知かページを閉じたときの取り直しで回復する。 */
+export const OUTPUT_RETRY_LIMIT = 5;
+
 /**
  * 変化の通知を、先頭はすぐ、続く通知は間隔の終わりに1回へまとめて実行する。
  * 実行のたびに最新の状態を読むので、まとめた通知の途中の値は読まなくてよい。

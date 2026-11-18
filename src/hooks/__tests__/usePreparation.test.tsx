@@ -322,7 +322,7 @@ it('反映待ち（controlsPending）の読取りのあとの、同じ音量の�
     expect(result.current.observation.availability).toBe('pending');
     await advance(300);
     mockControls(); controls.outputGain = 0;
-    gainSynced(0); await settle();
+    gainSynced(0); await settle(); await advance(300); await settle();
     expect(result.current.observation.availability).toBe('muted');
 });
 it('実際に読めた値と同じ再通知（音量の自動調整の状態確認など）では取り直さない', async () => {
@@ -370,20 +370,118 @@ it('設定のページを閉じて開き直しても、前の読取りの古い�
     release(); await settle();
     expect(result.current.observation.availability).toBe('ready');
 });
-it('停止の通知のあとに返った、取得停止中の古い読取りで札を書き換えない', async () => {
+it('取得停止中の読取りが、停止・再開・ページの開き直しのあとに返っても、現在の札を上書きしない', async () => {
     timers(); mockControls();
-    const { result } = renderHook(() => usePreparation({ running: true, blocked: true })); await settle();
-    let release!: () => void;
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    let release!: () => void; let hold = true;
     vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
         const stats = runtimeWith({ muted: true, outputGain: 1 });
-        await new Promise<void>(resolve => { release = resolve; });
+        if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve; }); }
         return stats;
     });
     emitTauri('global-mute-changed'); await settle();
-    emitTauri('audio-stopped'); emitTauri('audio-started'); await settle();
+    emitTauri('audio-stopped'); await settle();
+    expect(result.current.observation.availability).toBe('stopped');
+    // 再開し、ページを閉じて読み直し、もう一度開く。その後で、停止前に出した読取り（ミュート）が返る。
     mockControls(); controls.muted = false;
-    release(); await settle();
-    expect(result.current.observation.availability).not.toBe('muted');
+    emitTauri('audio-started'); rerender({ blocked: false }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    release(); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+
+// ---- #799 再レビュー：取得停止中の読取りの取りこぼし ----
+const pendingFirst = (reads: number) => {
+    let left = reads;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith(controls);
+        if (left > 0 && stats.preparation) { left -= 1; return { ...stats, preparation: { ...stats.preparation, controlsPending: true } }; }
+        return stats;
+    });
+};
+const statsReads = () => vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
+const renderBlocked = async () => {
+    const view = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    view.rerender({ blocked: true }); await settle();
+    return view;
+};
+
+it('取得停止中に反映待ち（controlsPending）の読取りが返っても、短い再試行で札が回復する', async () => {
+    timers(); mockControls();
+    const { result } = await renderBlocked();
+    pendingFirst(2); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    await advance(500); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('取得停止中の読取りが失敗しても、短い再試行で札が回復する', async () => {
+    timers(); mockControls();
+    const { result } = await renderBlocked();
+    let failures = 2;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        if (failures-- > 0) throw new Error('offline');
+        return runtimeWith(controls);
+    });
+    controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    await advance(500); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('再試行の回数には上限があり、上限のあとも次の通知で回復し、ページを閉じたら予約が止まる', async () => {
+    timers(); mockControls();
+    const { result, rerender } = await renderBlocked();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith(controls);
+        return { ...stats, preparation: stats.preparation && { ...stats.preparation, controlsPending: true } };
+    });
+    const before = statsReads(); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    await advance(5000); await settle();
+    // 最初の読取り1回と、上限の5回だけ。
+    expect(statsReads() - before).toBe(6);
+    expect(result.current.observation.availability).toBe('ready');
+    // 上限のあとでも、次の通知で読み直して回復する。
+    mockControls(); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    // 予約が残る状態でページを閉じると、予約は止まり、定期の取り直しの1本だけが残る。
+    pendingFirst(100); controls.muted = false;
+    emitTauri('global-mute-changed'); await settle();
+    expect(vi.getTimerCount()).toBeGreaterThan(1);
+    mockControls(); controls.muted = false;
+    rerender({ blocked: false }); await settle();
+    expect(vi.getTimerCount()).toBe(1);
+});
+for (const trigger of ['profile-fx-applied', 'audio-conditions-changed', 'global-bypass-changed'] as const) {
+    it(`同じ処理の中の別の通知（${trigger}）で取得停止中の読取りが破棄されても、最新の状態を読み直す`, async () => {
+        timers(); mockControls();
+        const { result } = await renderBlocked();
+        let release!: () => void; let hold = true;
+        vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+            const stats = runtimeWith(controls);
+            if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve; }); }
+            return stats;
+        });
+        controls.outputGain = 0; gainSynced(0); await settle();
+        if (trigger === 'profile-fx-applied') act(() => { window.dispatchEvent(new Event('profile-fx-applied')); });
+        else emitTauri(trigger);
+        release(); await settle(); await advance(300); await settle();
+        expect(result.current.observation.muteCause).toBe('zeroGain');
+    });
+}
+it('取得を止めていないときも、反映待ちの読取りは短い再試行で回復する', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    pendingFirst(4); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('pending');
+    await advance(1000); await settle();
+    expect(result.current.observation.availability).toBe('muted');
 });
 
 it('条件の通知（ミュートや音量の操作のたびに来る）の間も、音を送っていない札は消えず、取り直しで状態が変わる', async () => {

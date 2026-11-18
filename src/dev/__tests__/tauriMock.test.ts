@@ -5,6 +5,7 @@ interface MockWindow {
     __e2eMeterLevels?: (level: number) => { input: number[]; output: number[] };
     __e2eSetOutputMuted?: (muted: boolean) => void;
     __e2ePresetOutputMuted?: (muted: boolean) => void;
+    __e2ePendControls?: (reads: number) => void;
     __e2eSetOutputGain?: (value: number) => void;
     __e2eEmit?: (event: string, payload: unknown) => void;
     __TAURI_INTERNALS__?: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
@@ -178,5 +179,20 @@ describe('模擬の緊急ミュートと出力音量は実エンジンと同じ�
         await mockWindow().__TAURI_INTERNALS__?.invoke('set_output_gain', { value: 0.5 });
         mockWindow().__e2eSetOutputMuted?.(true);
         expect(emitted).toEqual(['global-mute-changed']);
+    });
+});
+
+describe('模擬の反映待ち', () => {
+    it('__e2ePendControls(n) は、次の n 回の統計の読取りだけ controlsPending を真にする', async () => {
+        installTauriMock(legacyOptions);
+        const invoke = mockWindow().__TAURI_INTERNALS__?.invoke;
+        const pending = async () => {
+            const stats = await invoke?.('get_engine_runtime_stats');
+            const preparation = typeof stats === 'object' && stats !== null && 'preparation' in stats ? stats.preparation : null;
+            return typeof preparation === 'object' && preparation !== null && 'controlsPending' in preparation ? preparation.controlsPending : undefined;
+        };
+        expect(await pending()).toBe(false);
+        mockWindow().__e2ePendControls?.(2);
+        expect([await pending(), await pending(), await pending()]).toEqual([true, true, false]);
     });
 });

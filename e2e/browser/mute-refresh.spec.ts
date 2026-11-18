@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './tauriFixture';
-import { setOutputGain, setOutputMuted } from './e2eHooks';
+import { pendControls, setOutputGain, setOutputMuted } from './e2eHooks';
 import { openHome, type Locale } from './helpers/openHome';
 import { message } from '../../src/i18n/messages';
 
@@ -155,3 +155,34 @@ for (const locale of locales) {
         expect(await page.evaluate(() => window.__chipRemoved)).toEqual({ count: 0 });
     });
 }
+
+// 実エンジンは、操作が音声スレッドに取り込まれるまでの短い間、統計を反映待ち（controlsPending）で返す。
+// 取得を止めているページでも、上限のある短い再試行で、定期の取り直し（2秒）を待たずに札が回復する。
+const recovered = { timeout: 2000 } as const;
+for (const target of pages) for (const locale of locales) {
+    test(`${message('ja', target.key)}のページを開いたまま、反映待ちの読取りが続いても、2秒の定期取得を待たずに札が回復する（${locale}）`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale, purpose: 'voice', theme: 'dark', size });
+        await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, target.key), exact: true }).click();
+        const region = column(page, locale).locator('[role="status"].sr-only');
+        await expect(region).toBeEmpty();
+        await pendControls(page, 3);
+        await setOutputMuted(page, true);
+        await expect(chipOf(page, locale)).toBeVisible(recovered);
+        await expect(region).toHaveText(message(locale, 'prep.muted'), recovered);
+        await pendControls(page, 3);
+        await setOutputGain(page, 0);
+        await setOutputMuted(page, false);
+        await expect(chipOf(page, locale)).toBeVisible(recovered);
+        await setOutputGain(page, 1);
+        await expect(chipOf(page, locale)).toHaveCount(0, recovered);
+    });
+}
+
+test('ホームでも、反映待ちの読取りが続いたあと、札が短い再試行で回復する', async ({ page }) => {
+    await openHome(page, { state: 'running', locale: 'ja', purpose: 'voice', theme: 'dark', size });
+    await pendControls(page, 4);
+    await setOutputMuted(page, true);
+    await expect(chipOf(page, 'ja')).toBeVisible(recovered);
+    await setOutputMuted(page, false);
+    await expect(chipOf(page, 'ja')).toHaveCount(0, recovered);
+});
