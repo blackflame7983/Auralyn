@@ -352,14 +352,6 @@
     },
     {
       "file": "e2e/browser/large-window.spec.ts",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "b950a4a23ba5b6868bff5d38db2e3685be597a7bf8eea624d4efe35b6e719d24",
-      "count": 6,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "e2e/browser/large-window.spec.ts",
       "rule": "@typescript-eslint/no-unsafe-assignment",
       "hash": "65f4f3df994804cce90eb966505ec5650230cb339b1e0c67c23d1e7977009648",
       "count": 1,
