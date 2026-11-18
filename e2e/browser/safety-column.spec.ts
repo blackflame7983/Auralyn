@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { test, expect } from './tauriFixture';
 import type { Page } from '@playwright/test';
 import { uiScale } from '../../src/lib/largeWindow';
+import { installOneVstRack } from './oneVstRack';
 
 mkdirSync('docs/verification/design-renewal-stage-a', { recursive: true });
 
@@ -157,7 +158,88 @@ test.describe('右の本番中の操作', () => {
         expect(lines).toBe(1);
     });
 
+    test('VSTが1つも無いあいだは、比較が無効で理由が付く', async ({ page }) => {
+        await page.addInitScript(configuredStorage);
+        await page.goto('/');
+        await ready(page);
+        const compare = column(page).getByRole('switch', { name: 'VSTを外して比較', exact: true });
+        await expect(compare).toBeDisabled();
+        await expect(compare).toHaveAttribute('title', 'VSTを追加すると比べられます');
+        await expect(compare).toHaveAccessibleDescription('VSTを追加すると比べられます');
+        await expect(compare).toBeInViewport({ ratio: 1 });
+        await expect(column(page).getByText('VSTを追加すると比べられます', { exact: true })).toBeInViewport({ ratio: 1 });
+    });
+
+    for (const purpose of ['voice', 'music'] as const) {
+        test(`VSTが無い理由の行があっても、900×600 の右の列の操作が切れない（日本語・${purpose}）`, async ({ page }) => {
+            await page.addInitScript(p => {
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', p === 'music' ? 'listening' : 'obs');
+                localStorage.setItem('auralyn_display_purpose', p);
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+            }, purpose);
+            await page.goto('/');
+            await ready(page);
+            await expect(column(page).getByText('VSTを追加すると比べられます', { exact: true })).toBeVisible();
+            await expectColumnFits(page, 900, 600, columnName, [
+                { role: 'button', name: '緊急ミュート' },
+                { role: 'slider', name: '出力音量' },
+                { role: 'switch', name: 'VSTを外して比較' },
+                { role: 'button', name: '音声処理の詳細' },
+            ]);
+        });
+    }
+
+    test('オンのVSTが1つでもあれば、比較は押せる', async ({ page }) => {
+        await page.addInitScript(installOneVstRack);
+        await page.addInitScript(configuredStorage);
+        await page.goto('/');
+        await ready(page);
+        const compare = column(page).getByRole('switch', { name: 'VSTを外して比較', exact: true });
+        await expect(compare).toBeEnabled();
+        await expect(compare).not.toHaveAttribute('title', /.+/);
+    });
+
+    test('英語でも、VSTが無いあいだは比較が無効で理由が付く', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_locale', 'en');
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.getByRole('button', { name: 'Emergency mute', exact: true })).toBeVisible();
+        const compare = page.getByRole('complementary', { name: 'Live controls' }).getByRole('switch', { name: 'Bypass VST', exact: true });
+        await expect(compare).toBeDisabled();
+        await expect(compare).toHaveAccessibleDescription('Add a VST to compare.');
+        await expect(page.getByRole('complementary', { name: 'Live controls' }).getByText('Add a VST to compare.', { exact: true })).toBeVisible();
+    });
+
+    for (const purpose of ['voice', 'music'] as const) {
+        test(`Add a VST to compare. の行があっても、900×600 の右の列の操作が切れない（英語・${purpose}）`, async ({ page }) => {
+            await page.addInitScript(p => {
+                localStorage.setItem('vst_host_locale', 'en');
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', p === 'music' ? 'listening' : 'obs');
+                localStorage.setItem('auralyn_display_purpose', p);
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+            }, purpose);
+            await page.goto('/');
+            await expect(page.getByRole('button', { name: 'Emergency mute', exact: true })).toBeVisible();
+            await expect(page.getByRole('complementary', { name: 'Live controls' }).getByText('Add a VST to compare.', { exact: true })).toBeVisible();
+            await expectColumnFits(page, 900, 600, 'Live controls', [
+                { role: 'button', name: 'Emergency mute' },
+                { role: 'slider', name: 'Output volume' },
+                { role: 'switch', name: 'Bypass VST' },
+                { role: 'button', name: 'Audio processing details' },
+            ]);
+        });
+    }
+
     test('VSTのページを開いても右の列の3操作が押せる', async ({ page }) => {
+        await page.addInitScript(installOneVstRack);
         await page.addInitScript(configuredStorage);
         await page.goto('/');
         await ready(page);

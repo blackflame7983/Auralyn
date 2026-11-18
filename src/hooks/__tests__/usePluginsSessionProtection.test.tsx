@@ -5,6 +5,7 @@ import { audioApi } from '../../api/audio';
 import { liveModesApi } from '../../api/liveModes';
 import { bundleApi, type BundleResult } from '../../api/bundles';
 import { usePlugins } from '../usePlugins';
+import { rackRestoreBusy } from '../../lib/liveRouting';
 import { PLUGIN_SESSION_KEY, PLUGIN_SESSION_BACKUP_KEY, PLUGIN_SESSION_PROTECTED_KEY } from '../usePluginSessionPersistence';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
@@ -152,6 +153,24 @@ it('明示再試行で途中ラックを回収し、原本全件の復元成功�
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(JSON.parse(localStorage.getItem(PLUGIN_SESSION_KEY)!)).toHaveLength(2);
     expect(localStorage.getItem(PLUGIN_SESSION_BACKUP_KEY)).toBe(original);
+});
+
+it('明示再試行のあいだは、ラックの置き換え中の状態を保ち、失敗しても終わったら外す', async () => {
+    localStorage.setItem(PLUGIN_SESSION_KEY, original);
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => { if (request.path === 'ozone') throw new Error('first failure'); return { id: request.path, name: request.path, prepared: false }; });
+    const { result } = renderHook(() => usePlugins());
+    await flush();
+    expect(result.current.sessionRestoreStatus).toBe('partial');
+    const busyDuring: boolean[] = [];
+    vi.mocked(audioApi.removePlugin).mockImplementation(async () => { busyDuring.push(rackRestoreBusy()); });
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => ({ id: request.path, name: request.path, prepared: false }));
+    expect(rackRestoreBusy()).toBe(false);
+    await act(async () => { await result.current.retrySessionRestore(); });
+    expect(busyDuring).toEqual([true]);
+    expect(rackRestoreBusy()).toBe(false);
+    vi.mocked(audioApi.restorePlugin).mockRejectedValue(new Error('again'));
+    await act(async () => { await result.current.retrySessionRestore(); });
+    expect(rackRestoreBusy()).toBe(false);
 });
 
 it('再起動resetで遅い復元を中断し、返った1件を完全復元として保存しない', async () => {
