@@ -498,7 +498,10 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                             onChange={setSaveCategories}
                         /></div>
                     </details>
-                    <label htmlFor="profile-save-name" className="block text-ui-support font-medium">{t('presets.copy.061')}</label>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <label htmlFor="profile-save-name" className="block text-ui-support font-medium">{t('presets.copy.061')}</label>
+                        {!saveName.trim() && <p id="profile-save-name-needed" className="min-w-0 break-words text-balance [word-break:auto-phrase] text-ui-support text-muted-foreground">{t('presets.saveNameNeeded')}</p>}
+                    </div>
                     <div className="flex gap-2">
                         <Field label={null} id="profile-save-name"><Input
                             id="profile-save-name"
@@ -512,6 +515,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         <Button variant="default" size="sm"
                             onClick={() => { void handleSaveProfile(); }}
                             disabled={!saveName.trim()}
+                            aria-describedby={saveName.trim() ? undefined : 'profile-save-name-needed'}
                             className="flex items-center gap-2"
                         >
                             <MdSave className="w-4 h-4" />

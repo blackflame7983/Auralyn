@@ -29,6 +29,23 @@ it.each(['ja', 'en'] as const)('音楽鑑賞では見出しのVST構成テンプ
     localStorage.removeItem('auralyn_display_purpose');
 });
 
+it.each(['ja', 'en'] as const)('名前が空のあいだは、保存が押せない理由を近くに見せ、入れると消す（%s）', async locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const name = await screen.findByRole('textbox', { name: message(locale, 'presets.copy.061') });
+    const save = screen.getByRole('button', { name: message(locale, 'presets.copy.063') });
+    const reason = message(locale, 'presets.saveNameNeeded');
+    expect(save).toBeDisabled();
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(save).toHaveAccessibleDescription(reason);
+    fireEvent.change(name, { target: { value: '   ' } });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAccessibleDescription(reason);
+    fireEvent.change(name, { target: { value: '新しい設定' } });
+    expect(save).toBeEnabled();
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    expect(save).not.toHaveAttribute('aria-describedby');
+});
+
 it('開いた直後の焦点は閉じる', async () => {
     render(<PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={vi.fn()} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} onOpenTemplateWizard={vi.fn()} />);
     const close = await screen.findByRole('button', { name: '閉じる' });
