@@ -81,7 +81,7 @@ Hearing your own voice and confirming sound in your streaming or calling app are
 
 The name of the input or source selected in the receiving app stays off Home, and diagnosis asks for it when the receiving-app checklist appears. You can leave it blank and still continue. You can change or clear a saved name in that diagnosis. The saved name also stays in “Connection details”.
 
-On a wide window, preparation opens in a column on the right of Home, with “Connection details” expanded. On a narrow window, open it from “Connection details” below. Tell the output device apart from the destination, and confirm the receiving app as well.
+On a wide window, preparation stays open as “Check the connection” in a column on the right of Home, with no button to open or close it. On a narrow window, open it from “Connection details” below. Tell the output device apart from the destination, and confirm the receiving app as well.
 
 ### Live controls on the right of the screen (stop or compare the sound) {#output-volume}
 

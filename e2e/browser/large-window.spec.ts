@@ -1,6 +1,7 @@
 import { test, expect } from './tauriFixture';
 import { uiScale } from '../../src/lib/largeWindow';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
+import { setOutputMuted } from './e2eHooks';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -49,7 +50,10 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         const home = page.locator('.home-content');
         const display = await home.evaluate(element => getComputedStyle(element).display);
         expect(display).toBe(size.width >= 1400 ? 'grid' : 'block');
-        if (size.width >= 1400) await expect(page.getByRole('button', { name: '接続の詳細', exact: true })).toHaveAttribute('aria-expanded', 'true');
+        // 常に開いている接続の確認には、押しても何も起きない開閉のボタンを出さない（#762）。
+        const prep = page.getByRole('region', { name: '接続の確認', exact: true });
+        await expect(prep.getByRole('button', { name: '接続の詳細', exact: true })).toHaveCount(size.width >= 1400 ? 0 : 1);
+        if (size.width >= 1400) await expect(prep.getByRole('heading', { level: 2, name: '接続の確認', exact: true })).toBeVisible();
         // 接続の列の高さで左の行が伸びないこと（2026-11-14 の実機で、音調整のカードが窓の下へ押し出された）。
         // 左の列の隣り合う区画の間は、1列のときと同じく狭いままにする。
         const gaps = await home.evaluate(element => {
@@ -79,6 +83,52 @@ test('窓の大きさで2段目と接続の列を出し分け、拡大しても�
         readings.push(`${size.width}x${size.height} tier=${size.height >= 800} column=${size.width >= 1400} zoom=${fit.zoom} shell=${Math.round(fit.shellWidth)}x${Math.round(fit.shellHeight)}`);
     }
     console.log(readings.join('\n'));
+});
+
+test('1440×900の英語でも、接続の確認の見出しと診断の入口は重ならず、見出しは縮まない（#762）', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('vst_host_locale', 'en'));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.locator('.home-content')).toBeVisible();
+    await waitForStableLayout(page);
+    const prep = page.getByRole('region', { name: 'Check the connection', exact: true });
+    const heading = prep.getByRole('heading', { level: 2, name: 'Check the connection', exact: true });
+    const diagnose = prep.getByRole('button', { name: 'Diagnose audio problems', exact: true });
+    await expect(heading).toBeVisible();
+    await expect(diagnose).toBeVisible();
+    const lines = await heading.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
+    });
+    expect(lines, '見出しは1行のまま').toBe(1);
+    const a = await heading.boundingBox();
+    const b = await diagnose.boundingBox();
+    if (!a || !b) throw new Error('見出しか診断の入口の位置を取得できません');
+    const separated = a.x + a.width <= b.x + 0.5 || b.x + b.width <= a.x + 0.5 || a.y + a.height <= b.y + 0.5 || b.y + b.height <= a.y + 0.5;
+    expect(separated, `見出し ${JSON.stringify(a)} と診断 ${JSON.stringify(b)} が重なる`).toBe(true);
+    await expect(prep.getByRole('button', { name: 'Connection details', exact: true })).toHaveCount(0);
+});
+
+test('広い窓のミュートの主ボタンは塗りにせず、注意の枠で示す（#762）', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.locator('.home-content')).toBeVisible();
+    await setOutputMuted(page, true);
+    const button = page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('button', { name: 'ミュート・出力音量を確認', exact: true });
+    await expect(button).toBeVisible();
+    await expect(button).toHaveClass(/border-warning/);
+    await expect(button).not.toHaveClass(/bg-primary/);
+});
+
+test('広い窓の受け側は、未確認の間は注意色にせず、中立の案内を出す（#762）', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const flow = page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('region', { name: '音の流れ', exact: true });
+    await expect(flow).toBeVisible();
+    await expect(flow.getByText('受け側のメーターで確かめてください', { exact: true })).toBeVisible();
+    await expect(flow.getByText('受け側で音を確認', { exact: true })).toHaveCount(0);
+    await expect(flow.locator('.text-warning')).toHaveCount(0);
 });
 
 test('1280×800の声の種類は、チェックと文字の間をほかの選択と同じにする', async ({ page }) => {
