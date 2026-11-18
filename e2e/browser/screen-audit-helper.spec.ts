@@ -47,7 +47,7 @@ test.describe('実行中の音調整のカードの空き', () => {
         .self-start { align-self: start; }
     `;
     const status = '<div class="sound-card-status"><span>オン</span><button type="button">切替</button></div>';
-    const vstCard = (attrs: string, extraClass = '') => `<li class="sound-module-card ${extraClass}" ${attrs}><h3>外部VST</h3><p>使っていません</p>${status}</li>`;
+    const vstCard = (attrs: string, extraClass = '') => `<li class="sound-module-card ${extraClass}" ${attrs}><h3>外部VST</h3><p>まだありません</p>${status}</li>`;
     const neighbor = `<li class="sound-module-card tall"><h3>ノイズ低減</h3><p>説明</p>${status}</li>`;
     const row = (vst: string, other = neighbor) => `<ol class="row">${other}${other}${vst}</ol>`;
 

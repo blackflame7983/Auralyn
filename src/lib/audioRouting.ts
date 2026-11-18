@@ -22,22 +22,30 @@ export function deviceDisplayName(name: string): string {
 export function findCableReceiver<T extends { name: string; host: string }>(
     outputName: string, host: string, inputs: T[],
 ): T | undefined {
-    const output = deviceDisplayName(outputName).trim().match(/^CABLE(-[AB])?\s+Input(?:\s*\([^)]*\))?$/i);
-    if (!output) return undefined;
-    const family = (output[1] ?? '').toUpperCase();
-    const candidates = inputs.filter(input => {
-        if (input.host.toLowerCase() !== host.toLowerCase()) return false;
-        const match = deviceDisplayName(input.name).trim().match(/^CABLE(-[AB])?\s+Output(?:\s*\([^)]*\))?$/i);
-        return match && (match[1] ?? '').toUpperCase() === family;
-    });
+    const family = cableFamily(outputName, 'Input');
+    if (family === null) return undefined;
+    const candidates = inputs.filter(input => input.host.toLowerCase() === host.toLowerCase() && cableFamily(input.name, 'Output') === family);
     return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+// 名前の対応が既知の VB-CABLE（CABLE / CABLE-A / CABLE-B）だけを判定し、組の識別（'' / '-A' / '-B'）を返す。ほかは null。
+function cableFamily(name: string | null | undefined, side: 'Input' | 'Output'): string | null {
+    const match = name ? deviceDisplayName(name).trim().match(new RegExp(`^CABLE(-[AB])?\\s+${side}(?:\\s*\\([^)]*\\))?$`, 'i')) : null;
+    return match ? (match[1] ?? '').toUpperCase() : null;
 }
 
 // 録音側（CABLE Output）を再生元にしているとき、再生アプリが出力する先の再生側の名前（CABLE Input）を返す。
 // 名前の対応が既知の VB-CABLE だけ。ほかの機器は推測せず null を返す。
 export function cablePlaybackName(inputName: string | null | undefined): string | null {
-    const match = inputName ? deviceDisplayName(inputName).trim().match(/^CABLE(-[AB])?\s+Output(?:\s*\([^)]*\))?$/i) : null;
-    return match ? `CABLE${match[1]?.toUpperCase() ?? ''} Input` : null;
+    const family = cableFamily(inputName, 'Output');
+    return family === null ? null : `CABLE${family} Input`;
+}
+
+// 再生側（CABLE Input）を出力先にしているとき、受け側のアプリが選ぶ録音側の名前（CABLE Output）を返す。
+// 名前の対応が既知の VB-CABLE だけ。ほかの機器は推測せず null を返す。
+export function cableReceiverName(outputName: string | null | undefined): string | null {
+    const family = cableFamily(outputName, 'Input');
+    return family === null ? null : `CABLE${family} Output`;
 }
 
 export function receiverDeviceHint(outputName: string): string {

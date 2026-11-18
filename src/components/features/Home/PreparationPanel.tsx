@@ -98,7 +98,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         receiver();
     };
     const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
-        : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
+        : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'music.listenTitle' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
     // 送り先は4つだけなので、選択欄ではなくセットアップと同じアイコンのボタンで選ぶ（DESIGN.md 2.2）。
@@ -147,7 +147,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         {!music && next !== 'done' && next !== 'purpose' && <Button variant={homeActionInStrip || mutedOutput ? "outline" : "default"} size="sm" ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className={cn('h-auto whitespace-normal', mutedOutput && 'border-warning bg-warning/10')}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</Button>}
         </div>
-        {music ? <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={onListen}>{t('wizard.musicListen')}</Button> : <>
+        {music ? <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={onListen}>{t('music.listenTitle')}</Button> : <>
         <div className="space-y-1 text-ui-support"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
 
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <Field key={next} label={t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : music && next === 'sound' ? 'music.ackSound' : music && next === 'listen' ? 'music.ackListen' : acknowledgeLabels[next])}>
@@ -182,7 +182,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 {(['sound', 'listen', 'receiver'] as const).map(stage => {
                     const state = confirmationState(records, stage);
                     const receipt = records[stage];
-                    const label = t(stage === 'receiver' && context.usage === 'listening' ? 'prep.localReceiver' : music && stage === 'sound' ? 'wizard.musicSound' : music && stage === 'listen' ? 'wizard.musicListen' : stageLabels[stage]);
+                    const label = t(stage === 'receiver' && context.usage === 'listening' ? 'prep.localReceiver' : music && stage === 'sound' ? 'wizard.musicSound' : music && stage === 'listen' ? 'music.listenTitle' : stageLabels[stage]);
                     return <li key={stage} className="py-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className="text-ui-control font-semibold">{label}</h3>

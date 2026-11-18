@@ -7,6 +7,7 @@ import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/p
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
+import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 vi.mock('../../LevelMeter/MeterContext', () => ({ useInputMeterState: () => 'live' }));
 afterEach(cleanup);
@@ -46,4 +47,15 @@ it('受け側を確認済みなら、案内も注意も出さない', () => {
     const flow = screen.getByRole('region', { name: message('ja', 'flow.diagram') });
     expect(within(flow).queryByText(message('ja', 'flow.receiverCheckHint'))).not.toBeInTheDocument();
     expect(within(flow).queryByText(message('ja', 'flow.receiverUnknown'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('音楽鑑賞の図の終点は、ヘッドホンで聴く人に合う「聴く機器」の言葉で示す（%s、#767）', locale => {
+    saveDisplayPurpose('music');
+    try {
+        renderPanels(fixture(), locale);
+        const flow = screen.getByRole('region', { name: message(locale, 'flow.diagram') });
+        expect(within(flow).getByText(message(locale, 'flow.musicReceiver'))).toBeInTheDocument();
+        expect(within(flow).queryByText(message(locale, 'prep.localReceiver'))).not.toBeInTheDocument();
+        expect(within(flow).queryByText(message(locale, 'live.destination'))).not.toBeInTheDocument();
+    } finally { saveDisplayPurpose('voice'); }
 });
