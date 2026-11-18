@@ -99,7 +99,7 @@ test.describe('通常のホーム表示', () => {
             const samples = [];
             for (const muted of [false, true, false]) {
                 await setOutputMuted(page, muted);
-                const badge = routing.getByRole('status', { includeHidden: true });
+                const badge = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
                 // 幅の変更で区画が滑って移る間（#298）は測らず、配置が落ち着いてから比べる。
                 await settleLayoutMotion(page);

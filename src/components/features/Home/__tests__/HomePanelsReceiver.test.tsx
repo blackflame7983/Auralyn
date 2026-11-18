@@ -76,6 +76,19 @@ it('受け側の名前が無いときと、自分の声を聴くときは、名�
     expect(flow).not.toHaveTextContent('My OBS');
 });
 
+// ミュートの解除の入口は右の列の札だけ。接続の確認は、誤った主ボタンも、同じ入口の重ねも出さない（#766）。
+it.each(['ja', 'en'] as const)('ミュート中の接続の確認は、主ボタンも確認ボタンも出さず、入出力の変更だけを残す（%s、#766）', locale => {
+    const model = fixture();
+    model.observation = { ...model.observation, availability: 'muted' };
+    renderPanels(model, locale);
+    const check = screen.getByRole('region', { name: message(locale, 'prep.title') });
+    expect(within(check).queryByRole('button', { name: (locale === 'ja' ? 'ミュート・出力音量を確認' : 'Check mute and output level') })).not.toBeInTheDocument();
+    expect(within(check).queryByRole('button', { name: message(locale, 'shell.configure') })).not.toBeInTheDocument();
+    expect(check.querySelector('button.bg-primary')).toBeNull();
+    expect(within(check).getByRole('button', { name: message(locale, 'home.changeDevices') })).toBeVisible();
+    expect(check).not.toHaveTextContent(message(locale, 'prep.muted'));
+});
+
 it.each(['ja', 'en'] as const)('音楽鑑賞の図の終点は、ヘッドホンで聴く人に合う「聴く機器」の言葉で示す（%s、#767）', locale => {
     saveDisplayPurpose('music');
     try {

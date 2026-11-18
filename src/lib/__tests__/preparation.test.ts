@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import { buildPreparationObservation, confirmationState, editPreparationReceiver, emptyObservation, expireConfirmations, nextPreparationStage, normalizeReceiver, readPreparationContext, savePreparationContext, type Confirmations } from '../preparation';
 
-import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
+import { context, audioState, runtime, runtimeWith, liveStatus } from '@/__tests__/fixtures/preparation';
 const observe = (stats = runtime(), ctx = context, live = liveStatus) => buildPreparationObservation(audioState, stats, live, ctx);
 const confirmations = (): Confirmations => Object.fromEntries(Object.entries(observe().keys!).map(([stage, key]) => [stage, { key, at: 1, target: 'Mic', expired: false }]));
 beforeEach(() => localStorage.clear());
@@ -109,6 +109,25 @@ it('旧エンジン・不正snapshotは不明、ミュートは確認操作を�
     expect(observe(stats).keys).toBeNull();
     stats.preparation = { ...runtime().preparation!, muted: true };
     expect(nextPreparationStage(observe(stats), confirmations(), context)).toBe('connect');
+});
+
+// 札の表示（availability）と、札を押したときの移動先（原因）は、同じスナップショットから決める（#766）。
+it.each([
+    { name: '緊急ミュート', muted: true, outputGain: 1, cause: 'muted' },
+    { name: '出力音量ゼロ', muted: false, outputGain: 0, cause: 'zeroGain' },
+    { name: '両方のときは緊急ミュートの解除を先にする', muted: true, outputGain: 0, cause: 'muted' },
+] as const)('ミュート・音量ゼロの原因は、同じスナップショットから返す（$name）', ({ muted, outputGain, cause }) => {
+    const observation = observe(runtimeWith({ muted, outputGain }));
+    expect(observation.availability).toBe('muted');
+    expect(observation.muteCause).toBe(cause);
+});
+it('ミュートでも音量ゼロでもない観測は、原因を持たない', () => {
+    expect(observe(runtime()).muteCause).toBeUndefined();
+    const pending = runtimeWith({ muted: true, outputGain: 1 });
+    if (pending.preparation) pending.preparation.controlsPending = true;
+    expect(observe(pending).availability).toBe('pending');
+    expect(observe(pending).muteCause).toBeUndefined();
+    expect(emptyObservation('stopped').muteCause).toBeUndefined();
 });
 
 it('music は準備用途では listening として扱い、場所更新で元の目的を失わない', () => {
