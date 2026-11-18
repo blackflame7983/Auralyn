@@ -75,7 +75,7 @@
     { "use": "この構成で使うVSTを選ぶ", "avoid": ["この構成を使う"], "locale": "ja", "ref": "#777" },
     { "use": "Choose VSTs for this setup", "avoid": ["Use this setup"], "locale": "en", "ref": "#777" },
     { "use": "出力ミュート・音量ゼロ", "avoid": ["ミュート・出力音量を確認"], "locale": "ja", "ref": "#766" },
-    { "use": "Output muted / volume zero", "avoid": ["Check mute and output level"], "locale": "en", "ref": "#766" }
+    { "use": "Muted / vol 0", "avoid": ["Check mute and output level"], "locale": "en", "ref": "#766" }
   ],
   "allow": [
     { "key": "settings.AudioSettingsModal.075", "term": "低め", "reason": "接続のバッファサイズの大小（音の途切れにくさの段階名）で、声の種類ではない（#770）" },
