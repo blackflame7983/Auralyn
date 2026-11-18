@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { installTauriMock, realisticAudioConfig, realisticDeviceNames, type TauriMockOptions } from '../tauriMock';
 
 interface MockWindow {
+    __e2eMeterLevels?: (level: number) => { input: number[]; output: number[] };
+    __e2eSetOutputMuted?: (muted: boolean) => void;
+    __e2eSetOutputGain?: (value: number) => void;
     __TAURI_INTERNALS__?: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
 }
 
@@ -80,5 +83,32 @@ describe('模擬の機器名', () => {
         expect(runningNames(await invoke?.('get_audio_state'))).toEqual({
             input: realisticDeviceNames.musicInput, output: realisticDeviceNames.musicOutput,
         });
+    });
+});
+
+// 実エンジン（audio_engine/core/startup.rs）は、緊急ミュート中は出力を無音で書いて出力レベルを 0 にし、
+// 入力レベルはそのまま送る。ミュートでないときは、出力音量を掛けたあとを測る。
+describe('模擬のメーターレベル', () => {
+    it('ミュート中は出力を 0 にし、入力はそのまま送る', () => {
+        installTauriMock(legacyOptions);
+        const levels = mockWindow().__e2eMeterLevels?.(0.1);
+        expect(levels).toEqual({ input: [0.1, 0.1], output: [0, 0] });
+    });
+
+    it('ミュートを解除すると出力のレベルが戻り、もう一度ミュートすると 0 になる', () => {
+        installTauriMock(legacyOptions);
+        mockWindow().__e2eSetOutputMuted?.(false);
+        expect(mockWindow().__e2eMeterLevels?.(0.1)).toEqual({ input: [0.1, 0.1], output: [0.1, 0.1] });
+        mockWindow().__e2eSetOutputMuted?.(true);
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0, 0]);
+    });
+
+    it('出力音量を掛けたあとを測り、音量ゼロなら出力は 0 になる', () => {
+        installTauriMock(legacyOptions);
+        mockWindow().__e2eSetOutputMuted?.(false);
+        mockWindow().__e2eSetOutputGain?.(0.5);
+        expect(mockWindow().__e2eMeterLevels?.(0.2)).toEqual({ input: [0.2, 0.2], output: [0.1, 0.1] });
+        mockWindow().__e2eSetOutputGain?.(0);
+        expect(mockWindow().__e2eMeterLevels?.(0.2)?.output).toEqual([0, 0]);
     });
 });

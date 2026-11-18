@@ -34,6 +34,8 @@ declare global {
         __e2eOutputGainWrites?: number[];
         __e2eSetOutputGain?: (value: number) => void;
         __e2eSetOutputMuted?: (muted: boolean) => void;
+        /** 入力の一定レベルを audio-level で流す。出力は模擬が出力ミュートと出力音量から決める（src/dev/tauriMock.ts）。 */
+        __e2eEmitLevel?: (level: number) => void;
         __layoutMeterState?: { value: number | null };
         /** 配信ラックへ送った要求の記録（mixing.spec の模擬）。 */
         __postRequests?: { action: string; ids?: string[] }[];
