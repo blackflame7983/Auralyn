@@ -3,6 +3,7 @@ import { Slider } from '@/components/ui/slider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 
+export const mixingRowSummary = 'cursor-pointer text-ui-control';
 export const mixingCard = 'min-w-0 space-y-3 rounded-card border border-border bg-card p-4';
 export const framesToMs = (frames: number | null | undefined, rate: number | null | undefined) =>
     frames != null && rate && rate > 0 ? `${(frames * 1000 / rate).toFixed(1)} ms` : null;

@@ -16,9 +16,9 @@ async function setup(value = snapshot(), mainRunning = false) {
     expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('配信音を仕上げるVST'));
     await screen.findByText(/転送の待ち時間/); return request;
 }
-it('中の見出しは、ホームの区画見出しより小さい', () => {
+it('中の開閉の行は、見出しの書体にしない（見出しは区画の「配信ミックス」だけ）', () => {
     render(<PostMixPanel mainRunning={false} />);
-    expect(screen.getByText('配信音を仕上げるVST')).toHaveClass('home-card-name');
+    expect(screen.getByText('配信音を仕上げるVST')).not.toHaveClass('home-card-name');
 });
 it('読込だけでは復元せず、一覧の明示取得と選択で追加する', async () => {
     const request = await setup();

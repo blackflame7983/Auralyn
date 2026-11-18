@@ -151,7 +151,7 @@ test('配信ミックスのパネルから出力先の区画へ移り、音づ�
     await fixture(page); await page.goto('/');
     const panel = await streamMix(page);
     await panel.locator('#mixing-settings > summary').click();
-    await panel.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' }).click();
+    await panel.getByRole('button', { name: '配信用の出力先を選ぶ' }).click();
     const dialog = page.locator('[data-settings-page]');
     await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
     await expect(dialog.locator('#live-output-settings select').first()).toBeFocused();
@@ -177,7 +177,7 @@ test('出力先は選んだが処理が分かれていないときは、その�
     await panel.locator('#mixing-settings > summary').click();
     const split = panel.getByRole('button', { name: '自分用と配信用に分ける' });
     await expect(split).toBeVisible();
-    await expect(panel.getByRole('button', { name: 'OBS へ送る出力先を選ぶ' })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: '配信用の出力先を選ぶ' })).toHaveCount(0);
     await expect(panel.getByRole('list')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath('mixing-prepare-unsplit.png') });
     await split.click();
