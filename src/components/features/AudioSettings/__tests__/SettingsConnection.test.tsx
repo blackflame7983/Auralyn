@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
@@ -404,4 +404,55 @@ it.each(['ja', 'en'] as const)('入出力プリセットは、声やVSTを一緒
     </LocaleProvider>);
     fireEvent.click(await screen.findByText(message(locale, 'settings.AudioSettingsModal.086')));
     expect(screen.getByText(message(locale, 'settings.apply.connectionPreset'))).toBeVisible();
+});
+
+describe('出力先の受け側の案内（仮想ケーブルの対の名前）', () => {
+    const cableDevices = {
+        inputs: devices.inputs,
+        outputs: [
+            ...devices.outputs,
+            { host: 'Wasapi', name: 'CABLE Input (VB-Audio Virtual Cable)', channels: 2, is_input: false, is_default: false, index: 1 },
+            { host: 'Wasapi', name: 'Voicemeeter Input (VB-Audio Voicemeeter VAIO)', channels: 2, is_input: false, is_default: false, index: 2 },
+        ],
+    };
+    const hint = { ja: '受け側（OBS など）は、対の「CABLE Output」を選びます。', en: 'In the receiving app (such as OBS), choose the paired “CABLE Output”.' } as const;
+    const anyHint = /対の「|choose the paired/;
+    const renderConnect = async (locale: 'ja' | 'en', output: string, purpose: 'voice' | 'music') => {
+        localStorage.setItem('auralyn_display_purpose', purpose);
+        vi.spyOn(audioApi, 'getDevices').mockResolvedValue(cableDevices);
+        const stored = { ...config, output };
+        localStorage.setItem('vst_host_audio_config', JSON.stringify(stored));
+        render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+            <AudioSettingsModal isOpen currentConfig={stored} onClose={vi.fn()} onConfigChange={vi.fn()} />
+        </LocaleProvider>);
+        const select = await screen.findByRole('combobox', { name: locale === 'ja' ? '出力先' : 'Output' });
+        await waitFor(() => expect(select).toHaveValue(output));
+        return select;
+    };
+
+    it.each(['ja', 'en'] as const)('配信・通話で仮想ケーブルを出力先にすると、対の録音側の名前を1行で案内する (%s)', async locale => {
+        const select = await renderConnect(locale, 'CABLE Input (VB-Audio Virtual Cable)', 'voice');
+        expect(screen.getByText(hint[locale])).toBeVisible();
+        expect(select).toHaveAccessibleDescription(hint[locale]);
+        expect(screen.getAllByText(anyHint)).toHaveLength(1);
+    });
+
+    it('出力先を仮想ケーブルへ選び直すと出て、通常の機器へ戻すと消える', async () => {
+        const select = await renderConnect('ja', 'Headphones', 'voice');
+        expect(screen.queryByText(anyHint)).not.toBeInTheDocument();
+        fireEvent.change(select, { target: { value: 'CABLE Input (VB-Audio Virtual Cable)' } });
+        expect(await screen.findByText(hint.ja)).toBeVisible();
+        fireEvent.change(select, { target: { value: 'Headphones' } });
+        expect(screen.queryByText(anyHint)).not.toBeInTheDocument();
+    });
+
+    it.each(['Headphones', 'Voicemeeter Input (VB-Audio Voicemeeter VAIO)'])('対の名前が確実に分からない %s には案内を出さない', async output => {
+        await renderConnect('ja', output, 'voice');
+        expect(screen.queryByText(anyHint)).not.toBeInTheDocument();
+    });
+
+    it('音楽鑑賞の出力先は手元で聴く側なので、仮想ケーブルでも受け側の案内を出さない', async () => {
+        await renderConnect('ja', 'CABLE Input (VB-Audio Virtual Cable)', 'music');
+        expect(screen.queryByText(anyHint)).not.toBeInTheDocument();
+    });
 });

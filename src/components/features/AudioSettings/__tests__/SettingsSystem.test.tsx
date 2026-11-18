@@ -67,6 +67,21 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'clear_plugin_blacklist' || command === 'stop_audio')).toBe(false);
 });
 
+it.each(['ja', 'en'] as const)('システムの反映のしかたは、区画の見出しの下に1回だけ書き、ページ先頭の一文は置かない (%s)', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? 'システム' : 'System' }), { button: 0, ctrlKey: false });
+    const immediate = locale === 'ja' ? '起動と更新の変更は、すぐに反映されます。' : 'Startup and update changes take effect immediately.';
+    const restartApply = locale === 'ja' ? /音声処理の再起動で反映します/ : /apply on the audio processing restart/;
+    expect(screen.queryByText(/再起動後に反映されます|apply after a restart/)).not.toBeInTheDocument();
+    const preferences = screen.getByRole('region', { name: locale === 'ja' ? '通常の設定' : 'Preferences' });
+    expect(within(preferences).getByText(immediate)).toBeVisible();
+    expect(screen.getAllByText(immediate)).toHaveLength(1);
+    const maintenance = screen.getByRole('region', { name: locale === 'ja' ? '音声処理の再起動と設定の管理' : 'Audio restart and settings management' });
+    expect(within(maintenance).getAllByText(restartApply)).toHaveLength(1);
+    expect(screen.getAllByText(restartApply)).toHaveLength(1);
+});
+
 it('システムのセットアップを開くは、使い道の目的を渡さず最初の画面から始める', async () => {
     const onOpenWizard = vi.fn();
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} onOpenWizard={onOpenWizard} />);

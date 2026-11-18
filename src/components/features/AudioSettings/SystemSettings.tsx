@@ -136,6 +136,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
           <TabsContent value="system" className="space-y-4">
             <section aria-label={t('settings.system.preferences')} className="space-y-3">
               <h3 className="text-ui-heading font-semibold">{t('settings.system.preferences')}</h3>
+              <p className="text-ui-support text-muted-foreground">{t('settings.system.preferencesLead')}</p>
             {/* Startup Settings */}
             <section className="flex items-center justify-between gap-3 py-2">
               <div>
