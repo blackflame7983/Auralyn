@@ -156,6 +156,9 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
         }
     });
     expect(within(dialog).getByText(message(locale, 'help.home.other', labels))).toBeInTheDocument();
+    // 見た目と動きは設定の「外観」にあり、使い方には置かない（#775）。
+    expect(within(dialog).queryByText(message(locale, 'settings.appearanceMotion'))).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(new RegExp(message(locale, 'header.gaming')))).not.toBeInTheDocument();
     expect(within(dialog).queryByText(music.stage[0])).not.toBeInTheDocument();
     localStorage.setItem('auralyn_display_purpose', 'music');
     fireEvent(window, new Event('auralyn-display-purpose-changed'));
@@ -180,7 +183,14 @@ it.each(['ja', 'en'] as const)('ホームの見方は、いまの用途の箇条
     expect(within(dialog).queryByText(voice.meters[0])).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.section.setup') }));
     expect(within(dialog).queryAllByRole('list').map(list => list.tagName)).toEqual(['OL']);
-    expect(within(dialog).getByText(message(locale, 'help.setup.body', labels))).toBeInTheDocument();
+    const flow = within(dialog).getByText(message(locale, 'help.setup.body', labels));
+    expect(flow).toBeInTheDocument();
+    // 設定の流れの名前は、セットアップの左の手順の名前をそのまま使う。
+    const names = [message(locale, 'wizard.usage'), message(locale, 'wizard.input'), message(locale, 'wizard.output'), message(locale, 'wizard.check')];
+    expect(flow.textContent).toContain(names.map(name => quoted(locale, name)).join(locale === 'ja' ? '→' : ' → '));
+    expect(flow.textContent).toContain(quoted(locale, message(locale, 'prep.local')));
+    expect(flow.textContent).not.toMatch(/\{[A-Za-z]+\}/);
+    expect(within(dialog).queryByText(message(locale, 'settings.appearanceMotion'))).not.toBeInTheDocument();
 });
 
 it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの設定」の短い手順で、画面の作りの説明は後ろの節にある（%s）', locale => {
@@ -202,6 +212,9 @@ it.each(['ja', 'en'] as const)('開いて最初に見えるのは「はじめの
     expect(steps[2]).toContain('OBS');
     for (const step of steps) expect(step).not.toMatch(/\{[A-Za-z]+\}/);
     expect(within(dialog).queryByText(message(locale, 'help.home.stage.title'))).not.toBeInTheDocument();
+    // 見た目と動きの説明は、はじめの設定には置かない。
+    expect(within(dialog).queryByText(new RegExp(message(locale, 'header.gaming')))).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(message(locale, 'settings.appearanceMotion'))).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.receiver') }));
     expect(nav.getByRole('button', { name: message(locale, 'help.section.trouble') })).toHaveAttribute('aria-current', 'page');
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
@@ -222,6 +235,8 @@ it.each(['ja', 'en'] as const)('音楽鑑賞では、最初の手順の最後が
     expect(steps[1]).not.toContain(message(locale, 'home.startAudio'));
     expect(steps[2]).toContain(message(locale, 'music.source'));
     expect(steps[2]).toContain(message(locale, 'header.compare'));
+    // 確かめる先は、配信の受け側ではなく、手元のヘッドホンやスピーカー。
+    expect(steps[2]).toContain(locale === 'ja' ? '手元のヘッドホンやスピーカー' : 'your own headphones or speakers');
     expect(steps.join('')).not.toContain('OBS');
     fireEvent.click(within(dialog).getByRole('button', { name: message(locale, 'help.trouble.silent') }));
     expect(within(dialog).getByRole('heading', { level: 2, name: message(locale, 'help.section.trouble') })).toBeInTheDocument();
@@ -264,6 +279,7 @@ it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュ
             fireEvent.click(item.getByRole('button'));
             expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(glossaryDocName(term.anchor), locale));
         }
+        if (section === 'home') expect(screen.queryByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) })).not.toBeInTheDocument();
         if (section === 'trouble') {
             const symptoms = ['troubleshooting.no-sound', 'troubleshooting.not-received', 'troubleshooting.dropouts', 'troubleshooting.still-running'] as const;
             screen.getAllByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) }).forEach((button, index) => {

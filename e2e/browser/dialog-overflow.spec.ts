@@ -155,6 +155,9 @@ for (const locale of ['ja', 'en'] as const) {
 test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {
     await openScreen(page, 'help', 'ja', { width: 900, height: 600 });
     const dialog = page.getByRole('dialog', { name: message('ja', 'help.title'), exact: true });
+    // 最初の節は短い手順だけになり溢れないので、溢れる節で確かめる（#719・#775）。
+    // 途中に焦点の当たる「詳しく」が並ぶ「言葉の意味」を選び、末尾以外でフェードが出たまま枠が隠れないことを確かめる。
+    await dialog.getByRole('button', { name: message('ja', 'help.section.terms'), exact: true }).click();
     const fade = dialog.locator('[data-scroll-more="dialog"]');
     await expect(fade).toBeVisible();
     await expect(fade).toHaveAttribute('aria-hidden', 'true');
@@ -183,7 +186,8 @@ test('ダイアログの本文が溢れるとフェードと下向きの印が�
     expect(focused.found).toBe(true);
     if (!focused.found) return;
     expect(focused.focused).toBe(true);
-    if (!focused.fadeHidden) expect(focused.outlineBottom).toBeLessThanOrEqual(focused.fadeTop + 8);
+    expect(focused.fadeHidden).toBe(false);
+    expect(focused.outlineBottom).toBeLessThanOrEqual(focused.fadeTop + 8);
 
     await dialog.locator('.modal-body-base').evaluate(element => { element.scrollTop = element.scrollHeight; });
     await expect(fade).toBeHidden();
