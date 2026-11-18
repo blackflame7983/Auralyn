@@ -16,7 +16,9 @@ for (const locale of ['ja', 'en'] as const) {
         const change = dialog.getByRole('button', { name: message(locale, 'troubleshoot.changePurpose'), exact: true });
         await expect(saved).toBeVisible();
         await expect(change).toBeVisible();
-        await expect(dialog).not.toContainText(locale === 'ja' ? '用途' : /purpose|different use/i);
+        await expect(dialog).not.toContainText(locale === 'ja' ? '用途' : /purpose|different use|the use you chose/i);
+        // 説明そのものが「送り先」の語を含むこと。翻訳データだけを期待値にすると、旧文へ戻っても通ってしまう。
+        await expect(saved).toContainText(locale === 'ja' ? '送り先' : /destination/i);
 
         await change.click();
         await expect(dialog.getByText(message(locale, 'guide.copy.412'), { exact: true })).toBeVisible();
