@@ -885,8 +885,6 @@ html[data-app-hidden="true"] *::after {
   .sound-flow > :first-child { margin-bottom: 0; }
   .sound-tool-list { margin-top: 0.25rem; }
   .sound-module-card { gap: 0.5rem; }
-  /* 最後の行の下の余白は、続きがあるように見えるフェードを出してしまう。 */
-  .home-panels { margin-bottom: 0; }
   /* 診断の前に行が増える状態（保存した構成の切り替え、送り先の選択で開く準備の欄）でも、診断を最初の表示に入れる。 */
   .music-desk { margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; gap: 0.5rem; }
   .prep-panel-open { padding-block: 0.25rem; }
@@ -901,6 +899,9 @@ html[data-app-hidden="true"] *::after {
   .sound-flow { padding-block: 0.25rem; margin-bottom: 0.375rem; }
   .sound-chain { padding-block: 0.375rem; margin-bottom: 0.375rem; }
 }
+/* 準備と経路の下の余白は、その下に本番中の操作（音楽鑑賞の保護・失敗の通知）が出るときだけ、それの上に置く。
+   下に何も無いのに余白を残すと、その余白は列の外へはみ出してスクロールの範囲だけを広げる（#768）。 */
+.home-panels + div > #home-rack:not(:empty) { margin-top: 1rem; }
 /* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
 [data-home-tier="2"]:empty {
   display: none;
@@ -959,19 +960,26 @@ html[data-app-hidden="true"] *::after {
 }
 /* 中央の列に続きがある印。飾りなので動かさない。 */
 .column-scroll-more {
+  /* フェードとその山形が溶ける面の色。ダイアログの印は面（card）に替える。 */
+  --scroll-more-ground: var(--background);
   position: fixed;
   z-index: 10;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent, hsl(var(--background) / 0.92));
+  background: linear-gradient(to bottom, transparent, hsl(var(--scroll-more-ground) / 0.92));
 }
-/* 続きがある印の下向きの山形。フェードの中央に置き、動かさず、操作は通す（#699）。 */
+/* 続きがある印の下向きの山形。フェードの下端中央に置き、動かさず、操作は通す（#699）。
+   本文の文字の上に来ても山形が読めるよう、フェードと同じ高さ（24px）の、地の色の円に載せる。円の背後の文字は抜く（#768）。 */
 .scroll-more-chevron {
   position: absolute;
-  bottom: 2px;
+  bottom: 0;
   left: 50%;
-  width: 20px;
-  height: 20px;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
   transform: translateX(-50%);
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  background: hsl(var(--scroll-more-ground));
   fill: hsl(var(--muted-foreground));
   pointer-events: none;
 }
@@ -981,10 +989,11 @@ body:has(.modal-surface-base) > .column-scroll-more {
 }
 /* ダイアログの本文に続きがある印。面の色に溶かし、操作は通す（#699）。 */
 .dialog-scroll-more {
+  --scroll-more-ground: var(--card);
   position: absolute;
   z-index: 5;
   /* 上端は透かして、焦点の枠（2px + 外側 2px）がフェードに埋まらないようにする。 */
-  background: linear-gradient(to bottom, transparent 0.5rem, hsl(var(--card) / 0.92));
+  background: linear-gradient(to bottom, transparent 0.5rem, hsl(var(--scroll-more-ground) / 0.92));
 }
 .obs-guide {
   max-height: calc(100dvh / var(--ui-zoom) - 2rem);
