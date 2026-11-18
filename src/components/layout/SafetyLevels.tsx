@@ -71,3 +71,11 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
         </p>
     </div>;
 }
+
+/**
+ * 読み上げ専用の通知の領域。いまの状態（ホームだけ）が無いページでの、ミュート・音量ゼロの通知を受け持つ。
+ * ライブ領域は内容が変わる前から存在している必要があるので、文が無いときも描く。ホームでは文を入れず、いまの状態の通知と二重に読ませない（#766）。
+ */
+export function MuteAnnouncement({ text }: { text: string }) {
+    return <p role="status" className="sr-only">{text}</p>;
+}

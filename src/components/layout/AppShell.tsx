@@ -36,7 +36,7 @@ import type { PreparationUse } from '@/lib/preparation';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
-import { SafetyInput } from './SafetyLevels';
+import { MuteAnnouncement, SafetyInput } from './SafetyLevels';
 import { AudioCheckIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
 import {
@@ -211,15 +211,17 @@ export const AppShell: React.FC<AppShellProps> = ({
         /></TooltipTrigger><TooltipContent><p>{measureName}</p><p className="max-w-64 text-ui-support">{measureScope}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const focusOutputControl = () => {
-        const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
-        // 音量ゼロは右の列の出力音量へ、ミュートは解除ボタンへ移す。
-        if (zeroGain) { focusOutputGain(); return; }
+        // 音量ゼロは右の列の出力音量へ、ミュートは解除ボタンへ移す。原因は札を描いた観測と同じスナップショットで決める（#766）。
+        if (preparation.observation.muteCause === 'zeroGain') { focusOutputGain(); return; }
         const target = document.getElementById('emergency-mute');
         if (!target) return;
         target.focus();
         target.dataset.attention = '';
         delay(1200, () => { delete target.dataset.attention; });
     };
+    // いまの状態の通知（LiveStrip）はホームだけに描く。それ以外のページでは、右の列の領域が同じ状態を伝える。描く条件は下の LiveStrip と同じ。
+    const liveStripShown = page === 'home' && configured;
+    const muteAnnouncement = preparation.observation.availability === 'muted' && !liveStripShown ? t('prep.muted') : '';
     const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
@@ -304,7 +306,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {notices}
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
-                        {configured
+                        {liveStripShown
                             ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} savedInputFromApp={currentInputFromApp} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 配信・通話と音楽鑑賞で並びをそろえる：いまの状態 → 音の流れ →（配信だけ配信ミックス）→ 音調整 →（音楽だけ保存した構成）→ 診断と接続の詳細（#605 を置き換え）。 */}
@@ -350,6 +352,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </div>
                 {/* 上の3操作は縮めない。下の状態表示だけが、収まらないときに縦へ送る（MasterBar）。 */}
                 <aside data-density="home" aria-label={t('shell.safetyColumn')} className="flex w-[var(--safety-column-width)] shrink-0 flex-col gap-3 overflow-hidden border-l border-border bg-card p-3">
+                    <MuteAnnouncement text={muteAnnouncement} />
                     <EmergencyMuteButton onOpenSettings={onOpenSettings} />
                     <MasterBar
                         input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={currentInput} />}

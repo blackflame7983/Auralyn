@@ -91,6 +91,54 @@ for (const locale of locales) for (const purpose of purposes) {
     });
 }
 
+// 札を押したときの移動先は、札を描いた観測と同じ原因で決まる（#766）。
+for (const locale of locales) {
+    test(`札を押すと、音量ゼロでは出力音量へ、緊急ミュートでは緊急ミュートの解除へ移る（${locale}）`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale, purpose: 'voice', theme: 'dark', size: { width: 1024, height: 768 } });
+        const chip = column(page, locale).getByRole('button', { name: message(locale, 'prep.muted'), exact: true });
+        await setOutputGain(page, 0);
+        await expect(chip).toBeVisible();
+        await chip.click();
+        await expect(page.locator('#master-output-gain [role="slider"]')).toBeFocused();
+        await setOutputGain(page, 1);
+        await expect(chip).toHaveCount(0);
+        await setOutputMuted(page, true);
+        await expect(chip).toBeVisible();
+        await chip.click();
+        await expect(page.locator('#emergency-mute')).toBeFocused();
+    });
+}
+
+// いまの状態はホームにしか無い。ホーム以外のページでは、右の列の見えない通知の領域が同じ状態を伝える（#766）。
+for (const locale of locales) {
+    test(`ホーム以外のページでは通知の領域に文が入り、ホームでは空で「${message(locale, 'home.notSending')}」だけになる（${locale}）`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale, purpose: 'voice', theme: 'dark', size: { width: 1024, height: 768 } });
+        const region = column(page, locale).locator('[role="status"].sr-only');
+        const live = page.getByRole('status').filter({ hasText: new RegExp(`${message(locale, 'prep.muted')}|${message(locale, 'home.notSending')}`) });
+        await expect(region).toHaveCount(1);
+        await expect(region).toBeEmpty();
+        // ホーム：通知はいまの状態の1つだけ。
+        await setOutputGain(page, 0);
+        await expect(live).toHaveCount(1);
+        await expect(live).toHaveText(message(locale, 'home.notSending'));
+        await expect(region).toBeEmpty();
+        // ホーム以外（VST のページ）：領域に入り、いまの状態は無い。
+        await page.getByRole('button', { name: message(locale, 'rail.vst'), exact: true }).click();
+        await expect(page.getByRole('region', { name: message(locale, 'home.now'), exact: true })).toHaveCount(0);
+        await expect(region).toHaveText(message(locale, 'prep.muted'));
+        await expect(live).toHaveCount(1);
+        await setOutputGain(page, 1);
+        await expect(region).toBeEmpty();
+        await expect(live).toHaveCount(0);
+        // 戻ると、ふたたびホームの1つだけ。
+        await setOutputGain(page, 0);
+        await expect(region).toHaveText(message(locale, 'prep.muted'));
+        await page.getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
+        await expect(live).toHaveCount(1);
+        await expect(live).toHaveText(message(locale, 'home.notSending'));
+        await expect(region).toBeEmpty();
+    });
+}
 for (const size of sizes) for (const locale of locales) {
     test(`ピークの数字に見える名前が付き、右の列で折り返さず、はみ出さない（実行中、${size.width}×${size.height}、${locale}）`, async ({ page }) => {
         await openHome(page, { state: 'running', locale, purpose: 'voice', theme: 'dark', size });
