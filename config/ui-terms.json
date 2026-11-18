@@ -71,7 +71,9 @@
     { "use": "None yet", "avoid": ["Not in use", "None added"], "locale": "en", "ref": "#767" },
     { "use": "温かめ", "avoid": ["低め"], "locale": "ja", "ref": "#770" },
     { "use": "送り先", "avoid": ["用途を変", "選んだ用途", "まず用途", "用途に合わせ", "用途：", "通話用途"], "locale": "ja", "ref": "#774" },
-    { "use": "Destination", "avoid": ["Choose a different use", "Choose a purpose first", "Change purpose", "Purpose:", "the use you chose"], "locale": "en", "ref": "#774" }
+    { "use": "Destination", "avoid": ["Choose a different use", "Choose a purpose first", "Change purpose", "Purpose:", "the use you chose"], "locale": "en", "ref": "#774" },
+    { "use": "この構成で使うVSTを選ぶ", "avoid": ["この構成を使う"], "locale": "ja", "ref": "#777" },
+    { "use": "Choose VSTs for this setup", "avoid": ["Use this setup"], "locale": "en", "ref": "#777" }
   ],
   "allow": [
     { "key": "settings.AudioSettingsModal.075", "term": "低め", "reason": "接続のバッファサイズの大小（音の途切れにくさの段階名）で、声の種類ではない（#770）" },
