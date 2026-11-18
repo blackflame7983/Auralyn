@@ -194,6 +194,36 @@ test('ダイアログの本文が溢れるとフェードと下向きの印が�
     await expect(chevron).toBeHidden();
 });
 
+// VST構成テンプレートの説明の行数が違っても、同じ行のカードの「使うVSTを選ぶ」と「構成の詳細」は同じ高さに並ぶ（#777）。
+for (const locale of ['ja', 'en'] as const) {
+    for (const size of [{ width: 900, height: 600 }, { width: 1024, height: 768 }, { width: 1280, height: 800 }]) {
+        test(`${size.width}×${size.height} のVST構成テンプレートは、カードのボタンと詳細の高さが行ごとにそろう ${locale}`, async ({ page }) => {
+            await openScreen(page, 'template-wizard', locale, size);
+            const dialog = page.getByRole('dialog');
+            const choose = dialog.getByRole('button', { name: message(locale, 'templates.chooseVsts'), exact: true });
+            await expect(choose).toHaveCount(3);
+            const rows = await choose.evaluateAll(buttons => buttons.map(button => {
+                const card = button.parentElement;
+                const details = card?.querySelector(':scope > details');
+                return {
+                    card: Math.round(card?.getBoundingClientRect().top ?? -1),
+                    button: Math.round(button.getBoundingClientRect().top),
+                    details: Math.round(details?.getBoundingClientRect().top ?? -1),
+                };
+            }));
+            expect(rows).toHaveLength(3);
+            for (const row of rows) {
+                const sameRow = rows.filter(other => other.card === row.card);
+                for (const other of sameRow) {
+                    expect(other.button, 'ボタンの上端').toBe(row.button);
+                    expect(other.details, '詳細の上端').toBe(row.details);
+                }
+            }
+            expect(rows.some(row => rows.filter(other => other.card === row.card).length >= 2), '同じ行に2枚以上').toBe(true);
+        });
+    }
+}
+
 // 設定の保存・復帰（presets）とVST構成テンプレートも、溢れるときは下向きの印を出し、末尾で消す。
 const OVERFLOWING_SCREENS = ['presets', 'template-wizard'] as const;
 for (const screen of OVERFLOWING_SCREENS) {
