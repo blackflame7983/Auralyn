@@ -63,10 +63,12 @@
     { "use": "Stopped", "avoid": ["Music stopped"], "locale": "en", "ref": "#705" },
     { "use": "音が届いているか確かめる", "avoid": ["再生の確認"], "locale": "ja", "ref": "#718" },
     { "use": "Check that sound is arriving", "avoid": ["Check playback"], "locale": "en", "ref": "#718" },
+    { "use": "温かめ", "avoid": ["低め"], "locale": "ja", "ref": "#770" },
     { "use": "送り先", "avoid": ["用途を変", "選んだ用途", "まず用途", "用途に合わせ", "用途：", "通話用途"], "locale": "ja", "ref": "#774" },
     { "use": "Destination", "avoid": ["Choose a different use", "Choose a purpose first", "Change purpose", "Purpose:", "the use you chose"], "locale": "en", "ref": "#774" }
   ],
   "allow": [
+    { "key": "settings.AudioSettingsModal.075", "term": "低め", "reason": "接続のバッファサイズの大小（音の途切れにくさの段階名）で、声の種類ではない（#770）" },
     { "key": "saveHelp.modeScope", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },
     { "key": "saveHelp.mode", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },
     { "key": "saveHelp.modeScope", "term": "profile", "reason": "A VST link switched with a mode, not the saved voice, VST and device setup (#626)" },
