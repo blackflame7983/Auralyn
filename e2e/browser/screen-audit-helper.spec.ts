@@ -38,3 +38,30 @@ test.describe('空の枠の検査', () => {
         expect(found).toEqual(['span.setup-choice-icon']);
     });
 });
+
+test.describe('実行中の音調整のカードの空き', () => {
+    const cardStyle = `
+        .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 600px; }
+        .sound-module-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #eee; }
+        .tall { height: 400px; }
+        .self-start { align-self: start; }
+    `;
+    const status = '<div class="sound-card-status"><span>オン</span><button type="button">切替</button></div>';
+    const vstCard = (attrs: string, extraClass = '') => `<li class="sound-module-card ${extraClass}" ${attrs}><h3>外部VST</h3><p>使っていません</p>${status}</li>`;
+    const neighbor = `<li class="sound-module-card tall"><h3>ノイズ低減</h3><p>説明</p>${status}</li>`;
+    const row = (vst: string, other = neighbor) => `<ol class="row">${other}${other}${vst}</ol>`;
+
+    test('空の外部VSTのカードが、状態の行を持ったまま隣の高さまで伸びたら、空の枠として知らせる', async ({ page }) => {
+        const found = await emptyFrames(page, row(vstCard('data-empty-vst')), cardStyle);
+        expect(found).toHaveLength(1);
+        expect(found[0]).toContain('sound-module-card');
+    });
+
+    test('空の外部VSTのカードが中身の高さなら、空の枠にしない', async ({ page }) => {
+        expect(await emptyFrames(page, row(vstCard('data-empty-vst', 'self-start')), cardStyle)).toEqual([]);
+    });
+
+    test('印の無い音調整のカードが、状態の行を持って隣に揃って伸びるのは、空の枠にしない', async ({ page }) => {
+        expect(await emptyFrames(page, row(vstCard('')), cardStyle)).toEqual([]);
+    });
+});

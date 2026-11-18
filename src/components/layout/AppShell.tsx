@@ -28,7 +28,7 @@ import { useRackOpener } from './useRackOpener';
 import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
-import { formatAudioRoute } from '@/lib/audioRouteLine';
+import { formatAudioRoute, routeDestination } from '@/lib/audioRouteLine';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
 import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
 import type { MessageKey } from '@/i18n/messages';
@@ -232,12 +232,15 @@ export const AppShell: React.FC<AppShellProps> = ({
     const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
     const usage = preparation.context.usage;
     const receiverName = preparation.context.receiver.trim();
+    const shortDestinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obsShort', discord: 'prep.callShort', other: 'prep.otherShort', listening: 'prep.localShort' };
+    const destination = usage ? routeDestination(t(destinations[usage]), t(shortDestinations[usage]), usage !== 'listening' ? receiverName : '') : undefined;
     const route = configured ? formatAudioRoute(
         preparation.observation.config?.input ?? currentInput,
         preparation.observation.config?.output ?? currentOutput,
-        usage ? `${t(destinations[usage])}${usage !== 'listening' && receiverName ? ` · ${receiverName}` : ''}` : undefined,
+        destination?.full,
         purpose === 'music',
     ) : null;
+    const routeCompact = purpose === 'music' ? undefined : destination?.compact;
     const elapsed = useSessionElapsed(isEngineRunning);
     const nothingToCompare = vstActiveCount === 0;
     const { bypassed: isABBypassed, toggle: handleABToggle } = useGlobalBypass(nothingToCompare && isEngineRunning && engineProcessReady === true);
@@ -276,7 +279,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {/* 通知の行は中央の列の中に置く。通知が出ても、右の列の操作は動かさない。 */}
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <StatusBand stats={runtimeStats} host={currentHost} sampleRate={currentSampleRate} bufferSize={currentBufferSize}
-                    isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route}
+                    isRunning={isEngineRunning} processReady={engineProcessReady} elapsed={elapsed} route={route} routeCompact={routeCompact}
                     canStart={canStart} starting={starting} onStart={() => { void startAudio(); }}
                     modeSwitch={liveModeSwitch} showListen={configured}
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
