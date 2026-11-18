@@ -1,61 +1,16 @@
 import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useState } from 'react';
-import { audioApi } from '@/api/audio';
+import { useInputGain } from '@/hooks/useInputGain';
 import { Slider } from '@/components/ui/slider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 // マイク音量は右の列の入力メーターの下に置く。スライダーと割合を常に見せる。
 // 大型メーターやプロファイル適用とは 'input-gain-sync' で同期する。
-export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
+export function InputGainControl({ disabled = false, fromApp = false }: { disabled?: boolean; fromApp?: boolean }) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
-    const label = t(purpose === 'music' ? 'home.inputGain' : 'header.inputGain');
-    const [failed, setFailed] = useState(false);
-    const request = useRef(0);
-    const mounted = useRef(true);
-    const [inputGain, setInputGain] = useState(() => {
-        const saved = localStorage.getItem('vst_host_input_gain');
-        return saved ? Number(saved) : 100;
-    });
-    const publishing = useRef(false);
-    const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => {
-        mounted.current = true;
-        return () => { mounted.current = false; request.current++; if (debounce.current) clearTimeout(debounce.current); };
-    }, []);
-
-    const change = (value: number[], fromExternal = false) => {
-        const gain = value[0];
-        if (!Number.isFinite(gain) || gain < 0 || gain > 200) return;
-        const operation = ++request.current;
-        setInputGain(gain);
-        setFailed(false);
-        if (debounce.current) clearTimeout(debounce.current);
-        // 適用結果や別の操作部品からの表示同期を、Engineへの再変更にしない。
-        // 保存は同期元／実際に変更した部品がACK後に行う。
-        if (fromExternal) { debounce.current = null; return; }
-        debounce.current = setTimeout(async () => {
-            try {
-                await audioApi.setInputGain(gain / 100);
-                if (mounted.current && operation === request.current) localStorage.setItem('vst_host_input_gain', String(gain));
-            } catch {
-                if (mounted.current && operation === request.current) setFailed(true);
-            }
-        }, 50);
-        publishing.current = true;
-        try { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: gain })); }
-        finally { publishing.current = false; }
-    };
-
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const pct = (e as CustomEvent<number>).detail;
-            if (!publishing.current) change([pct], true);
-        };
-        window.addEventListener('input-gain-sync', handler);
-        return () => window.removeEventListener('input-gain-sync', handler);
-    }, []);
+    const label = t(purpose === 'music' || fromApp ? 'home.inputGain' : 'header.inputGain');
+    const { inputGain, failed, change } = useInputGain();
 
     return <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex min-w-0 items-center justify-between gap-2 text-ui-support text-muted-foreground">

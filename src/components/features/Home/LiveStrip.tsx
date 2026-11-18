@@ -4,14 +4,14 @@ import { meterStatusLabel } from '@/hooks/useMeterLevels';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { isAppAudioInput } from '@/lib/inputSource';
 import { OUTPUT_LOUD_DB, OUTPUT_QUIET_DB, outputVerdict } from '@/lib/outputVerdict';
 import { useInputMeterState, useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { MusicSourceHint } from './MusicSourceHint';
 
 /** 入ってきた音の状態。レベルの平滑化では描き直さず、状態が変わったときだけ読む。 */
-function IncomingStatus({ running, label, music }: { running: boolean; label: string; music: boolean }) {
-    const t = useMessages();
+function IncomingStatus({ running, label, music }: { running: boolean; label: string; music: boolean }) {    const t = useMessages();
     const state = useInputMeterState(running);
     const status = state === 'stopped' && music ? 'shell.stoppedMusic' : meterStatusLabel(state);
     return <p className="shrink-0 text-ui-support">
@@ -54,6 +54,8 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     // 実行中の設定を取れない間は、再生元がアプリの音声か分からない。分からないときは案内を出さない。
     const runningConfig = model.observation.config;
     const inputFromApp = runningConfig ? runningConfig.input_source?.kind === 'process_loopback' || savedInputFromApp : null;
+    // 入力の呼び名は、保存した設定より実行中の入力元を優先する。配信でアプリの音声を入力にしているときは、マイクと呼ばない。
+    const incomingLabel = music ? 'music.source' : isAppAudioInput(runningConfig, savedInputFromApp) ? 'home.input' : 'unsetFlow.mic';
     // 音楽鑑賞の見出しは経路ではなく用途の名前。経路は上の帯に1回だけ出す（#651）。
     const heading = music ? t('home.musicHeading') : (liveModeName ?? t('liveBar.custom'));
     // 未登録の見出しは「いまの声」。モードの札は登録してから出す（#655）。
@@ -75,7 +77,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             {muted && <span role="status" data-now-mute="muted" className="ml-auto text-ui-support font-medium text-warning">{t(music ? 'home.notPlaying' : 'home.notSending')}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <IncomingStatus running={running} music={music} label={t(music ? 'music.source' : 'unsetFlow.mic')} />
+            <IncomingStatus running={running} music={music} label={t(incomingLabel)} />
             <SendLevel running={running} label={t(music ? 'home.listenLevel' : 'home.sendLevel')} />
         </div>
         {music && <MusicSourceHint running={running} source={runningConfig?.input} fromApp={inputFromApp} />}

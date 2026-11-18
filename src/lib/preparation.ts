@@ -1,6 +1,7 @@
 import type { AudioStateInfo, EngineRuntimeStats, PreparationSnapshot } from '@/api/audio';
 import type { LiveOutputConfig, LiveOutputStatus } from '@/api/liveOutput';
 import type { ObsAudioReachResult } from '@/api/obs';
+import { engineInputName } from '@/lib/inputSource';
 
 export type PreparationUse = 'obs' | 'discord' | 'other' | 'listening';
 export type PreparationStage = 'sound' | 'listen' | 'receiver';
@@ -68,13 +69,16 @@ export function buildPreparationObservation(state: AudioStateInfo, stats: Engine
     obs: ObsAudioReachResult | null = null, obsCurrent = false): PreparationObservation {
     const base = { config: state.config, obs, obsCurrent };
     const unavailable = (availability: Availability) => ({ ...emptyObservation(availability), ...base });
-    if (!state.config?.host || !state.config.input || !state.config.output) return unavailable('unconfigured');
+    if (!state.config?.host || !engineInputName(state.config) || !state.config.output) return unavailable('unconfigured');
     if (!state.is_running) return unavailable('stopped');
-    if (live.error || live.sink?.failed || live.monitor?.broadcastFailed || stats.queueDiagnostics?.state === 'failed') return unavailable('failed');
+    if (live.error || live.sink?.failed || live.monitor?.broadcastFailed || stats.queueDiagnostics?.state === 'failed' || stats.processInput?.failed) return unavailable('failed');
     const p = stats.preparation;
     if (!validPreparationSnapshot(p) || !stats.latencyMetadata?.streamEpoch || stats.latencyMetadata.streamRunning !== true || !live.config) return unavailable('unknown');
     if ((live.config.splitProcessing && !live.config.deviceId) || (live.config.deviceId && live.sink?.active !== true)) return unavailable('failed');
-    const input = [state.config.host, state.config.input, state.config.sample_rate, state.config.buffer_size, p.inputGain, p.inputChannels];
+    const source = state.config.input_source;
+    // アプリの音声は機器名を持たない。アプリか出力先の端点が変わったら、音作りから再確認する。
+    const inputIdentity = source?.kind === 'process_loopback' ? ['app', source.config.appKey, source.config.rawEndpointId] : state.config.input;
+    const input = [state.config.host, inputIdentity, state.config.sample_rate, state.config.buffer_size, p.inputGain, p.inputChannels];
     const sound = key([p.engineEpoch, stats.latencyMetadata.streamEpoch, input, p.processingRevision, p.nrBackend, p.nrModel, context.location, context.signal]);
     const listen = key([sound, state.config.output, p.outputRouting, p.outputGain, p.outputRevision, p.routingRevision, p.muted, live.config, live.broadcastEpoch]);
     const availability: Availability = p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready';
