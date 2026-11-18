@@ -62,7 +62,9 @@
     { "use": "停止中", "avoid": ["音楽は停止中"], "locale": "ja", "ref": "#705" },
     { "use": "Stopped", "avoid": ["Music stopped"], "locale": "en", "ref": "#705" },
     { "use": "音が届いているか確かめる", "avoid": ["再生の確認"], "locale": "ja", "ref": "#718" },
-    { "use": "Check that sound is arriving", "avoid": ["Check playback"], "locale": "en", "ref": "#718" }
+    { "use": "Check that sound is arriving", "avoid": ["Check playback"], "locale": "en", "ref": "#718" },
+    { "use": "送り先", "avoid": ["用途を変", "選んだ用途", "まず用途", "用途に合わせ", "用途：", "通話用途"], "locale": "ja", "ref": "#774" },
+    { "use": "Destination", "avoid": ["Choose a different use", "Choose a purpose first", "Change purpose", "Purpose:"], "locale": "en", "ref": "#774" }
   ],
   "allow": [
     { "key": "saveHelp.modeScope", "term": "プロファイル", "reason": "モードと一緒に切り替えるVSTの参照で、声・VST・入出力の構成ではない（#626）" },

@@ -50,13 +50,13 @@ interface DiagnosticItem {
     action?: { label: SettingsNotice; onClick: () => void };
 }
 
-// 用途の表示はセットアップと共有し、診断内部の listen だけ変換する。
+// 送り先の表示はセットアップと共有し、診断内部の listen だけ変換する。
 const PURPOSE_OPTIONS = destinationChoices.map(({ value, label, hint }) => ({
     id: (value === 'listening' ? 'listen' : value) as Purpose, label, hint,
 }));
 const purposeOption = (id: Purpose | null) => PURPOSE_OPTIONS.find(option => option.id === id);
 
-// セットアップや前回の診断で選んだ用途。同じ質問を繰り返さず、初期値にする。
+// セットアップや前回の診断で選んだ送り先。同じ質問を繰り返さず、初期値にする。
 const savedPurpose = (): Purpose | null => {
     let goal: string | null = null;
     try { goal = localStorage.getItem('vst_host_setup_goal'); } catch { return null; }
