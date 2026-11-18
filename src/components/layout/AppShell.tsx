@@ -28,11 +28,9 @@ import { useRackOpener } from './useRackOpener';
 import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
-import { formatAudioRoute, routeDestination } from '@/lib/audioRouteLine';
+import { formatAudioRoute, usageDestination } from '@/lib/audioRouteLine';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
 import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
-import type { MessageKey } from '@/i18n/messages';
-import type { PreparationUse } from '@/lib/preparation';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
@@ -223,6 +221,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const liveStripShown = page === 'home' && configured;
     const muteAnnouncement = preparation.observation.availability === 'muted' && !liveStripShown ? t('prep.muted') : '';
     const wideHome = useMatchMedia(`(min-width: ${largeWindow.connectColumnMinWidth}px)`);
+    const routeInConnectionDiagram = configured && page === 'home' && wideHome;
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onMeasureNoise={onMeasureNoise} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} vstCount={vstCount} unconfigured={!configured} />;
@@ -231,12 +230,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
         else onOpenSettings();
     };
-    const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
     const usage = preparation.context.usage;
-    const receiverName = preparation.context.receiver.trim();
-    const shortDestinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obsShort', discord: 'prep.callShort', other: 'prep.otherShort', listening: 'prep.localShort' };
-    const destination = usage ? routeDestination(t(destinations[usage]), t(shortDestinations[usage]), usage !== 'listening' ? receiverName : '') : undefined;
-    const route = configured ? formatAudioRoute(
+    const destination = usage ? usageDestination(t, usage, preparation.context.receiver) : undefined;
+    const route = configured && !routeInConnectionDiagram ? formatAudioRoute(
         preparation.observation.config?.input ?? currentInput,
         preparation.observation.config?.output ?? currentOutput,
         destination?.full,
@@ -328,7 +324,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
-                        {configured && <div className="home-connect-column min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped} pinnedOpen={wideHome}
+                        {configured && <div className="home-connect-column min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped} pinnedOpen={routeInConnectionDiagram}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}

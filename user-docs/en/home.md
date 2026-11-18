@@ -13,7 +13,7 @@ This page separates the home overview for streaming and calls from the overview 
 
 When Sing or Talk is saved, Current status shows “Mode” and the name, and when neither is saved the heading is “Current voice”. It also shows whether sound is coming in and “Level being sent”, and “Not sending sound” appears only when the output is muted or the volume is zero. The cause and the way to release it are in “Output muted / volume zero” on Output in the right column.
 
-The status display, elapsed time, and audio path are at the top of the screen. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
+The status display, elapsed time, and audio path are at the top of the screen. On Home, when the window is 1400px wide or more, only the audio path is in the “Check the connection” diagram in the right column instead. When the path on the top band does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
 
 Press the status on the top band to open a menu. While running, it offers “Stop Auralyn’s audio” and “Quit Auralyn”. While stopped, it offers “Start audio” and “Quit Auralyn”. Closing the window hides Auralyn in the tray, and the audio keeps running.
 
@@ -23,7 +23,7 @@ The “Sing” and “Talk” switch is at the top of the screen too.
 
 Voice flow appears once sound starts coming in after you start audio. When audio is stopped or waiting, Current status shows the state.
 
-Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. When Sing or Talk is saved, the card shows “Mode” beside the name. When neither is saved, the heading is “Current voice” and “Mode” is not shown. When neither saved Sing nor Talk matches, neither is selected on the top band, and the heading is “Custom sound”. Beside it, the card says “Not a saved Sing/Talk mode”. Incoming sound and “Level being sent” are on this card. When the output is muted or the volume is zero, it says “Not sending sound”. When it is not muted, that note is absent. The cause and the way to release it are in “Output muted / volume zero” on Output in the right column. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
+Check “Running” or “Audio stopped”, the elapsed time, and the audio path on the band at the top of the center column. On Home, when the window is 1400px wide or more, the audio path is not shown on that band; check it in the “Check the connection” diagram in the right column. On other pages it stays on the band at any width. When Sing or Talk is saved, the card shows “Mode” beside the name. When neither is saved, the heading is “Current voice” and “Mode” is not shown. When neither saved Sing nor Talk matches, neither is selected on the top band, and the heading is “Custom sound”. Beside it, the card says “Not a saved Sing/Talk mode”. Incoming sound and “Level being sent” are on this card. When the output is muted or the volume is zero, it says “Not sending sound”. When it is not muted, that note is absent. The cause and the way to release it are in “Output muted / volume zero” on Output in the right column. “Choose destination” stays in Current status. There is at most one primary button. “Voice Check” opens from the right end of that band. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
 
 “Lock controls” is in the column on the right. While locked, it shows “Locked”. Stop and “Emergency mute” stay available.
 
@@ -95,9 +95,9 @@ Use “Output volume” to set the level. To silence the sound immediately, use 
 
 ### Current status (see whether sound is playing) {#music-stage}
 
-The heading is “Music listening”, with “Output level”. The path appears once, at the top of the screen. When the output is muted or the volume is zero, it says “Not playing sound”. The cause and the way to release it are in “Output muted / volume zero” on Output in the right column.
+The heading is “Music listening”, with “Output level”. The path appears once, at the top of the screen, but on Home at 1400px wide or more it appears once in the “Check the connection” diagram in the right column instead. When the output is muted or the volume is zero, it says “Not playing sound”. The cause and the way to release it are in “Output muted / volume zero” on Output in the right column.
 
-The status display, elapsed time, and audio path are at the top of the screen. When the path does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
+The status display, elapsed time, and audio path are at the top of the screen. On Home, when the window is 1400px wide or more, only the audio path is in the “Check the connection” diagram in the right column instead. When the path on the top band does not fit, the beginning is left off and the destination stays. The full path appears when you hover.
 
 Press the status on the top band to open a menu. While running, it offers “Stop Auralyn’s audio” and “Quit Auralyn”. While stopped, it offers “Start listening” and “Quit Auralyn”. Closing the window hides Auralyn in the tray, and the audio keeps running. While stopped, the status on the top band and the playback source on Current status say “Stopped”.
 
@@ -109,7 +109,7 @@ When setup is already finished, the order matches Sing / Talk: Current status, �
 
 “Saved setups” only switches saved setups. The connection method and sample rate are in “Connection details”.
 
-The path on the top band prefers the running setup, and otherwise uses the saved playback source and output. The note beside the start button names the playback source and the output. “Check that sound is arriving” opens from the right end of that band and shows the input and output levels and the output. When no sound has come in from the playback source for about 5 seconds, a one-line note appears under the source, telling you where to send your player's output (for example, set it to CABLE Input and sound will arrive). The device name follows your playback source. It does not appear while sound is arriving, while stopped, or when you use an app's audio as the source. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
+The path on the top band prefers the running setup, and otherwise uses the saved playback source and output. On Home, when the window is 1400px wide or more, the path is not shown on the top band; it appears in the “Check the connection” diagram in the right column. On other pages it stays on the top band at any width. The note beside the start button names the playback source and the output. “Check that sound is arriving” opens from the right end of that band and shows the input and output levels and the output. When no sound has come in from the playback source for about 5 seconds, a one-line note appears under the source, telling you where to send your player's output (for example, set it to CABLE Input and sound will arrive). The device name follows your playback source. It does not appear while sound is arriving, while stopped, or when you use an app's audio as the source. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
 
 Setups you saved come first. A backup made while recovering a VST layout is grouped afterward under “Automatic backups”. Switch them from “Saved VST setup”. If you have neither a saved setup nor a backup, this card stays hidden. While a setup is switching, the choice stays unavailable.
 

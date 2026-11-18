@@ -49,6 +49,33 @@ it('受け側を確認済みなら、案内も注意も出さない', () => {
     expect(within(flow).queryByText(message('ja', 'flow.receiverUnknown'))).not.toBeInTheDocument();
 });
 
+const destinationLabels = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other' } as const;
+
+it.each(['ja', 'en'] as const)('図の送り先は、上の帯と同じ形で受け側の名前を添える（%s、#763）', locale => {
+    for (const usage of ['obs', 'discord', 'other'] as const) {
+        const model = fixture();
+        model.context = { ...model.context, usage, receiver: 'My OBS' };
+        const { unmount } = renderPanels(model, locale);
+        const flow = screen.getByRole('region', { name: message(locale, 'flow.diagram') });
+        expect(within(flow).getByText(`${message(locale, destinationLabels[usage])} · My OBS`)).toBeInTheDocument();
+        unmount();
+    }
+});
+
+it('受け側の名前が無いときと、自分の声を聴くときは、名前を添えない（#763）', () => {
+    const none = fixture();
+    none.context = { ...none.context, receiver: '' };
+    const { unmount } = renderPanels(none, 'ja');
+    expect(within(screen.getByRole('region', { name: message('ja', 'flow.diagram') })).getByText(message('ja', 'prep.obs'), { exact: true })).toBeInTheDocument();
+    unmount();
+    const listening = fixture();
+    listening.context = { ...listening.context, usage: 'listening', receiver: 'My OBS' };
+    renderPanels(listening, 'ja');
+    const flow = screen.getByRole('region', { name: message('ja', 'flow.diagram') });
+    expect(within(flow).getByText(message('ja', 'prep.local'), { exact: true })).toBeInTheDocument();
+    expect(flow).not.toHaveTextContent('My OBS');
+});
+
 // ミュートの解除の入口は右の列の札だけ。接続の確認は、誤った主ボタンも、同じ入口の重ねも出さない（#766）。
 it.each(['ja', 'en'] as const)('ミュート中の接続の確認は、主ボタンも確認ボタンも出さず、入出力の変更だけを残す（%s、#766）', locale => {
     const model = fixture();
