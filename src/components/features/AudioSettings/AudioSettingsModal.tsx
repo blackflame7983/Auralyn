@@ -52,6 +52,7 @@ import type { SessionRestoreOutcome } from '@/lib/rackRestoreOutcome';
 import { resumableInputSource } from '@/lib/processInputRestore';
 import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
+import { cableReceiverName } from '@/lib/audioRouting';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, ConnectionStartError, runningConnection, useAudioConnectionController } from './useAudioConnectionController';
@@ -569,6 +570,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   if (!isOpen) return null;
   const pageKind = activeTab === 'audio' ? 'connect' : activeTab === 'sound' ? 'sound' : 'settings';
   const pageTitle = t(pageKind === 'connect' ? 'rail.connect' : pageKind === 'sound' ? 'rail.sound' : 'rail.settings');
+  // 音楽鑑賞の出力先は手元で聴く側なので、受け側の名前は配信・通話のときだけ案内する。
+  const receiverName = displayPurpose === 'voice' ? cableReceiverName(selectedOutputDevice?.name) : null;
   const musicSound = activeTab === 'sound' && displayPurpose === 'music';
   const singingDirty = singingDraftIsDirty(singingModel.snapshot, singingModel.draft);
   const showSingingBar = activeTab === 'sound' && soundPlace === 'singing' && !musicSound;
@@ -582,7 +585,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     : activeTab === 'appearance' ? t('settings.apply.appearanceImmediate')
     : activeTab === 'shortcuts' ? t('settings.apply.shortcutsDraft')
     : activeTab === 'obs' ? t('settings.page.obsLead')
-    : t('settings.page.systemLead');
+    : undefined;
   const leavePage = () => requestLeave(onClose);
   const chooseTab = (tab: typeof activeTab) => {
     // システムの再起動は接続の未保存を適用するので、捨てる確認には通さない（6.3）。
@@ -713,7 +716,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {!isAsio && (
                   <fieldset className="page-pair-output page-section rounded-card border border-border p-3">
                     <legend className="text-ui-heading font-semibold"><label htmlFor={outputId}>{t('settings.AudioSettingsModal.041')}</label></legend>
-                    <Field id={outputId} label={null}><Select
+                    <Field id={outputId} label={null} description={receiverName ? t('settings.connection.receiverHint', { name: receiverName }) : undefined}><Select
                       className="max-w-full"
                       title={selectedOutput || undefined}
                       value={selectedOutputKey}
