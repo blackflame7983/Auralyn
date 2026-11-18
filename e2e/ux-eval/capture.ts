@@ -26,6 +26,8 @@ interface Shot {
     outputMuted?: boolean;
     /** 接続ページの「仮想ケーブルの案内」を開いて撮る。 */
     cableHelp?: boolean;
+    /** first-run のセットアップで音楽鑑賞を選び、この手順まで進めて撮る。wizard.musicRoute の文が見えていることも確かめる。 */
+    musicWizardStep?: 'input' | 'output';
     surface: Surface;
     purposeLabel: string;
     runningLabel: string;
@@ -43,6 +45,8 @@ const music = [musicInput, musicOutput];
 
 const shots: Shot[] = [
     { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['何に使いますか？'] },
+    { name: 'setup-music-input', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'input', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
+    { name: 'setup-music-output', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'output', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
     { name: 'home-voice', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '未登録', expects: ['いまの声', ...voice] },
     { name: 'home-voice-registered', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
     { name: 'home-voice-unmuted', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, outputMuted: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
@@ -104,11 +108,37 @@ function readme(size: (typeof sizes)[number]) {
         '',
         '機器名は realistic。配信は Yeti Stereo Microphone → CABLE Input (VB-Audio Virtual Cable)。音楽鑑賞は CABLE Output (VB-Audio Virtual Cable) → USB Headphones。',
         '',
+        '評価者へ渡す PROMPT.md と DECIDED.md には、docs/TESTING.md の「模擬データの限界」を写してください。リポジトリに正本はありません。',
+        '',
         '| ファイル | 用途 | 実行 | 登録 | 出力 | 言語 | テーマ | 窓 |',
         '| --- | --- | --- | --- | --- | --- | --- | --- |',
         ...rows,
         '',
     ].join('\n');
+}
+
+// ダブルクリックが残した文字の選択は、利用者の画面には無い。撮る前に外す。
+async function clearTextSelection(page: Page) {
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+}
+
+// 初回のセットアップで音楽鑑賞を選び、入力の手順（2番目）か出力の手順（3番目）まで、利用者と同じ操作で進める。
+// どちらの手順にも、再生アプリから VST までの経路（wizard.musicRoute）が出る。
+async function advanceMusicWizard(page: Page, shot: Shot) {
+    const dialog = page.getByRole('dialog').first();
+    const route = dialog.getByText(message(shot.locale, 'wizard.musicRoute'), { exact: true });
+    // カードの題を2回押して、選んで進む。入場後も続く注意の動きで「静止」が成立しないので、静止の待ちだけを外す。
+    await dialog.getByText(message(shot.locale, 'wizard.musicGoal'), { exact: true }).dblclick({ force: true });
+    await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.musicInput'), exact: true })).toBeVisible();
+    await expect(route).toBeVisible();
+    await clearTextSelection(page);
+    if (shot.musicWizardStep === 'input') return;
+    const input = dialog.getByRole('combobox', { name: message(shot.locale, 'guide.copy.188') });
+    await input.selectOption({ label: musicInput });
+    await dialog.getByRole('button', { name: message(shot.locale, 'common.next') }).click();
+    await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.destination'), exact: true })).toBeVisible();
+    await expect(route).toBeVisible();
+    await clearTextSelection(page);
 }
 
 async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
@@ -131,6 +161,7 @@ async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
     if (shot.surface === 'vst') await expect(page.locator('[data-vst-page]')).toBeVisible();
     if (shot.surface === 'settings') await expect(page.locator('[data-settings-page]')).toBeVisible();
     if (shot.surface === 'stream-mix') await expect(page.locator('#stream-mix-panel')).toBeVisible();
+    if (shot.musicWizardStep) await advanceMusicWizard(page, shot);
     if (shot.cableHelp) {
         // 仮想ケーブルの案内は、接続ページの音の元の欄にある閉じた折りたたみ。利用者が開いたところまで進めて撮る。
         const summary = page.locator('[data-settings-page]').getByText(message(shot.locale, 'processInput.cable'), { exact: true });
@@ -161,7 +192,10 @@ async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
     // 出力ミュート中は、実エンジンと同じく出力レベルが 0 になり、ピークは −∞ のまま。解除していれば −20.0。
     const outputMeters = [message(shot.locale, 'home.sendLevel'), message(shot.locale, 'home.listenLevel')];
     const outputMeterTexts = async () => (await meterTexts()).filter(text => outputMeters.includes(text.split('\t')[0]));
-    if (shot.outputMuted === false) await expect.poll(body).toContain('−20.0 dBFS');
+    if (shot.outputMuted === false) {
+        await expect.poll(body).toContain('−20.0 dBFS');
+        await expect.poll(async () => (await outputMeterTexts()).some(text => /\t[-−]20\.0 dBFS/.test(text)), '解除したのに出力のバーが動かない').toBe(true);
+    }
     else {
         await expect.poll(body).toContain('−∞ dBFS');
         expect(await body(), '出力ミュート中なのに出力のピークが動いている').not.toContain('−20.0 dBFS');
