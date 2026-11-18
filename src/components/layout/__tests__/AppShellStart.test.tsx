@@ -818,6 +818,53 @@ it('広い窓でもVSTの入口はホームを覆わず、同じ入口から開�
     } finally { vi.unstubAllGlobals(); }
 });
 
+const connectColumnQuery = '(min-width: 1400px)';
+const stubWindowWidth = (wide: boolean) => vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: wide && query === connectColumnQuery, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+const routeInBand = () => screen.getByRole('region', { name: '状態の帯' }).querySelector('[data-route-box]');
+const diagramInConnection = () => {
+    const connection = screen.queryByRole('region', { name: message('ja', 'prep.title') });
+    return connection && within(connection).queryByRole('region', { name: message('ja', 'flow.diagram') });
+};
+
+it.each([
+    { name: '1400px 以上のホームでは経路を接続の確認の図に1回だけ出す', wide: true, page: 'home' as const, inBand: false, inDiagram: true },
+    { name: '1400px 未満のホームでは上の帯の経路のまま', wide: false, page: 'home' as const, inBand: true, inDiagram: null },
+    { name: 'ホーム以外のページでは広い窓でも上の帯の経路のまま', wide: true, page: 'connect' as const, inBand: true, inDiagram: false },
+])('$name（#763）', ({ wide, page, inBand, inDiagram }) => {
+    stubWindowWidth(wide);
+    try {
+        render(<AppShell {...commonProps} page={page} currentInput="Mic" currentOutput="Speakers" onOpenSettings={vi.fn()}><p>rack</p></AppShell>);
+        expect(routeInBand() !== null).toBe(inBand);
+        const diagram = diagramInConnection();
+        // 狭い窓の接続の確認は問題があるときだけ自動で開く。開閉は変えないので、ここでは見ない。
+        if (inDiagram !== null) expect(diagram !== null).toBe(inDiagram);
+        if (diagram) {
+            expect(within(diagram).getByText('Mic')).toBeInTheDocument();
+            expect(within(diagram).getByText('Speakers')).toBeInTheDocument();
+        }
+    } finally { vi.unstubAllGlobals(); }
+});
+
+it('窓の幅が1400pxの前後で変わっても、経路は上の帯と図のどちらか1つに残る（#763）', () => {
+    let wide = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+        get matches() { return wide && query === connectColumnQuery; },
+        addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+        removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    })));
+    try {
+        render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Speakers" onOpenSettings={vi.fn()}><p>rack</p></AppShell>);
+        expect(routeInBand()).not.toBeNull();
+        for (const next of [true, false, true]) {
+            wide = next;
+            act(() => listeners.forEach(listener => listener()));
+            expect(routeInBand() === null).toBe(next);
+            if (next) expect(diagramInConnection()).not.toBeNull();
+        }
+    } finally { vi.unstubAllGlobals(); }
+});
+
 async function openStatusMenu(name: RegExp) {
     const trigger = screen.getByRole('button', { name });
     trigger.focus();
