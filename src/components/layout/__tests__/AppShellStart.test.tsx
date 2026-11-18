@@ -306,6 +306,38 @@ it('停止中の右の列では、比較を無効にして理由を結ぶ', () =
     expect(bypass).not.toHaveBeenCalled();
 });
 
+it.each([
+    ['ja', 'voice', 'home.voiceCheck'],
+    ['en', 'voice', 'home.voiceCheck'],
+    ['ja', 'music', 'music.listenTitle'],
+    ['en', 'music', 'music.listenTitle'],
+] as const)('停止中の上の帯の確認ボタンは、理由を title と読み上げに結び、見える文は足さない（%s・%s）', (locale, purpose, label) => {
+    saveDisplayPurpose(purpose);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AppShell {...commonProps} isEngineRunning={false}><p>rack</p></AppShell>
+    </LocaleProvider>);
+    const reason = message(locale, 'header.compareNeedsAudio');
+    const band = within(screen.getByRole('region', { name: message(locale, 'band.label') }));
+    const listen = band.getByRole('button', { name: message(locale, label) });
+    expect(listen).toBeDisabled();
+    expect(listen).toHaveAttribute('title', reason);
+    expect(listen).toHaveAccessibleDescription(reason);
+    expect(band.getByText(reason)).toHaveClass('sr-only');
+});
+
+it('状態が分からないあいだの上の帯の確認ボタンは、確認できない旨を結ぶ。動いていれば理由を出さない', () => {
+    const view = render(<AppShell {...commonProps} isEngineRunning={false} engineProcessReady={null}><p>rack</p></AppShell>);
+    const band = () => within(screen.getByRole('region', { name: message('ja', 'band.label') }));
+    const unknown = message('ja', 'loudness.audioUnknown');
+    expect(band().getByRole('button', { name: 'ボイスチェック' })).toHaveAccessibleDescription(unknown);
+    expect(band().getByRole('button', { name: 'ボイスチェック' })).toHaveAttribute('title', unknown);
+    view.rerender(<AppShell {...commonProps}><p>rack</p></AppShell>);
+    const listen = band().getByRole('button', { name: 'ボイスチェック' });
+    expect(listen).toBeEnabled();
+    expect(listen).not.toHaveAttribute('title');
+    expect(listen).not.toHaveAttribute('aria-describedby');
+});
+
 it('比較中のまま止めても、右の列の比較のオンオフは切り替えない', async () => {
     vi.spyOn(presetApi, 'list').mockResolvedValue([]);
     const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
@@ -441,7 +473,10 @@ it('比較できるあいだと、止まっているあいだは、VSTが無い�
     expect(screen.queryByText(message('ja', 'header.compareNeedsVst'))).not.toBeInTheDocument();
     view.rerender(<AppShell {...commonProps} isEngineRunning={false} vstCount={0} vstActiveCount={0}><p>rack</p></AppShell>);
     expect(screen.queryByText(message('ja', 'header.compareNeedsVst'))).not.toBeInTheDocument();
-    expect(screen.getByText(message('ja', 'header.compareNeedsAudio'))).toHaveClass('sr-only');
+    // 右の列と上の帯の確認ボタンの2か所。どちらも見える文は足さない。
+    const hints = screen.getAllByText(message('ja', 'header.compareNeedsAudio'));
+    expect(hints).toHaveLength(2);
+    hints.forEach(hint => expect(hint).toHaveClass('sr-only'));
 });
 
 it('音が届いているか確かめる欄を開いたまま音声を止めても、比較は無効のまま理由を見せ、比較の送信をしない', async () => {
