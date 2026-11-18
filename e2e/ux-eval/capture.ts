@@ -167,7 +167,8 @@ for (const size of sizes) {
                 writeFileSync(path.join(dir, `${shot.name}.txt`), text.endsWith('\n') ? text : `${text}\n`, 'utf8');
                 expect(text).not.toContain('音声エンジンを起動しています');
                 expect(text).not.toContain('Starting the audio engine');
-                expect(text, '機器名に日本語のスピーカーが残っている').not.toContain('スピーカー');
+                // 模擬の旧い機器名「スピーカー」は、1行だけの機器名か、経路の区間として出る。本文の「ヘッドホンやスピーカー」のような言葉は数えない。
+                expect(text, '機器名に日本語のスピーカーが残っている').not.toMatch(/(^|→\s*)スピーカー(\s*→|\s*$)/m);
                 for (const fragment of shot.expects) expect(text).toContain(fragment);
                 if (shot.name === 'home-voice') expect(text).not.toContain('いまの調整');
                 if (size.width >= 1400 && shot.surface === 'home') await connectColumnIsOnTheRight(page);
