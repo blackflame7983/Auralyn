@@ -273,11 +273,15 @@ function collectScreenAudit(args: AuditArgs, visibility: PageVisibility): AuditH
             push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
             continue;
         }
-        // 名前の行に操作が付くと中身ありになる。状態の行が無い音調整のカードだけを見る。
-        // 実行中は隣のカードに合わせて伸びるので、短い外部VSTを空の枠にしない（#673）。
-        if (!element.classList.contains('sound-module-card') || element.querySelector('.sound-card-status')) continue;
+        // 名前の行に操作が付くと中身ありになる。音調整のカードで、状態の行が無いものだけを見る。
+        // VST が0件の外部VST（data-empty-vst）は、実行中も状態の行を持つが中身の高さにする（#673、#769）。
+        // この印のカードは状態の行があっても、中身の塊の高さを問わず、中身の下に半分以上の空きが残れば空の枠とする。
+        // ノイズ低減と声を整えるが隣に揃って伸びるのは、今まで通り空の枠にしない。
+        const emptyVst = element.hasAttribute('data-empty-vst');
+        if (!element.classList.contains('sound-module-card')) continue;
+        if (!emptyVst && element.querySelector('.sound-card-status')) continue;
         const band = contentBand(element);
-        if (!band || band.bottom - band.top > 96) continue;
+        if (!band || (!emptyVst && band.bottom - band.top > 96)) continue;
         if (box.bottom - band.bottom >= half) {
             push({ check: 'empty', selector: shortSelector(element), text: head(heading?.textContent || '空の枠') });
         }
