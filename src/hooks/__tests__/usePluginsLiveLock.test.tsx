@@ -48,7 +48,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear(); });
 
-it.each(['ja', 'en'] as const)('操作ロック中に VST を削除しようとすると、保護の理由と解除のしかたを見える形で出し、ラックは変えない ($locale)', async locale => {
+/** 保護による拒否の通知は、アプリの文だけを出す。バックエンドの原文と「未翻訳」の前置きは画面に出さない。 */
+function expectAppOwnedLockNotice(description: string, locale: Locale) {
+    expect(description).toBe(message(locale, 'pluginNotices.liveLockedBody'));
+    expect(description).not.toContain(BACKEND_REASON);
+    expect(description).not.toContain(message(locale, 'pluginNotices.rawDetail', { detail: BACKEND_REASON }));
+}
+
+it.each(['ja', 'en'] as const)('操作ロック中に VST を削除しようとすると、アプリの文で理由と解除のしかたを出し、原文は画面に出さず、ラックは変えない ($locale)', async locale => {
     vi.spyOn(audioApi, 'removePlugin').mockRejectedValue(BACKEND_REASON);
     const { result } = await rack(locale);
     await act(async () => { await result.current.removePlugin('a'); });
@@ -56,12 +63,12 @@ it.each(['ja', 'en'] as const)('操作ロック中に VST を削除しようと�
     expect(toast.error).toHaveBeenCalledTimes(1);
     const { title, description } = lastError();
     expect(title).toBe(message(locale, 'pluginNotices.removeFailed'));
-    expect(description).toContain(BACKEND_REASON);
-    expect(description).toContain(message(locale, 'pluginNotices.liveLockedHint'));
+    expectAppOwnedLockNotice(description, locale);
+    expect(console.error).toHaveBeenCalledWith('Failed to remove plugin', BACKEND_REASON);
     expect(result.current.error).toBeNull();
 });
 
-it.each(['ja', 'en'] as const)('操作ロック中に VST を並べ替えようとすると、保護の理由と解除のしかたを見える形で出し、並びは元のまま ($locale)', async locale => {
+it.each(['ja', 'en'] as const)('操作ロック中に VST を並べ替えようとすると、アプリの文で理由と解除のしかたを出し、原文は画面に出さず、並びは元のまま ($locale)', async locale => {
     vi.spyOn(audioApi, 'reorderPlugins').mockRejectedValue(BACKEND_REASON);
     const { result } = await rack(locale);
     const reversed = [...result.current.plugins].reverse();
@@ -70,8 +77,7 @@ it.each(['ja', 'en'] as const)('操作ロック中に VST を並べ替えよう�
     expect(toast.error).toHaveBeenCalledTimes(1);
     const { title, description } = lastError();
     expect(title).toBe(message(locale, 'pluginNotices.reorderFailed'));
-    expect(description).toContain(BACKEND_REASON);
-    expect(description).toContain(message(locale, 'pluginNotices.liveLockedHint'));
+    expectAppOwnedLockNotice(description, locale);
     expect(result.current.error).toBeNull();
 });
 
@@ -87,7 +93,7 @@ it('保護以外の理由で削除や並べ替えに失敗したときは、こ�
     expect(toast.error).not.toHaveBeenCalled();
 });
 
-it('削除を元に戻す操作がロックに阻まれたときも、保護の理由を出す', async () => {
+it('削除を元に戻す操作がロックに阻まれたときも、アプリの文で理由を出す', async () => {
     vi.spyOn(audioApi, 'removePlugin').mockResolvedValue(undefined);
     const { result } = await rack('ja');
     await act(async () => { await result.current.removePlugin('a'); });
@@ -99,5 +105,5 @@ it('削除を元に戻す操作がロックに阻まれたときも、保護の�
     await act(async () => { action?.onClick(); });
     const { title, description } = lastError();
     expect(title).toBe(message('ja', 'pluginNotices.restoreFailed'));
-    expect(description).toContain(message('ja', 'pluginNotices.liveLockedHint'));
+    expectAppOwnedLockNotice(description, 'ja');
 });

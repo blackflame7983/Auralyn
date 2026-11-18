@@ -414,9 +414,9 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
 
     for (const locale of ['ja', 'en'] as const) {
         const labels = locale === 'ja'
-            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', hint: '右の列の「操作をロック」を押してください', lock: '操作をロック', landmark: columnName }
-            : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', hint: 'press “Lock controls” in the right column', lock: 'Lock controls', landmark: 'Live controls' };
-        test(`ロック中に VST を削除しようとすると、保護の理由と解除のしかたを見せ、ラックは変わらない（${locale}）`, async ({ page }) => {
+            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VST の削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
+            : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', body: 'While controls are locked, you can\'t remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.', lock: 'Lock controls', landmark: 'Live controls' };
+        test(`ロック中に VST を削除しようとすると、アプリの文で理由と解除のしかたを見せ、バックエンドの原文は出さず、ラックは変わらない（${locale}）`, async ({ page }) => {
             await page.addInitScript(installLockedVstRack, backendLockReason);
             await page.addInitScript(({ l }) => {
                 localStorage.setItem('vst_host_locale', l);
@@ -438,8 +438,9 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
             await page.getByRole('button', { name: labels.confirm, exact: true }).click();
             const notice = page.locator('[data-sonner-toast]');
             await expect(notice.getByText(labels.title, { exact: true })).toBeVisible();
-            await expect(notice).toContainText(backendLockReason);
-            await expect(notice).toContainText(labels.hint);
+            await expect(notice).toContainText(labels.body);
+            await expect(notice).not.toContainText(backendLockReason);
+            await expect(notice).not.toContainText(/未翻訳|untranslated/i);
             await expect(cards.getByText('E2E VST A', { exact: true }).first()).toBeVisible();
             await expect(cards.getByText('E2E VST B', { exact: true }).first()).toBeVisible();
             expect(await page.evaluate((): unknown => Reflect.get(window, '__e2eRefusedWhileLocked'))).toEqual(['remove_plugin']);
