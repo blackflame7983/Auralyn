@@ -34,7 +34,8 @@ const stats = (): EngineRuntimeStats => ({ queueDiagnostics: { state: 'running',
 const statsWithoutVst = (): EngineRuntimeStats => {
     const current = stats();
     const stage = current.latencyMetadata?.stageBreakdown;
-    if (stage) stage.vst = [];
+    if (!stage) throw new Error('stageBreakdown is required');
+    stage.vst = [];
     return current;
 };
 
