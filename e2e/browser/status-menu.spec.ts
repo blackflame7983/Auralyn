@@ -32,7 +32,7 @@ test('実行中の札から音を止め、失敗したときは実行中のま�
     await page.keyboard.press('Enter');
     const stop = page.getByRole('menuitem', { name: /Auralyn の音を止める/ });
     await expect(stop).toBeVisible();
-    await expect(stop).toContainText('マイクと出力先を放します');
+    await expect(stop).toContainText('マイクと出力先の接続を止めます');
     await expect(page.getByRole('menuitem', { name: /Auralyn を終了/ })).toContainText('トレイへ隠れます');
     await expect(page.getByRole('separator')).toBeVisible();
     await page.keyboard.press('Escape');

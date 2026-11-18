@@ -405,7 +405,7 @@ test.describe('アプリの音声を入力にしているときの操作ロッ�
         await ready(page);
         const lock = column(page).getByRole('button', { name: '操作をロック', exact: true });
         await expect(lock).toBeEnabled();
-        await expect(lock).toHaveAttribute('title', /ロック中は機器変更やVSTラック・構成の置換はできません/);
+        await expect(lock).toHaveAttribute('title', /ロック中は機器やVST構成を変えられません/);
     });
 });
 
@@ -414,7 +414,7 @@ test.describe('操作ロック中の VST の削除と並べ替え（#764）', ()
 
     for (const locale of ['ja', 'en'] as const) {
         const labels = locale === 'ja'
-            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VST の追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
+            ? { remove: 'E2E VST Aを削除', confirm: '削除する', title: 'プラグインの削除に失敗しました', body: '操作をロックしている間は、VSTの追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。', lock: '操作をロック', landmark: columnName }
             : { remove: 'Remove E2E VST A', confirm: 'Remove', title: 'Could not remove the plugin', body: 'While controls are locked, you can\'t add, remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.', lock: 'Lock controls', landmark: 'Live controls' };
         test(`ロック中に VST を削除しようとすると、アプリの文で理由と解除のしかたを見せ、バックエンドの原文は出さず、ラックは変わらない（${locale}）`, async ({ page }) => {
             await page.addInitScript(installLockedVstRack, { reason: backendLockReason });
@@ -464,7 +464,7 @@ test.describe('操作ロック中に、ダイアログの中から VST を追加
     for (const locale of ['ja', 'en'] as const) {
         const labels = locale === 'ja'
             ? { mute: '緊急ミュート', add: 'VSTを追加', addNamed: 'E2E Compressor を追加', templates: 'VST構成テンプレート', use: 'この構成で使うVSTを選ぶ', apply: 'VST構成を置き換える',
-                body: '操作をロックしている間は、VST の追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。' }
+                body: '操作をロックしている間は、VSTの追加・削除・並べ替え・構成の置き換えはできません。右の列の「操作をロック」を押すと解除できます。' }
             : { mute: 'Emergency mute', add: 'Add VST', addNamed: 'Add E2E Compressor', templates: 'VST setup templates', use: 'Choose VSTs for this setup', apply: 'Replace the VST setup',
                 body: 'While controls are locked, you can\'t add, remove or reorder VSTs or replace the setup. Press “Lock controls” in the right column to unlock.' };
 
