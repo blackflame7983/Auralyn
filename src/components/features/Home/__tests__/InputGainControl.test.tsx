@@ -10,7 +10,7 @@ vi.mock('@/components/ui/slider', () => ({ Slider: ({ onValueChange, 'aria-label
 beforeEach(() => { localStorage.clear(); vi.useFakeTimers(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
-it.each([['ja', '入力音量'], ['en', 'Input volume']] as const)('音楽鑑賞ではマイクと呼ばず入力音量を表示・操作する (%s)', async (locale, label) => {
+it.each([['ja', '再生元の音量'], ['en', 'Source volume']] as const)('音楽鑑賞ではマイクと呼ばず、見出しの「再生元」に合わせて再生元の音量を表示・操作する (%s)', async (locale, label) => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><InputGainControl /></LocaleProvider>);

@@ -31,6 +31,14 @@ const stats = (): EngineRuntimeStats => ({ queueDiagnostics: { state: 'running',
     },
 } } as unknown as EngineRuntimeStats);
 
+const statsWithoutVst = (): EngineRuntimeStats => {
+    const current = stats();
+    const stage = current.latencyMetadata?.stageBreakdown;
+    if (!stage) throw new Error('stageBreakdown is required');
+    stage.vst = [];
+    return current;
+};
+
 it('一部のVST状態だけが不明でも声の操作を禁止と案内せず、設定へ進める', async () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst[0].state = 'unavailable';
     const p = props(); const settings = vi.fn();
@@ -52,13 +60,13 @@ beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; quick.chainOn 
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
 
 it('外部 VST が0個なら追加にし、個数が分からないときは開く入口にする', () => {
-    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
+    const current = statsWithoutVst();
     const p = props();
     const vst = <VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} />;
     // ボタン名は統計の段ではなく、画面側の件数で決まる。
     const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} vstCount={0} /></RuntimeStatsContext.Provider>);
     const row = screen.getAllByRole('listitem')[2];
-    expect(row).toHaveTextContent('外部VST'); expect(row).toHaveTextContent('使っていません');
+    expect(row).toHaveTextContent('外部VST'); expect(row).toHaveTextContent(message('ja', 'chain.vstEmptySub'));
     expect(row).toHaveAttribute('data-on', 'false');
     expect(screen.queryByRole('button', { name: 'VSTを開く' })).not.toBeInTheDocument();
     const hint = message('ja', 'chain.vstEmptyHint');
@@ -70,7 +78,7 @@ it('外部 VST が0個なら追加にし、個数が分からないときは開�
     expect(p.onOpenVst).toHaveBeenCalledWith(true);
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} vstCount={0} /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
-    expect(screen.queryByText('使っていません')).not.toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'chain.vstEmptySub'))).not.toBeInTheDocument();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} vstCount={null} /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('button', { name: 'VSTを開く' })).toBeInTheDocument();
 });
@@ -292,14 +300,18 @@ it('音楽鑑賞の声向けの段は英語でも見出しと状態を出す', (
     expect(screen.getByRole('dialog')).toHaveTextContent(message('en', 'flow.builtinParts', { voice: message('en', 'flow.disabled'), reverb: message('en', 'flow.enabled') }));
 });
 
-it('保存済みのVSTを読み込めていない空の段は「未追加」と出さず、読み込めていない名前を示す', () => {
-    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
+it('保存済みのVSTを読み込めていない空の段は「まだありません」と出さず、読み込めていない名前を示す', () => {
+    const current = statsWithoutVst();
     render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}>
         <SoundChain {...props()} vst={<VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} />} vstUnrestored={['Ozone 12 Equalizer']} />
     </RuntimeStatsContext.Provider>);
     const row = screen.getAllByRole('listitem')[2];
     expect(row).toHaveTextContent('読み込めていないVST：Ozone 12 Equalizer');
     expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
+});
+
+it.each(['ja', 'en'] as const)('VSTが空の状態は、配信・通話の段と音楽鑑賞の段で同じ言葉にする（%s、#767）', locale => {
+    expect(message(locale, 'flow.noVst')).toBe(message(locale, 'chain.vstEmptySub'));
 });
 
 it('低い窓向けの一文は音づくりを開く', () => {
