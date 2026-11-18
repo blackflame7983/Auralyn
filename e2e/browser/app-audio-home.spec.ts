@@ -10,7 +10,7 @@ type Purpose = 'voice' | 'music';
 const appName = 'chrome.exe';
 const source = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName, rawEndpointId: 'raw-endpoint', purpose: 'voice' } };
 
-async function openHome(page: Page, size: { width: number; height: number }, locale: Locale, purpose: Purpose, state: 'app' | 'unset' | 'device-saved' = 'app') {
+async function openHome(page: Page, size: { width: number; height: number }, locale: Locale, purpose: Purpose, state: 'app' | 'unset' | 'device-saved' | 'device' = 'app') {
     await page.setViewportSize(size);
     await page.addInitScript(({ l, p, s, mode }) => {
         localStorage.setItem('vst_host_locale', l);
@@ -20,7 +20,7 @@ async function openHome(page: Page, size: { width: number; height: number }, loc
         localStorage.setItem('auralyn_display_purpose', p);
         const saved = mode === 'app'
             ? { host: 'WASAPI', output: 'スピーカー', outputId: 'headphones', sampleRate: 48000, bufferSize: 512, inputSource: { ...s, config: { ...s.config, purpose: p } } }
-            : mode === 'device-saved'
+            : mode === 'device-saved' || mode === 'device'
                 ? { host: 'WASAPI', input: 'CABLE Output', inputId: 'mic', output: 'スピーカー', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }
                 : { host: 'WASAPI', input: '', output: 'スピーカー', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 };
         localStorage.setItem('vst_host_audio_config', JSON.stringify(saved));
@@ -29,8 +29,8 @@ async function openHome(page: Page, size: { width: number; height: number }, loc
         const original = internals.invoke;
         // 実エンジンは、アプリの音声のとき input を None で返し、入力元だけを返す。
         internals.invoke = async (command, args) => {
-            if (command === 'get_audio_state') return { is_running: true, config: { host: 'WASAPI', input: null, output: 'スピーカー', output_id: 'headphones',
-                sample_rate: 48000, buffer_size: 512, ...(mode !== 'unset' ? { input_source: { ...s, config: { ...s.config, purpose: p } } } : {}) } };
+            if (command === 'get_audio_state') return { is_running: true, config: { host: 'WASAPI', input: mode === 'device' ? 'CABLE Output' : null, output: 'スピーカー', output_id: 'headphones',
+                sample_rate: 48000, buffer_size: 512, ...(mode !== 'unset' && mode !== 'device' ? { input_source: { ...s, config: { ...s.config, purpose: p } } } : {}) } };
             return original(command, args);
         };
     }, { l: locale, p: purpose, s: source, mode: state });
@@ -43,6 +43,20 @@ async function openHome(page: Page, size: { width: number; height: number }, loc
 const region = (page: Page, locale: Locale, key: 'home.now' | 'prep.title') => page.getByRole('region', { name: message(locale, key), exact: true });
 // 未設定の画面の「音の流れ」は、広い窓の接続の確認の図と同じ名前なので、クラスで見分ける。
 const unsetFlow = (page: Page) => page.locator('.unset-flow');
+
+// 入力の見出し・いまの状態のラベル・音量の名前。マイクでないもの（アプリの音声）を「マイク」と呼ばない。音楽鑑賞は「再生元」のまま。
+async function expectInputLabels(page: Page, locale: Locale, purpose: Purpose, fromApp: boolean) {
+    const heading = message(locale, purpose === 'music' ? 'music.source' : fromApp ? 'home.input' : 'unsetFlow.mic');
+    const gain = message(locale, purpose === 'music' || fromApp ? 'home.inputGain' : 'header.inputGain');
+    const column = page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true });
+    await expect(column.getByRole('heading', { level: 3, name: heading, exact: true })).toBeVisible();
+    await expect(column.getByRole('slider', { name: new RegExp(`^${gain} `) }).first()).toBeVisible();
+    await expect(region(page, locale, 'home.now').getByText(heading, { exact: true })).toBeVisible();
+    if (purpose === 'voice' && fromApp) {
+        await expect(column).not.toContainText(message(locale, 'unsetFlow.mic'));
+        await expect(region(page, locale, 'home.now')).not.toContainText(message(locale, 'unsetFlow.mic'));
+    }
+}
 
 for (const locale of ['ja', 'en'] as const) for (const purpose of ['voice', 'music'] as const) {
     test.describe(`アプリの音声で実行中のホーム（${locale}、${purpose}）`, () => {
@@ -69,6 +83,7 @@ for (const locale of ['ja', 'en'] as const) for (const purpose of ['voice', 'mus
                 await expect(connection.getByRole('button', { name: message(locale, 'header.noSound') })).toBeVisible();
                 const column = page.getByRole('complementary', { name: message(locale, 'shell.safetyColumn'), exact: true });
                 await expect(column).toContainText(appName);
+                await expectInputLabels(page, locale, purpose, true);
                 await page.screenshot({ path: info.outputPath(`app-audio-${purpose}-${locale}-${size.width}x${size.height}.png`), fullPage: false });
             });
         }
@@ -113,3 +128,15 @@ test.describe('保存した設定と実行中の入力が違うとき', () => {
         });
     }
 });
+
+for (const locale of ['ja', 'en'] as const) {
+    test.describe(`機器入力で実行中の配信のホーム（${locale}）`, () => {
+        test.use({ liveHome: true, builtinEnabled: true });
+
+        test('これまでどおり「マイク」と呼び、マイク音量を出す', async ({ page }) => {
+            await openHome(page, { width: 1024, height: 768 }, locale, 'voice', 'device');
+            await expect(unsetFlow(page)).toHaveCount(0);
+            await expectInputLabels(page, locale, 'voice', false);
+        });
+    });
+}

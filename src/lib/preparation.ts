@@ -71,7 +71,7 @@ export function buildPreparationObservation(state: AudioStateInfo, stats: Engine
     const unavailable = (availability: Availability) => ({ ...emptyObservation(availability), ...base });
     if (!state.config?.host || !engineInputName(state.config) || !state.config.output) return unavailable('unconfigured');
     if (!state.is_running) return unavailable('stopped');
-    if (live.error || live.sink?.failed || live.monitor?.broadcastFailed || stats.queueDiagnostics?.state === 'failed') return unavailable('failed');
+    if (live.error || live.sink?.failed || live.monitor?.broadcastFailed || stats.queueDiagnostics?.state === 'failed' || stats.processInput?.failed) return unavailable('failed');
     const p = stats.preparation;
     if (!validPreparationSnapshot(p) || !stats.latencyMetadata?.streamEpoch || stats.latencyMetadata.streamRunning !== true || !live.config) return unavailable('unknown');
     if ((live.config.splitProcessing && !live.config.deviceId) || (live.config.deviceId && live.sink?.active !== true)) return unavailable('failed');

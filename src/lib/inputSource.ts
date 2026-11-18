@@ -19,6 +19,11 @@ export function engineInputName(config: { input?: string | null; input_source?: 
     return config?.input || undefined;
 }
 
+/** 入力がアプリの音声か。実行中の設定を優先し、取れないときだけ保存した設定を使う。 */
+export function isAppAudioInput(config: { input_source?: InputSource } | null | undefined, savedFromApp: boolean): boolean {
+    return config ? config.input_source?.kind === 'process_loopback' : savedFromApp;
+}
+
 export function withInputPurpose(source: InputSource, purpose: InputPurpose): InputSource {
     return source.kind === 'process_loopback'
         ? { kind: 'process_loopback', config: { ...source.config, purpose } }

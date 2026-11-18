@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { deviceInput, engineInputName, usesAppAudio, type InputSource } from '../inputSource';
+import { deviceInput, engineInputName, isAppAudioInput, usesAppAudio, type InputSource } from '../inputSource';
 
 const app: InputSource = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Game', rawEndpointId: 'endpoint', purpose: 'voice' } };
 
@@ -12,6 +12,15 @@ it.each([
     { name: '両方ともアプリの音声', saved: app, engine: app, expected: true },
 ])('どちらかがアプリの音声なら、アプリの音声を入力にしていると見なす：$name', ({ saved, engine, expected }) => {
     expect(usesAppAudio(saved, engine)).toBe(expected);
+});
+
+it.each([
+    { name: '実行中がアプリの音声なら、保存が機器入力でもアプリの音声', config: { input_source: app }, saved: false, expected: true },
+    { name: '実行中が機器入力なら、保存がアプリの音声でも機器入力', config: { input_source: deviceInput() }, saved: true, expected: false },
+    { name: '実行中の設定が取れないときだけ、保存した設定を使う', config: null, saved: true, expected: true },
+    { name: '実行中の設定が取れず、保存も機器入力なら機器入力', config: undefined, saved: false, expected: false },
+])('入力がアプリの音声かは、実行中を優先して決める：$name', ({ config, saved, expected }) => {
+    expect(isAppAudioInput(config, saved)).toBe(expected);
 });
 
 it.each([

@@ -157,3 +157,9 @@ it('music は準備用途では listening として扱い、場所更新で元�
     savePreparationContext({ ...music, location: 'venue' });
     expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
 });
+it.each([true, false])('アプリの音声の取得が止まった状態（failed=%s）は、failed のときだけ ready にしない', failed => {
+    const stats = runtime();
+    stats.processInput = { capturedFrames: 10, nonzeroFrames: 10, failed, waitingForAudio: false, inputRateHz: 48000, correctionLimitPpm: 0 };
+    const observation = buildPreparationObservation({ ...audioState, config: { host: 'WASAPI', input: null, output: 'CABLE Input', sample_rate: 48000, buffer_size: 256, input_source: appAudio() } }, stats, liveStatus, context);
+    expect(observation.availability).toBe(failed ? 'failed' : 'ready');
+});

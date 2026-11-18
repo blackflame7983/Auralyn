@@ -29,7 +29,7 @@ import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
 import { formatAudioRoute, usageDestination } from '@/lib/audioRouteLine';
-import { engineInputName } from '@/lib/inputSource';
+import { engineInputName, isAppAudioInput } from '@/lib/inputSource';
 import { MusicListeningCheck } from '../features/Home/MusicListeningCheck';
 import { MusicHomeDesk } from '../features/Home/MusicHomeDesk';
 import { EmergencyMuteButton } from './EmergencyMuteButton';
@@ -192,6 +192,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     // 実行中の入力を優先する。アプリの音声は機器名を持たないので、アプリ名を入力の名前にする（#756）。
     const inputName = engineInputName(preparation.observation.config) ?? currentInput;
+    const appAudioInput = isAppAudioInput(preparation.observation.config, currentInputFromApp);
     const chrome = deriveHomeChrome({ configured });
     // 音楽鑑賞の「音が届いているか確かめる」欄は、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
@@ -354,7 +355,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <MuteAnnouncement text={muteAnnouncement} />
                     <EmergencyMuteButton onOpenSettings={onOpenSettings} />
                     <MasterBar
-                        input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={inputName} />}
+                        input={<SafetyInput running={isEngineRunning} music={purpose === 'music'} name={inputName} fromApp={appAudioInput} />}
                         lock={liveProtect}
                         outputName={currentOutput}
                         outputMuted={preparation.observation.availability === 'muted'}
