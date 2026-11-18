@@ -10,7 +10,7 @@ import type { ProcessInputCandidate } from '@/lib/inputSource';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/components/ui/button';
-import { GainControl, MixingError, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { GainControl, MixingError, framesToMs, mixingCard, mixingRowSummary, useQueuedChange, useRevisionedResource } from './mixingUi';
 import { useCancelWhenStale, useReadWhenOpened, useReportBusy } from './useMixingPanelEffects';
 import { currentOffsetContext, mixingConfigurationValue, offsetContextChanges, offsetStatus, type OffsetContextField } from '@/lib/offsetContext';
 
@@ -151,7 +151,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const preparationStep = (step: (typeof preparationSteps)[number]) =>
         <Button variant="outline" size="sm" onClick={() => onNavigate?.(step.target)}>{t(step.action)}</Button>;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary tabIndex={0} className="home-card-name cursor-pointer">{t('mixing.title')}</summary>
+        <summary tabIndex={0} className={mixingRowSummary}>{t('mixing.title')}</summary>
         {!preparationOnly && <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>}
         {snapshot && <div className="space-y-4 text-ui-support">
             {stale && !preparationOnly && <p role="alert">{notice('mixing.stale')}</p>}
