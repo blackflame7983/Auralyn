@@ -274,7 +274,7 @@ function collectScreenAudit(args: AuditArgs, visibility: PageVisibility): AuditH
             continue;
         }
         // 名前の行に操作が付くと中身ありになる。状態の行が無い音調整のカードだけを見る。
-        // 実行中は隣のカードに合わせて伸びるので、短い外部VSTを空の枠にしない（#673）。
+        // VST が0件の外部VSTは、実行中も中身の高さにする（#673、#769）。中身の下に半分以上の空きが残れば空の枠とする。
         if (!element.classList.contains('sound-module-card') || element.querySelector('.sound-card-status')) continue;
         const band = contentBand(element);
         if (!band || band.bottom - band.top > 96) continue;
