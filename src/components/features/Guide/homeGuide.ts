@@ -43,7 +43,7 @@ export function homeGuideLabels(locale: Locale) {
         musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
         musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),
-        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'),
+        input: t('unsetFlow.mic'), output: t('meter.output'), source: t('music.source'), sourceGain: t('home.inputGain'),
         usage: t('purpose.section'),
         startAudio: t('home.startAudio'), running: t('device.engine'), ownVoice: t('prep.local'),
         trouble: t('help.section.trouble'), receiver: t('help.trouble.receiver'), silent: t('help.trouble.silent'),

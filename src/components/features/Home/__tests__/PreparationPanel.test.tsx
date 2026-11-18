@@ -429,3 +429,14 @@ it('本番帯にミュート警告がある間は音声チェックの状態を�
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
     expect(screen.getByRole('button', { name: message('ja', 'prep.checkOutput') })).toBeVisible();
 });
+
+it.each(['ja', 'en'] as const)('音楽鑑賞の接続の確認のボタンは、上の帯と同じ名前で同じ欄を開く（%s、#767）', locale => {
+    saveDisplayPurpose('music');
+    try {
+        const props = callbacks();
+        render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PreparationPanel model={fixture()} {...props} /></LocaleProvider>);
+        if (screen.getByRole('button', { name: message(locale, 'prep.steps') }).getAttribute('aria-expanded') !== 'true') expand(locale);
+        fireEvent.click(screen.getByRole('button', { name: message(locale, 'music.listenTitle') }));
+        expect(props.onListen).toHaveBeenCalledOnce();
+    } finally { saveDisplayPurpose('voice'); }
+});

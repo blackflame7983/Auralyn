@@ -3382,14 +3382,6 @@
     {
       "file": "src/components/features/Home/__tests__/SoundChain.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "18775d6b30413cbfc8d7aa797055605f9ee1174289383535f7dcb2603bbbcf55",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "src/components/features/Home/__tests__/SoundChain.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "39792ef48bc1208739c03c074ad786b0a95faee075dbf99a3095866a42935364",
       "count": 1,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
@@ -3415,14 +3407,6 @@
       "file": "src/components/features/Home/__tests__/SoundChain.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "acc42a18ed054ac14ef937f0da23dcc6ea7a5b66490ce95c1751ef4292f2d61b",
-      "count": 2,
-      "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
-      "sourceCommit": "9b819340"
-    },
-    {
-      "file": "src/components/features/Home/__tests__/SoundChain.test.tsx",
-      "rule": "@typescript-eslint/no-non-null-assertion",
-      "hash": "b7440bdc485378a5f32ee131bc1b64568ca622f4c8db86dcac1cc0a1140b93f9",
       "count": 2,
       "reason": "初回導入対象をorigin/mainへ分離。main既存の未変更宣言を隔離し、今後の宣言編集時に解消する。",
       "sourceCommit": "9b819340"
