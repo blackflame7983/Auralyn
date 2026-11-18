@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
+import { setOutputMuted } from './e2eHooks';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -14,10 +15,10 @@ for (const theme of ['dark', 'light', 'gaming']) {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
         }, theme);
         await page.goto('/');
-        await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+        await setOutputMuted(page, false);
         const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
         await expect(prep.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
-        expect((await prep.boundingBox())!.height).toBeLessThan(55);
+        expect((await prep.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(55);
         await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: message('ja', 'header.setupOpen'), exact: true })).toHaveCount(0);
         for (const key of ['header.emergency', 'liveBar.actions'] as const) {
@@ -28,12 +29,19 @@ for (const theme of ['dark', 'light', 'gaming']) {
             await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
         }
         await expect(page.getByRole('button', { name: message('ja', 'home.voiceCheck'), exact: true })).toBeInViewport();
-        await page.evaluate(() => { const emit = () => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.15], output: [0.15, 0.1] }); emit(); window.setInterval(emit, 100); });
+        await page.evaluate(() => {
+            const emit = window.__e2eEmit;
+            if (!emit) throw new Error('__e2eEmit がありません');
+            const send = () => emit('audio-level', { input: [0.2, 0.15], output: [0.15, 0.1] });
+            send();
+            window.setInterval(send, 100);
+        });
         await expect(page.getByRole('meter', { name: message('ja', 'home.inputLevel'), exact: true })).toHaveAttribute('aria-valuenow', /.+/);
         await page.screenshot({ path: info.outputPath('home.png') });
         await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
         await expect(prep.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText('CABLE Output');
-        await expect(prep).toContainText(message('ja', 'flow.receiverUnknown'));
+        await expect(prep).toContainText(message('ja', 'flow.receiverCheckHint'));
+        await expect(prep).not.toContainText(message('ja', 'flow.receiverUnknown'));
         await page.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
         await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
         await expect(page.locator('#mixing-settings')).toHaveAttribute('open', '');

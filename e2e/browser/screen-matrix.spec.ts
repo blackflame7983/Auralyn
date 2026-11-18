@@ -28,7 +28,8 @@ interface Context {
     size: string;
 }
 
-const homeSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1024, height: 768, name: '1024x768' }, { width: 1280, height: 800, name: '1280x800' }];
+// 1440x900 は接続の列が常に開く広い窓。英語で見出しと診断の入口が重なった（#762）。
+const homeSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1024, height: 768, name: '1024x768' }, { width: 1280, height: 800, name: '1280x800' }, { width: 1440, height: 900, name: '1440x900' }];
 const pageSizes = [{ width: 900, height: 600, name: '900x600' }, { width: 1280, height: 800, name: '1280x800' }];
 const pageScreens: ScreenId[] = ['sound', 'sound-singing', 'vst', 'connect', 'appearance', 'shortcuts', 'obs', 'system', 'stream-mix'];
 

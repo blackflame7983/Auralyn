@@ -115,8 +115,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     const collapsedStatus = !open && observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted');
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'prep-panel-open rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
         {!open && !collapsedStatus && <h2 className="home-title sr-only">{t('prep.title')}</h2>}
-        <div className={open ? 'flex flex-wrap items-center justify-between gap-2' : 'home-route-row'}>
-            {(open || collapsedStatus) && <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>
+        <div className={open ? 'flex flex-wrap items-center justify-between gap-x-1 gap-y-2' : 'home-route-row'}>
+            {(open || collapsedStatus) && <div className={cn('flex items-center gap-1', open ? 'min-w-0' : 'home-route-line')}>
                 <h2 className={cn("home-title shrink-0", !open && "sr-only")}>{t('prep.title')}</h2>
                 {open && <InfoPopover docName="home.audio-check" label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
@@ -130,11 +130,11 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                 {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
                 {/* 受け側の入力名はホームに出さない。診断で受け側の確認リストが出たときに聞く（#725）。 */}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
-                <span role="status" className="text-ui-support text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
-                <Button variant="outline" size="sm" ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => { if (!pinnedOpen) setUserOpen(!open); }}
+                <span role="status" className="text-ui-support text-muted-foreground empty:-ml-2">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
+                {!pinnedOpen && <Button variant="outline" size="sm" ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
                     className="gap-1">
                     {t('prep.steps')}<MdExpandMore aria-hidden="true" className={`h-4 w-4 ${open ? 'rotate-180' : ''}`} />
-                </Button>
+                </Button>}
             </div>
         </div>
         {open && !music && context.location === 'venue' && <p className="text-ui-support text-warning">{t('prep.venueWarning')}</p>}
@@ -144,8 +144,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         {signalSummary}
         {/* 中断したセットアップの再開先として案内しているので（wizard.interruptHint、#420）、開いた接続の確認には状態に関係なく置く。 */}
         {onSetup && <Button variant="outline" size="sm" type="button" onClick={onSetup}>{t('header.setupOpen')}</Button>}
-        {!music && next !== 'done' && next !== 'purpose' && <Button variant={homeActionInStrip ? "outline" : "default"} size="sm" ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
-            className="h-auto whitespace-normal">{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</Button>}
+        {!music && next !== 'done' && next !== 'purpose' && <Button variant={homeActionInStrip || mutedOutput ? "outline" : "default"} size="sm" ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
+            className={cn('h-auto whitespace-normal', mutedOutput && 'border-warning bg-warning/10')}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</Button>}
         </div>
         {music ? <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={onListen}>{t('wizard.musicListen')}</Button> : <>
         <div className="space-y-1 text-ui-support"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
