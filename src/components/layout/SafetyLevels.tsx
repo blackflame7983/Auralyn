@@ -50,9 +50,9 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
             ミュートでないときは札の行を残さない（#580）。狭い列では札を折り返し、文字は省略しない。 */}
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="shrink-0 text-ui-control font-medium">{t('meter.output')}</h3>
-            {muted ? <span role="status" className="ml-auto inline-flex min-w-0 max-w-full items-center">
+            {muted ? <span className="ml-auto inline-flex min-w-0 max-w-full items-center">
                 <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)}
-                    title={t('prep.checkOutput')} className="inline-flex max-w-full items-start gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-left text-ui-support font-bold text-warning">
+                    title={t('prep.muteRelease')} className="inline-flex max-w-full items-start gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-left text-ui-support font-bold text-warning">
                     <MdVolumeOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /><span className="[overflow-wrap:anywhere]">{t('prep.muted')}</span>
                 </button>
             </span> : verdictText && <span className="inline-flex h-5 min-w-0 flex-1 items-center justify-end">
@@ -64,9 +64,10 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
         </div>
         <DeviceName name={name} />
         {/* 停止中のピークは数字にせず、横線だけにする。停止であることは読み上げに残す（#602）。大きさのバーはいまの状態に1本（#724）。 */}
-        <p className="text-right font-mono text-ui-support tabular-nums text-muted-foreground">
+        <p className="flex items-baseline justify-end gap-1.5 whitespace-nowrap text-ui-support text-muted-foreground">
+            <span aria-hidden="true">{t('home.peakLabel')}</span>
             <span className="sr-only">{t(reading.state === 'stopped' ? 'home.outputPeakStopped' : 'home.outputPeak')}{' '}</span>
-            {reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}
+            <span className="font-mono tabular-nums">{reading.state === 'stopped' ? '—' : `${formatPeakDbfs(peakHold)} dBFS`}</span>
         </p>
     </div>;
 }

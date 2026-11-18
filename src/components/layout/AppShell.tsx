@@ -335,7 +335,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                             host={currentHost} sampleRate={currentSampleRate}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
-                            onCheckOutput={focusOutputControl}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
                             onSetup={onOpenWizard}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}

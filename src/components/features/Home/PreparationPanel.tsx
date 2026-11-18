@@ -8,7 +8,7 @@ import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { afterFrame } from '@/hooks/internal/afterFrame';
 import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
-import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { useSustained } from '@/hooks/useSustained';
 import { useInputMeterState } from '../LevelMeter/MeterContext';
 import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
@@ -30,7 +30,6 @@ interface Props {
     /** いまの状態の札と同じ文言のとき、ここの状態文は出さない。 */
     statusCovered?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
-    onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
     /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
@@ -41,7 +40,7 @@ interface Props {
     pinnedOpen?: boolean;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
-// ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
+// ミュート・音量ゼロは配信事故なので、種類としては残す。解除の入口は右の列の札で、ここは自動で開かない（#766）。
 // 反映待ち（pending）は取り直しの途中なので undefined を返し、直前の判定を使い続ける。
 const attentionKey = (model: PreparationModel, music: boolean, stoppedInStrip: boolean) => {
     const { availability } = model.observation;
@@ -56,7 +55,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, onSetup, onExpandedChange, pinnedOpen = false }: Props) {
+export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, statusCovered = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady, signalSummary, statusText, onSetup, onExpandedChange, pinnedOpen = false }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -79,15 +78,15 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         setManualChecking(true);
         try { await model.refresh(); } finally { setManualChecking(false); }
     };
-    // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
+    // ミュートは右の列の札から直接直せる。毎回チェックリストを押し広げない。
     const open = pinnedOpen || (userOpen ?? (problem !== null && observation.availability !== 'muted'));
     const usageRef = useRef<HTMLDivElement>(null);
     const showChecking = usePreparationPanelSync({ manualChecking, problem, open, onExpandedChange, destinationRequest, usageRef, setUserOpen });
     const next = nextPreparationStage(observation, records, context);
+    // ミュート・音量ゼロの解除の入口は右の列の札だけ。ここに主ボタンを出すと、機器の再設定へ誤って導く（#766）。
+    const muted = observation.availability === 'muted';
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
-    const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
-    const action = (event: MouseEvent<HTMLButtonElement>) => {
-        if (mutedOutput && onCheckOutput) { onCheckOutput(event.currentTarget); return; }
+    const action = () => {
         if (next === 'connect') {
             if (observation.availability === 'unknown' || observation.availability === 'pending') { void refreshManually(); return; }
             onSettings();
@@ -97,7 +96,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         if (next === 'listen') { onListen(); return; }
         receiver();
     };
-    const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
+    const actionLabel: MessageKey = next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'music.listenTitle' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
@@ -144,8 +143,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         {signalSummary}
         {/* 中断したセットアップの再開先として案内しているので（wizard.interruptHint、#420）、開いた接続の確認には状態に関係なく置く。 */}
         {onSetup && <Button variant="outline" size="sm" type="button" onClick={onSetup}>{t('header.setupOpen')}</Button>}
-        {!music && next !== 'done' && next !== 'purpose' && <Button variant={homeActionInStrip || mutedOutput ? "outline" : "default"} size="sm" ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
-            className={cn('h-auto whitespace-normal', mutedOutput && 'border-warning bg-warning/10')}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</Button>}
+        {!music && next !== 'done' && next !== 'purpose' && !muted && <Button variant={homeActionInStrip ? "outline" : "default"} size="sm" ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
+            className="h-auto whitespace-normal">{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</Button>}
         </div>
         {music ? <Button variant="outline" size="sm" type="button" disabled={!audioReady} onClick={onListen}>{t('music.listenTitle')}</Button> : <>
         <div className="space-y-1 text-ui-support"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>

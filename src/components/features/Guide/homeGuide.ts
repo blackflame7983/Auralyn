@@ -7,7 +7,7 @@ export const homeGuideGroups = ['stage', 'meters', 'sound', 'check', 'footer'] a
 export type HomeGuideGroup = typeof homeGuideGroups[number];
 
 const voicePoints = {
-    stage: ['help.home.stage.1', 'help.home.stage.3', 'help.home.stage.modes', 'help.home.stage.4', 'help.home.stage.5'],
+    stage: ['help.home.stage.1', 'help.home.stage.muteCause', 'help.home.stage.3', 'help.home.stage.modes', 'help.home.stage.4', 'help.home.stage.5'],
     meters: ['help.home.meters.1', 'help.home.meters.2', 'help.home.meters.3', 'help.home.meters.4', 'help.home.meters.5'],
     sound: ['help.home.sound.1', 'help.home.sound.2', 'settings.offUntilOn', 'help.home.sound.4', 'help.home.sound.5', 'help.home.sound.6', 'help.home.sound.7', 'help.home.sound.8', 'help.home.sound.9'],
     check: ['help.home.check.1', 'help.home.check.2', 'help.home.check.3', 'help.home.check.4'],
@@ -15,7 +15,7 @@ const voicePoints = {
 } as const satisfies Record<HomeGuideGroup, readonly MessageKey[]>;
 
 const musicPoints = {
-    stage: ['help.home.stage.2', 'help.home.stage.3', 'help.home.stage.lockMusic', 'help.home.stage.flowMusic', 'help.home.stage.6', 'help.home.stage.7'],
+    stage: ['help.home.stage.2', 'help.home.stage.muteMusic', 'help.home.stage.3', 'help.home.stage.lockMusic', 'help.home.stage.flowMusic', 'help.home.stage.6', 'help.home.stage.7'],
     meters: ['help.home.meters.music', 'help.home.meters.listen', 'help.home.meters.3', 'help.home.meters.incomingMusic'],
     sound: ['help.home.sound.5', 'help.home.sound.7', 'help.home.sound.8', 'help.home.sound.9'],
     check: ['help.home.check.music', 'help.home.check.2'],
@@ -40,6 +40,7 @@ export function homeGuideLabels(locale: Locale) {
         wizardUsage: t('wizard.usage'), wizardInput: t('wizard.input'), wizardOutput: t('wizard.output'), wizardCheck: t('wizard.check'), wizardSource: t('wizard.sourcePc'),
         choose: t('home.chooseDestination'), singing: t('liveBar.singing'), talk: t('liveBar.talk'), lock: t('liveBar.protect'), current: t('liveBar.custom'),
         mode: t('home.modeMark'), currentVoice: t('home.currentVoice'), send: t('home.sendLevel'), listen: t('home.listenLevel'),
+        notSending: t('home.notSending'), notPlaying: t('home.notPlaying'), muteCause: t('prep.muted'), peakLabel: t('home.peakLabel'),
         musicPlayback: t('music.playback'), musicPreset: t('music.presetLabel'), musicCompare: t('header.compare'),
         musicHeading: t('home.musicHeading'), startListening: t('home.startListening'),
         musicSound: t('wizard.musicSound'), flow: t('home.flowMusic'),

@@ -172,6 +172,7 @@ it.each(['ja', 'en'] as const)('配信ではモードの名前と声の状態と
     expect(now.querySelector('[data-now-incoming]')).toHaveTextContent(message(locale, 'meter.state.silent'));
     expect(now.querySelector('[data-now-mute]')).toBeNull();
     expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
+    expect(now).not.toHaveTextContent(/音を送っていません|Not sending sound/);
 });
 
 it.each(['ja', 'en'] as const)('歌・雑談を登録していないときは、モードの札といまの調整を出さず、見出しをいまの声にする (%s)', locale => {
@@ -237,12 +238,23 @@ it.each(['ja', 'en'] as const)('小さめと大きすぎは、いまの状態に
     expect(high).toHaveClass('text-warning');
 });
 
-it('出力がミュートか音量ゼロのときは、その状態をカードに出す', () => {
+// いまの状態は「何が起きているか」だけを言う。原因と解除の入口「出力ミュート・音量ゼロ」は右の列に1回だけ置く（#766）。
+const mutedCases = [
+    { purpose: 'voice', locale: 'ja', text: '音を送っていません' },
+    { purpose: 'voice', locale: 'en', text: 'Not sending sound' },
+    { purpose: 'music', locale: 'ja', text: '音を出していません' },
+    { purpose: 'music', locale: 'en', text: 'Not playing sound' },
+] as const;
+it.each(mutedCases)('ミュートか音量ゼロのときは、いまの状態に事実だけを出す（$purpose、$locale、#766）', ({ purpose, locale, text }) => {
+    if (purpose === 'music') localStorage.setItem('auralyn_display_purpose', 'music');
     const model = fixture();
     model.observation = { ...model.observation, availability: 'muted' };
-    render(<LiveStrip model={model} running />);
-    expect(screen.getByRole('region', { name: 'いまの状態' }).querySelector('[data-now-mute]')).toHaveAttribute('data-now-mute', 'muted');
-    expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'prep.muted'));
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={model} running /></LocaleProvider>);
+    const now = screen.getByRole('region', { name: message(locale, 'home.now') });
+    expect(now.querySelector('[data-now-mute]')).toHaveAttribute('data-now-mute', 'muted');
+    expect(screen.getByRole('status')).toHaveTextContent(text);
+    expect(now).not.toHaveTextContent(message(locale, 'prep.muted'));
+    expect(now).not.toHaveTextContent((locale === 'ja' ? 'ミュート・出力音量を確認' : 'Check mute and output level'));
 });
 
 // 音が届かないときの再生元の案内（#718）。アプリの音声か判定できない間は、出し過ぎないよう出さない。

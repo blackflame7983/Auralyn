@@ -110,15 +110,18 @@ test('1440×900の英語でも、接続の確認の見出しと診断の入口�
     await expect(prep.getByRole('button', { name: 'Connection details', exact: true })).toHaveCount(0);
 });
 
-test('広い窓のミュートの主ボタンは塗りにせず、注意の枠で示す（#762）', async ({ page }) => {
+test('広い窓のミュート中、接続の確認は主ボタンも確認ボタンも出さない（#762、#766）', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await expect(page.locator('.home-content')).toBeVisible();
     await setOutputMuted(page, true);
-    const button = page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('button', { name: 'ミュート・出力音量を確認', exact: true });
-    await expect(button).toBeVisible();
-    await expect(button).toHaveClass(/border-warning/);
-    await expect(button).not.toHaveClass(/bg-primary/);
+    const column = page.getByRole('complementary', { name: '本番中の操作', exact: true });
+    await expect(column.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toBeVisible();
+    const check = page.getByRole('region', { name: '接続の確認', exact: true });
+    await expect(check.getByRole('button', { name: 'ミュート・出力音量を確認', exact: true })).toHaveCount(0);
+    await expect(check.getByRole('button', { name: 'マイクと出力先を設定する', exact: true })).toHaveCount(0);
+    await expect(check.locator('button.bg-primary')).toHaveCount(0);
+    await expect(check.getByRole('button', { name: '入出力を変更', exact: true })).toBeVisible();
 });
 
 test('広い窓の受け側は、未確認の間は注意色にせず、中立の案内を出す（#762）', async ({ page }) => {

@@ -55,28 +55,22 @@ it('本番帯からの送り先要求で、閉じた手順を開きラジオへ�
     expect(screen.queryByRole('button', { name: message('ja', 'prep.refresh') })).not.toBeInTheDocument();
 });
 
-it('ミュート・音量ゼロでは機器の再設定ではなく本番操作の確認へ案内する', () => {
+// ミュートの解除の入口は右の列の札だけにする。ここに主ボタンを出すと、機器の再設定など誤った操作へ導く（#766）。
+it.each(['ja', 'en'] as const)('ミュート・音量ゼロでは、接続の確認に主ボタンも「ミュート・出力音量を確認」も出さない（%s、#766）', locale => {
     const model = fixture(); model.observation.availability = 'muted';
-    const props = callbacks(); const checkOutput = vi.fn();
-    render(<PreparationPanel model={model} {...props} onCheckOutput={checkOutput} />);
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
-    fireEvent.click(screen.getByRole('button', { name: 'ミュート・出力音量を確認' }));
-    expect(checkOutput).toHaveBeenCalledOnce();
+    const props = callbacks();
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PreparationPanel model={model} {...props} /></LocaleProvider>);
+    expand(locale);
+    expect(screen.queryByRole('button', { name: (locale === 'ja' ? 'ミュート・出力音量を確認' : 'Check mute and output level') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message(locale, 'shell.configure') })).not.toBeInTheDocument();
+    expect(document.querySelector('button.bg-primary')).toBeNull();
     expect(props.onSettings).not.toHaveBeenCalled();
     expect(model.confirm).not.toHaveBeenCalled();
 });
 
-it('ミュートの主ボタンは塗りにせず、注意の枠で示す（#762）', () => {
-    const model = fixture(); model.observation.availability = 'muted';
-    render(<PreparationPanel model={model} {...callbacks()} onCheckOutput={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
-    const button = screen.getByRole('button', { name: message('ja', 'prep.checkOutput') });
-    expect(button).not.toHaveClass('bg-primary');
-    expect(button).toHaveClass('border-warning');
-});
 it('ミュートでないときの主ボタンは塗りのままにする（#762）', () => {
     const model = fixture();
-    render(<PreparationPanel model={model} {...callbacks()} onCheckOutput={vi.fn()} />);
+    render(<PreparationPanel model={model} {...callbacks()} />);
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
     const button = screen.getByRole('button', { name: message('ja', 'shell.sound') });
     expect(button).toHaveClass('bg-primary');
@@ -231,7 +225,9 @@ it('ミュート・音量ゼロでは手順を自動展開せず、手動で確�
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: message('ja', 'shell.configure') })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('radiogroup')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message('ja', 'shell.configure') })).not.toBeInTheDocument();
 });
 it('起動時の状態不明から正常になったら、操作していなければ畳む', () => {
     const model = fixture(); model.observation = { ...model.observation, availability: 'unknown' };
@@ -421,13 +417,13 @@ it.each(['ready', 'pending', 'muted', 'failed'] as const)('開いた音声チェ
     expect(onSetup).toHaveBeenCalledOnce();
 });
 
-it('本番帯にミュート警告がある間は音声チェックの状態を重ねず、確認操作を残す', () => {
+it('本番帯にミュートの状態がある間は、音声チェックに同じ状態を重ねない', () => {
     const model = fixture(); model.observation.availability = 'muted';
     const props = callbacks();
-    render(<PreparationPanel model={model} {...props} mutedInStrip onCheckOutput={vi.fn()} />);
+    render(<PreparationPanel model={model} {...props} mutedInStrip />);
     expect(screen.queryByText(message('ja', 'prep.muted'))).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
-    expect(screen.getByRole('button', { name: message('ja', 'prep.checkOutput') })).toBeVisible();
+    expect(screen.queryByText(message('ja', 'prep.muted'))).toBeNull();
 });
 
 it.each(['ja', 'en'] as const)('音楽鑑賞の接続の確認のボタンは、上の帯と同じ名前で同じ欄を開く（%s、#767）', locale => {
