@@ -64,10 +64,10 @@ describe('自動ゲインの操作', () => {
         expect(gainCommand).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
         expect(confirmOutputGain).not.toHaveBeenCalled();
     });
-    it('提案の準備完了後は、変更できない目標選択ではなく適用・聞き比べを案内する', async () => {
+    it('提案の準備完了後は、変更できない目標選択ではなく適用・聴き比べを案内する', async () => {
         render(<AutoGainDialog onClose={() => {}} />);
         const apply = await screen.findByRole('button', { name: 'この音量を使う' });
-        expect(screen.getByRole('status')).toHaveTextContent('提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聞き比べてください');
+        expect(screen.getByRole('status')).toHaveTextContent('提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聴き比べてください');
         expect(screen.getByRole('status')).not.toHaveTextContent('目標を選び、録音してください');
         expect(screen.getByLabelText('声用の目標（仮の目安）')).toBeDisabled();
         expect(apply).toBeEnabled();
@@ -119,7 +119,7 @@ describe('自動ゲインの操作', () => {
         expect(play).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
         await screen.findByRole('option', { name: 'ヘッドホン' });
-        fireEvent.change(screen.getByLabelText('聞き比べの試聴先'), {
+        fireEvent.change(screen.getByLabelText('聴き比べの試聴先'), {
             target: { value: 'headphones' },
         });
         expect(play).toBeDisabled();
@@ -164,7 +164,7 @@ it('言語だけ切り替えても試聴先・安全確認・提案・dialogを�
     await screen.findByRole('button', { name: '調整後を聴く' });
     fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
     await screen.findByRole('option', { name: 'ヘッドホン' });
-    const output = screen.getByLabelText('聞き比べの試聴先');
+    const output = screen.getByLabelText('聴き比べの試聴先');
     fireEvent.change(output, { target: { value: 'headphones' } });
     const safety = screen.getByRole('checkbox');
     fireEvent.click(safety);

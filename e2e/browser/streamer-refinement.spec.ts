@@ -155,7 +155,7 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     const settings = page.locator('[data-settings-page]');
     await expect(settings).toBeVisible({ timeout: 15_000 });
     const modes = settings.locator('#live-mode-settings');
-    await expect(modes).toContainText('歌唱と雑談に同じ設定');
+    await expect(modes).toContainText('歌と雑談に同じ設定');
     await expect(modes).toContainText('声 ON・残響 OFF');
     await modes.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     // タブ名と同じ見出しは重ねない。着地は選択中のタブ、焦点はページの説明へ移す（#542）。

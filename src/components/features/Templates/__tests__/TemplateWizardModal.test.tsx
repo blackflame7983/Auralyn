@@ -23,9 +23,9 @@ it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイス�
         expect(card).not.toHaveTextContent('適用すると、いまのVSTの並びを置き換えます。');
         expect(card).not.toHaveTextContent('VSTは別に用意します。設定値は自動では合わせません。');
     }
-    expect(screen.getByRole('button', { name: /雑談/ })).toHaveTextContent('要るVST：ノイズゲート・コンプ・リミッター');
-    expect(screen.getByRole('button', { name: /歌枠/ })).toHaveTextContent('要るVST：EQ・コンプ・リバーブ・リミッター');
-    expect(screen.getByRole('button', { name: /ASMR/ })).toHaveTextContent('要るVST：コンプ・リミッター');
+    expect(screen.getByRole('button', { name: /雑談/ })).toHaveTextContent('必要なVST：ノイズゲート・コンプ・リミッター');
+    expect(screen.getByRole('button', { name: /歌枠/ })).toHaveTextContent('必要なVST：EQ・コンプ・リバーブ・リミッター');
+    expect(screen.getByRole('button', { name: /ASMR/ })).toHaveTextContent('必要なVST：コンプ・リミッター');
     fireEvent.click(screen.getByText('適用の前に'));
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     expect(settings).toHaveBeenCalledOnce();
