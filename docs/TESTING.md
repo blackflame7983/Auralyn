@@ -170,6 +170,7 @@ npm run capture:ux-eval
 | `setup-first` | `first-run` | セットアップ | 配信 | 未設定 | 未登録 | 日本語 | ダーク |
 | `home-voice` | `live-home` `registered=0` | ホーム | 配信 | 実行中 | 未登録（見出しは「いまの声」） | 日本語 | ダーク |
 | `home-voice-registered` | `live-home` | ホーム | 配信 | 実行中 | 登録済み（見出しは「いまの調整」） | 日本語 | ダーク |
+| `home-voice-unmuted` | `live-home` | ホーム | 配信 | 実行中 | 登録済み（出力ミュートを解除してから撮る） | 日本語 | ダーク |
 | `home-voice-builtin` | `live-home-builtin` | ホーム | 配信 | 実行中 | 登録済み（声を整える ON） | 日本語 | ダーク |
 | `home-stopped` | `stopped-home` `registered=0` | ホーム | 配信 | 停止中 | 未登録 | 日本語 | ダーク |
 | `home-voice-gaming` | `live-home` | ホーム | 配信 | 実行中 | 登録済み | 日本語 | ゲーミング |
@@ -182,6 +183,9 @@ npm run capture:ux-eval
 | `sound` | `live-home` | 音づくり | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
 | `sound-music` | `live-home` `purpose=music` | 音づくり | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
 | `audio` | `live-home` | 接続 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
+| `setup-music-input` | `first-run` | セットアップの入力の手順（音楽鑑賞を選んで進む。`wizard.musicRoute` が見える） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
+| `setup-music-output` | `first-run` | セットアップの出力の手順（同上） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
+| `audio-music` | `live-home` `purpose=music` | 接続（「仮想ケーブルを使う場合の接続」を開いて、`processInput.cableHelpMusic` が見える） | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
 | `appearance` | `live-home` | 外観 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
 | `obs` | `live-home` | OBS連携 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
 | `system` | `live-home` | システム | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
@@ -203,15 +207,19 @@ npm run capture:ux-eval
 この撮影は Tauri も音声機器も動かしません。次は模擬の都合です。アプリの不具合として数えないでください。
 
 - **ノイズ低減のモードを返さない。** `get_engine_runtime_stats` は `noiseReductionMode` を含めません。弱・強は、エンジンが返したモードとしては選ばれません。
-- **出力ミュートの初期値。** 模擬の `muted` は `true` で始まります。統計が届くと「出力ミュート・音量ゼロ」（英語は `Output muted / volume zero`）になります。撮影は統計を待ってから撮るので、この札が出ます。
+- **出力ミュートの初期値。** 模擬の `muted` は `true` で始まります。統計が届くと「出力ミュート・音量ゼロ」（英語は `Output muted / volume zero`）になります。撮影は統計を待ってから撮るので、この札が出ます。解除した状態は `home-voice-unmuted` だけです。ミュート中は、実エンジンの緊急ミュート（`audio_engine/core/startup.rs`）と同じく、出力のレベルが 0 になります。右の列の出力ピークは `−∞ dBFS` で、「送る音」（音楽鑑賞は「出力の大きさ」）のバーは動きません。入力のレベルは動き続けます。解除すると出力のレベルが戻り、出力音量を掛けた値になります（`tauriMock.ts` の `__e2eMeterLevels`）。
 - **試聴先が無い。** ボイスチェックの試聴候補（`auto_gain` の `devices`）は空です。「試聴の準備ができませんでした」は、試聴先が無い模擬の表示です。
-- **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
+- **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ入力の線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
+- **ダイアログを直接開いたときの焦点の輪。** 撮影は `?screen=` でダイアログやページを直接開きます。利用者のクリックを通らないので、ブラウザはキーボード操作の扱いにして、先頭の操作（ダイアログの×、ページの見出しなど）に `:focus-visible` の輪を出します。マウスでダイアログを開いたときは出ません。不具合として数えないでください。
+- **音楽鑑賞のセットアップの仮想ケーブルの案内は、2か所にあります。** 初回のセットアップの最初の画面「何に使いますか？」の予告は OBS・Discord の側だけです。音楽鑑賞を選んで進むと、入力の手順（2番目）と出力の手順（3番目）に、経路の文 `wizard.musicRoute`（再生アプリ → CABLE Input → CABLE Output → VST → 物理ヘッドホン）が出ます。`setup-music-input` と `setup-music-output` が、`first-run` から音楽鑑賞のカードを選んで進み、それぞれの手順で `wizard.musicRoute` が見えている状態を撮ります。接続のページの音の元には、閉じた折りたたみ「仮想ケーブルを使う場合の接続」があり、中に `processInput.cableHelpMusic`（CABLE Input と CABLE Output の設定のしかた）があります。`audio-music` が、その折りたたみを開いた状態を撮ります。
+
+評価者へ渡す依頼文と決定済みの一覧（`test-results/ux-eval/<フォルダー>/PROMPT.md` と `DECIDED.md`）は、リポジトリに正本がありません。評価のたびに、撮影フォルダーの中へ作ります。上の項目は、そこへ写してください。
 
 ### 画面の状態をまとめて開く（screen-matrix）
 
 ある状態を直したときに、別の状態や別の窓で表示が崩れても次の目視まで気づけないのを、CI で止める試験です。`e2e/browser/screen-matrix.spec.ts`。`npm run test:e2e` に含まれ、CI の Browser tests（`npx vite build` のあと `npx playwright test`）でも回ります。
 
-ホームは、実行中（`?mock=live-home`）・停止中（`?mock=stopped-home`）・未設定 × 配信・音楽鑑賞 × 900×600・1024×768・1280×800 × 日本語・英語をすべて開きます。未設定の名前はプレビューの定義に無いので、URL は `?mock=unconfigured` とし、`unconfigured-live.spec.ts` と同じくセットアップ済みで機器設定が無い保存値にします。ほかのページ（音づくり、VST、接続、設定の外観・ホットキー・OBS連携・システム、配信ミックス）は実行中だけ、使い方 × 言語 × 900×600 と 1280×800 です。開発サーバーでは `html[data-auralyn-preview]` を待ちます。CI の本番ビルドにはこの印が無いので、無いときは左のレールから同じ画面を開きます。セットアップの最初の画面は、未設定で初めて開いたときに自動で開く状態を、`/` から日英 × 3つの窓で開きます（URL に `?mock=` を付けません）。入場の動きが終わってから測ります。出力のミュートは `setOutputMuted`（`e2eHooks.ts`）で外します。測る前に `e2e/browser/helpers/waitForStableLayout.ts` で、フォントと主な区画の位置が連続3フレーム動いていないことを待ちます。
+ホームは、実行中（`?mock=live-home`）・停止中（`?mock=stopped-home`）・未設定 × 配信・音楽鑑賞 × 900×600・1024×768・1280×800・1440×900 × 日本語・英語をすべて開きます。1440×900 は接続の列が常に開く広い窓で、英語の見出しと診断の入口が重なった崩れ（#762）を止めます。配信ミックスも、900×600・1280×800 に 1440×900 を足して開きます。未設定の名前はプレビューの定義に無いので、URL は `?mock=unconfigured` とし、`unconfigured-live.spec.ts` と同じくセットアップ済みで機器設定が無い保存値にします。ほかのページ（音づくり、VST、接続、設定の外観・ホットキー・OBS連携・システム）は実行中だけ、使い方 × 言語 × 900×600 と 1280×800 です。開発サーバーでは `html[data-auralyn-preview]` を待ちます。CI の本番ビルドにはこの印が無いので、無いときは左のレールから同じ画面を開きます。セットアップの最初の画面は、未設定で初めて開いたときに自動で開く状態を、`/` から日英 × 4つの窓（ホームと同じ）で開きます（URL に `?mock=` を付けません）。入場の動きが終わってから測ります。出力のミュートは `setOutputMuted`（`e2eHooks.ts`）で外します。測る前に `e2e/browser/helpers/waitForStableLayout.ts` で、フォントと主な区画の位置が連続3フレーム動いていないことを待ちます。
 
 見えている要素だけを調べます。`aria-hidden` や `inert` の中、大きさ 0、不透明度 0、`visibility: hidden`、閉じた `details`、読み上げ専用の文は除きます。この判定は `helpers/visibility.ts` に1つだけあり、画面の検査（`screenAudit.ts`）と文字の折り返しの検査（`shortLines.ts`）が同じものを使います。折り返しの検査は、さらに親の `overflow: hidden` / `clip` で切り取られた文字を除き、診断の文字列も見えている文字だけから組みます。スクロール領域（`auto` / `scroll`）の中の文字は、スクロールで届くので数えます。ダイアログが開いている画面は、最前面のダイアログだけを調べます（`shortLineRoot`）。この判定の単体試験は `short-lines-helper.spec.ts` と `screen-audit-helper.spec.ts` です。違反は1件1行で、画面・状態・使い方・窓・言語・種類・短いセレクタ・文字の先頭を出します。
 

@@ -1,5 +1,7 @@
 import { test, expect } from './tauriFixture';
 import './tauriWindow';
+import { setOutputMuted } from './e2eHooks';
+import { message } from '../../src/i18n/messages';
 
 test.use({ liveHome: true, builtinEnabled: true, registeredModes: false });
 test.beforeEach(async ({ page }) => {
@@ -148,4 +150,27 @@ test.describe('設定済みの停止中', () => {
         await error.getByRole('button', { name: '入出力を変更', exact: true }).click();
         await expect(page.locator('[data-settings-page]')).toBeVisible();
     });
+});
+
+// 評価用の撮影と同じ模擬のレベル。実エンジンは緊急ミュート中に出力を無音で書き、出力レベルを 0 にする（audio_engine/core/startup.rs）。
+test('出力ミュート中は出力のピークと「送る音」が動かず、入力は動き、解除すると戻る', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
+    await page.goto('/');
+    await expect(page.locator('.home-content')).toBeVisible();
+    await page.evaluate(() => {
+        const emit = window.__e2eEmitLevel;
+        if (!emit) throw new Error('__e2eEmitLevel がありません');
+        window.setInterval(() => emit(0.1), 50);
+    });
+    const meters = () => page.evaluate(() => [...document.querySelectorAll('[role="meter"]')].map(meter => `${meter.getAttribute('aria-label') ?? ''}\t${meter.getAttribute('aria-valuetext') ?? ''}`));
+    const send = message('ja', 'home.sendLevel');
+    await expect.poll(meters).toContainEqual(expect.stringMatching(/^(?!送る音).*\t[-−]20\.0 dBFS/));
+    await expect(page.getByText(/−∞ dBFS/)).toBeVisible();
+    await expect(page.getByText(/−20\.0 dBFS/)).toHaveCount(0);
+    expect((await meters()).filter(text => text.startsWith(`${send}\t`) && /[-−]20\.0 dBFS/.test(text)), 'ミュート中の「送る音」').toEqual([]);
+
+    await setOutputMuted(page, false);
+    await expect(page.getByText(/−20\.0 dBFS/)).toBeVisible();
+    await expect.poll(async () => (await meters()).some(text => text.startsWith(`${send}\t`) && /[-−]20\.0 dBFS/.test(text))).toBe(true);
 });

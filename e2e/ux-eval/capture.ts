@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { realisticDeviceNames } from '../../src/dev/tauriMock';
+import { message } from '../../src/i18n/messages';
 
 // 利用者目線の評価用の画面記録。e2e/browser の外なので、通常の npm run test:e2e と CI には入らない。
 
@@ -21,6 +22,12 @@ interface Shot {
     purpose: PurposeName;
     /** 省いたときは、その mock の既定（live-home 系は登録済み、first-run は未登録）。 */
     registered?: boolean;
+    /** 省いたときは、模擬の既定（出力ミュートが ON）。false にすると、レベルを流す前に解除する。 */
+    outputMuted?: boolean;
+    /** 接続ページの「仮想ケーブルの案内」を開いて撮る。 */
+    cableHelp?: boolean;
+    /** first-run のセットアップで音楽鑑賞を選び、この手順まで進めて撮る。wizard.musicRoute の文が見えていることも確かめる。 */
+    musicWizardStep?: 'input' | 'output';
     surface: Surface;
     purposeLabel: string;
     runningLabel: string;
@@ -38,8 +45,11 @@ const music = [musicInput, musicOutput];
 
 const shots: Shot[] = [
     { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['何に使いますか？'] },
+    { name: 'setup-music-input', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'input', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
+    { name: 'setup-music-output', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'output', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
     { name: 'home-voice', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '未登録', expects: ['いまの声', ...voice] },
     { name: 'home-voice-registered', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
+    { name: 'home-voice-unmuted', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, outputMuted: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
     { name: 'home-voice-builtin', mock: 'live-home-builtin', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み（声を整える ON）', expects: ['いまの調整', '標準', ...voice] },
     { name: 'home-stopped', mock: 'stopped-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '停止中', registeredLabel: '未登録', expects: ['いまの声', '音声停止中', ...voice] },
     { name: 'home-voice-gaming', mock: 'live-home', theme: 'gaming', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
@@ -53,6 +63,7 @@ const shots: Shot[] = [
     { name: 'sound-music', mock: 'live-home', screen: 'settings-sound', theme: 'dark', locale: 'ja', purpose: 'music', surface: 'settings', purposeLabel: '音楽鑑賞', runningLabel: '実行中', registeredLabel: '登録済み', expects: music },
     { name: 'audio', mock: 'live-home', screen: 'settings-audio', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'settings', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: voice },
     { name: 'appearance', mock: 'live-home', screen: 'settings-appearance', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'settings', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['外観', ...voice] },
+    { name: 'audio-music', mock: 'live-home', screen: 'settings-audio', theme: 'dark', locale: 'ja', purpose: 'music', cableHelp: true, surface: 'settings', purposeLabel: '音楽鑑賞', runningLabel: '実行中', registeredLabel: '登録済み', expects: [message('ja', 'processInput.cableHelpMusic'), ...music] },
     { name: 'obs', mock: 'live-home', screen: 'settings-obs', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'settings', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: voice },
     { name: 'system', mock: 'live-home', screen: 'settings-system', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'settings', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: voice },
     { name: 'shortcuts', mock: 'live-home', screen: 'settings-shortcuts', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'settings', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: voice },
@@ -91,17 +102,43 @@ function captureRoot() {
 const root = captureRoot();
 
 function readme(size: (typeof sizes)[number]) {
-    const rows = shots.map(shot => `| ${shot.name}.png | ${shot.purposeLabel} | ${shot.runningLabel} | ${shot.registeredLabel} | ${localeLabel[shot.locale]} | ${themeLabel[shot.theme]} | ${size.width}×${size.height} |`);
+    const rows = shots.map(shot => `| ${shot.name}.png | ${shot.purposeLabel} | ${shot.runningLabel} | ${shot.registeredLabel} | ${shot.outputMuted === false ? '解除済み' : 'ミュート中'} | ${localeLabel[shot.locale]} | ${themeLabel[shot.theme]} | ${size.width}×${size.height} |`);
     return [
         `# ${size.id}（${size.width}×${size.height}）`,
         '',
         '機器名は realistic。配信は Yeti Stereo Microphone → CABLE Input (VB-Audio Virtual Cable)。音楽鑑賞は CABLE Output (VB-Audio Virtual Cable) → USB Headphones。',
         '',
-        '| ファイル | 用途 | 実行 | 登録 | 言語 | テーマ | 窓 |',
-        '| --- | --- | --- | --- | --- | --- | --- |',
+        '評価者へ渡す PROMPT.md と DECIDED.md には、docs/TESTING.md の「模擬データの限界」を写してください。リポジトリに正本はありません。',
+        '',
+        '| ファイル | 用途 | 実行 | 登録 | 出力 | 言語 | テーマ | 窓 |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
         ...rows,
         '',
     ].join('\n');
+}
+
+// ダブルクリックが残した文字の選択は、利用者の画面には無い。撮る前に外す。
+async function clearTextSelection(page: Page) {
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+}
+
+// 初回のセットアップで音楽鑑賞を選び、入力の手順（2番目）か出力の手順（3番目）まで、利用者と同じ操作で進める。
+// どちらの手順にも、再生アプリから VST までの経路（wizard.musicRoute）が出る。
+async function advanceMusicWizard(page: Page, shot: Shot) {
+    const dialog = page.getByRole('dialog').first();
+    const route = dialog.getByText(message(shot.locale, 'wizard.musicRoute'), { exact: true });
+    // カードの題を2回押して、選んで進む。入場後も続く注意の動きで「静止」が成立しないので、静止の待ちだけを外す。
+    await dialog.getByText(message(shot.locale, 'wizard.musicGoal'), { exact: true }).dblclick({ force: true });
+    await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.musicInput'), exact: true })).toBeVisible();
+    await expect(route).toBeVisible();
+    await clearTextSelection(page);
+    if (shot.musicWizardStep === 'input') return;
+    const input = dialog.getByRole('combobox', { name: message(shot.locale, 'guide.copy.188') });
+    await input.selectOption({ label: musicInput });
+    await dialog.getByRole('button', { name: message(shot.locale, 'common.next') }).click();
+    await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.destination'), exact: true })).toBeVisible();
+    await expect(route).toBeVisible();
+    await clearTextSelection(page);
 }
 
 async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
@@ -124,19 +161,46 @@ async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
     if (shot.surface === 'vst') await expect(page.locator('[data-vst-page]')).toBeVisible();
     if (shot.surface === 'settings') await expect(page.locator('[data-settings-page]')).toBeVisible();
     if (shot.surface === 'stream-mix') await expect(page.locator('#stream-mix-panel')).toBeVisible();
+    if (shot.musicWizardStep) await advanceMusicWizard(page, shot);
+    if (shot.cableHelp) {
+        // 仮想ケーブルの案内は、接続ページの音の元の欄にある閉じた折りたたみ。利用者が開いたところまで進めて撮る。
+        const summary = page.locator('[data-settings-page]').getByText(message(shot.locale, 'processInput.cable'), { exact: true });
+        await summary.click();
+        const help = page.getByText(message(shot.locale, 'processInput.cableHelpMusic'), { exact: true });
+        await expect(help).toBeVisible();
+        await help.scrollIntoViewIfNeeded();
+    }
     if (shot.runningLabel !== '実行中') return;
-    // 模擬は音声レベルを出さない。一定値を流して、前回の撮影と同じ平らなメーターにする。
-    await page.evaluate(() => {
-        const host = window as Window & { __e2eEmit?: (event: string, payload: unknown) => void };
-        const emit = host.__e2eEmit;
-        if (!emit) return;
-        const level = 0.1;
-        window.setInterval(() => emit('audio-level', { input: [level, level], output: [level, level] }), 50);
-    });
+    // 模擬は音声レベルを自分では出さない。一定の入力レベルを流して、平らなメーターにする。
+    // 出力のレベルは、模擬が実エンジンと同じく出力ミュートと出力音量から決める（src/dev/tauriMock.ts の __e2eMeterLevels）。
+    await page.evaluate(unmuted => {
+        const host = window as Window & { __e2eEmitLevel?: (level: number) => void; __e2eSetOutputMuted?: (muted: boolean) => void };
+        const emitLevel = host.__e2eEmitLevel;
+        if (!emitLevel) throw new Error('模擬の __e2eEmitLevel がありません');
+        if (unmuted) {
+            if (!host.__e2eSetOutputMuted) throw new Error('模擬の __e2eSetOutputMuted がありません');
+            host.__e2eSetOutputMuted(false);
+        }
+        window.setInterval(() => emitLevel(0.1), 50);
+    }, shot.outputMuted === false);
     const body = () => page.locator('body').innerText();
     await expect.poll(body).not.toContain(shot.locale === 'ja' ? '状態を読み取れません' : 'Status unavailable');
-    // ホーム以外は「受信中」を出さない。ピークの数字で、一定のレベルが届いたことを見る。
-    await expect.poll(body).toContain('−20.0 dBFS');
+    // ホーム以外は「受信中」を出さない。出力のピークの数字で、一定のレベルが届いたことを見る。
+    // 先に、入力のメーターへ一定のレベルが届いたことを見る。ミュート中でも入力は動く。
+    const meterTexts = () => page.evaluate(() => [...document.querySelectorAll('[role="meter"]')].map(meter => `${meter.getAttribute('aria-label') ?? ''}\t${meter.getAttribute('aria-valuetext') ?? ''}`));
+    await expect.poll(meterTexts).toContainEqual(expect.stringMatching(/\t[-−]20\.0 dBFS/));
+    // 出力ミュート中は、実エンジンと同じく出力レベルが 0 になり、ピークは −∞ のまま。解除していれば −20.0。
+    const outputMeters = [message(shot.locale, 'home.sendLevel'), message(shot.locale, 'home.listenLevel')];
+    const outputMeterTexts = async () => (await meterTexts()).filter(text => outputMeters.includes(text.split('\t')[0]));
+    if (shot.outputMuted === false) {
+        await expect.poll(body).toContain('−20.0 dBFS');
+        await expect.poll(async () => (await outputMeterTexts()).some(text => /\t[-−]20\.0 dBFS/.test(text)), '解除したのに出力のバーが動かない').toBe(true);
+    }
+    else {
+        await expect.poll(body).toContain('−∞ dBFS');
+        expect(await body(), '出力ミュート中なのに出力のピークが動いている').not.toContain('−20.0 dBFS');
+        expect((await outputMeterTexts()).filter(text => /\t[-−]20\.0 dBFS/.test(text)), '出力ミュート中なのに出力のバーが動いている').toEqual([]);
+    }
 }
 
 async function connectColumnIsOnTheRight(page: Page) {

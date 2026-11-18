@@ -106,6 +106,12 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         outputMuted = muted;
         window.dispatchEvent(new Event('preparation-external-change'));
     } });
+    // 実エンジンは、緊急ミュート中は出力を無音で書いて出力レベルを 0 にし、入力レベルはそのまま送る。ミュートでないときは出力音量を掛けたあとを測る。
+    const meterLevels = (level: number) => {
+        const out = outputMuted ? 0 : level * outputGain;
+        return { input: [level, level], output: [out, out] };
+    };
+    Object.assign(window, { __e2eMeterLevels: meterLevels, __e2eEmitLevel: (level: number) => page.__e2eEmit?.('audio-level', meterLevels(level)) });
     Object.assign(window, { __e2eModeWrites: modeWrites });
     const openedUrls: string[] = [];
     Object.assign(window, { __e2eOpenedUrls: openedUrls });
