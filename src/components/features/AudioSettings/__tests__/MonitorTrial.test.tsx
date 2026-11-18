@@ -80,7 +80,7 @@ it('要求が128でもdriverが512を受理した場合は実際のrateとbuffer
     render(<MonitorTrial devices={devices} onApplied={onApplied} />);
     fireEvent.click(screen.getByText('現在の実設定から候補を作る')); await screen.findByText(/バッファ要求 512 → 128/);
     fireEvent.click(screen.getByText('この候補で試験を開始'));
-    await screen.findByText('受理された設定：44100 Hz ／ 512 frame。要求値と異なる場合があります。');
+    await screen.findByText('受理された設定：44100 Hz ／ 512 サンプル。要求値と異なる場合があります。');
     expect(screen.getByText(/試験バッファ要求：128 サンプル/)).toBeInTheDocument();
     expect(onApplied).toHaveBeenLastCalledWith(expect.objectContaining({ sampleRate: 44100, bufferSize: 512 }));
 });
