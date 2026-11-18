@@ -13,7 +13,7 @@ uiLabels: ["Settings", "Sound", "Basics", "Noise reduction", "Shape voice", "Byp
 
 ## Voice shaping {#voice-shaping}
 
-1. Adjust “Shape voice” in “Sound”. The type names are “Standard”, “Warm”, and “Bright”. On Home, an enabled card shows ON before the type name. Off stays OFF. You can choose the strength, type, and amount while it stays off. The sound does not change until you turn it on.
+1. Adjust “Shape voice” in “Sound”. The type names are “Standard”, “Warm”, and “Bright”. “Warm” keeps more low end and does not change voice pitch. On Home, when the type choices are visible, they show the type. When the window is too short for them, an enabled card shows ON before the type name. Off stays OFF. You can choose the strength, type, and amount while it stays off. While it is off, these controls look muted, and the sound does not change until you turn it on.
 2. Check changes to bass, volume differences and tone one at a time.
 3. Record and listen after each small change. If the voice becomes thin or sharp, reduce the adjustment and compare.
 

@@ -21,6 +21,7 @@ import { BroadcastTruePeakPanel } from './BroadcastTruePeakPanel';
 import { SingingControls } from './SingingControls';
 import { LiveModeControls } from './LiveModeControls';
 import { readNoiseMode, type NoiseModeReading } from '@/lib/noiseMode';
+import { cn } from '@/lib/utils';
 
 export function useSoundSettings(engineStats: EngineRuntimeStats | null, singingModel: SingingDraft) {
   const t = useMessages();
@@ -211,6 +212,9 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
     music, shown, singingModel, liveModel, measurementNonce, noiseAdvancedOpen, noiseMeasurementOpen,
     setNoiseAdvancedOpen, setNoiseMeasurementOpen,
   });
+  // OFF のあいだは、選べる印（種類・強さ・スライダー）をホームと同じ落ち着いた色にする（#770）。
+  const noiseOn = !!engineStats?.noiseReductionEnabled;
+  const voiceOn = singingModel.snapshot?.config.active ?? builtInEffectsEnabled;
   const onPeak = useCallback((pending: boolean) => onPeakPending('peak', pending), [onPeakPending]);
   const onBroadcast = useCallback((pending: boolean) => onPeakPending('broadcast', pending), [onPeakPending]);
   const sectionId = shown === 'singing' ? 'singing-settings' : shown === 'liveModes' ? 'live-mode-section' : 'sound-section';
@@ -269,14 +273,14 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       </InfoPopover>
                     </div>
                     <Switch
-                      checked={!!engineStats?.noiseReductionEnabled}
+                      checked={noiseOn}
                       onCheckedChange={(checked) => { void applyNoiseControlConfig({ active: checked }); }}
                       aria-label={t('settings.AudioSettingsModal.107')}
                     />
                   </div>
 
                   <div className="min-w-0 space-y-4">
-                  <fieldset className="space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
+                  <fieldset className={cn('space-y-2', !noiseOn && 'home-held')}><legend className="sr-only">{t('structure.noise.standard')}</legend>
                     <SegmentedControl label={t('structure.noise.standard')}
                       options={([{ value: 'low', label: t('master.nrLow') }, { value: 'high', label: t('master.nrHigh') }] as Array<{ value: NoiseControlMode; label: string }>)}
                       value={noiseMode === 'low' || noiseMode === 'high' ? noiseMode : null} onValueChange={mode => {
@@ -304,7 +308,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   {(noiseMode === 'smart' || noiseMode === 'venue') && <p className="max-w-prose text-ui-support text-muted-foreground leading-relaxed">{t(noiseMode === 'smart' ? 'settings.AudioSettingsModal.115' : 'settings.AudioSettingsModal.116')}</p>}
 
                   {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
-                  {!isBeginnerMode && <div className="space-y-2">
+                  {!isBeginnerMode && <div className={cn('space-y-2', !noiseOn && 'home-held')}>
                     <SliderField disabled={!engineStats || noiseActionBusy} label={t('settings.AudioSettingsModal.120')} min={25} max={125} step={5} value={noiseStrength}
                       formatValue={value => `${value}%`} onValueChange={value => { noiseStrengthEditing.current = true; setNoiseStrength(value); }}
                       onValueCommit={value => commitNoiseStrength(String(value))} />
@@ -324,7 +328,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     </div>
                     <Switch
                       checked={noiseVoiceGuard}
-                      className={engineStats?.noiseReductionEnabled ? undefined : 'data-[state=checked]:bg-muted data-[state=checked]:border-muted-foreground/50 [&_[data-state=checked]]:bg-muted-foreground'}
+                      className={noiseOn ? undefined : 'data-[state=checked]:bg-muted data-[state=checked]:border-muted-foreground/50 [&_[data-state=checked]]:bg-muted-foreground'}
                       onCheckedChange={(checked) => {
                         setNoiseVoiceGuard(checked);
                         void applyNoiseControlConfig({ voiceGuard: checked });
@@ -346,7 +350,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     </div>
                     <Switch
                       disabled={!singingModel.snapshot || singingModel.busy}
-                      checked={singingModel.snapshot?.config.active ?? builtInEffectsEnabled}
+                      checked={voiceOn}
                       onCheckedChange={(checked) => {
                         void applyBuiltInEffects({ active: checked });
                       }}
@@ -354,7 +358,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     />
                   </div>
 
-                  <fieldset disabled={!singingModel.snapshot || singingModel.busy} className="space-y-4 disabled:opacity-50">
+                  <fieldset disabled={!singingModel.snapshot || singingModel.busy} className={cn('space-y-4 disabled:opacity-50', !voiceOn && 'home-held')}>
                   <SegmentedControl label={t('home.chainPreset')}
                     options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },
                       { value: 'warm', label: t('settings.AudioSettingsModal.099') },

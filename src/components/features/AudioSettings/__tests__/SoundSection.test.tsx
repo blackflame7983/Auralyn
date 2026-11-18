@@ -63,6 +63,20 @@ it('ホームと音づくりの基本は同じ値を読み、どちらで変え�
     await waitFor(() => expect(home.getByRole('slider', { name: '声の整え具合' })).toHaveAttribute('aria-valuenow', '100'));
 });
 
+it.each([false, true])('音づくりの基本は、OFFのあいだだけ値の印をホームと同じ落ち着いた色にする（ON=%s、#770）', async on => {
+    vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(stats({ noiseReductionEnabled: on, builtInEffectsEnabled: on }));
+    vi.mocked(builtinApi.request).mockResolvedValue({ epoch: 'engine', revision: '2', appliedRevision: '2', pending: false, undoToken: null, error: null,
+        config: { active: on, preset: 'broadcast', amount: 0.5, singing: null } });
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const preset = await screen.findByRole('radio', { name: '標準' });
+    const noiseMode = screen.getByRole('radio', { name: '弱' });
+    await waitFor(() => expect(preset).toBeEnabled());
+    const amount = screen.getByRole('slider', { name: '声の整え具合' });
+    const held = (element: HTMLElement) => element.closest('.home-held') !== null;
+    expect([held(preset), held(amount), held(noiseMode)]).toEqual([!on, !on, !on]);
+    expect(screen.getByText(message('ja', 'settings.offUntilOn'))).toBeVisible();
+});
+
 it('音量の保護に未適用の数値があるまま小区分を移ると確認し、残ると値を保ち、捨てると基本へ移る', async () => {
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(stats());
     render(<><UnsavedLeaveDialog /><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></>);

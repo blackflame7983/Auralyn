@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
-import { largeWindow } from '@/lib/largeWindow';
+import { tier2MediaQuery } from './useTier2Visible';
 
 /** 2段目の出し分けは CSS の min-height。隠れた操作に焦点があるときだけ、カードの見出しへ移す。 */
 export function useHiddenTierFocus() {
     useEffect(() => {
         if (typeof window.matchMedia !== 'function') return;
-        const media = window.matchMedia(`(min-height: ${largeWindow.tier2MinHeight}px)`);
+        const media = window.matchMedia(tier2MediaQuery);
         let tierHost: HTMLElement | null = null;
         const onFocusIn = (event: FocusEvent) => {
             const target = event.target;

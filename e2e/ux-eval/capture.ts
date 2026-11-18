@@ -40,7 +40,7 @@ const shots: Shot[] = [
     { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['何に使いますか？'] },
     { name: 'home-voice', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '未登録', expects: ['いまの声', ...voice] },
     { name: 'home-voice-registered', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
-    { name: 'home-voice-builtin', mock: 'live-home-builtin', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み（声を整える ON）', expects: ['いまの調整', 'ON · 標準', ...voice] },
+    { name: 'home-voice-builtin', mock: 'live-home-builtin', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み（声を整える ON）', expects: ['いまの調整', '標準', ...voice] },
     { name: 'home-stopped', mock: 'stopped-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '停止中', registeredLabel: '未登録', expects: ['いまの声', '音声停止中', ...voice] },
     { name: 'home-voice-gaming', mock: 'live-home', theme: 'gaming', locale: 'ja', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
     { name: 'home-voice-light-en', mock: 'live-home', theme: 'light', locale: 'en', purpose: 'voice', surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['Custom sound', ...voice] },
@@ -171,6 +171,8 @@ for (const size of sizes) {
                 expect(text, '機器名に日本語のスピーカーが残っている').not.toMatch(/(^|→\s*)スピーカー(\s*→|\s*$)/m);
                 for (const fragment of shot.expects) expect(text).toContain(fragment);
                 if (shot.name === 'home-voice') expect(text).not.toContain('いまの調整');
+                // 「標準」は OFF でも選択欄に出る。ON の評価画像であることは、スイッチの状態で確かめる（#770）。
+                if (shot.name === 'home-voice-builtin') await expect(page.locator('#home-builtin').getByRole('switch')).toHaveAttribute('aria-checked', 'true');
                 if (size.width >= 1400 && shot.surface === 'home') await connectColumnIsOnTheRight(page);
             });
         }

@@ -6,6 +6,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useHiddenTierFocus } from '@/hooks/useHiddenTierFocus';
+import { useTier2Visible } from '@/hooks/useTier2Visible';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, onMeasureNoise, stopped = false, vstUnrestored = [], unconfigured = false, vstCount = null }: Props) {
     const t = useMessages();
     useHiddenTierFocus();
+    const tier2Visible = useTier2Visible();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { stats, running } = useRuntimeStats();
@@ -93,12 +95,14 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         : q.preset === 'warm' ? t('settings.AudioSettingsModal.099')
         : q.preset === 'bright' ? t('settings.AudioSettingsModal.100')
         : t('settings.AudioSettingsModal.098');
+    // 声の種類の選択欄が見えるあいだは、種類の名前は選択欄が言う。見出し行は ON だけにして、状態を1か所で言う（#632、#770）。
+    const presetShown = live && q.preset !== 'singing' && tier2Visible;
     const reverbOnly = live && q.stats?.builtInReverb != null
         ? q.stats.builtInReverb.enabled === true && !q.chainOn
         : Boolean(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled);
     const builtinSummary = !live && stopped ? t('flow.unknown') : deesserOnly ? t('flow.deesserOnly')
         : reverbOnly ? t('flow.reverbOnly')
-        : live ? builtinOn ? t('chain.voiceOn', { name: presetName }) : t('flow.disabled')
+        : live ? builtinOn ? (presetShown ? t('flow.enabled') : t('chain.voiceOn', { name: presetName })) : t('flow.disabled')
         : setting(stage?.builtinVoiceEnabled);
     const vstSummary = stopped ? undefined : vstUnrestored.length ? (unrestoredNamesText(t, vstUnrestored) ?? undefined) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
     // 音楽鑑賞の見出しはこれまで「VST」。配信は空のときの「外部VST」。用途ごとに1つにし、実行中と停止中で変えない。
@@ -157,11 +161,12 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 body: live || builtinBreakdown ? <>
                     {builtinBreakdown}
                     {live && !q.chainOn && <p className="text-ui-support text-balance text-muted-foreground [word-break:auto-phrase]">{t('home.appliesWhenOnVoice')}</p>}
+                    {/* 音づくりと同じ順（種類、整え具合）。種類は2段目なので、低い窓では隠れて整え具合だけが残る（#770）。 */}
+                    {live && <div data-home-tier="2" className="min-w-0"><BuiltinPresets q={q} /></div>}
                     {live && q.preset !== 'singing' && <ToneGuide amount={q.shownAmount} on={q.chainOn} />}
                     {live && <BuiltinAmount q={q} />}
                     {deesser && <span className="text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(deesser.amount * 100) })}</span>}
-                </> : undefined,
-                tier2: live ? <BuiltinPresets q={q} /> : undefined }),
+                </> : undefined }),
         ]),
         emptyVst
             ? card({ key: 'vst', on: false, name: vstCardName, summary: (vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : t('chain.vstEmptySub')) ?? undefined,

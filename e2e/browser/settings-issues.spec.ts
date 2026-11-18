@@ -245,10 +245,10 @@ test.describe('ホームと設定の共通操作', () => {
                 return result;
             };
         });
-        // 声の種類は2段目。仮の境目は高さ 860 なので、同じ寸法の比較はそこ以上で続ける。
+        // 声の種類は2段目。境目は高さ 800（largeWindow.tier2MinHeight）なので、同じ寸法の比較はそこ以上で続ける。
         await page.setViewportSize({ width: 1280, height: 900 });
         await page.goto('/');
-        const names = ['弱', '強', '標準', '低め', '明瞭'];
+        const names = ['弱', '強', '標準', '温かめ', '明瞭'];
         const home = [...names.slice(0, 2).map(name => page.locator('#home-noise').getByRole('radio', { name, exact: true })),
             ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('radio', { name, exact: true }))];
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {
