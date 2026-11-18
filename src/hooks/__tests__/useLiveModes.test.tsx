@@ -16,16 +16,16 @@ it('正常な未登録状態では補助操作を出さず、保護だけ残っ�
     function Panel() { model = useLiveModes(); return <LiveModeControls model={model} />; }
     render(<Panel />);
     await waitFor(() => expect(model.snapshot).not.toBeNull());
-    expect(screen.queryByText('切替・操作ロックの操作')).not.toBeInTheDocument();
+    expect(screen.queryByText('モード切替と操作ロック')).not.toBeInTheDocument();
     expect(screen.queryByText('状態が更新されないとき')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'モードの状態を再取得' })).not.toBeInTheDocument();
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ armed: true }));
     await act(async () => { await model.refresh(); });
-    fireEvent.click(screen.getByText('切替・操作ロックの操作'));
+    fireEvent.click(screen.getByText('モード切替と操作ロック'));
     const protection = screen.getByRole('checkbox', { name: '操作をロック' });
     expect(protection).toBeChecked();
     fireEvent.click(protection);
-    await waitFor(() => expect(liveModesApi.request).toHaveBeenCalledWith({ action: 'disarm', intent: expect.objectContaining({ expectedEpoch: 'host1' }) }));
+    await waitFor(() => expect(vi.mocked(liveModesApi.request).mock.lastCall?.[0]).toMatchObject({ action: 'disarm', intent: { expectedEpoch: 'host1' } }));
 });
 it('登録欄の取得失敗時には対処を直接出し、再取得で正常表示へ戻れる', async () => {
     vi.spyOn(presetApi, 'listProfiles').mockResolvedValue([]);
@@ -134,7 +134,10 @@ it('復元中はmode/arm要求を拒否し、完了後に保護解除を送れ�
     expect(liveModesApi.request).toHaveBeenCalledOnce();
     act(() => release());
     await act(async () => { await result.current.protect(false); });
-    expect(liveModesApi.request).toHaveBeenLastCalledWith({ action: 'disarm', intent: expect.objectContaining({ expectedEpoch: 'host1', sequence: expect.any(Number), clientId: expect.any(String) }) });
+    const disarm = vi.mocked(liveModesApi.request).mock.lastCall?.[0];
+    expect(disarm).toMatchObject({ action: 'disarm', intent: { expectedEpoch: 'host1' } });
+    expect(disarm).toHaveProperty('intent.sequence', expect.any(Number));
+    expect(disarm).toHaveProperty('intent.clientId', expect.any(String));
 });
 it('操作開始前の遅いsnapshotは新しいepochとモード応答を巻き戻さない', async () => {
     const { result } = renderHook(() => useLiveModes());

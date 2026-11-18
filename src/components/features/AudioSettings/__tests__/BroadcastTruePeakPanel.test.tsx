@@ -20,13 +20,13 @@ it('読取りでは有効化せず、自分用の遅延が0である説明と保
     expect(detailsSummary.closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('spinbutton', { name: message('ja', 'truePeak.ceiling') })).toHaveValue(-3);
     expect(screen.getByText(message('ja', 'truePeak.lead'))).toBeInTheDocument();
-    expect(screen.getByText(/自分用は 0 sample/)).toBeInTheDocument();
+    expect(screen.getByText(/自分用は 0 サンプル/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(message('ja', 'truePeak.limitsTitle')));
     expect(screen.getByText(/OBS 内部の処理/)).toBeInTheDocument();
     expect(screen.getByText(/デバイス側のサンプルレート変換は範囲外/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('switch', { name: message('ja', 'truePeak.title') })); await act(async () => {});
     expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
-    expect(screen.getByText(/48 sample/)).toBeInTheDocument();
+    expect(screen.getByText(/48 サンプル/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('switch', { name: message('ja', 'truePeak.title') })); await act(async () => {});
     expect(request).toHaveBeenLastCalledWith({ enabled: false, ceilingDb: -3, releaseMs: 150 });
     expect(screen.queryByText(message('ja', 'truePeak.notApplied'))).not.toBeInTheDocument();
@@ -47,7 +47,7 @@ it('有効でも分離出力でないときは未適用と遅延 0 を出す', a
     vi.spyOn(broadcastTruePeakApi, 'request').mockResolvedValue(fixture(true, 0, false));
     render(<BroadcastTruePeakPanel />); await act(async () => {});
     expect(screen.getByText(message('ja', 'truePeak.notApplied'))).toBeInTheDocument();
-    expect(screen.getByText(/先読み：0 sample/)).toBeInTheDocument();
+    expect(screen.getByText(/先読み：0 サンプル/)).toBeInTheDocument();
 });
 it('本番保護の間はスイッチ・数値・適用を止めて理由を示し、解除すると書き込める', async () => {
     const request = vi.spyOn(broadcastTruePeakApi, 'request').mockImplementation(async config => ({ ...fixture(), config: config ?? fixture().config, applied: config?.enabled ?? false, addedLatencySamples: config?.enabled ? 48 : 0 }));
@@ -88,7 +88,7 @@ it('ONとOFFの文字は出さず、数値と抑制量は数値の詳細のと�
     expect(region).not.toHaveTextContent('dBFS /');
     expect(region).not.toHaveTextContent(message('ja', 'truePeak.reduction', { db: '0.0' }));
     // 先読みの説明は数値の詳細とは別で、これまでどおり出す。
-    expect(screen.getByText(/48 sample/)).toBeInTheDocument();
+    expect(screen.getByText(/48 サンプル/)).toBeInTheDocument();
     await act(async () => { view.rerender(<BroadcastTruePeakPanel numericDetails />); });
     expect(screen.getByText('-3.0 dBFS / 150 ms')).toBeInTheDocument();
     expect(screen.getByText(message('ja', 'truePeak.reduction', { db: '0.0' }))).toBeInTheDocument();

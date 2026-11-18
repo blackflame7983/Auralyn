@@ -22,9 +22,9 @@ it('明示確認前には構成を変更せず、送出先をstable IDで保存�
     fireEvent.click(screen.getByText('現在の構成・稼働状態を取得')); await screen.findByRole('combobox');
     const save = screen.getByText('出力構成を保存・反映'); expect(save).toBeDisabled();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンにし/ }));
     fireEvent.click(save);
-    expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ deviceId: 'cable-id', monitorTrim: 1, broadcastTrim: 1 }));
+    expect(vi.mocked(liveOutputApi.request).mock.lastCall?.[0]).toMatchObject({ deviceId: 'cable-id', monitorTrim: 1, broadcastTrim: 1 });
     await waitFor(() => expect(screen.getByText(message('ja', 'liveOutput.inactive'))).toHaveFocus());
 });
 it('状態の定期取得で未保存の下書きを置き換えない', async () => {
@@ -41,9 +41,9 @@ it('処理分離は明示選択した専用内蔵設定だけを追加し、VST�
     fireEvent.click(screen.getByText('現在の構成・稼働状態を取得')); await screen.findByRole('combobox');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ }));
-    expect(screen.getByText(/この自分用設定と追加出力を変更・復元しません/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ })); fireEvent.click(screen.getByText('出力構成を保存・反映'));
-    expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ splitProcessing: true, monitorSinging: expect.objectContaining({ preset: 'singing' }), monitorTalk: expect.objectContaining({ reverb: expect.objectContaining({ enabled: false }) }) }));
+    expect(screen.getByText(/この自分用設定と追加出力は変更・復元しません/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンにし/ })); fireEvent.click(screen.getByText('出力構成を保存・反映'));
+    expect(vi.mocked(liveOutputApi.request).mock.lastCall?.[0]).toMatchObject({ splitProcessing: true, monitorSinging: { preset: 'singing' }, monitorTalk: { reverb: { enabled: false } } });
 });
 it('消失出力へ代替せず、配信失敗と主出力の状態を混同しない', async () => {
     vi.mocked(liveOutputApi.request).mockResolvedValue({ ...initial, config: { ...initial.config, deviceId: 'missing-id' }, error: 'missing' });
@@ -61,9 +61,11 @@ it('配信出力を無効にすると処理分離も解除し、自分用の設�
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
     expect(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンにし/ }));
     fireEvent.click(screen.getByText('出力構成を保存・反映'));
-    expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ deviceId: null, splitProcessing: false, monitorSinging: singing }));
+    const saved = vi.mocked(liveOutputApi.request).mock.lastCall?.[0];
+    expect(saved).toMatchObject({ deviceId: null, splitProcessing: false });
+    expect(saved?.monitorSinging).toEqual(singing);
 });
 it('モニターの明るさは歌向けDSPが受理する範囲だけを選べる', async () => {
     render(<LiveOutputPanel outputs={outputs} />);

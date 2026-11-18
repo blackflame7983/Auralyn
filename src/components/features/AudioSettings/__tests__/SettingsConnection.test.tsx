@@ -334,7 +334,7 @@ it('入力元の入口は機器一覧の読み込み後に入力選択へフォ�
 it('音楽鑑賞の音づくりは声向けの入口を出さず、理由とVSTの入口を示す', async () => {
     localStorage.setItem('vst_host_setup_goal', 'music');
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText('音楽鑑賞では、声向けの処理を使いません。音の加工は VST で行います。')).toBeVisible();
+    expect(await screen.findByText('音楽鑑賞では、声向けの処理を使いません。音の加工はVSTで行います。')).toBeVisible();
     expect(screen.queryByRole('button', { name: '配信ミックスの設定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: '基本' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'VSTを開く' })).toBeEnabled();

@@ -291,7 +291,7 @@ it('音楽鑑賞のホームから、構成の切り替えと右の列の聴き�
     expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
     const details = screen.getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
-    expect(screen.getByText('WASAPI · 48 kHz')).toBeVisible();
+    expect(screen.getByText('WASAPI・48 kHz')).toBeVisible();
 });
 
 it('停止中の右の列では、比較を無効にして理由を結ぶ', () => {
@@ -316,7 +316,7 @@ it.each([
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <AppShell {...commonProps} isEngineRunning={false}><p>rack</p></AppShell>
     </LocaleProvider>);
-    const reason = message(locale, 'header.compareNeedsAudio');
+    const reason = message(locale, purpose === 'music' ? 'header.compareNeedsAudioMusic' : 'header.compareNeedsAudio');
     const band = within(screen.getByRole('region', { name: message(locale, 'band.label') }));
     const listen = band.getByRole('button', { name: message(locale, label) });
     expect(listen).toBeDisabled();
@@ -352,8 +352,8 @@ it('比較中のまま止めても、右の列の比較のオンオフは切り�
     const toggle = screen.getByRole('switch', { name: compareName });
     expect(toggle).toBeDisabled();
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(toggle).toHaveAttribute('title', message('ja', 'header.compareNeedsAudio'));
-    expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudio')));
+    expect(toggle).toHaveAttribute('title', message('ja', 'header.compareNeedsAudioMusic'));
+    expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudioMusic')));
     fireEvent.click(toggle);
     expect(bypass).toHaveBeenCalledTimes(1);
 });
@@ -493,10 +493,10 @@ it('音が届いているか確かめる欄を開いたまま音声を止めて�
         view.rerender(<AppShell {...props} isEngineRunning={false} vstCount={vst.count} vstActiveCount={vst.active}><p>rack</p></AppShell>);
         const listening = within(screen.getByRole('region', { name: message('ja', 'music.listenTitle') })).getByRole('switch', { name: compareName });
         expect(listening).toBeDisabled();
-        expect(listening).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        expect(listening).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudioMusic'));
         const column = document.getElementById('ab-compare-btn');
         expect(column).toBeDisabled();
-        expect(column).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        expect(column).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudioMusic'));
         fireEvent.click(listening);
     }
     expect(bypass).not.toHaveBeenCalled();
@@ -681,7 +681,7 @@ it('音楽鑑賞のホームは、見出しを音楽鑑賞にし、構成が無�
     expect(within(connect).getByRole('button', { name: '音のトラブルを診断' })).toBeInTheDocument();
     const details = within(connect).getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
-    expect(within(connect).getByText('WASAPI · 48 kHz')).toBeVisible();
+    expect(within(connect).getByText('WASAPI・48 kHz')).toBeVisible();
     expect(screen.queryByRole('region', { name: '音調整' })).not.toBeInTheDocument();
     expect(within(flow).getByRole('button', { name: '再生の音量を測る' })).toBeVisible();
 });
