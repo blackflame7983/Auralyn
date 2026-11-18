@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LiveStrip } from '../LiveStrip';
+import { SOURCE_HINT_AFTER_MS } from '../MusicSourceHint';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import type { MeterState } from '@/hooks/useMeterLevels';
 import { buildPreparationObservation } from '@/lib/preparation';
@@ -242,4 +243,25 @@ it('出力がミュートか音量ゼロのときは、その状態をカード�
     render(<LiveStrip model={model} running />);
     expect(screen.getByRole('region', { name: 'いまの状態' }).querySelector('[data-now-mute]')).toHaveAttribute('data-now-mute', 'muted');
     expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'prep.muted'));
+});
+
+// 音が届かないときの再生元の案内（#718）。アプリの音声か判定できない間は、出し過ぎないよう出さない。
+const appSource = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'Player', rawEndpointId: 'endpoint', purpose: 'music' } } as const;
+const hintCases = [
+    { name: '再生元が機器で、音が届かないまま続けば出す', config: (model: PreparationModel) => model.observation.config, saved: false, shown: true },
+    { name: '実行中の設定を取れない（null）あいだは、保存済みが機器でも出さない', config: () => null, saved: false, shown: false },
+    { name: '保存済みの入力がアプリの音声なら、実行中の設定が機器でも出さない', config: (model: PreparationModel) => model.observation.config, saved: true, shown: false },
+    { name: '実行中の設定がアプリの音声なら、保存済みが機器でも出さない', config: (model: PreparationModel) => model.observation.config && { ...model.observation.config, input_source: appSource }, saved: false, shown: false },
+] as const;
+it.each(hintCases)('音楽鑑賞：$name', ({ config, saved, shown }) => {
+    vi.useFakeTimers();
+    try {
+        localStorage.setItem('auralyn_display_purpose', 'music');
+        const model = fixture();
+        model.observation = { ...model.observation, config: config(model) ?? null };
+        render(<LiveStrip model={model} savedInputFromApp={saved} running />);
+        act(() => { vi.advanceTimersByTime(SOURCE_HINT_AFTER_MS + 1); });
+        const hint = screen.getByRole('region', { name: 'いまの状態' }).querySelector('[data-music-source-hint]');
+        expect(hint !== null).toBe(shown);
+    } finally { vi.useRealTimers(); }
 });

@@ -149,12 +149,9 @@ for (const locale of ['ja', 'en']) {
                 })).toBe(true);
             }
             const tops = await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
-            // 日本語は960でも3列。英語は内側520〜650pxで2列にし、単語の途中では切らない（#586）。
-            if (locale === 'ja') expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
-            else {
-                expect(new Set(tops.map(top => Math.round(top))).size).toBe(2);
-                expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
-            }
+            // 高さ640では日英とも3枚を1行に並べる（#700）。英語でも、はみ出さず単語の途中で切れない。2列にするのは高さ800px以上（下の試験、#586）。
+            expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            if (locale === 'en') expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
             const nowHeight = (await mustBox(live)).height;
             const builtin = page.locator('#home-builtin');
             // 高さ 640 は仮の境目 860 より低いので、2段目は残すが隠す。
@@ -179,6 +176,28 @@ for (const locale of ['ja', 'en']) {
     }
 }
 
+// 高さ800px以上では、英語の音調整は内側520〜650pxで2列にし、単語の途中では切らない（#586）。日本語は3列のまま。
+for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
+    test(`音調整のカードは高さ800pxで英語だけ2列にする ${locale} ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width: 960, height: 800 });
+        await page.addInitScript(({ locale, theme }) => {
+            localStorage.setItem('vst_host_locale', locale);
+            localStorage.setItem('vst_host_theme', theme);
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('vst_host_setup_goal', 'obs');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        }, { locale, theme });
+        await page.goto('/');
+        await setOutputMuted(page, false);
+        const cards = page.locator('.sound-module-item');
+        await expect(cards).toHaveCount(3);
+        await settleLayoutMotion(page);
+        const tops = new Set((await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top))).map(top => Math.round(top)));
+        expect(tops.size).toBe(locale === 'en' ? 2 : 1);
+        expect(await cards.evaluateAll(nodes => nodes.some(node => node.scrollWidth - node.clientWidth > 1))).toBe(false);
+    });
+}
 for (const theme of ['light', 'dark']) test(`音の流れはテーマにかかわらず描き、オーロラの帯は出さない ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.addInitScript(theme => {
@@ -225,8 +244,9 @@ test('1200〜1411pxの音調整は3列で、1280×800の出力先名は縦に積
     console.log(JSON.stringify(measured));
 });
 
-test('900×600 で整え具合の目安が語の途中で折り返さない', async ({ page }) => {
-    await page.setViewportSize({ width: 900, height: 600 });
+// 高さ700px以下では、診断への入口を最初の表示に入れるため目安を隠す（#700）。幅900pxの狭いカードで見せる高さは 768px。
+test('幅900px・高さ768px で整え具合の目安が語の途中で折り返さない', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 768 });
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_locale', 'ja');
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -253,6 +273,21 @@ test('900×600 で整え具合の目安が語の途中で折り返さない', as
         return tops.size;
     });
     expect(lines).toBe(1);
+});
+
+test('高さ700px以下では整え具合の目安を隠し、スライダーで値を読める（#700）', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_locale', 'ja');
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+    });
+    await page.goto('/');
+    await expect(page.locator('#home-builtin')).toBeVisible();
+    await expect(page.locator('#home-builtin figcaption')).toBeHidden();
+    await expect(page.locator('#home-builtin').getByRole('slider', { name: '声の整え具合' })).toBeVisible();
 });
 
 // 英語の長いラベルでも、いまの状態のバーは 12rem より縮めない（#661）。日本語は同じ行のまま。

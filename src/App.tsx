@@ -3,6 +3,8 @@ import { MixingLiveControl } from '@/components/features/Home/MixingLiveControl'
 import { readPreparationContext } from '@/lib/preparation';
 import { stageModeKey } from '@/lib/stageModeName';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
+import { useSustained } from './hooks/useSustained';
+import { useWhenTrue } from './hooks/useWhenTrue';
 import { sessionMode } from './lib/temporarySession';
 import { REVIEW_KEY } from './api/migration';
 import { startHomeAudio } from './lib/startHomeAudio';
@@ -11,7 +13,6 @@ import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar, LiveModeSwitch } from './components/features/AudioSettings/LiveModeBar';
 import { LiveProtectButton } from './components/features/AudioSettings/LiveProtectButton';
 import { useEffect, useRef } from 'react';
-import { delay } from '@/hooks/internal/afterFrame';
 import { AppShell } from './components/layout/AppShell';
 import { VstPage } from './components/features/PluginRack/VstPage';
 import { VstChainItems } from './components/features/Home/VstChainItems';
@@ -41,7 +42,6 @@ function AppContent() {
 
   // Custom Hooks
   const ui = useUIState();
-  const { setIsOBSGuideOpen } = ui;
   const [displayPurpose] = useDisplayPurpose();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
@@ -102,26 +102,23 @@ function AppContent() {
     }
   };
 
-  // Show next-step guidance when tutorial completes
-  useEffect(() => {
-    if (currentStep === 'complete') {
-      return delay(500, () => {
-        toast.info(<LocalizedMessage id="guide.copy.424" />, {
-          description:
-            <LocalizedMessage id={readPreparationContext().usage === 'obs' ? "guide.copy.425" : "guide.tutorialLocalDone"} />,
-          duration: 5000,
-          action: readPreparationContext().usage === 'obs' ? {
-            label: <LocalizedMessage id="guide.copy.426" />,
-            onClick: () => setIsOBSGuideOpen(true),
-          } : undefined,
-        });
-      });
-    }
-  }, [currentStep, setIsOBSGuideOpen]);
+  // 使い方案内が終わったあと、最後の吹き出しが消えてから次の一歩を案内する。
+  const tutorialCompleted = useSustained(currentStep === 'complete', 500);
+  useWhenTrue(tutorialCompleted, () => {
+    toast.info(<LocalizedMessage id="guide.copy.424" />, {
+      description:
+        <LocalizedMessage id={readPreparationContext().usage === 'obs' ? "guide.copy.425" : "guide.tutorialLocalDone"} />,
+      duration: 5000,
+      action: readPreparationContext().usage === 'obs' ? {
+        label: <LocalizedMessage id="guide.copy.426" />,
+        onClick: () => ui.setIsOBSGuideOpen(true),
+      } : undefined,
+    });
+  });
 
-  const { cleanupPending } = sessionMode();
-  const toggleVst = (id: string, enabled: boolean) => { void pluginsApi.togglePlugin(id, enabled); };
-  const editVst = (id: string) => { void pluginsApi.openEditor(id); };
+  const togglePlugin = (id: string, enabled: boolean) => { void pluginsApi.togglePlugin(id, enabled); };
+  const editPlugin = (id: string) => { void pluginsApi.openEditor(id); };
+
   const isModalOpen = [
     ui.isSettingsOpen, ui.isBrowserOpen, ui.isOBSGuideOpen, ui.isDiscordGuideOpen,
     ui.isWizardOpen, ui.isTemplateWizardOpen, ui.isLicenseModalOpen, ui.isRecoveryModalOpen,
@@ -134,12 +131,12 @@ function AppContent() {
       focusNonce={ui.vstOpenNonce}
       focusAdd={ui.vstFocusAdd}
       onAdd={() => ui.setIsBrowserOpen(true)}
-      onToggle={toggleVst}
+      onToggle={togglePlugin}
       onMute={(id, muted) => { void pluginsApi.toggleMute(id, muted); }}
       onGainChange={(id, gain) => { void pluginsApi.setPluginGain(id, gain); }}
       onRemove={id => { void pluginsApi.removePlugin(id); }}
-      onEdit={editVst}
-      onReorder={next => { void pluginsApi.reorderPlugins(next); }}
+      onEdit={editPlugin}
+      onReorder={plugins => { void pluginsApi.reorderPlugins(plugins); }}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
       unrestored={pluginsApi.sessionUnrestored}
@@ -206,6 +203,8 @@ function AppContent() {
           </> : null}
     /> : null;
 
+  const session = sessionMode();
+
   return (
     <>
       {isInitializing && (
@@ -225,7 +224,7 @@ function AppContent() {
 
       <PageSlotProvider><AppShell
         page={ui.page}
-        onStartAudio={sessionMode().reviewOnly || localStorage.getItem(REVIEW_KEY) === 'true' ? undefined : async () => {
+        onStartAudio={session.reviewOnly || localStorage.getItem(REVIEW_KEY) === 'true' ? undefined : async () => {
           await startHomeAudio(audioConfig, config => handleConfigUpdate(config, { audioStarted: true }));
         }}
         onOpenShortcuts={ui.openShortcuts}
@@ -260,6 +259,7 @@ function AppContent() {
         currentBufferSize={audioConfig.bufferSize}
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
+        currentInputFromApp={audioConfig.inputSource?.kind === 'process_loopback'}
         currentOutput={audioConfig.output}
         liveModeName={t(stageModeKey(liveModel.snapshot))}
         liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
@@ -268,9 +268,9 @@ function AppContent() {
         liveProtect={<LiveProtectButton model={liveModel} safetyOnly={displayPurpose === 'music'} />}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
           primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
-        vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={toggleVst} onEdit={editVst} />}
+        vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={togglePlugin} onEdit={editPlugin} />}
         vstEditors={pluginsApi.plugins.some(plugin => plugin.hasEditor)
-          ? <VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={toggleVst} onEdit={editVst} />
+          ? <VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={togglePlugin} onEdit={editPlugin} />
           : undefined}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstCount={pluginsApi.sessionRestoreStatus === 'pending' ? null : pluginsApi.plugins.length}
@@ -280,8 +280,8 @@ function AppContent() {
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
         notices={<>
-          {cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: cleanupPending })}</p>}
-          {sessionMode().temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
+          {session.cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: session.cleanupPending })}</p>}
+          {session.temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
           <SessionRecoveryNotice
             status={pluginsApi.sessionRestoreStatus}
             protectedSession={pluginsApi.sessionPersistenceProtected}

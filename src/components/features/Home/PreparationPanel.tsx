@@ -8,7 +8,8 @@ import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useReceiverDraft } from '@/hooks/useReceiverDraft';
 import { afterFrame } from '@/hooks/internal/afterFrame';
 import { usePreparationPanelSync } from '@/hooks/usePreparationPanelSync';
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useSustained } from '@/hooks/useSustained';
 import { useInputMeterState } from '../LevelMeter/MeterContext';
 import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
@@ -112,7 +113,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     // 経路の文は上の帯に1回だけ出す（#669）。下の行のボタンは診断と接続の詳細だけ（#725）。
     // 状態の札があるときだけ左に置き、ボタンは幅が足りなければ次の行へ送る（#622、#638）。
     const collapsedStatus = !open && observation.availability !== 'ready' && !statusCovered && !homeActionInStrip && !(mutedInStrip && observation.availability === 'muted');
-    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
+    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'prep-panel-open rounded-card border border-border bg-card p-4' : 'px-1 py-0.5')}>
         {!open && !collapsedStatus && <h2 className="home-title sr-only">{t('prep.title')}</h2>}
         <div className={open ? 'flex flex-wrap items-center justify-between gap-2' : 'home-route-row'}>
             {(open || collapsedStatus) && <div className={cn('flex items-center gap-1', open ? 'min-w-0 flex-1' : 'home-route-line')}>
@@ -213,12 +214,7 @@ function TroubleshootEntry({ running, music, attention, onOpen }: { running: boo
     const t = useMessages();
     const state = useInputMeterState(running);
     const quiet = running && (state === 'waiting' || state === 'stale' || !music && state === 'silent');
-    const [quietLong, setQuietLong] = useState(false);
-    useEffect(() => {
-        if (!quiet) { setQuietLong(false); return; }
-        const timer = window.setTimeout(() => setQuietLong(true), SILENCE_ATTENTION_MS);
-        return () => window.clearTimeout(timer);
-    }, [quiet]);
+    const quietLong = useSustained(quiet, SILENCE_ATTENTION_MS);
     const prominent = attention || quietLong;
     return <Button variant="ghost" size="sm" type="button" onClick={onOpen} aria-haspopup="dialog" aria-description={prominent ? t('prep.diagnosticAttention') : undefined}
         className={cn('gap-1 h-auto whitespace-normal',

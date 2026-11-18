@@ -117,7 +117,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {/* 見出しはアイコン・名前・説明だけ。スイッチは状態の行へ置く。停止中の外部VSTだけ名前の行に追加を置き、幅が足りなければ次の行へ送る（#621、#726）。 */}
             <div className="flex min-w-0 flex-col gap-1">
                 <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', actionInName && 'flex-wrap')}>
-                    <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <Icon aria-hidden="true" className="sound-card-icon h-5 w-5 shrink-0 text-muted-foreground" />
                     <h3 id={key === 'vst' ? 'vst-tool-toggle' : undefined} tabIndex={-1} className={cn('home-card-name whitespace-nowrap outline-hidden focus-visible:ring-2 focus-visible:ring-ring', !actionInName && 'min-w-0')}>{name}</h3>
                     {!unconfigured && info}
                     {actionInName && <div className="ml-auto shrink-0">{action}</div>}
@@ -182,7 +182,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {stage && <p className="mt-2">{t(stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? 'flow.broadcastPath' : 'flow.monitorPath')}</p>}
                 </InfoPopover>
             </div>
-            {!unconfigured && !music && <div className="flex flex-wrap gap-2">
+            {!unconfigured && !music && <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                {/* 窓が低くて2段目を出さないときだけ。見出しの行に置き、下の行を増やさない。音楽鑑賞の2段目はVSTの画面で、音づくりには無い（#672、#700）。 */}
+                <Button type="button" variant="link" className="home-tier-fallback link-button h-auto whitespace-normal px-0 text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="default" type="button" aria-label={t('chain.more')} title={t('chain.more')} className="home-action gap-1">
@@ -204,9 +206,5 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3', stopped && 'items-start')}>
             {rows}
         </ol>
-        {/* 窓が低くて2段目を出さないときだけ。音楽鑑賞の2段目はVSTの画面で、音づくりには無い（#672）。 */}
-        {!music && !unconfigured && <p className="home-tier-fallback mt-2">
-            <Button type="button" variant="link" className="link-button h-auto whitespace-normal px-0 text-ui-support" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.tierFallback')}</Button>
-        </p>}
     </section>;
 }

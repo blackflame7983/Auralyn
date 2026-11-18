@@ -78,6 +78,8 @@ interface AppShellProps {
     isEngineRunning: boolean;
     engineProcessReady?: boolean | null;
     currentInput?: string;
+    /** 保存済みの入力が再生中のアプリの音声か。実行中の状態を取れないときの補いにする。 */
+    currentInputFromApp?: boolean;
     currentOutput?: string;
     /** いまの状態に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
@@ -136,6 +138,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     isEngineRunning,
     engineProcessReady,
     currentInput,
+    currentInputFromApp = false,
     currentOutput,
     liveControls,
     liveProtect,
@@ -189,7 +192,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     const chrome = deriveHomeChrome({ configured });
-    // 音楽鑑賞の再生の確認は、準備の手順とチェーン列のどちらからも開く。
+    // 音楽鑑賞の「音が届いているか確かめる」欄は、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
     // 開いた後の測定・停止・閉じるはパネル側に集める。押せない理由は画面にも出し、押せるときの対象範囲は読み上げだけにする。
@@ -299,11 +302,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? () => { void startAudio(); } : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} savedInputFromApp={currentInputFromApp} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
-                        {/* 音楽鑑賞は、音を整える（VST）をいまの状態の直後に置く。配信・通話の順は変えない（#605）。 */}
-                        {configured && purpose === 'music' && soundChain}
-                        {configured && purpose === 'music' && <MusicHomeDesk onLoadPreset={onLoadPreset} />}
+                        {/* 配信・通話と音楽鑑賞で並びをそろえる：いまの状態 → 音の流れ →（配信だけ配信ミックス）→ 音調整 →（音楽だけ保存した構成）→ 診断と接続の詳細（#605 を置き換え）。 */}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
                         {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
@@ -316,8 +317,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         /></div>
-                        {/* 配信・通話のチェーン列は音の流れのあと、準備より前。音楽鑑賞は上でいまの状態の直後に置いた（#605）。未設定の間だけ準備の後ろへ回す。 */}
-                        {configured && purpose !== 'music' && soundChain}
+                        {/* 音調整は音の流れのあと、診断と接続の詳細より前。未設定の間だけ最後へ回す。 */}
+                        {configured && soundChain}
+                        {configured && purpose === 'music' && <MusicHomeDesk onLoadPreset={onLoadPreset} />}
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}

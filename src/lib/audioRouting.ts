@@ -33,6 +33,13 @@ export function findCableReceiver<T extends { name: string; host: string }>(
     return candidates.length === 1 ? candidates[0] : undefined;
 }
 
+// 録音側（CABLE Output）を再生元にしているとき、再生アプリが出力する先の再生側の名前（CABLE Input）を返す。
+// 名前の対応が既知の VB-CABLE だけ。ほかの機器は推測せず null を返す。
+export function cablePlaybackName(inputName: string | null | undefined): string | null {
+    const match = inputName ? deviceDisplayName(inputName).trim().match(/^CABLE(-[AB])?\s+Output(?:\s*\([^)]*\))?$/i) : null;
+    return match ? `CABLE${match[1]?.toUpperCase() ?? ''} Input` : null;
+}
+
 export function receiverDeviceHint(outputName: string): string {
     return renderNotice((key, args) => message('ja', key, args), receiverDeviceNotice(outputName));
 }
