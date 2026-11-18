@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { ObsConnectionSettings } from '../ObsConnectionSettings';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -184,4 +185,87 @@ it('ガイドを開く操作が無いときは入口を出さず、接続の失�
     fireEvent.click(connect);
     await screen.findByText(/接続に失敗しました。次を確認してください。/);
     expect(screen.getAllByRole('button', { name: guideLabel.ja })).toHaveLength(1);
+});
+
+type StatusReply = () => Promise<boolean>;
+const staleLabels = { failed: '接続に失敗', unknown: '確認できません', disconnected: '未接続', connected: '接続済み' } as const;
+const plan = (reply: { status: StatusReply; connect?: () => Promise<void>; credentials?: () => Promise<unknown> }) => vi.mocked(invoke).mockImplementation(command => {
+    if (command === 'obs_connection_status') return reply.status();
+    if (command === 'connect_obs') return reply.connect?.() ?? Promise.resolve();
+    if (command === 'get_obs_credentials') return reply.credentials?.() ?? Promise.resolve(null);
+    return Promise.resolve(undefined);
+});
+const badge = () => within(headingRow('ja')).getByRole('status');
+const hideAndShow = async () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    hidden.mockReturnValue(false);
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+};
+const timingInvalidated = async () => {
+    const callbacks = vi.mocked(listen).mock.calls.filter(([event]) => event === 'obs://timing-invalidated').map(([, callback]) => callback);
+    await act(async () => { callbacks.forEach(callback => callback({ event: 'obs://timing-invalidated', id: 1, payload: null })); });
+};
+const failConnect = async () => {
+    const connect = await screen.findByRole('button', { name: '接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.failed));
+};
+
+it.each([
+    ['未接続と分かった', () => Promise.resolve(false), staleLabels.disconnected],
+    ['取得に失敗した', () => Promise.reject(new Error('status')), staleLabels.unknown],
+] as [string, StatusReply, string][])('接続に失敗したあとアプリを隠して戻り、再取得で%sら、古い「接続に失敗」を残さない', async (_name, second, label) => {
+    let reply: StatusReply = () => Promise.resolve(false);
+    plan({ status: () => reply(), connect: () => Promise.reject(new Error('timed out')) });
+    vi.mocked(listen).mockClear();
+    renderIn('ja');
+    await failConnect();
+    reply = second;
+    await hideAndShow();
+    await waitFor(() => expect(badge()).toHaveTextContent(label));
+    expect(badge()).not.toHaveTextContent(staleLabels.failed);
+});
+
+it('接続に失敗したあと再取得で接続済みになり、その後に切断しても「接続に失敗」へ戻らない', async () => {
+    let reply: StatusReply = () => Promise.resolve(false);
+    plan({ status: () => reply(), connect: () => Promise.reject(new Error('timed out')) });
+    vi.mocked(listen).mockClear();
+    renderIn('ja');
+    await failConnect();
+    reply = () => Promise.resolve(true);
+    await timingInvalidated();
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.connected));
+    fireEvent.click(screen.getByRole('button', { name: '切断' }));
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.disconnected));
+    expect(badge()).not.toHaveTextContent(staleLabels.failed);
+});
+
+it.each(['再表示', '接続の通知'])('取得に失敗したあと再取得が成功したら、「確認できません」と案内を残さない（%s）', async how => {
+    let reply: StatusReply = () => Promise.reject(new Error('status'));
+    plan({ status: () => reply() });
+    vi.mocked(listen).mockClear();
+    renderIn('ja');
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.unknown));
+    expect(screen.getByText(/接続状態を確認できませんでした/)).toBeInTheDocument();
+    reply = () => Promise.resolve(false);
+    if (how === '再表示') await hideAndShow(); else await timingInvalidated();
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.disconnected));
+    expect(badge()).not.toHaveTextContent(staleLabels.unknown);
+    expect(screen.queryByText(/接続状態を確認できませんでした/)).not.toBeInTheDocument();
+});
+
+it('接続の取得に失敗し、並列の保存済み資格情報の失敗が案内を上書きしても「確認できません」のまま', async () => {
+    let failCredentials!: () => void;
+    plan({
+        status: () => Promise.reject(new Error('status')),
+        credentials: () => new Promise<unknown>((_, fail) => { failCredentials = () => fail(new Error('credentials')); }),
+    });
+    renderIn('ja');
+    await waitFor(() => expect(badge()).toHaveTextContent(staleLabels.unknown));
+    await act(async () => failCredentials());
+    await screen.findByText(/保存済みパスワードを確認できません/);
+    expect(badge()).toHaveTextContent(staleLabels.unknown);
+    expect(badge()).not.toHaveTextContent(staleLabels.disconnected);
 });

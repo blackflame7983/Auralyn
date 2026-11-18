@@ -19,7 +19,7 @@ export function obsLinkStatus(facts: ObsLinkFacts): ObsLinkStatus {
     if (facts.connected) return { tone: 'ok', label: 'settings.ObsConnectionSettings.291' };
     if (facts.connecting) return { tone: 'warn', label: 'obs.status.connecting' };
     if (facts.checking) return { tone: 'warn', label: 'obs.status.checking' };
-    if (facts.failed) return { tone: 'error', label: 'obs.status.failed' };
     if (facts.unreadable) return { tone: 'warn', label: 'obs.status.unknown' };
+    if (facts.failed) return { tone: 'error', label: 'obs.status.failed' };
     return { tone: 'off', label: 'obs.status.disconnected' };
 }

@@ -52,6 +52,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
   const [obsStatusLoading, setObsStatusLoading] = useState(true);
   const [obsConnectionHint, setObsConnectionHint] = useState<SettingsNotice | null>(null);
   const [connectFailed, setConnectFailed] = useState(false);
+  const [statusUnreadable, setStatusUnreadable] = useState(false);
   const [obsSetupLoading, setObsSetupLoading] = useState(false);
   const [obsReachLoading, setObsReachLoading] = useState(false);
 
@@ -97,7 +98,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
   useObsConnectionSync({
     revalidateReachRef, reachAlive, reachContext, reachRequest, reachValidation, reachExpiredRef, reachRecord,
     reachListeners, connectionRevision, connectionDetails, connectionDetailsTouched, isObsConnectedRef,
-    setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setReachListenersReady,
+    setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setConnectFailed, setStatusUnreadable, setReachListenersReady,
     setSavedCredentials, setCredentialReadFailed, setObsConnectionHint, setCredentialStatusLoading,
     setLoading, setObsStatusLoading, obsReachResult, obsInUse, reachListenersReady, reachExpired,
   });
@@ -121,6 +122,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
       localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost.trim(), port: obsPort }));
       if (revision !== connectionRevision.current || isAppHidden()) return;
       setIsObsConnected(true);
+      setStatusUnreadable(false);
       if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
@@ -152,6 +154,8 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     try {
       await obsApi.disconnect();
       setIsObsConnected(false);
+      setConnectFailed(false);
+      setStatusUnreadable(false);
       if (connectionDetails.current) connectionDetails.current.open = true;
       setObsConnectionHint(null);
 
@@ -209,7 +213,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     });
   };
 
-  const link = obsLinkStatus({ connected: isObsConnected, connecting: loading, checking: obsStatusLoading, failed: connectFailed, unreadable: typeof obsConnectionHint === 'object' && obsConnectionHint?.key === 'settings.ObsConnectionSettings.266' });
+  const link = obsLinkStatus({ connected: isObsConnected, connecting: loading, checking: obsStatusLoading, failed: connectFailed, unreadable: statusUnreadable });
 
   return (
 

@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { obsApi, type ObsAudioReachResult } from '@/api/obs';
@@ -22,6 +22,8 @@ interface ObsConnectionSync {
     setReachCurrent: Dispatch<SetStateAction<boolean>>;
     setReachExpired: Dispatch<SetStateAction<boolean>>;
     setIsObsConnected: Dispatch<SetStateAction<boolean>>;
+    setConnectFailed: Dispatch<SetStateAction<boolean>>;
+    setStatusUnreadable: Dispatch<SetStateAction<boolean>>;
     setReachListenersReady: Dispatch<SetStateAction<boolean>>;
     setSavedCredentials: Dispatch<SetStateAction<{ host: string; port: number } | null>>;
     setCredentialReadFailed: Dispatch<SetStateAction<boolean>>;
@@ -40,10 +42,22 @@ export function useObsConnectionSync(sync: ObsConnectionSync): void {
     const {
         revalidateReachRef, reachAlive, reachContext, reachRequest, reachValidation, reachExpiredRef, reachRecord,
         reachListeners, connectionRevision, connectionDetails, connectionDetailsTouched, isObsConnectedRef,
-        setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setReachListenersReady,
+        setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setConnectFailed, setStatusUnreadable, setReachListenersReady,
         setSavedCredentials, setCredentialReadFailed, setObsConnectionHint, setCredentialStatusLoading,
         setLoading, setObsStatusLoading, obsReachResult, obsInUse, reachListenersReady, reachExpired,
     } = sync;
+    // 接続状態を取得するたびに、前の失敗と取得失敗の印をその結果に合わせて更新する。
+    const applyStatusRead = useCallback((connected: boolean) => {
+        setIsObsConnected(connected);
+        setConnectFailed(false);
+        setStatusUnreadable(false);
+        setObsConnectionHint(hint => (typeof hint === 'object' && hint?.key === 'obs.credentialsUnavailable' ? hint : null));
+    }, [setConnectFailed, setIsObsConnected, setObsConnectionHint, setStatusUnreadable]);
+    const applyStatusUnreadable = useCallback(() => {
+        setConnectFailed(false);
+        setStatusUnreadable(true);
+        setObsConnectionHint(notice('settings.ObsConnectionSettings.266'));
+    }, [setConnectFailed, setObsConnectionHint, setStatusUnreadable]);
     useEffect(() => {
         reachAlive.current = true;
         let active = true;
@@ -67,8 +81,10 @@ export function useObsConnectionSync(sync: ObsConnectionSync): void {
             void obsApi.connectionStatus().then(connected => {
                 if (!active || revision !== connectionRevision.current || typeof connected !== 'boolean') return;
                 if (isObsConnectedRef.current && !connected && connectionDetails.current) connectionDetails.current.open = true;
-                setIsObsConnected(connected);
-            }).catch(() => {});
+                applyStatusRead(connected);
+            }).catch(() => {
+                if (active && revision === connectionRevision.current) applyStatusUnreadable();
+            });
         };
         const subscriptions = ['obs://timing-invalidated', 'obs://reach-invalidated', 'audio-started', 'audio-stopped', 'audio-stream-error', 'audio-error', 'global-bypass-changed', 'audio-conditions-changed']
             .map(event => listen(event, () => { invalidate(); if (event === 'obs://timing-invalidated') refreshConnection(); }));
@@ -87,9 +103,9 @@ export function useObsConnectionSync(sync: ObsConnectionSync): void {
             subscriptions.forEach(subscription => { void subscription.then(stop => stop()).catch(() => {}); });
         };
     }, [
-        connectionDetails, connectionRevision, isObsConnectedRef, reachAlive, reachContext, reachExpiredRef,
-        reachListeners, reachRequest, reachValidation, revalidateReachRef, setIsObsConnected, setObsReachLoading,
-        setReachCurrent, setReachExpired, setReachListenersReady,
+        applyStatusRead, applyStatusUnreadable, connectionDetails, connectionRevision, isObsConnectedRef, reachAlive,
+        reachContext, reachExpiredRef, reachListeners, reachRequest, reachValidation, revalidateReachRef,
+        setObsReachLoading, setReachCurrent, setReachExpired, setReachListenersReady,
     ]);
     // obwsが通知しない同名ソースのdevice/filter設定は表示中だけ再読取りする。
     // localeを依存にせず、要求の完了後に次回を予約して重複pollを作らない。
@@ -120,9 +136,9 @@ export function useObsConnectionSync(sync: ObsConnectionSync): void {
         let active = true;
         setObsStatusLoading(true);
         void obsApi.connectionStatus()
-            .then(connected => { if (active) { setIsObsConnected(connected); if (!connectionDetailsTouched.current && connectionDetails.current) connectionDetails.current.open = !connected; } })
-            .catch(() => { if (active) setObsConnectionHint(notice('settings.ObsConnectionSettings.266')); })
+            .then(connected => { if (active) { applyStatusRead(connected); if (!connectionDetailsTouched.current && connectionDetails.current) connectionDetails.current.open = !connected; } })
+            .catch(() => { if (active) applyStatusUnreadable(); })
             .finally(() => { if (active) setObsStatusLoading(false); });
         return () => { active = false; connectionRevision.current += 1; };
-    }, [connectionDetails, connectionDetailsTouched, connectionRevision, obsInUse, reachRequest, reachValidation, setIsObsConnected, setLoading, setObsConnectionHint, setObsStatusLoading, setReachCurrent]);
+    }, [applyStatusRead, applyStatusUnreadable, connectionDetails, connectionDetailsTouched, connectionRevision, obsInUse, reachRequest, reachValidation, setIsObsConnected, setLoading, setObsStatusLoading, setReachCurrent]);
 }
