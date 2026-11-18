@@ -82,6 +82,29 @@ for (const state of ['running', 'stopped'] as const) {
                     }
                 }
             }
+            if (!builtin && state === 'running') {
+                // VST が0件の外部VSTは、実行中も中身の高さにし、隣に合わせない。ノイズ低減と声を整えるは、互いに揃える（#769）。
+                for (const { locale, theme } of variants) {
+                    for (const size of sizes) {
+                        test(`${size.width}×${size.height} ${locale} ${theme} 配信・通話：VSTが0件の外部VSTは、隣の高さまで伸びない`, async ({ page }) => {
+                            await openHome(page, { state, locale, purpose: 'voice', theme, size });
+                            const vstCard = page.locator('.sound-chain .sound-module-card').nth(2);
+                            await expect(vstCard).toContainText(message(locale, 'chain.vstEmptySub'));
+                            const heights = await page.locator('.sound-chain .sound-module-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().height));
+                            expect(heights).toHaveLength(3);
+                            expect(Math.abs(heights[0] - heights[1]), `ノイズ低減と声を整えるは同じ高さ ${heights}`).toBeLessThanOrEqual(1);
+                            expect(heights[2], `外部VSTは中身の高さ ${heights}`).toBeLessThan(heights[0] - 8);
+                            const bottoms = await vstCard.evaluate(card => {
+                                const visible = Array.from(card.children).filter(child => child.getBoundingClientRect().height > 0);
+                                const last = visible[visible.length - 1];
+                                const padding = Number.parseFloat(getComputedStyle(card).paddingBottom) + Number.parseFloat(getComputedStyle(card).borderBottomWidth);
+                                return { card: card.getBoundingClientRect().bottom, content: last?.getBoundingClientRect().bottom ?? 0, padding };
+                            });
+                            expect(bottoms.card - bottoms.content - bottoms.padding, `外部VSTの下に空きが残らない ${JSON.stringify(bottoms)}`).toBeLessThanOrEqual(2);
+                        });
+                    }
+                }
+            }
             if (!builtin) {
                 for (const locale of ['ja', 'en'] as const) {
                     test(`900×600 ${locale} 配信・通話：音調整の3枚が1行に並び、名前が収まる`, async ({ page }) => {

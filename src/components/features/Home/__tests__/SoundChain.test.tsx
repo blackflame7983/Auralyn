@@ -75,6 +75,21 @@ it('外部 VST が0個なら追加にし、個数が分からないときは開�
     expect(screen.getByRole('button', { name: 'VSTを開く' })).toBeInTheDocument();
 });
 
+it('実行中も、VST が0件の外部VSTだけ中身の高さにし、1件以上とほかの2枚は隣に合わせたままにする (#769)', () => {
+    const empty = stats();
+    const stage = empty.latencyMetadata?.stageBreakdown;
+    expect(stage).toBeDefined();
+    if (stage) stage.vst = [];
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: empty, running: true }}><SoundChain {...props()} vstCount={0} /></RuntimeStatsContext.Provider>);
+    const [noise, builtin, vst] = screen.getAllByRole('listitem');
+    expect(screen.getByRole('list')).not.toHaveClass('items-start');
+    expect(vst).toHaveClass('self-start');
+    expect(noise).not.toHaveClass('self-start');
+    expect(builtin).not.toHaveClass('self-start');
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} vstCount={1} /></RuntimeStatsContext.Provider>);
+    screen.getAllByRole('listitem').forEach(item => expect(item).not.toHaveClass('self-start'));
+});
+
 it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カードで並べ、操作できない間は各段の設定状態を表示する (%s)', locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}>
         <SoundChain {...props()} />

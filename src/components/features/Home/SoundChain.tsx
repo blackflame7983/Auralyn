@@ -117,7 +117,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         const showBody = !unconfigured && !nameOnly ? body : null;
         const showAction = !unconfigured && Boolean(action);
         const actionInName = Boolean(nameOnly && showAction);
-        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || nameOnly || (stopped && !live) ? false : on} className="sound-module-item sound-module-card min-w-0 flex flex-col gap-3">
+        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || nameOnly || (stopped && !live) ? false : on} className={cn('sound-module-item sound-module-card min-w-0 flex flex-col gap-3', key === 'vst' && emptyVst && 'self-start')}>
             {/* 見出しはアイコン・名前・説明だけ。スイッチは状態の行へ置く。停止中の外部VSTだけ名前の行に追加を置き、幅が足りなければ次の行へ送る（#621、#726）。 */}
             <div className="flex min-w-0 flex-col gap-1">
                 <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', actionInName && 'flex-wrap')}>
@@ -207,7 +207,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="home-action">{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
-        {/* 停止中の外部VSTは名前の行だけなので、隣の高さへ伸ばさない（#632、#726）。 */}
+        {/* 停止中は3枚とも中身の高さにする。VST が0件の外部VSTは、実行中も自分だけ隣の高さへ伸ばさない（#632、#726、#769）。 */}
         <ol aria-label={t('flow.title')} className={cn('sound-tool-list mt-3 grid gap-3', music ? 'grid-cols-1' : 'grid-cols-3', stopped && 'items-start')}>
             {rows}
         </ol>
