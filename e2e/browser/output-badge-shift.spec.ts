@@ -19,7 +19,7 @@ const sizes = [
 
 const labels = {
     ja: { landmark: '本番中の操作', heading: '出力', badge: '出力ミュート・音量ゼロ', slider: '出力音量', mute: '緊急ミュート' },
-    en: { landmark: 'Live controls', heading: 'Output', badge: 'Muted / vol 0', slider: 'Output volume', mute: 'Emergency mute' },
+    en: { landmark: 'Live controls', heading: 'Output', badge: 'Muted / 0%', slider: 'Output volume', mute: 'Emergency mute' },
 } as const;
 
 async function measure(page: Page, locale: 'ja' | 'en') {

@@ -4529,7 +4529,7 @@ const en: Record<MessageKey, string> = {
     "prep.running": "Running",
     "prep.failed": "Output failure / audio error",
     "prep.pending": "Settings pending / awaiting verification",
-    "prep.muted": "Muted / vol 0",
+    "prep.muted": "Muted / 0%",
     "prep.localOnly": "This status and the meters cover Auralyn only. Record arrival with “Check at the destination”.",
     "prep.steps": "Connection details",
     "prep.scopeInfo": "About what this shows",
