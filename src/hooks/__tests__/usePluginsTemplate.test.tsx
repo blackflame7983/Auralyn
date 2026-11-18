@@ -50,7 +50,7 @@ it.each([
     const { result } = renderHook(() => usePlugins());
     await act(async () => {});
     await act(async () => { await result.current.addPlugin(plugin('old')); });
-    let applied: boolean | undefined;
+    let applied: unknown;
     await act(async () => { applied = await result.current.applyTemplate({ '0': plugin('comp'), '1': plugin('limit') }); });
     expect(invoke).toHaveBeenCalledWith('remove_plugin', { id: 'instance-old' });
     expect(applied).toBe(expected);

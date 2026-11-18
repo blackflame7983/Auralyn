@@ -3,9 +3,12 @@ import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { TemplateWizardModal } from '../TemplateWizardModal';
 
-afterEach(cleanup);
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
+
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイスチェーンへ進める', () => {
     const settings = vi.fn();
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={vi.fn()}
@@ -113,4 +116,82 @@ it.each(['ja', 'en'] as const)('この構成を使うが主な操作で、無い
     const details = screen.getByText(message(locale, 'templates.beforeSummary')).closest('details');
     expect(details).toHaveTextContent(message(locale, 'templates.beforeBody'));
     expect(details?.textContent).not.toMatch(locale === 'ja' ? /別に用意/ : /Provide the VST/);
+});
+
+it.each(['ja', 'en'] as const)('操作ロックに断られたときは、通知ではなく画面の中の1行で理由を出し、閉じない。選び直すと消える（%s）', async locale => {
+    const close = vi.fn();
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><TemplateWizardModal isOpen onClose={close} availablePlugins={[
+        { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+        { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+    ]} onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} /></LocaleProvider>);
+    fireEvent.click(screen.getAllByRole('button', { name: message(locale, 'templates.useThis') })[0]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const apply = screen.getByRole('button', { name: message(locale, 'presets.copy.106') });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    const reason = await screen.findByRole('alert');
+    expect(reason).toHaveTextContent(message(locale, 'pluginNotices.liveLockedBody'));
+    expect(screen.getByRole('dialog')).toContainElement(reason);
+    expect(apply).toBeEnabled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'presets.copy.097') }));
+    fireEvent.click(screen.getAllByRole('button', { name: message(locale, 'templates.useThis') })[0]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+const lockPlugins = [
+    { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+    { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+];
+
+async function lockedApply(armed?: boolean) {
+    const view = (live?: boolean) => <TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={lockPlugins}
+        onApplyTemplate={async () => 'blocked'} onScan={vi.fn()} isScanning={false} liveArmed={live} />;
+    const result = render(view(armed));
+    fireEvent.click(screen.getAllByRole('button', { name: message('ja', 'templates.useThis') })[0]);
+    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    const reason = await screen.findByRole('alert');
+    return { ...result, view, reason };
+}
+
+it('ロックの理由は日本語を語の途中で折り返さない', async () => {
+    const { reason } = await lockedApply();
+    expect(reason.className).toContain('[word-break:auto-phrase]');
+});
+
+it('ロックに断られたあとで割り当てを変えると、理由を消す', async () => {
+    await lockedApply();
+    fireEvent.change(screen.getByRole('combobox', { name: 'コンプレッサーに使うVST' }), { target: { value: 'limiter' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('ロックに断られたあとで操作ロックが外れたら、画面を開いたまま理由を消す', async () => {
+    const { rerender, view } = await lockedApply(true);
+    rerender(view(true));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    rerender(view(false));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('ロックの状態が未取得のあいだは、理由を消さない', async () => {
+    const { rerender, view } = await lockedApply(true);
+    rerender(view(undefined));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+});
+
+it('適用が失敗（ロック以外）したときは、画面側が失敗の通知を1件出す', async () => {
+    render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[
+        { id: 'comp', name: 'Comp', vendor: '', path: 'comp', version: '', category: 'Fx' },
+        { id: 'limit', name: 'Limiter', vendor: '', path: 'limiter', version: '', category: 'Fx' },
+    ]} onApplyTemplate={async () => false} onScan={vi.fn()} isScanning={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /雑談/ }));
+    const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
 });

@@ -5,6 +5,11 @@ export interface InputSourceRequest { source: InputSource; candidateId?: string 
 export interface ProcessInputCandidate { id: string; appKey: string; name: string; routes: { id: string; name: string; muted: boolean }[] }
 export const deviceInput = (): InputSource => ({ kind: 'device', config: { purpose: 'voice' } });
 
+/** 保存した設定とエンジンが実際に使う入力元のどちらかがアプリの音声なら true。操作ロックの可否など、どちらを信じても安全側に倒したい判断に使う。 */
+export function usesAppAudio(saved: InputSource | undefined, engine: InputSource | undefined): boolean {
+    return saved?.kind === 'process_loopback' || engine?.kind === 'process_loopback';
+}
+
 export function withInputPurpose(source: InputSource, purpose: InputPurpose): InputSource {
     return source.kind === 'process_loopback'
         ? { kind: 'process_loopback', config: { ...source.config, purpose } }

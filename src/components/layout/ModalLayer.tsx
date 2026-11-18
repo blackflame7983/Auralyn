@@ -1,10 +1,13 @@
 import { useSingingDraft } from '../../hooks/useSingingDraft';
+import { useClearOnLiveUnlock } from '../../hooks/useClearOnLiveUnlock';
 import type { LiveModesModel } from '../../hooks/useLiveModes';
 import { Suspense, lazy, useState } from 'react';
 import { useObsUsage } from '../../hooks/useObsUsage';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { useModalReturnFlags, useRegisteredCloser } from '../../hooks/useModalReturn';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
+import type { TemplateApplyResult } from '@/lib/liveLock';
 import { channelRoutingFor } from '@/lib/audioChannelRouting';
 import { registerSettingsCloser, useLeaveGeneration } from './pageLeave';
 import { UnsavedLeaveDialog } from './UnsavedLeaveDialog';
@@ -95,14 +98,14 @@ interface PluginsApi {
     sessionProtectionReason?: string | null;
     scanPlugins: (request?: import('@/api/audio').PluginScanRequest) => Promise<void>;
     retryPluginScan?: (path: string) => Promise<void>;
-    addPlugin: (vstPlugin: VstPlugin) => Promise<boolean>;
+    addPlugin: (vstPlugin: VstPlugin, options?: { onLocked?: () => void }) => Promise<boolean>;
     loadPreset: (name: string) => Promise<boolean>;
     savePreset: (name: string) => Promise<boolean>;
     saveProfile: (name: string, categories: import('../../api/presets').ProfileSaveCategories) => Promise<boolean>;
     applyProfile: (name: string, substitutions?: { inputDevice?: string; outputDevice?: string }) => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     restoreBackupProfile: () => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     runBundle?: (request: import('../../api/bundles').BundleOperation) => Promise<import('../../api/bundles').BundleResult | null>;
-    applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | TemplateApplyResult>;
     resetPlugins: () => void;
     recoverSession: (excludePath?: string | null, start?: () => Promise<unknown>) => Promise<void>;
     keepSessionStopped: () => Promise<void>;
@@ -124,6 +127,11 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
     const singingModel = useSingingDraft();
     const leaveGeneration = useLeaveGeneration();
     const [singingPreview, setSingingPreview] = useState(false);
+    const t = useMessages();
+    // 追加の画面を開いたまま操作ロックに断られたとき、理由はその画面の中の案内の欄に出す。閉じる・ロックが外れる・別の操作を始めると消す。
+    const [liveLockedAdd, setLiveLockedAdd] = useState(false);
+    if (liveLockedAdd && !ui.isBrowserOpen) setLiveLockedAdd(false);
+    useClearOnLiveUnlock(liveModel?.snapshot?.armed, () => setLiveLockedAdd(false));
     const { returnToTiming, setReturnToTiming, returnToBundle, setReturnToBundle } = useModalReturnFlags({ settingsOpen: ui.isSettingsOpen, presetManagerOpen: ui.isPresetManagerOpen, obsGuideOpen: ui.isOBSGuideOpen });
     // lazy画面の読込中も、明示的なガイド↔接続設定の往復だけ接続寿命を引き継ぐ。
     useObsUsage(ui.isOBSGuideOpen || (returnToTiming && ui.isSettingsOpen) || ui.isPresetManagerOpen || (returnToBundle && ui.isSettingsOpen));
@@ -146,7 +154,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
     };
 
     const handlePluginSelect = async (vstPlugin: VstPlugin) => {
-        const success = await pluginsApi.addPlugin(vstPlugin);
+        setLiveLockedAdd(false);
+        const success = await pluginsApi.addPlugin(vstPlugin, { onLocked: () => setLiveLockedAdd(true) });
         if (success) {
             ui.setIsBrowserOpen(false);
             onPluginAdded();
@@ -209,10 +218,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         addedPaths={pluginsApi.plugins.map(plugin => plugin.classId ? `${plugin.path}::${plugin.classId.toUpperCase()}` : plugin.path)}
                         isLoading={pluginsApi.isScanning}
                         error={pluginsApi.scanError}
-                        notice={pluginsApi.error}
+                        notice={liveLockedAdd ? t('pluginNotices.liveLockedBody') : pluginsApi.error}
                         protectionNotice={pluginsApi.sessionProtectionReason}
-                        onScan={request => { void pluginsApi.scanPlugins(request); }}
-                        onRetry={pluginsApi.retryPluginScan ? path => { void pluginsApi.retryPluginScan?.(path); } : undefined}
+                        onScan={request => { setLiveLockedAdd(false); void pluginsApi.scanPlugins(request); }}
+                        onRetry={pluginsApi.retryPluginScan ? path => { setLiveLockedAdd(false); void pluginsApi.retryPluginScan?.(path); } : undefined}
                         skippedRoots={pluginsApi.skippedRoots}
                     />
                 </Suspense>
@@ -346,6 +355,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onApplyTemplate={pluginsApi.applyTemplate}
                         onScan={() => { void pluginsApi.scanPlugins(); }}
                         isScanning={pluginsApi.isScanning}
+                        liveArmed={liveModel?.snapshot?.armed}
                         onOpenSoundSettings={() => {
                             ui.setIsTemplateWizardOpen(false);
                             ui.openSoundSettings();

@@ -408,7 +408,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
         )}
 
         {protectionNotice && <p role="status" className="mb-3 rounded-control border border-warning/30 bg-warning/10 p-2 text-ui-support">{protectionNotice}</p>}
-        {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-ui-support text-warning">{notice}</p>}
+        {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-ui-support text-warning text-balance [word-break:auto-phrase]">{notice}</p>}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
