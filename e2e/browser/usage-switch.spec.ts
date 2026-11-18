@@ -451,7 +451,7 @@ test.describe('使い道の切り替え', () => {
         const wizard = page.getByRole('dialog', { name: 'セットアップ' });
         await expect(wizard).toBeVisible();
         await expect(wizard.getByRole('heading', { level: 2 }).first()).toBeVisible();
-        await expect(wizard.getByRole('heading', { name: '送り先を選んでください' })).toHaveCount(0);
+        await expect(wizard.getByRole('heading', { name: '何に使いますか？' })).toHaveCount(0);
         expect(await page.evaluate(() => localStorage.getItem('auralyn_display_purpose'))).toBe('voice');
     });
 

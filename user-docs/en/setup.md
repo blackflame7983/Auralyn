@@ -1,15 +1,15 @@
 ---
 title: "First setup"
-description: "Choose your purpose and devices, then check the path to the receiving app."
+description: "Choose how you will use it and your devices, then check the path to the receiving app."
 order: 2
-uiLabels: ["Connection details", "Open Setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "Running", "Start audio", "Start listening", "Playback source", "Bypass VST"]
+uiLabels: ["Connection details", "Open Setup", "Skip setup", "Listen to music (apply VST to PC audio)", "Hear my own voice", "How you will use it", "I want to listen here", "What will you use it for?", "Running", "Start audio", "Start listening", "Playback source", "Bypass VST"]
 ---
 
 ## What to do first {#first-steps}
 
 ### For streaming and calls {#first-steps-voice}
 
-1. In the Setup that opens first, choose your destination and microphone. If you closed it, open it again from “Open Setup” in “Connection details”.
+1. In the Setup that opens first, choose Use and your microphone. If you closed it, open it again from “Open Setup” in “Connection details”.
 2. If the status on the top band says “Running”, audio is already on. If it is stopped, press “Start audio” on Home.
 3. In OBS, the audio input capture meter moving with your voice means it arrived. In a calling app, check its input meter. With “Hear my own voice”, check by hearing your voice.
 
@@ -17,16 +17,18 @@ If it does not arrive, see [Others cannot hear you](./troubleshooting.md#not-rec
 
 ### For listening to music {#first-steps-music}
 
-1. In the Setup that opens first, choose “Listen to music (apply VST to PC audio)”, then your playback source and listening device. If you closed it, open it again from “Open Setup” in “Connection details”.
+1. In the Setup that opens first, choose “Listen to music (apply VST to PC audio)” for Use, then your playback source and listening device. If you closed it, open it again from “Open Setup” in “Connection details”.
 2. If the status on the top band says “Running”, audio is already on. If it is stopped, press “Start listening” on Home.
 3. Play a song in your music app. If the “Playback source” bar on the right of the screen moves, sound is coming in. When you have added a VST, press “Bypass VST” to compare; if the sound changes, the VST is applied.
 
 If there is no sound, see [No sound](./troubleshooting.md#no-sound).
 
-## Choose a purpose {#purpose}
+## Choose what to use it for {#purpose}
 
 1. Open “Connection details” and select “Open Setup”.
-2. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”.
+2. The first screen asks “What will you use it for?”. Choose OBS, calls, “Hear my own voice”, other apps, or “Listen to music (apply VST to PC audio)”. Selecting a card moves to the next step.
+
+“Skip setup” on the first screen returns to Home without changing any settings. If audio is not set up yet, it stays stopped.
 
 “Hear my own voice” processes the microphone and plays it on headphones or speakers. The choice under “How you will use it” is “I want to listen here”. To apply a VST to playback from an app, choose “Listen to music (apply VST to PC audio)”. Hear my own voice and listening to music do not show streaming or listener wording on the review or the finished screen.
 
