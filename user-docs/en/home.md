@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check that sound is arriving", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn"]
+uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Output muted / volume zero", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Source volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check that sound is arriving", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn"]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -149,7 +149,7 @@ On a wide window, the connection column opens on the right of Home. On a narrow 
 
 ### Controls on the right of the screen (stop or compare the sound) {#music-output}
 
-The right side of the screen runs from “Emergency mute”, “Playback source” volume, and “Output volume” to “Bypass VST”. “Lock controls” also appears while locked.
+The right side of the screen runs from “Emergency mute”, “Source volume”, and “Output volume” to “Bypass VST”. “Lock controls” also appears while locked.
 
 While audio is stopped, “Bypass VST” cannot be pressed. The reason is tied to the switch.
 
