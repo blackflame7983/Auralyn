@@ -101,10 +101,20 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         return saveItem.call(this, key, value);
     };
     const gainWrites: number[] = [];
-    Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: (value: number) => { outputGain = value; window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 })); } });
-    // 実エンジンは、緊急ミュートを切り替えると global-mute-changed だけを送る（audio.rs の set_global_mute）。準備の画面へ直接は知らせない。
+    // 実エンジンは、実行中に出力音量・ミュートを変えるコマンドの前後で audio-conditions-changed を送る（audio/conditions.rs の dispatch）。
+    const notifyCommandChange = (change: () => void) => {
+        if (audioRunning) page.__e2eEmit?.('audio-conditions-changed', null);
+        change();
+        if (audioRunning) page.__e2eEmit?.('audio-conditions-changed', null);
+    };
+    const setGain = (value: number) => {
+        notifyCommandChange(() => { outputGain = value; });
+        window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 }));
+    };
+    Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: setGain });
+    // 実エンジンは、緊急ミュートを切り替えると、条件の通知のあとに global-mute-changed を送る（audio.rs の set_global_mute）。準備の画面へ直接は知らせない。
     const setMuted = (muted: boolean) => {
-        outputMuted = muted;
+        notifyCommandChange(() => { outputMuted = muted; });
         page.__e2eEmit?.('global-mute-changed', muted);
     };
     Object.assign(window, { __e2eSetOutputMuted: setMuted });
@@ -195,7 +205,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 return;
             case 'set_output_gain':
                 if (typeof args.value !== 'number') return;
-                outputGain = args.value;
+                notifyCommandChange(() => { outputGain = args.value as number; });
                 gainWrites.push(args.value);
                 return;
             case 'auto_gain': return { revision: 1, gain: outputGain, confirmedGain: outputGain, settled: true, running: audioRunning, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };

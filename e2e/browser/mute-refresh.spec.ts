@@ -130,3 +130,28 @@ test('スライダーの連続操作で、状態の取り直しは操作の回�
     expect(during).toBeGreaterThan(0);
     expect(during, `状態の読取り ${during} 回`).toBeLessThanOrEqual(30);
 });
+
+// ミュートや音量の操作のたびに、実エンジンは条件の通知を2回送る。そのたびに「音を送っていません」の札が消えて戻る点滅をしない。
+for (const locale of locales) {
+    test(`音量ゼロの間に操作が続いても、条件の通知で札が消えて戻る点滅をしない（${locale}）`, async ({ page }) => {
+        await openHome(page, { state: 'running', locale, purpose: 'voice', theme: 'dark', size });
+        const label = message(locale, 'prep.muted');
+        await setOutputGain(page, 0);
+        await expect(chipOf(page, locale)).toBeVisible(quick);
+        await page.evaluate(text => {
+            const aside = document.querySelector('aside');
+            if (!aside) throw new Error('右の列がありません');
+            const removed = { count: 0 };
+            window.__chipRemoved = removed;
+            new MutationObserver(records => {
+                for (const record of records) for (const node of record.removedNodes) if (node.textContent?.includes(text)) removed.count += 1;
+            }).observe(aside, { childList: true, subtree: true });
+        }, label);
+        for (let step = 0; step < 15; step += 1) {
+            await setOutputGain(page, 0);
+            await page.waitForTimeout(40);
+        }
+        await expect(chipOf(page, locale)).toBeVisible();
+        expect(await page.evaluate(() => window.__chipRemoved)).toEqual({ count: 0 });
+    });
+}

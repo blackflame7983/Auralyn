@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { presetOutputMuted } from './e2eHooks';
 import { mustBox } from './mustBox';
 import { settleLayoutMotion } from './layoutMotion';
 import { message } from '../../src/i18n/messages';
@@ -12,42 +13,55 @@ async function prepare(page: Page, theme = 'dark', locale: 'ja' | 'en' = 'ja') {
         localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_setup_goal', 'obs');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', inputId: 'mic', outputId: 'headphones', sampleRate: 48000, bufferSize: 512 }));
-        const original = (window as any).__TAURI_INTERNALS__.invoke;
-        let mode: string | null = null, nextMode: string | null = null, pendingReads = 0, armed = false, muted = false, noiseMode = 'low', preset = 'broadcast';
-        (window as any).__refineActions = []; (window as any).__refineUnknown = false;
-        (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+        const internals = window.__TAURI_INTERNALS__;
+        const setOutputMuted = window.__e2eSetOutputMuted;
+        if (!internals || !setOutputMuted) throw new Error('模擬の Tauri 内部APIまたは出力ミュートの操作がありません');
+        const original = internals.invoke;
+        const asRecord = (value: unknown): Record<string, unknown> => {
+            if (typeof value !== 'object' || value === null) throw new Error('オブジェクトではありません');
+            return value as Record<string, unknown>;
+        };
+        const live = { mode: null as string | null, nextMode: null as string | null, pendingReads: 0, armed: false };
+        let muted = false, noiseMode = 'low', preset = 'broadcast';
+        const actions: string[] = [];
+        window.__refineActions = actions; window.__refineUnknown = false;
+        internals.invoke = async (command, args) => {
             if (command === 'obs_setup_history') return [];
             if (command === 'disconnect_obs') return;
-            if (command === 'set_noise_control_config') { noiseMode = args.mode; (window as any).__refineActions.push(command); return; }
-            if (command === 'set_built_in_effects') { preset = args.preset; (window as any).__refineActions.push(command); return; }
-            if (command === 'toggle_global_mute') { muted = !muted; (window as any).__e2eSetOutputMuted(muted); (window as any).__e2eEmit('global-mute-changed', muted); return; }
+            const params = args === undefined ? {} : asRecord(args);
+            if (command === 'set_noise_control_config') { noiseMode = String(params.mode); actions.push(command); return; }
+            if (command === 'set_built_in_effects') { preset = String(params.preset); actions.push(command); return; }
+            // 模擬の緊急ミュートの切替が、実エンジンと同じ通知を送る。
+            if (command === 'toggle_global_mute') { muted = !muted; setOutputMuted(muted); return; }
             if (command === 'live_modes') {
-                if (args.request.action !== 'snapshot') {
-                    (window as any).__refineActions.push(args.request.action);
-                    if (args.request.action === 'singing_on') { nextMode = 'singing'; pendingReads = 1; }
-                    else if (args.request.action === 'talk_on') { nextMode = 'talk'; pendingReads = 1; }
-                    else if (args.request.action === 'arm') armed = true;
-                    else if (args.request.action === 'disarm') armed = false;
-                    else throw new Error(`Unexpected mode action: ${args.request.action}`);
+                const action = String(asRecord(params.request).action);
+                if (action !== 'snapshot') {
+                    actions.push(action);
+                    if (action === 'singing_on') { live.nextMode = 'singing'; live.pendingReads = 1; }
+                    else if (action === 'talk_on') { live.nextMode = 'talk'; live.pendingReads = 1; }
+                    else if (action === 'arm') live.armed = true;
+                    else if (action === 'disarm') live.armed = false;
+                    else throw new Error(`Unexpected mode action: ${action}`);
                 }
-                const result = await original(command, { request: { action: 'snapshot' } });
-                if (nextMode && pendingReads-- > 0) return { ...result, phase: 'queued', target: nextMode, applied: mode, armed };
-                if (nextMode) { mode = nextMode; nextMode = null; }
-                return { ...result, phase: mode ? 'settled' : 'custom', target: mode, applied: mode, armed };
+                const result = asRecord(await original(command, { request: { action: 'snapshot' } }));
+                if (live.nextMode && live.pendingReads-- > 0) return { ...result, phase: 'queued', target: live.nextMode, applied: live.mode, armed: live.armed };
+                if (live.nextMode) { live.mode = live.nextMode; live.nextMode = null; }
+                return { ...result, phase: live.mode ? 'settled' : 'custom', target: live.mode, applied: live.mode, armed: live.armed };
             }
             const result = await original(command, args);
             if (command === 'get_engine_runtime_stats') {
-                result.noiseReductionEnabled = true; result.noiseReductionActive = true; result.noiseReductionMode = noiseMode;
-                result.noiseControlStrength = 0.6; result.noiseVoiceGuard = false;
-                result.builtInEffectsPreset = preset;
-                if ((window as any).__refineUnknown) delete result.preparation;
-                result.latencyMetadata.stageBreakdown.nr.enabled = true;
+                const stats = asRecord(result);
+                Object.assign(stats, {
+                    noiseReductionEnabled: true, noiseReductionActive: true, noiseReductionMode: noiseMode,
+                    noiseControlStrength: 0.6, noiseVoiceGuard: false, builtInEffectsPreset: preset,
+                });
+                if (window.__refineUnknown) delete stats.preparation;
+                Object.assign(asRecord(asRecord(asRecord(stats.latencyMetadata).stageBreakdown).nr), { enabled: true });
             }
             return result;
         };
-    }, { theme, locale });
-    await page.goto('/');
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    }, { theme, locale });    await page.goto('/');
+    await presetOutputMuted(page, false);
     await expect(page.getByRole('region', { name: message(locale, 'prep.title'), exact: true }).getByRole('button', { name: message(locale, 'prep.steps'), exact: true })).toHaveAttribute('aria-expanded', 'false');
 }
 

@@ -37,8 +37,13 @@ declare global {
         __e2ePresetOutputMuted?: (muted: boolean) => void;
         /** get_audio_state の読取り回数。取り直しの回数と間隔を試験で数える（mute-refresh.spec.ts）。 */
         __e2eStateReads?: { count: number };
+        /** 札の描き直しで消えた回数（mute-refresh.spec.ts の点滅の検出）。 */
+        __chipRemoved?: { count: number };
         /** 入力の一定レベルを audio-level で流す。出力は模擬が出力ミュートと出力音量から決める（src/dev/tauriMock.ts）。 */
         __e2eEmitLevel?: (level: number) => void;
+        /** 本番帯の試験が差し替えた invoke に記録した操作と、読取りを失わせる切替（ui-refinement.spec）。 */
+        __refineActions?: string[];
+        __refineUnknown?: boolean;
         __layoutMeterState?: { value: number | null };
         /** 配信ラックへ送った要求の記録（mixing.spec の模擬）。 */
         __postRequests?: { action: string; ids?: string[] }[];

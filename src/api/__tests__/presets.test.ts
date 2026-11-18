@@ -27,15 +27,11 @@ describe('presets API', () => {
 
         await presetApi.saveProfile('game', DEFAULT_SAVE_CATEGORIES, [], gatherProfileAudioExtras());
 
-        expect(mockedInvoke).toHaveBeenCalledWith('save_profile', expect.objectContaining({
-            name: 'game',
-            categories: DEFAULT_SAVE_CATEGORIES,
-            plugins: [],
-            audioExtras: expect.objectContaining({
-                inputGainDb: expect.any(Number),
-                masterGainDb: expect.any(Number),
-            }),
-        }));
+        const [command, args] = mockedInvoke.mock.calls[0] ?? [];
+        expect(command).toBe('save_profile');
+        expect(args).toMatchObject({ name: 'game', categories: DEFAULT_SAVE_CATEGORIES, plugins: [] });
+        const extras: unknown = typeof args === 'object' && args !== null ? Reflect.get(args, 'audioExtras') : undefined;
+        expect(typeof extras === 'object' && extras !== null && Number.isFinite(Reflect.get(extras, 'inputGainDb')) && Number.isFinite(Reflect.get(extras, 'masterGainDb'))).toBe(true);
     });
 
     it('applyProfile passes plugin ids and backup data', async () => {
@@ -98,9 +94,26 @@ describe('presets API', () => {
             },
         });
 
-        const cfg = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}');
-        expect(cfg.host).toBe('WASAPI');
-        expect(cfg.input).toBe('Mic');
+        const cfg: unknown = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}');
+        expect(cfg).toMatchObject({ host: 'WASAPI', input: 'Mic' });
         expect(localStorage.getItem('vst_host_input_gain')).toBe('100');
+    });
+
+    // 設定のページを開いて取得を止めている間も、札が出力音量の変化に追従できるよう、適用の確定後に通知する（#799）。
+    it('プロファイル・バンドルの適用で出力音量が確定したら、output-gain-sync を保存のあとに1回だけ送る', () => {
+        const seen: Array<{ detail: number; stored: string | null }> = [];
+        const listener = (event: Event) => {
+            if (event instanceof CustomEvent && typeof event.detail === 'number') seen.push({ detail: event.detail, stored: localStorage.getItem('vst_host_output_gain') });
+        };
+        window.addEventListener('output-gain-sync', listener);
+        try {
+            syncLocalStateFromProfile({
+                appliedCategories: ['audioConfig'], skippedCategories: [], missingDevices: [], missingPlugins: [], needsEngineRestart: false,
+                appliedAudioConfig: { host: 'WASAPI', inputDevice: 'Mic', outputDevice: 'Cable', sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1], inputGainDb: 0, masterGainDb: -6.020599913279624 },
+            });
+            expect(seen).toEqual([{ detail: 50, stored: '50' }]);
+            syncLocalStateFromProfile({ appliedCategories: ['plugins'], skippedCategories: [], missingDevices: [], missingPlugins: [], needsEngineRestart: false });
+            expect(seen).toHaveLength(1);
+        } finally { window.removeEventListener('output-gain-sync', listener); }
     });
 });

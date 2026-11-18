@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
+import { syncLocalStateFromProfile } from '@/api/presets';
 import { AppShell } from '../AppShell';
 
 vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({ busy: false, label: '更新の確認', description: '', checkUpdates: vi.fn() }), UpdateGuide: () => null }));
@@ -62,6 +64,17 @@ it('音量ゼロの移動先は出力音量で、既存の案内表示を付け�
     expect(slider).toHaveFocus();
     expect(slider).toHaveAttribute('data-attention', '');
   } finally { vi.useRealTimers(); }
+});
+
+it('プロファイルの適用で出力音量が同期されると、表示だけが追従し、音量の設定や自動調整は再送しない', async () => {
+  render(<OutputGainControl />);
+  await act(async () => {});
+  const before = vi.mocked(invoke).mock.calls.length;
+  act(() => syncLocalStateFromProfile({ appliedCategories: ['audioConfig'], skippedCategories: [], missingDevices: [], missingPlugins: [], needsEngineRestart: false,
+    appliedAudioConfig: { host: 'WASAPI', inputDevice: 'Mic', outputDevice: 'Out', sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1], inputGainDb: 0, masterGainDb: -6.020599913279624 } }));
+  expect(screen.getByRole('slider', { name: '出力音量' })).toHaveAttribute('aria-valuenow', '50');
+  await act(async () => {});
+  expect(vi.mocked(invoke).mock.calls.slice(before).filter(([command]) => command === 'set_output_gain' || command === 'auto_gain')).toEqual([]);
 });
 
 it('出力音量の操作部品を2つマウントすると開発時とテストで失敗する', () => {

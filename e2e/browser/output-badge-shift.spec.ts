@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 import { mustBox } from './mustBox';
-import { setOutputMuted } from './e2eHooks';
+import { presetOutputMuted } from './e2eHooks';
 import { settleLayoutMotion } from './layoutMotion';
 import { uiScale } from '../../src/lib/largeWindow';
 
@@ -63,7 +63,8 @@ for (const locale of ['ja', 'en'] as const) {
             });
             for (const size of sizes) {
                 await page.setViewportSize(size);
-                await setOutputMuted(page, false);
+                // 札の有無だけで位置を比べる。緊急ミュートの通知（トースト）の高さを混ぜないよう、準備用の入口で切り替える。
+                await presetOutputMuted(page, false);
                 await expect(column.getByRole('button', { name: text.badge, exact: true })).toBeHidden();
                 // 一言（適正）が出ている状態。
                 await expect(column.locator('[data-output-verdict]')).toHaveCount(1);
@@ -77,7 +78,7 @@ for (const locale of ['ja', 'en'] as const) {
                 const quiet = await measure(page, locale);
                 await startLevels();
 
-                await setOutputMuted(page, true);
+                await presetOutputMuted(page, true);
                 const badge = column.getByRole('button', { name: text.badge, exact: true });
                 await expect(badge).toBeVisible();
                 await expect(column.locator('[data-output-verdict]')).toHaveCount(0);
