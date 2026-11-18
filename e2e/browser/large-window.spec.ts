@@ -2,6 +2,7 @@ import { test, expect } from './tauriFixture';
 import { uiScale } from '../../src/lib/largeWindow';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
 import { setOutputMuted } from './e2eHooks';
+import { mustBox } from './mustBox';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
@@ -157,13 +158,13 @@ test('拡大後もクリック位置・ポップアップ・スライダー・�
         await page.setViewportSize(size);
         await prepare(page);
         const mute = page.locator('#emergency-mute');
-        const muteBox = (await mute.boundingBox())!;
+        const muteBox = await mustBox(mute);
         const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('#emergency-mute') != null, { x: muteBox.x + muteBox.width / 2, y: muteBox.y + muteBox.height / 2 });
         expect(hit).toBe(true);
         await mute.hover();
         const tip = page.getByRole('tooltip');
         await expect(tip).toBeVisible();
-        const tipBox = (await tip.boundingBox())!;
+        const tipBox = await mustBox(tip);
         expect(tipBox.y).toBeGreaterThanOrEqual(-1);
         expect(tipBox.y + tipBox.height).toBeLessThanOrEqual(size.height + 2);
         const tipVisible = Math.min(tipBox.x + tipBox.width, size.width) - Math.max(tipBox.x, 0);
@@ -180,8 +181,8 @@ test('拡大後もクリック位置・ポップアップ・スライダー・�
         await info.click();
         const popover = page.locator('[aria-label="ノイズ低減の対象"]').last();
         await expect(popover).toBeVisible();
-        const trigger = (await info.boundingBox())!;
-        const pop = (await popover.boundingBox())!;
+        const trigger = await mustBox(info);
+        const pop = await mustBox(popover);
         expect(pop.x).toBeGreaterThanOrEqual(-1);
         expect(pop.y).toBeGreaterThanOrEqual(-1);
         expect(pop.x + pop.width).toBeLessThanOrEqual(size.width + 2);
@@ -192,27 +193,39 @@ test('拡大後もクリック位置・ポップアップ・スライダー・�
 
         // 測る直前に区画が動いていると、スライダーの当たり判定がずれる（#634）。
         await waitForStableLayout(page);
-        const slider = page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true });
-        const track = await slider.evaluate(element => {
-            // つまみの親はつまみの位置で動くので、スライダー全体（トラック）の右端を押す。
-            const rect = element.closest('#master-output-gain')!.getBoundingClientRect();
-            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        const column = page.getByRole('complementary', { name: '本番中の操作' });
+        const slider = column.getByRole('slider', { name: '出力音量', exact: true });
+        // つまみの親はつまみの位置で動くので、スライダー全体（トラック）の右端を押す。
+        const trackPoint = () => slider.evaluate(element => {
+            const rect = element.closest('#master-output-gain')?.getBoundingClientRect();
+            if (!rect) throw new Error('出力音量のトラックが見つかりません');
+            return { x: rect.x + rect.width - 6, y: rect.y + rect.height / 2 };
         });
-        const point = { x: track.x + track.width - 6, y: track.y + track.height / 2 };
-        const sliderHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('#master-output-gain') != null, point);
-        expect(sliderHit).toBe(true);
+        // 模擬は出力ミュートで始まり、統計が届くと札が出る。札が無い状態を測りはじめにそろえ、出る前後の差を確かめる。
+        await setOutputMuted(page, false);
+        await expect(column.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toBeHidden();
+        await waitForStableLayout(page);
+        const before = await trackPoint();
+        const hitsTrack = ({ x, y }: { x: number; y: number }) => page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.closest('#master-output-gain') != null, { px: x, py: y });
+        expect(await hitsTrack(before)).toBe(true);
         // 負荷が高いと、起動直後の再描画でフォーカスが外れることがある。キー操作は要素に当てて送る。
         await slider.press('End');
         await expect(slider).toHaveAttribute('aria-valuenow', '200');
         await slider.press('Home');
         await expect(slider).toHaveAttribute('aria-valuenow', '0');
+        // 0 にすると少し遅れて札が出る。札が出て配置が落ち着いた後の座標を押す。札でスライダーが動かないことも前提として確かめる（#802）。
+        await expect(column.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toBeVisible();
+        await waitForStableLayout(page);
+        const point = await trackPoint();
+        expect(Math.abs(point.y - before.y), '札が出てもスライダーは動かない').toBeLessThanOrEqual(1);
+        expect(await hitsTrack(point)).toBe(true);
         await page.mouse.click(point.x, point.y);
         await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(100);
 
         await page.keyboard.press('F1');
         const dialog = page.getByRole('dialog', { name: '使い方' });
         await expect(dialog).toBeVisible();
-        const box = (await dialog.boundingBox())!;
+        const box = await mustBox(dialog);
         expect(box.x).toBeGreaterThanOrEqual(-1);
         expect(box.y).toBeGreaterThanOrEqual(-1);
         expect(box.x + box.width).toBeLessThanOrEqual(size.width + 2);
