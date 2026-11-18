@@ -31,7 +31,7 @@ interface HomePanelsProps {
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
-    /** 聴いて確認する入口。音楽鑑賞では再生の確認、配信・通話では声の確認を開く。 */
+    /** 聴いて確認する入口。音楽鑑賞では音が届いているかを確かめる欄、配信・通話では声の確認を開く。 */
     onListen: () => void;
     onSetup?: () => void;
     onExpandedChange?: (open: boolean) => void;
@@ -58,7 +58,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     const actualOutput = model.observation.config?.output ?? outputName;
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);
-    return <div className="mb-4 space-y-4">
+    return <div className="home-panels mb-4 space-y-4">
         <PreparationPanel mutedInStrip={configured} diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} statusCovered={statusCovered} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText} pinnedOpen={pinnedOpen}
             signalSummary={<section aria-label={t('prep.signalPath')} className="contents">

@@ -32,7 +32,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
     useSoundFlowCanvas({ canvasRef, input, output, live, receiving, shown });
     if (!shown) return null;
     return <section aria-label={t(music ? 'home.flowMusic' : 'home.flowVoice')} data-flow-live={live || undefined}
-        className="mb-3 rounded-card bg-card px-4 py-2">
+        className="sound-flow mb-3 rounded-card bg-card px-4 py-2">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <h2 className="text-ui-control font-medium">{t(music ? 'home.flowMusic' : 'home.flowVoice')}</h2>
@@ -42,7 +42,7 @@ export function SoundFlow({ running, music, action }: { running: boolean; music:
         </div>
         {/* 全体の高さは 72px のまま。波形は凡例の上の段だけに描き、大きな音でも凡例に重ねない（#570）。
             無音の言葉はいまの状態のメーターに任せ、ここでは平らな波形と凡例だけを出す（#624、#639）。 */}
-        <div className="flex h-[72px] flex-col">
+        <div className="sound-flow-body flex h-[72px] flex-col">
             <div className="relative min-h-0 flex-1">
                 <canvas ref={canvasRef} role="img" aria-label={t('home.flowGraph')} className="h-full w-full" />
             </div>

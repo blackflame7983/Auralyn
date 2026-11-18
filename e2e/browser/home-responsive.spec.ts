@@ -225,8 +225,9 @@ test('1200〜1411pxの音調整は3列で、1280×800の出力先名は縦に積
     console.log(JSON.stringify(measured));
 });
 
-test('900×600 で整え具合の目安が語の途中で折り返さない', async ({ page }) => {
-    await page.setViewportSize({ width: 900, height: 600 });
+// 高さ700px以下では、診断への入口を最初の表示に入れるため目安を隠す（#700）。幅900pxの狭いカードで見せる高さは 768px。
+test('幅900px・高さ768px で整え具合の目安が語の途中で折り返さない', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 768 });
     await page.addInitScript(() => {
         localStorage.setItem('vst_host_locale', 'ja');
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -253,6 +254,21 @@ test('900×600 で整え具合の目安が語の途中で折り返さない', as
         return tops.size;
     });
     expect(lines).toBe(1);
+});
+
+test('高さ700px以下では整え具合の目安を隠し、スライダーで値を読める（#700）', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_locale', 'ja');
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+    });
+    await page.goto('/');
+    await expect(page.locator('#home-builtin')).toBeVisible();
+    await expect(page.locator('#home-builtin figcaption')).toBeHidden();
+    await expect(page.locator('#home-builtin').getByRole('slider', { name: '声の整え具合' })).toBeVisible();
 });
 
 // 英語の長いラベルでも、いまの状態のバーは 12rem より縮めない（#661）。日本語は同じ行のまま。

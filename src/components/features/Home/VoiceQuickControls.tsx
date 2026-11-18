@@ -164,7 +164,7 @@ export function ToneGuide({ amount, on }: { amount: number; on: boolean }) {
     const yMid = Math.round(36 - factor * 12);
     const yHigh = Math.round(36 - factor * 18);
     const curve = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
-    return <figure className={cn('w-full', !on && 'home-held')} aria-label={t('home.toneGuide')} data-applied={on ? 'true' : 'false'}>
+    return <figure className={cn('tone-guide w-full', !on && 'home-held')} aria-label={t('home.toneGuide')} data-applied={on ? 'true' : 'false'}>
         <figcaption className="break-keep text-ui-support text-muted-foreground">{t('home.toneGuide')}</figcaption>
         <svg role="img" aria-label={t('home.toneGuide')} viewBox="0 0 180 52" className="mt-1 h-12 w-full">
             <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />

@@ -863,9 +863,33 @@ html[data-app-hidden="true"] *::after {
 @media (min-height: 800px) {
   [data-home-tier="2"] { display: block; }
 }
-/* 2段目を出さない高さのときだけ、音づくりへの一文を出す（#672）。数値は largeWindow.tier2MinHeight - 1。 */
+/* 2段目を出さない高さのときだけ、音づくりへの一文を音調整の見出しの行に出す（#672、#700）。数値は largeWindow.tier2MinHeight - 1。 */
 @media (max-height: 799px) {
-  .home-tier-fallback { display: block; }
+  .home-tier-fallback { display: inline-flex; }
+  /* 英語の音調整は、2段目の声の種類（Standard など）が単語の途中で切れるので、520〜650px は2列にしている。
+     2段目を出さないこの高さでは3枚を1行に並べ、カードの高さを抑える。音楽鑑賞はVSTの1枚で、上の規則のまま。
+     カードが狭いときは、見出しの飾りのアイコンを外して、名前と説明の印を1行に収める。 */
+  @container (min-width: 520px) and (max-width: 650px) {
+    .sound-tool-list:lang(en) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .sound-tool-list:lang(en) > li:last-child { grid-column: auto; margin-top: 0; }
+  }
+  @container sound-card (max-width: 9.75rem) {
+    .sound-card-icon:lang(en) { display: none; }
+  }
+}
+/* 最小窓の高さでは、波形の高さと整え具合の目安を詰めて、診断への入口を最初の表示に入れる（#700）。
+   目安の曲線は説明で、操作ではない。値はスライダーが示す。 */
+@media (max-height: 700px) {
+  .tone-guide { display: none; }
+  .sound-flow-body { height: 3.5rem; }
+  .sound-tool-list { margin-top: 0.5rem; }
+  .sound-module-card { gap: 0.5rem; }
+  /* 最後の行の下の余白は、続きがあるように見えるフェードを出してしまう。 */
+  .home-panels { margin-bottom: 0; }
+}
+@media (max-height: 799px) {
+  .now-status { padding-block: 0.5rem; margin-bottom: 0.5rem; }
+  .sound-flow { padding-block: 0.375rem; margin-bottom: 0.5rem; }
 }
 /* 中身の無い2段目は区切りも空きも残さない（#623）。高さの指定よりこちらを優先する。 */
 [data-home-tier="2"]:empty {
