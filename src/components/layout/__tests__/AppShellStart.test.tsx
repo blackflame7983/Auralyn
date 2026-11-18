@@ -291,7 +291,7 @@ it('音楽鑑賞のホームから、構成の切り替えと右の列の聴き�
     expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
     const details = screen.getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
-    expect(screen.getByText('WASAPI · 48 kHz')).toBeVisible();
+    expect(screen.getByText('WASAPI・48 kHz')).toBeVisible();
 });
 
 it('停止中の右の列では、比較を無効にして理由を結ぶ', () => {
@@ -681,7 +681,7 @@ it('音楽鑑賞のホームは、見出しを音楽鑑賞にし、構成が無�
     expect(within(connect).getByRole('button', { name: '音のトラブルを診断' })).toBeInTheDocument();
     const details = within(connect).getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
-    expect(within(connect).getByText('WASAPI · 48 kHz')).toBeVisible();
+    expect(within(connect).getByText('WASAPI・48 kHz')).toBeVisible();
     expect(screen.queryByRole('region', { name: '音調整' })).not.toBeInTheDocument();
     expect(within(flow).getByRole('button', { name: '再生の音量を測る' })).toBeVisible();
 });
