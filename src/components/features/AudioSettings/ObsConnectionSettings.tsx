@@ -1,6 +1,8 @@
 import { Field } from '@/components/ui/Field';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { obsLinkStatus } from '@/lib/obsLinkStatus';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { isAppHidden } from '@/lib/appVisibility';
@@ -49,6 +51,8 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
   const obsInUse = useObsUsage(true);
   const [obsStatusLoading, setObsStatusLoading] = useState(true);
   const [obsConnectionHint, setObsConnectionHint] = useState<SettingsNotice | null>(null);
+  const [connectFailed, setConnectFailed] = useState(false);
+  const [statusUnreadable, setStatusUnreadable] = useState(false);
   const [obsSetupLoading, setObsSetupLoading] = useState(false);
   const [obsReachLoading, setObsReachLoading] = useState(false);
 
@@ -94,7 +98,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
   useObsConnectionSync({
     revalidateReachRef, reachAlive, reachContext, reachRequest, reachValidation, reachExpiredRef, reachRecord,
     reachListeners, connectionRevision, connectionDetails, connectionDetailsTouched, isObsConnectedRef,
-    setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setReachListenersReady,
+    setObsReachLoading, setReachCurrent, setReachExpired, setIsObsConnected, setConnectFailed, setStatusUnreadable, setReachListenersReady,
     setSavedCredentials, setCredentialReadFailed, setObsConnectionHint, setCredentialStatusLoading,
     setLoading, setObsStatusLoading, obsReachResult, obsInUse, reachListenersReady, reachExpired,
   });
@@ -108,6 +112,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     const attemptedPort = obsPort;
     const revision = connectionRevision.current;
     setLoading(true);
+    setConnectFailed(false);
     try {
       await obsApi.connect({ host: obsHost, port: obsPort, password: savedPasswordAvailable && useSavedPassword ? undefined : obsPassword, remember: true });
       // 秘密はJSの入力欄から除き、再接続はネイティブ側の保存値を使う。
@@ -117,6 +122,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
       localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost.trim(), port: obsPort }));
       if (revision !== connectionRevision.current || isAppHidden()) return;
       setIsObsConnected(true);
+      setStatusUnreadable(false);
       if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
@@ -125,6 +131,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
       const hint = obsConnectionFailureNotice(e, attemptedPort);
 
       setObsConnectionHint(hint);
+      setConnectFailed(true);
       toast.error(notify('settings.ObsConnectionSettings.268'), {
         description: notify(hint.key, hint.args),
         action: onOpenOBSGuide
@@ -147,6 +154,8 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     try {
       await obsApi.disconnect();
       setIsObsConnected(false);
+      setConnectFailed(false);
+      setStatusUnreadable(false);
       if (connectionDetails.current) connectionDetails.current.open = true;
       setObsConnectionHint(null);
 
@@ -204,12 +213,23 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
     });
   };
 
+  const link = obsLinkStatus({ connected: isObsConnected, connecting: loading, checking: obsStatusLoading, failed: connectFailed, unreadable: statusUnreadable });
+
   return (
 
             <div className="space-y-4">
               {/* 接続 → 到達確認 → 設定の変更 → 連動 の順に並べる。 */}
               <section aria-label={t('obs.section.connect')} className="space-y-3">
-                <h3 className="text-ui-heading font-semibold">{t('obs.section.connect')}</h3>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <h3 className="text-ui-heading font-semibold">{t('obs.section.connect')}</h3>
+                  <span role="status" className="text-ui-control font-medium">
+                    <StatusDot tone={link.tone}>{t(link.label)}</StatusDot>
+                  </span>
+                  {onOpenOBSGuide && (
+                    <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={onOpenOBSGuide}>
+                      {t('settings.ObsConnectionSettings.294')}</Button>
+                  )}
+                </div>
                 {isObsConnected && (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
                     <Button
@@ -226,7 +246,7 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                 )}
                 {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
                 <details ref={connectionDetails} open className="space-y-3">
-                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-control font-semibold">{t('obs.target')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
+                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-control font-semibold">{t('obs.target')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })}</span>}</summary>
                   <div className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <Field label={t('settings.ObsConnectionSettings.280')}>
@@ -287,13 +307,6 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                   <p className="font-bold">{t('settings.ObsConnectionSettings.293')}</p>
                   <p>{renderNotice(t, obsConnectionHint)}</p>
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {onOpenOBSGuide && (
-                      <Button
-                        onClick={onOpenOBSGuide}
-                        variant="destructive" className="h-auto min-h-10 whitespace-normal"
-                      >
-                        {t('settings.ObsConnectionSettings.294')}</Button>
-                    )}
                     <Button
                       onClick={() => {
                         setObsHost('localhost');
@@ -385,7 +398,6 @@ export function ObsConnectionSettings({ showConfirm, onOpenOBSGuide, onOpenTroub
                   connected={isObsConnected}
                   disabled={!isObsConnected || obsStatusLoading || obsReachLoading}
                   onBusyChange={setObsSetupLoading}
-                  onOpenGuide={onOpenOBSGuide}
                 />
               </section>
               <details className="rounded-control border border-border p-3 space-y-3">
