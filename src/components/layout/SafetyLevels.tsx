@@ -47,12 +47,13 @@ export function SafetyOutput({ running, name, muted, onCheckOutput }: {
     const verdictText = !muted && verdict ? (verdict === 'high' ? t('home.levelHigh') : verdict === 'low' ? t('home.levelLow') : t('home.levelOk')) : null;
     return <div className="flex shrink-0 flex-col gap-1.5">
         {/* ミュートの札は見出しの行の右に出し、判定の代わりにする。音が出ないので判定は出さない。
-            ミュートでないときは札の行を残さない（#580）。狭い列では札を折り返し、文字は省略しない。 */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            札・一言の有無で行の高さを変えない。変えると下の出力音量のスライダーが動き、戻そうと押した位置を外す（#802）。
+            最小の高さは札の1行分（一言の行高＋縦の余白 0.25rem＋枠 0.125rem）。狭い列では札を折り返し、文字は省略しない。 */}
+        <div className="flex min-h-[calc(var(--text-ui-support)*var(--text-ui-support--line-height)+0.375rem)] min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="shrink-0 text-ui-control font-medium">{t('meter.output')}</h3>
             {muted ? <span className="ml-auto inline-flex min-w-0 max-w-full items-center">
                 <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)}
-                    title={t('prep.muteRelease')} className="inline-flex max-w-full items-start gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-left text-ui-support font-bold text-warning">
+                    title={t('prep.muteRelease')} className="inline-flex max-w-full items-start gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-left text-ui-support font-bold text-warning">
                     <MdVolumeOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /><span className="[overflow-wrap:anywhere]">{t('prep.muted')}</span>
                 </button>
             </span> : verdictText && <span className="inline-flex h-5 min-w-0 flex-1 items-center justify-end">
