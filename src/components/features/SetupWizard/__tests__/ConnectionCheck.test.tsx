@@ -53,7 +53,7 @@ it.each(['成功', '失敗'] as const)(
         });
         const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
         renderCheck();
-        expect(screen.getByText(/ウィザードを閉じると接続を終了/)).toBeInTheDocument();
+        expect(screen.getByText(/セットアップを閉じると接続を終了/)).toBeInTheDocument();
         expect(screen.queryByText(/閉じた後も維持/)).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'OBS に接続する' }));
         await act(async () => {});

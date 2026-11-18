@@ -2498,13 +2498,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/AudioSettings/__tests__/LiveOutputPanel.test.tsx",
-      "rule": "@typescript-eslint/no-unsafe-assignment",
-      "hash": "3fc6695578e1f49f04725c4e0fd86623f71403c7bb56738ef39ed8fef4e1a375",
-      "count": 3,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/__tests__/MicrophonePermissionGuide.test.tsx",
       "rule": "@typescript-eslint/no-unsafe-return",
       "hash": "6749279727ac4d31b4b8dd325b6118c83e61f64419abe11554a892f1ded45cd8",

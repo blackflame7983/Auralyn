@@ -251,7 +251,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     const compareNeedsVst = nothingToCompare && !isABBypassed && !compareStopped
         ? t((vstCount ?? 0) === 0 ? 'header.compareNeedsVst' : 'header.compareNeedsVstOn') : undefined;
     const compareDisabled = compareStopped || compareNeedsVst !== undefined;
-    const compareReason = compareStopped ? t('header.compareNeedsAudio') : compareNeedsVst;
+    const compareNeedsAudio =t(music ? 'header.compareNeedsAudioMusic' : 'header.compareNeedsAudio');
+    const compareReason = compareStopped ? compareNeedsAudio : compareNeedsVst;
     const compareDescribedBy = [
         isABBypassed ? 'safety-compare-state' : '',
         compareStopped ? 'safety-compare-needs-audio' : '',
@@ -281,7 +282,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     canStart={canStart} starting={starting} onStart={() => { void startAudio(); }}
                     modeSwitch={liveModeSwitch} showListen={configured}
                     listenLabel={t(purpose === 'music' ? 'music.listenTitle' : 'home.voiceCheck')}
-                    listenDisabled={!audioReady} listenDisabledReason={audioReady ? undefined : t(engineProcessReady === null ? 'loudness.audioUnknown' : 'header.compareNeedsAudio')} onListen={openListen} listenRef={listenButton}
+                    listenDisabled={!audioReady} listenDisabledReason={audioReady ? undefined : engineProcessReady === null ? t('loudness.audioUnknown') : compareNeedsAudio} onListen={openListen} listenRef={listenButton}
                     listenPanel={purpose === 'music' && listenOpen && <MusicListeningCheck running={isEngineRunning}
                         input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput}
                         vstBypassed={isABBypassed} compareUnavailable={compareReason} onCompareVst={() => { if (!compareDisabled) void handleABToggle(); }}
@@ -396,11 +397,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>{isABBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
+                                    <p>{isABBypassed ? t(music ? 'header.compareEndHintMusic' : 'header.compareEndHint') : t(music ? 'header.compareStartHintMusic' : 'header.compareStartHint')}</p>
                                 </TooltipContent>
                             </Tooltip>
                             {/* 列が狭いので、理由はボタンの中へ入れず、直下に置く。止まっているあいだは既存どおり title と読み上げだけにする。 */}
-                            {compareStopped && <span id="safety-compare-needs-audio" className="sr-only">{t('header.compareNeedsAudio')}</span>}
+                            {compareStopped && <span id="safety-compare-needs-audio" className="sr-only">{compareNeedsAudio}</span>}
                             {compareNeedsVst && <p id="safety-compare-needs-vst" className="min-w-0 whitespace-normal break-words text-ui-support text-muted-foreground">{compareNeedsVst}</p>}
                             </div>
                         </TooltipProvider>}

@@ -32,7 +32,7 @@ export function MusicListeningCheck({ running, input, output, vstBypassed, compa
         <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
                 <p className="text-ui-control font-semibold">{t('header.compare')}</p>
-                <p id="listen-compare-hint" className="text-ui-support text-muted-foreground">{compareUnavailable ?? (vstBypassed ? t('header.compareEndHint') : t('header.compareStartHint'))}</p>
+                <p id="listen-compare-hint" className="text-ui-support text-muted-foreground">{compareUnavailable ?? (vstBypassed ? t('header.compareEndHintMusic') : t('header.compareStartHintMusic'))}</p>
             </div>
             <Switch checked={vstBypassed} disabled={compareUnavailable !== undefined} onCheckedChange={() => onCompareVst()} aria-label={t('header.compare')} aria-describedby="listen-compare-hint" />
         </div>

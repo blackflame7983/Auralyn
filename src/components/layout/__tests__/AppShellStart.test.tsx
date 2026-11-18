@@ -316,7 +316,7 @@ it.each([
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <AppShell {...commonProps} isEngineRunning={false}><p>rack</p></AppShell>
     </LocaleProvider>);
-    const reason = message(locale, 'header.compareNeedsAudio');
+    const reason = message(locale, purpose === 'music' ? 'header.compareNeedsAudioMusic' : 'header.compareNeedsAudio');
     const band = within(screen.getByRole('region', { name: message(locale, 'band.label') }));
     const listen = band.getByRole('button', { name: message(locale, label) });
     expect(listen).toBeDisabled();
@@ -352,8 +352,8 @@ it('比較中のまま止めても、右の列の比較のオンオフは切り�
     const toggle = screen.getByRole('switch', { name: compareName });
     expect(toggle).toBeDisabled();
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(toggle).toHaveAttribute('title', message('ja', 'header.compareNeedsAudio'));
-    expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudio')));
+    expect(toggle).toHaveAttribute('title', message('ja', 'header.compareNeedsAudioMusic'));
+    expect(toggle).toHaveAccessibleDescription(expect.stringContaining(message('ja', 'header.compareNeedsAudioMusic')));
     fireEvent.click(toggle);
     expect(bypass).toHaveBeenCalledTimes(1);
 });
@@ -493,10 +493,10 @@ it('音が届いているか確かめる欄を開いたまま音声を止めて�
         view.rerender(<AppShell {...props} isEngineRunning={false} vstCount={vst.count} vstActiveCount={vst.active}><p>rack</p></AppShell>);
         const listening = within(screen.getByRole('region', { name: message('ja', 'music.listenTitle') })).getByRole('switch', { name: compareName });
         expect(listening).toBeDisabled();
-        expect(listening).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        expect(listening).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudioMusic'));
         const column = document.getElementById('ab-compare-btn');
         expect(column).toBeDisabled();
-        expect(column).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudio'));
+        expect(column).toHaveAccessibleDescription(message('ja', 'header.compareNeedsAudioMusic'));
         fireEvent.click(listening);
     }
     expect(bypass).not.toHaveBeenCalled();
