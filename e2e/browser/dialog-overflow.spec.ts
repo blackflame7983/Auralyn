@@ -9,18 +9,21 @@ test.use({ liveHome: true });
 type Screen = 'obs-guide' | 'help' | 'presets' | 'template-wizard';
 
 // CI は本番ビルドを配るため、開発プレビューの ?screen= は使えない。利用者と同じ操作でダイアログを開く。
-async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size: { width: number; height: number }) {
+const WASAPI_CONFIG = { host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 };
+const ASIO_CONFIG = { host: 'ASIO', input: 'Focusrite USB ASIO', output: 'Focusrite USB ASIO', sampleRate: 48000, bufferSize: 512 };
+
+async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size: { width: number; height: number }, audioConfig: object = WASAPI_CONFIG) {
     const t = (key: MessageKey) => message(locale, key);
     await page.setViewportSize(size);
-    await page.addInitScript(locale => {
+    await page.addInitScript(([locale, config]) => {
         localStorage.setItem('vst_host_locale', locale);
         localStorage.setItem('vst_host_theme', 'dark');
         localStorage.setItem('vst_host_wizard_done', 'true');
         localStorage.setItem('vst_host_tutorial_completed', 'true');
         localStorage.setItem('vst_host_setup_goal', 'obs');
         localStorage.setItem('auralyn_vst_panel_open', 'false');
-        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
-    }, locale);
+        localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
+    }, [locale, audioConfig] as const);
     await page.goto('/');
     await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
     if (screen === 'obs-guide' || screen === 'help') {
@@ -34,12 +37,13 @@ async function openScreen(page: Page, screen: Screen, locale: 'ja' | 'en', size:
     await page.getByRole('button', { name: t(opener), exact: true }).click();
 }
 for (const locale of ['ja', 'en'] as const) {
-    test(`900×600 のOBS連携ガイドは機器の選択肢がフッターの上に2つ見える ${locale}`, async ({ page }) => {
+    test(`900×600 のOBS連携ガイドは機器の選択肢がフッターの上に3つ見える ${locale}`, async ({ page }) => {
         await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 });
         const dialog = page.getByRole('dialog');
         const t = (key: MessageKey) => message(locale, key);
         await expect(dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true })).toBeVisible();
         await expect(dialog.getByRole('radio', { name: t('guide.copy.010'), exact: true })).toBeVisible();
+        await expect(dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true })).toBeVisible();
         const place = await dialog.evaluate(root => {
             const footer = root.querySelector('.modal-footer-base')?.getBoundingClientRect();
             const cards = [...root.querySelectorAll('[data-device-layout="row"]')].map(card => {
@@ -60,13 +64,92 @@ for (const locale of ['ja', 'en'] as const) {
             });
             return { footerTop: footer?.top ?? 0, cards };
         });
-        expect(place.cards).toHaveLength(2);
+        expect(place.cards).toHaveLength(3);
         for (const card of place.cards) {
             expect(card.top, card.text).toBeGreaterThanOrEqual(0);
             expect(card.bottom, card.text).toBeLessThanOrEqual(place.footerTop + 1);
             expect(card.covered, card.text).toBe(false);
         }
     });
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    test(`OBS連携ガイドは「分からない」をキーボードで選んで決定すると、標準の仮想ケーブルの方法で進む ${locale}`, async ({ page }) => {
+        const t = (key: MessageKey) => message(locale, key);
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 });
+        const dialog = page.getByRole('dialog');
+        const next = dialog.getByRole('button', { name: t('guide.copy.078'), exact: true });
+        await expect(next).toBeDisabled();
+        await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        const unknown = dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true });
+        await expect(unknown).toBeChecked();
+        await expect(unknown).toBeFocused();
+        // 矢印は選ぶだけで、決定（Enter）まで次へ進まない。
+        await expect(next).toBeEnabled();
+        await expect(dialog.getByRole('heading', { name: t('guide.copy.003'), exact: true })).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(dialog.getByRole('heading', { name: t('guide.copy.016'), exact: true })).toBeVisible();
+        await expect(dialog.getByRole('status').filter({ hasText: t('guide.obs.unknownNotice') })).toBeVisible();
+        await next.click();
+        await next.click();
+        await expect(dialog.getByText(t('guide.copy.068'), { exact: true })).toBeVisible();
+        expect(errors).toEqual([]);
+    });
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    for (const saved of [{ name: 'ASIO', config: ASIO_CONFIG, shown: true }, { name: 'WASAPI', config: WASAPI_CONFIG, shown: false }]) {
+        test(`OBS連携ガイドで「分からない」を選ぶと、保存された接続が ${saved.name} のとき ${saved.shown ? 'WASAPI へ変える案内と接続のページを開くボタンが出る' : '案内もボタンも出ない'} ${locale}`, async ({ page }) => {
+            const t = (key: MessageKey) => message(locale, key);
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 }, saved.config);
+            const dialog = page.getByRole('dialog');
+            await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+            await page.keyboard.press('ArrowDown');
+            await page.keyboard.press('ArrowDown');
+            await expect(dialog.getByRole('radio', { name: t('guide.obs.unknownLabel'), exact: true })).toBeChecked();
+            await dialog.getByRole('button', { name: t('guide.copy.078'), exact: true }).click();
+            await expect(dialog.getByRole('heading', { name: t('guide.copy.016'), exact: true })).toBeVisible();
+            const notice = dialog.getByText(t('guide.obs.asioNotice'), { exact: true });
+            const open = dialog.getByRole('button', { name: t('processInput.chooseConnection'), exact: true });
+            if (!saved.shown) {
+                await expect(notice).toHaveCount(0);
+                await expect(open).toHaveCount(0);
+            } else {
+                await expect(notice).toBeVisible();
+                await expect(open).toBeEnabled();
+            }
+            expect(errors).toEqual([]);
+        });
+    }
+}
+
+for (const locale of ['ja', 'en'] as const) {
+    for (const mode of [{ name: 'かんたん表示（欄が閉じている）', beginner: true }, { name: '通常表示', beginner: false }]) {
+        test(`OBS連携ガイドの ASIO の案内から「接続方式を変える」を押すと、接続のページで音切れの設定の欄が開き、接続方式の選択へ焦点が移る ${mode.name} ${locale}`, async ({ page }) => {
+            const t = (key: MessageKey) => message(locale, key);
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            await page.addInitScript(beginner => localStorage.setItem('vst_host_beginner_mode', String(beginner)), mode.beginner);
+            await openScreen(page, 'obs-guide', locale, { width: 900, height: 600 }, ASIO_CONFIG);
+            const dialog = page.getByRole('dialog');
+            await dialog.getByRole('radio', { name: t('guide.copy.005'), exact: true }).focus();
+            await page.keyboard.press('ArrowDown');
+            await page.keyboard.press('ArrowDown');
+            await dialog.getByRole('button', { name: t('guide.copy.078'), exact: true }).click();
+            await dialog.getByRole('button', { name: t('processInput.chooseConnection'), exact: true }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            const tuning = page.locator('details', { has: page.locator('summary', { hasText: t('settings.audioTuning.title') }) });
+            await expect(tuning).toHaveJSProperty('open', true);
+            await expect(page.getByRole('combobox', { name: t('settings.AudioSettingsModal.035'), exact: true })).toBeFocused();
+            expect(errors).toEqual([]);
+        });
+    }
 }
 
 test('ダイアログの本文が溢れるとフェードと下向きの印が出て、最後まで送ると消え、焦点の枠を隠さない', async ({ page }) => {

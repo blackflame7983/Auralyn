@@ -209,6 +209,8 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             // 音のトラブル診断を閉じるときの後始末。鳴らしていない試験音の停止は何もしない。
             case 'stop_test_tone': return;
             case 'obs_connection_status': return false;
+            // OBS を使う画面を閉じたときの切断。未接続の模擬では何もしない。
+            case 'disconnect_obs': return;
             case 'get_obs_credentials': return null;
             // 履歴がない状態。null のままだと設定の OBS タブが件数参照で画面全体を落とす。
             case 'obs_setup_history': return [];

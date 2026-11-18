@@ -61,7 +61,7 @@ it('同名対象や判断不能を確認済みの品質として扱わない', (
     expect(screen.getByRole('status')).toHaveTextContent('判断できないため未確認');
 });
 it('OBSガイド最終段から使え、再表示時に確認結果と名前が残らない', () => {
-    const props = { isOpen: true, onClose: vi.fn(), onOpenAudioSettings: vi.fn() };
+    const props = { isOpen: true, onClose: vi.fn(), onOpenAudioSettings: vi.fn(), onChooseConnection: vi.fn() };
     const view = render(<OBSGuideModal {...props} />);
     fireEvent.click(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));

@@ -49,6 +49,17 @@ it('音切れの入口は音声タブの調整欄を指定し、通常の設定�
     expect(result.current.settingsSection).toBeUndefined();
 });
 
+it('接続方式の入口は音声タブの接続方式を指定し、通常の設定では指定を解除する', () => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openConnectionType());
+    expect(result.current.isSettingsOpen).toBe(true);
+    expect(result.current.settingsTab).toBe('audio');
+    expect(result.current.settingsSection).toBe('connectionType');
+    act(() => result.current.setIsSettingsOpen(false));
+    act(() => result.current.setIsSettingsOpen(true));
+    expect(result.current.settingsSection).toBeUndefined();
+});
+
 it('設定反映の再試行は音声タブに限定し、ほかの入口と終了で解除する', () => {
     const { result } = renderHook(() => useUIState());
     const normalEntries = [() => result.current.setIsSettingsOpen(true), () => result.current.setIsSettingsOpen(false),
