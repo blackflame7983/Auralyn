@@ -3093,13 +3093,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/AudioSettings/ObsSafeSetup.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "86a7f8dcd7316b7e6780d7a54afe9acd4648eacc8cc0934698c3937893e540cc",
-      "count": 2,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/AudioSettings/saveBarInset.tsx",
       "rule": "auralyn/owned-effects",
       "hash": "df90e50f8135eaab87e5a7a2e714fd355e54454f94a2f2c3475793ec6937fa7d",
