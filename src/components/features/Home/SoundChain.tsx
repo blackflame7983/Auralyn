@@ -117,7 +117,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         const showBody = !unconfigured && !nameOnly ? body : null;
         const showAction = !unconfigured && Boolean(action);
         const actionInName = Boolean(nameOnly && showAction);
-        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || nameOnly || (stopped && !live) ? false : on} className={cn('sound-module-item sound-module-card min-w-0 flex flex-col gap-3', key === 'vst' && emptyVst && 'self-start')}>
+        return <li key={key} id={key === 'noise' ? 'home-noise' : key === 'builtin' ? 'home-builtin' : undefined} data-on={unconfigured || nameOnly || (stopped && !live) ? false : on} data-empty-vst={key === 'vst' && emptyVst ? true : undefined} className={cn('sound-module-item sound-module-card min-w-0 flex flex-col gap-3', key === 'vst' && emptyVst && 'self-start')}>
             {/* 見出しはアイコン・名前・説明だけ。スイッチは状態の行へ置く。停止中の外部VSTだけ名前の行に追加を置き、幅が足りなければ次の行へ送る（#621、#726）。 */}
             <div className="flex min-w-0 flex-col gap-1">
                 <div className={cn('flex min-w-0 items-center gap-x-1.5 gap-y-1', actionInName && 'flex-wrap')}>

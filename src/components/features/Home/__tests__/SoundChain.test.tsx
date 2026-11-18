@@ -84,10 +84,16 @@ it('実行中も、VST が0件の外部VSTだけ中身の高さにし、1件以�
     const [noise, builtin, vst] = screen.getAllByRole('listitem');
     expect(screen.getByRole('list')).not.toHaveClass('items-start');
     expect(vst).toHaveClass('self-start');
+    expect(vst).toHaveAttribute('data-empty-vst');
     expect(noise).not.toHaveClass('self-start');
     expect(builtin).not.toHaveClass('self-start');
+    expect(noise).not.toHaveAttribute('data-empty-vst');
+    expect(builtin).not.toHaveAttribute('data-empty-vst');
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} vstCount={1} /></RuntimeStatsContext.Provider>);
-    screen.getAllByRole('listitem').forEach(item => expect(item).not.toHaveClass('self-start'));
+    screen.getAllByRole('listitem').forEach(item => {
+        expect(item).not.toHaveClass('self-start');
+        expect(item).not.toHaveAttribute('data-empty-vst');
+    });
 });
 
 it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カードで並べ、操作できない間は各段の設定状態を表示する (%s)', locale => {
