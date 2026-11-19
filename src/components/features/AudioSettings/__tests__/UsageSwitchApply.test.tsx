@@ -223,7 +223,7 @@ it('アプリの音声の記録へは、自動で再開せず、表示と入力�
     expect(screen.getByText(message('ja', 'processInput.reselectHelp', { name: 'Player' }))).toBeVisible();
     expect(screen.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
     expect(screen.getByText('使い道：音楽鑑賞（PCの音にVSTをかけて聴く）')).toBeVisible();
-    expect(screen.queryByText(message('ja', 'purpose.mismatch'))).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message('ja', 'purpose.align') })).not.toBeInTheDocument();
     const opener = screen.getByRole('button', { name: '切り替える' });
     expect(opener).toBeDisabled();
     expect(opener).toHaveAccessibleDescription(message('ja', 'purpose.blockedPending'));
@@ -242,7 +242,7 @@ it('アプリの音声の下書きを捨てて画面を開き直しても、表�
     render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} onEngineRestarted={vi.fn(async () => 'completed' as const)} />);
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     expect(screen.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
-    expect(screen.queryByText(message('ja', 'purpose.mismatch'))).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: message('ja', 'purpose.align') })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '切り替える' })).toBeEnabled();
 });
 

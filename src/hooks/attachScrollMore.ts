@@ -39,6 +39,18 @@ export function cssPx(value: number): string {
     return `${unzoom(value)}px`;
 }
 
+// 印が出ている間は、フェードの帯から下の本文を切る（index.css の [data-scroll-more-clip]）。
+// 山形の円の下に、押せる操作が重ならない。切るだけで寸法は変えないので、続きの判定は動かない。
+function clipBelowFade(scroller: HTMLElement, box: { top: number } | null) {
+    if (!box) {
+        scroller.removeAttribute('data-scroll-more-clip');
+        scroller.style.removeProperty('--scroll-more-clip');
+        return;
+    }
+    scroller.setAttribute('data-scroll-more-clip', '');
+    scroller.style.setProperty('--scroll-more-clip', cssPx(scroller.getBoundingClientRect().bottom - box.top));
+}
+
 export function attachScrollMore(
     findScroller: () => HTMLElement | null,
     findLimit: (scroller: HTMLElement) => HTMLElement | null,
@@ -49,6 +61,11 @@ export function attachScrollMore(
     let children: MutationObserver | null = null;
     let watched = new Set<Element>();
     let pointerHeld = false;
+
+    const show = (box: { top: number; left: number; width: number; height: number } | null) => {
+        if (scroller) clipBelowFade(scroller, box);
+        applyBox(box);
+    };
 
     const currentBox = () => {
         const limit = scroller ? findLimit(scroller) : null;
@@ -67,7 +84,7 @@ export function attachScrollMore(
             if (delta !== 0) scroller.scrollBy({ top: unzoom(delta), behavior: 'instant' });
         }
         // ブラウザーの送りでスクロールの位置が変わっていることがある。スクロールの通知を待たず、フェードを今の位置に合わせる。
-        applyBox(currentBox());
+        show(currentBox());
     };
 
     const release = () => {
@@ -84,6 +101,7 @@ export function attachScrollMore(
     const place = () => {
         const next = findScroller();
         if (next !== scroller) {
+            if (scroller) clipBelowFade(scroller, null);
             scroller?.removeEventListener('scroll', place);
             scroller?.removeEventListener('focusin', clearFade);
             scroller?.removeEventListener('pointerdown', hold, true);
@@ -115,12 +133,13 @@ export function attachScrollMore(
                 watched = targets;
             }
         }
-        applyBox(currentBox());
+        show(currentBox());
     };
 
     return {
         place,
         stop() {
+            if (scroller) clipBelowFade(scroller, null);
             scroller?.removeEventListener('scroll', place);
             scroller?.removeEventListener('focusin', clearFade);
             scroller?.removeEventListener('pointerdown', hold, true);

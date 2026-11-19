@@ -15,6 +15,12 @@ const music: UsageDeviceRecord = {
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 
+/** 画面に出る不一致の案内。表示と入力の用途を、使い道の名前で差し込む。 */
+const mismatch = (locale: 'ja' | 'en', display: 'voice' | 'music', input: 'voice' | 'music') => message(locale, 'purpose.mismatch', {
+    display: message(locale, display === 'music' ? 'purpose.music' : 'purpose.voice'),
+    input: message(locale, input === 'music' ? 'purpose.music' : 'purpose.voice'),
+});
+
 function renderSwitch(props: Partial<Parameters<typeof UsageSwitch>[0]> = {}) {
     const onApply = vi.fn(async () => {});
     const onOpenSetup = vi.fn();
@@ -79,8 +85,21 @@ it('操作ロック中は切り替えを押せず、理由を出す', () => {
 
 it('表示と入力の用途が違うときは、そろえるを出す', () => {
     renderSwitch({ display: 'music', inputPurpose: 'voice' });
-    expect(screen.getByText(message('ja', 'purpose.mismatch'))).toBeVisible();
+    expect(screen.getByText(mismatch('ja', 'music', 'voice'))).toBeVisible();
     expect(screen.getByRole('button', { name: message('ja', 'purpose.align') })).toBeEnabled();
+});
+
+it('不一致の案内は、どちらがどの用途かと、そろえたあとの結果（下書き・保存まで音は変わらない）を言う', () => {
+    renderSwitch({ display: 'voice', inputPurpose: 'music' });
+    const text = screen.getByText(mismatch('ja', 'voice', 'music')).textContent ?? '';
+    expect(text).toContain('ホームの表示は「配信・通話」');
+    expect(text).toContain('入力の用途は「音楽鑑賞」');
+    expect(text).toContain('下書き');
+    expect(text).toContain('音は変わりません');
+    expect(text).not.toMatch(/\{\w+\}/);
+    for (const locale of ['ja', 'en'] as const) expect(mismatch(locale, 'music', 'voice')).not.toMatch(/\{\w+\}/);
+    expect(mismatch('en', 'music', 'voice')).toContain('draft');
+    expect(mismatch('en', 'music', 'voice')).toContain('does not change until you save');
 });
 
 it('機器の読み込みなどで切り替えられないときは、押せなくして理由を結び付ける', () => {

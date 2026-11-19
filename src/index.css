@@ -996,6 +996,11 @@ html[data-app-hidden="true"] *::after {
     fill: CanvasText;
   }
 }
+/* 印が出ている間は、フェードの帯から下の本文を切る。山形の円の下に、ボタンやリンクが見えて重ならない（#810）。
+   切るのは見た目と当たり判定だけ。寸法は変えないので、続きの判定（scrollHeight）は動かない。末尾では印と一緒に外れる。 */
+[data-scroll-more-clip] {
+  clip-path: inset(0 0 var(--scroll-more-clip) 0);
+}
 /* ダイアログを開いている間は、背後の列の印を出さない。二重の矢印にしない（#699）。 */
 body:has(.modal-surface-base) > .column-scroll-more {
   visibility: hidden;

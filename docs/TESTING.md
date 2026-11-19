@@ -161,7 +161,7 @@ npm run capture:ux-eval
 
 `w1440` は、ヘルプにある「窓が広いときは接続の列がホームの右に開く」を撮るためです。幅の境は 1400px（`docs/DESIGN.md` 10.8、`src/lib/largeWindow.ts` の `connectColumnMinWidth`）です。
 
-各ショットは同名の `.png` と `.txt` です。撮る前に「音声エンジンを起動しています…」（英語は `Starting the audio engine…`）が消えるのを待ち、開いたページまたはダイアログが見えるまで待ちます。スクリーンショットは `animations: 'disabled'` です。テーマは `vst_host_theme`、言語は `vst_host_locale` を、ページを開く前に書きます。URL だけではテーマと言語は変わりません。
+各ショットは同名の `.png` と `.txt` です。撮る前に「音声エンジンを起動しています…」（英語は `Starting the audio engine…`）が消えるのを待ち、開いたページまたはダイアログが見えるまで待ちます。スクリーンショットは `animations: 'disabled'` です。撮る前に、撮影の都合の表示が出ていないことも確かめます（どの画面にも「そろえる」が無いこと。`voice-check` は録音の操作が使え、録音前に試聴の欄と「試聴の準備ができませんでした」が出ないこと）。テーマは `vst_host_theme`、言語は `vst_host_locale` を、ページを開く前に書きます。URL だけではテーマと言語は変わりません。
 
 機器名はすべて `devices=realistic` です。入力の候補は `Yeti Stereo Microphone` と `CABLE Output (VB-Audio Virtual Cable)`、出力の候補は `CABLE Input (VB-Audio Virtual Cable)` と `USB Headphones` です。配信の保存値は Yeti → CABLE Input、音楽鑑賞の保存値は CABLE Output → USB Headphones です。名前は言語に依存しません。`devices` を付けないプレビューと既存のブラウザ試験は、これまでどおり `CABLE Output` と `スピーカー` です。
 
@@ -208,7 +208,8 @@ npm run capture:ux-eval
 
 - **ノイズ低減のモードを返さない。** `get_engine_runtime_stats` は `noiseReductionMode` を含めません。弱・強は、エンジンが返したモードとしては選ばれません。
 - **出力ミュートの初期値。** 模擬の `muted` は `true` で始まります。統計が届くと、いまの状態に「音を送っていません」（音楽鑑賞は「音を出していません」）、右の列の札に「出力ミュート・音量ゼロ」（英語は `Not sending sound`・`Muted / 0%`）が出ます（#766）。撮影は統計を待ってから撮るので、この2つが出ます。解除した状態は `home-voice-unmuted` だけです。ミュート中は、実エンジンの緊急ミュート（`audio_engine/core/startup.rs`）と同じく、出力のレベルが 0 になります。右の列の出力ピークは `−∞ dBFS` で、「送る音」（音楽鑑賞は「出力の大きさ」）のバーは動きません。入力のレベルは動き続けます。解除すると出力のレベルが戻り、出力音量を掛けた値になります（`tauriMock.ts` の `__e2eMeterLevels`）。
-- **試聴先が無い。** ボイスチェックの試聴候補（`auto_gain` の `devices`）は空です。「試聴の準備ができませんでした」は、試聴先が無い模擬の表示です。
+- **ボイスチェックの試聴先は、評価用の機器名（`devices=realistic`）のときだけ返す。** `voice_check_preview` の `open`・`status`・`devices`・`stop`・`close` に答え、試聴先として `CABLE Input (VB-Audio Virtual Cable)` と `USB Headphones` を返します。録音前のボイスチェックは試聴の準備が成功し、試聴の欄は出ません。録音・再生（`start`、`prepare_*` など）は模擬しないので、録音したあとの画面（試聴の欄、比較、波形）は撮れません。`devices` を付けないプレビューと既存のブラウザ試験は、これまでどおり未定義の IPC で、試聴の準備に失敗します。「試聴の準備ができませんでした」が出たら、撮影の不備です。
+- **入力の用途は、ホームの表示と同じ。** `realisticAudioConfig` は保存値へ `inputSource` を書き、`purpose=music` なら入力の用途も音楽鑑賞です。接続の「ホームの表示は「…」ですが、入力の用途は「…」です。」と「そろえる」は、撮影のどの画像にも出ません。実際に不一致が起きたときの文は、ユニット試験で確かめます。
 - **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ入力の線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
 - **ダイアログを直接開いたときの焦点の輪。** 撮影は `?screen=` でダイアログやページを直接開きます。利用者のクリックを通らないので、ブラウザはキーボード操作の扱いにして、先頭の操作（ダイアログの×、ページの見出しなど）に `:focus-visible` の輪を出します。マウスでダイアログを開いたときは出ません。不具合として数えないでください。
 - **音楽鑑賞のセットアップの仮想ケーブルの案内は、2か所にあります。** 初回のセットアップの最初の画面「何に使いますか？」の予告は OBS・Discord の側だけです。音楽鑑賞を選んで進むと、入力の手順（2番目）と出力の手順（3番目）に、経路の文 `wizard.musicRoute`（再生アプリ → CABLE Input → CABLE Output → VST → 物理ヘッドホン）が出ます。`setup-music-input` と `setup-music-output` が、`first-run` から音楽鑑賞のカードを選んで進み、それぞれの手順で `wizard.musicRoute` が見えている状態を撮ります。接続のページの音の元には、閉じた折りたたみ「仮想ケーブルを使う場合の接続」があり、中に `processInput.cableHelpMusic`（CABLE Input と CABLE Output の設定のしかた）があります。`audio-music` が、その折りたたみを開いた状態を撮ります。

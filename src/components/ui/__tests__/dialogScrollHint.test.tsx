@@ -61,6 +61,26 @@ it('続きがあるときは本文の下端でフッターの手前にフェー�
     expect(fadeOf().hidden).toBe(true);
 });
 
+it('印が出ている間は、フェードの帯から下の本文を切り、末尾では外す（山形の円の下に操作を残さない）', async () => {
+    function Frame() {
+        const [scrollTop, setScrollTop] = useState(0);
+        return <>
+            <button type="button" onClick={() => setScrollTop(300)}>末尾</button>
+            <Modal title="案内" onClose={() => {}}><div className="modal-overlay-base"><DialogBody scrollTop={scrollTop} /></div></Modal>
+        </>;
+    }
+    const { getByRole } = render(<Frame />);
+    const body = document.querySelector('.modal-body-base');
+    if (!(body instanceof HTMLElement)) throw new Error('ダイアログの本文が無い');
+    // 本文の下端は 180、フェードの上端は 136。帯の 44px から下を切る。
+    expect(body).toHaveAttribute('data-scroll-more-clip');
+    expect(body.style.getPropertyValue('--scroll-more-clip')).toBe('44px');
+    fireEvent.click(getByRole('button', { name: '末尾', hidden: true }));
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(body).not.toHaveAttribute('data-scroll-more-clip');
+    expect(body.style.getPropertyValue('--scroll-more-clip')).toBe('');
+});
+
 it('焦点の枠がフェードに隠れる項目は、フッターの手前のフェードの上まで、すぐに送る', () => {
     const scrollBy = vi.fn();
     const { getByRole } = render(
