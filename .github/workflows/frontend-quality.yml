@@ -42,9 +42,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # ブラウザ試験は全件を4台に分けて並べて回す。分けても全件を回すことは変わらない。
   browser:
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -59,12 +64,12 @@ jobs:
       - name: Install Chromium
         run: npx playwright install chromium
       - name: Browser tests (IPC mock)
-        run: npx playwright test --output=ci-artifacts/browser
+        run: npx playwright test --shard=${{ matrix.shard }}/4 --output=ci-artifacts/browser
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: frontend-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          name: frontend-browser-${{ github.run_id }}-${{ github.run_attempt }}-shard-${{ matrix.shard }}
           path: ci-artifacts/browser
           if-no-files-found: ignore
           retention-days: 7
