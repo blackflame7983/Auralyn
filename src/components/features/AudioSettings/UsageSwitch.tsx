@@ -87,7 +87,7 @@ export function UsageSwitch({ display, inputPurpose, running, locked, blockedRea
     const targetName = t(target === 'music' ? 'purpose.music' : 'purpose.voice');
     return <div className="space-y-2">
         {display !== inputPurpose && <div className="flex flex-wrap items-center gap-2">
-            <p className="min-w-0 text-balance [word-break:auto-phrase]">{t('purpose.mismatch', { display: name, input: t(inputPurpose === 'music' ? 'purpose.music' : 'purpose.voice') })}</p>
+            <p className="min-w-0 text-balance [word-break:auto-phrase]">{t('purpose.mismatch', { display: name, input: t(inputPurpose === 'music' ? 'purpose.inputMusic' : 'purpose.inputVoice'), target: t(display === 'music' ? 'purpose.inputMusic' : 'purpose.inputVoice') })}</p>
             <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => publishDisplayPurpose(display)}>{t('purpose.align')}</Button>
         </div>}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

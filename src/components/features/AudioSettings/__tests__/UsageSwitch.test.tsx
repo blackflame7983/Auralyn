@@ -15,10 +15,11 @@ const music: UsageDeviceRecord = {
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 
-/** 画面に出る不一致の案内。表示と入力の用途を、使い道の名前で差し込む。 */
-const mismatch = (locale: 'ja' | 'en', display: 'voice' | 'music', input: 'voice' | 'music') => message(locale, 'purpose.mismatch', {
+/** 画面に出る不一致の案内。ホームの表示は使い道の名前、入力は声か音楽で差し込む。 */
+const mismatch =(locale: 'ja' | 'en', display: 'voice' | 'music', input: 'voice' | 'music') => message(locale, 'purpose.mismatch', {
     display: message(locale, display === 'music' ? 'purpose.music' : 'purpose.voice'),
-    input: message(locale, input === 'music' ? 'purpose.music' : 'purpose.voice'),
+    input: message(locale, input === 'music' ? 'purpose.inputMusic' : 'purpose.inputVoice'),
+    target: message(locale, display === 'music' ? 'purpose.inputMusic' : 'purpose.inputVoice'),
 });
 
 function renderSwitch(props: Partial<Parameters<typeof UsageSwitch>[0]> = {}) {
@@ -93,7 +94,8 @@ it('不一致の案内は、どちらがどの用途かと、そろえたあと�
     renderSwitch({ display: 'voice', inputPurpose: 'music' });
     const text = screen.getByText(mismatch('ja', 'voice', 'music')).textContent ?? '';
     expect(text).toContain('ホームの表示は「配信・通話」');
-    expect(text).toContain('入力の使い道は「音楽鑑賞」');
+    expect(text).toContain('入力の使い道は「音楽」');
+    expect(text).toContain('入力の使い道を「声」にする下書き');
     expect(text).toContain('下書き');
     expect(text).toContain('音は変わりません');
     expect(text).not.toMatch(/\{\w+\}/);

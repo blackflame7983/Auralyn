@@ -194,7 +194,15 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         expect(rects[0].bottom).toBeLessThanOrEqual(rects[2].y);
         expect(rects.every(rect => rect.fits)).toBe(true);
         for (const card of await cards.all()) {
-            await card.scrollIntoViewIfNeeded();
+            // 続きの印が出ている間は、フェードの帯から下の本文が切れる（#810）。利用者が本文を送るのと同じく、カードの上端を本文の上端へぴったり送る。
+            await card.evaluate(node => {
+                const scroller = node.closest('.modal-body-base');
+                if (!(scroller instanceof HTMLElement)) throw new Error('ダイアログの本文がありません');
+                node.scrollIntoView({ block: 'start', behavior: 'instant' });
+                const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+                // 上端から 4px（本文の scroll-padding-block と同じ）あけて止める。
+                scroller.scrollBy({ top: (node.getBoundingClientRect().top - scroller.getBoundingClientRect().top) / zoom - 4, behavior: 'instant' });
+            });
             await expect(card).toBeInViewport({ ratio: 1 });
             await card.getByRole('radio').focus();
             await expect(card.getByRole('radio')).toBeFocused();
