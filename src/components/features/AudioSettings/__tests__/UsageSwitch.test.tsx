@@ -93,7 +93,7 @@ it('不一致の案内は、どちらがどの用途かと、そろえたあと�
     renderSwitch({ display: 'voice', inputPurpose: 'music' });
     const text = screen.getByText(mismatch('ja', 'voice', 'music')).textContent ?? '';
     expect(text).toContain('ホームの表示は「配信・通話」');
-    expect(text).toContain('入力の用途は「音楽鑑賞」');
+    expect(text).toContain('入力の使い道は「音楽鑑賞」');
     expect(text).toContain('下書き');
     expect(text).toContain('音は変わりません');
     expect(text).not.toMatch(/\{\w+\}/);

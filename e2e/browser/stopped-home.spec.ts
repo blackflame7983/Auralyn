@@ -147,8 +147,8 @@ test.describe('停止中のホームの細部', () => {
 for (const locale of ['ja', 'en'] as const) for (const purpose of ['voice', 'music'] as const) test.describe(`停止中の上の帯の確認ボタン（#772、${purpose}、${locale}）`, () => {
     test.use({ liveHome: true, stoppedHome: true, registeredModes: false });
     const labels = locale === 'ja'
-        ? { starting: '音声エンジンを起動しています…', start: purpose === 'voice' ? '音声を開始' : '聴き始める', reason: '音声を開始すると使えます', band: '状態の帯', check: purpose === 'voice' ? 'ボイスチェック' : '音が届いているか確かめる' }
-        : { starting: 'Starting the audio engine…', start: purpose === 'voice' ? 'Start audio' : 'Start listening', reason: 'Start audio to use this.', band: 'Status band', check: purpose === 'voice' ? 'Voice Check' : 'Check that sound is arriving' };
+        ? { starting: '音声エンジンを起動しています…', start: purpose === 'voice' ? '音声を開始' : '聴き始める', reason: purpose === 'voice' ? '音声を開始すると使えます' : '聴き始めると使えます', band: '状態の帯', check: purpose === 'voice' ? 'ボイスチェック' : '音が届いているか確かめる' }
+        : { starting: 'Starting the audio engine…', start: purpose === 'voice' ? 'Start audio' : 'Start listening', reason: purpose === 'voice' ? 'Start audio to use this.' : 'Start listening to use this.', band: 'Status band', check: purpose === 'voice' ? 'Voice Check' : 'Check that sound is arriving' };
 
     test('900×600で、押せないが、ホバーが届いて title の理由が出る', async ({ page }) => {
         await page.setViewportSize({ width: 900, height: 600 });

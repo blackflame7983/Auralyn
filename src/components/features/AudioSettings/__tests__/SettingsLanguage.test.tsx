@@ -187,7 +187,7 @@ it.each(['ja', 'en'] as const)('外観のタブは、テーマの近くに押し
     expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl('help.appearance', locale));
 });
 
-it('表示と入力の用途が違うときは、そろえるまで下書きにしない', async () => {
+it('表示と入力の使い道が違うときは、そろえるまで下書きにしない', async () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     localStorage.setItem('vst_host_audio_config', JSON.stringify({
         host: 'Wasapi', input: '実名のマイク', output: '実名の出力', sampleRate: 48000, bufferSize: 512,
@@ -196,11 +196,11 @@ it('表示と入力の用途が違うときは、そろえるまで下書きに�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     expect(await screen.findByText(message('ja', 'purpose.mismatch', { display: message('ja', 'purpose.music'), input: message('ja', 'purpose.voice') }))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'そろえる' }));
-    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の用途も音楽にしますか？' })).getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の使い道も音楽にしますか？' })).getByRole('button', { name: 'キャンセル' }));
     expect(screen.getByText('接続設定に変更はありません')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'そろえる' }));
-    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の用途も音楽にしますか？' })).getByRole('button', { name: '音楽にする' }));
-    expect(screen.getByText(/入力元・用途/)).toBeVisible();
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の使い道も音楽にしますか？' })).getByRole('button', { name: '音楽にする' }));
+    expect(screen.getByText(/入力元・使い道/)).toBeVisible();
     expect(localStorage.getItem('auralyn_display_purpose')).toBe('music');
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'start_audio' || command === 'restart_audio_engine')).toBe(false);
 });
@@ -214,11 +214,11 @@ it('保存済みのアプリの音声は配信の表示でもそのまま出し�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     expect(await screen.findByRole('combobox', { name: '入力元' })).toHaveValue('process');
     fireEvent.click(screen.getByRole('button', { name: 'そろえる' }));
-    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の用途も声にしますか？' })).getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の使い道も声にしますか？' })).getByRole('button', { name: 'キャンセル' }));
     expect(screen.getByText('接続設定に変更はありません')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'そろえる' }));
-    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の用途も声にしますか？' })).getByRole('button', { name: '声にする' }));
-    expect(screen.getByText(/入力元・用途/)).toBeVisible();
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の使い道も声にしますか？' })).getByRole('button', { name: '声にする' }));
+    expect(screen.getByText(/入力元・使い道/)).toBeVisible();
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'start_audio' || command === 'restart_audio_engine')).toBe(false);
 });
 

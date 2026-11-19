@@ -174,7 +174,7 @@ it('既存フィルタ一覧を明示取得し、有効状態だけ選択する'
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', {name: 'OBSの対象を取得'}));
     fireEvent.click(await screen.findByLabelText('声'));
-    fireEvent.click(screen.getByRole('button', {name: '声の既存フィルタを取得'}));
+    fireEvent.click(screen.getByRole('button', {name: '声の既存フィルターを取得'}));
     fireEvent.click(await screen.findByLabelText('音声フィルタ（vst_filter・現在有効）の有効状態を保存'));
     fireEvent.click(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'}));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('filter-test', expect.any(Object), [{source: '声', volume: true, muted: true, monitor: false, filters: ['音声フィルタ']}], false));
@@ -202,7 +202,7 @@ it.each(['constructor', 'toString', '__proto__'])('ソース名%sでも一覧を
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', {name: 'OBSの対象を取得'}));
     fireEvent.click(await screen.findByLabelText(source));
-    fireEvent.click(screen.getByRole('button', {name: `${source}の既存フィルタを取得`}));
+    fireEvent.click(screen.getByRole('button', {name: `${source}の既存フィルターを取得`}));
     fireEvent.click(await screen.findByLabelText('Filter （vst_filter・現在有効）の有効状態を保存'));
     fireEvent.click(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'}));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('exact-filter', expect.any(Object), [{source, volume: true, muted: true, monitor: false, filters: [' Filter ']}], false));
