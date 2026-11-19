@@ -85,6 +85,10 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     Object.assign(window, { __e2eStarts: starts, __e2eQuits: quits });
     let outputMuted = true;
     let outputGain = 1;
+    // 実エンジンは、ミュート・音量の変更が音声スレッドに取り込まれるまでの短い間、統計で controlsPending を真にする。
+    let pendingStatsLeft = 0;
+    const takePendingStats = () => { if (pendingStatsLeft <= 0) return false; pendingStatsLeft -= 1; return true; };
+    Object.assign(window, { __e2ePendControls: (reads: number) => { pendingStatsLeft = reads; } });
     const page = window as {
         __e2eSaveFailure?: boolean;
         __e2eStopFailure?: boolean;
@@ -103,8 +107,26 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         return saveItem.call(this, key, value);
     };
     const gainWrites: number[] = [];
-    Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: (value: number) => { outputGain = value; window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 })); } });
-    Object.assign(window, { __e2eSetOutputMuted: (muted: boolean) => {
+    // 実エンジンは、実行中に出力音量・ミュートを変えるコマンドの前後で audio-conditions-changed を送る（audio/conditions.rs の dispatch）。
+    const notifyCommandChange = (change: () => void) => {
+        if (audioRunning) page.__e2eEmit?.('audio-conditions-changed', null);
+        change();
+        if (audioRunning) page.__e2eEmit?.('audio-conditions-changed', null);
+    };
+    const setGain = (value: number) => {
+        notifyCommandChange(() => { outputGain = value; });
+        window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 }));
+    };
+    Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: setGain });
+    // 実エンジンは、緊急ミュートを切り替えると、条件の通知のあとに global-mute-changed を送る（audio.rs の set_global_mute）。準備の画面へ直接は知らせない。
+    const setMuted = (muted: boolean) => {
+        notifyCommandChange(() => { outputMuted = muted; });
+        page.__e2eEmit?.('global-mute-changed', muted);
+    };
+    Object.assign(window, { __e2eSetOutputMuted: setMuted });
+    // 観測を始める前から、その状態だったことにする試験の準備用。実エンジンの通知を送らないので、緊急ミュートの通知の表示も出ない。
+    // 遅れを調べる試験では使わず、__e2eSetOutputMuted か実際の操作を使う。
+    Object.assign(window, { __e2ePresetOutputMuted: (muted: boolean) => {
         outputMuted = muted;
         window.dispatchEvent(new Event('preparation-external-change'));
     } });
@@ -191,14 +213,20 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 unexpected.push(command);
                 if (strict) throw new Error(`未定義のテストIPC: ${command}`);
                 return null;
+            case 'set_global_mute':
+                if (typeof args.active === 'boolean') setMuted(args.active);
+                return;
+            case 'toggle_global_mute':
+                setMuted(!outputMuted);
+                return;
             case 'set_output_gain':
                 if (typeof args.value !== 'number') return;
-                outputGain = args.value;
+                notifyCommandChange(() => { outputGain = args.value as number; });
                 gainWrites.push(args.value);
                 return;
             case 'auto_gain': return { revision: 1, gain: outputGain, confirmedGain: outputGain, settled: true, running: audioRunning, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };
             case 'get_plugins': case 'list_presets': case 'list_profiles': return [];
-            case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, builtInEffectsEnabled: builtinEnabled, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.7, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain, muted: outputMuted, controlsPending: false, nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: audioRunning, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: builtinEnabled, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
+            case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, builtInEffectsEnabled: builtinEnabled, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.7, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain, muted: outputMuted, controlsPending: takePendingStats(), nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: audioRunning, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: builtinEnabled, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
             case 'builtin_effects':
                 if (action() !== 'snapshot') { unexpected.push(command); throw new Error('登録導線の試験では音を変更しません'); }
                 return { epoch: '1', revision: '1', appliedRevision: '1', config: builtin, pending: false, undoToken: null, error: null };

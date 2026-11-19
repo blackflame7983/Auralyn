@@ -3,7 +3,7 @@ import { installTauriMock, type TauriMockOptions } from '../../src/dev/tauriMock
 import { runScreenAudit, type AuditHit } from './helpers/screenAudit';
 import { shortLineRoot, shortWrappedLineDetails, unphrasedJapaneseBlocks } from './helpers/shortLines';
 import { message } from '../../src/i18n/messages';
-import { setOutputMuted } from './e2eHooks';
+import { presetOutputMuted } from './e2eHooks';
 import { waitForStableLayout } from './helpers/waitForStableLayout';
 import { deniedStorageOnErrorPage, retryTransientNavigation } from './helpers/transientGoto';
 import { knownViolations, purposeAllowances, type KnownViolation, type PurposeAllowance } from './screen-matrix.known';
@@ -205,7 +205,7 @@ async function openScreen(page: Page, ctx: Context & { screen: ScreenId }, width
         // パネルを開いたときの移動（先頭へ揃える）のあとで調べる。本番ビルドは画面指定の移動を持たない。
         await panel.evaluate(element => element.scrollIntoView({ block: 'start' }));
     }
-    await setOutputMuted(page, false);
+    await presetOutputMuted(page, false);
     await waitForStableLayout(page);
     if (ctx.state === 'live') {
         // 実行中の状態は、統計が届くまで「読み取れない」と出る。届いたあとの画面を調べる。

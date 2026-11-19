@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installTauriMock, realisticAudioConfig, realisticDeviceNames, type TauriMockOptions } from '../tauriMock';
 
 interface MockWindow {
     __e2eMeterLevels?: (level: number) => { input: number[]; output: number[] };
     __e2eSetOutputMuted?: (muted: boolean) => void;
+    __e2ePresetOutputMuted?: (muted: boolean) => void;
+    __e2ePendControls?: (reads: number) => void;
     __e2eSetOutputGain?: (value: number) => void;
+    __e2eEmit?: (event: string, payload: unknown) => void;
     __TAURI_INTERNALS__?: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
 }
 
@@ -143,5 +146,86 @@ describe('模擬のメーターレベル', () => {
         expect(mockWindow().__e2eMeterLevels?.(0.2)).toEqual({ input: [0.2, 0.2], output: [0.1, 0.1] });
         mockWindow().__e2eSetOutputGain?.(0);
         expect(mockWindow().__e2eMeterLevels?.(0.2)?.output).toEqual([0, 0]);
+    });
+});
+// 実エンジンは、緊急ミュートの切替で global-mute-changed だけを送る。準備の画面へ直接知らせる経路を模擬に持たせると、
+// 本番で起きる取り直しの遅れを試験が隠す（#799）。
+describe('模擬の緊急ミュートと出力音量は実エンジンと同じ通知だけを送る', () => {
+    const conditions: Array<[string, unknown]> = [['audio-conditions-changed', null], ['audio-conditions-changed', null]];
+    const observe = () => {
+        installTauriMock(legacyOptions);
+        const emitted: Array<[string, unknown]> = [];
+        mockWindow().__e2eEmit = (event, payload) => { emitted.push([event, payload]); };
+        const direct = vi.fn();
+        window.addEventListener('preparation-external-change', direct);
+        return { emitted, direct, stop: () => window.removeEventListener('preparation-external-change', direct) };
+    };
+
+    it('__e2eSetOutputMuted は global-mute-changed を送り、準備の外部変更の通知は送らない', () => {
+        const { emitted, direct, stop } = observe();
+        mockWindow().__e2eSetOutputMuted?.(false);
+        mockWindow().__e2eSetOutputMuted?.(true);
+        stop();
+        expect(emitted).toEqual([...conditions, ['global-mute-changed', false], ...conditions, ['global-mute-changed', true]]);
+        expect(direct).not.toHaveBeenCalled();
+    });
+
+    it('準備用の __e2ePresetOutputMuted は、状態だけを変えて緊急ミュートの通知を送らない', () => {
+        const { emitted, direct, stop } = observe();
+        mockWindow().__e2ePresetOutputMuted?.(false);
+        stop();
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0.1, 0.1]);
+        expect(emitted).toEqual([]);
+        expect(direct).toHaveBeenCalledTimes(1);
+    });
+
+    it('set_global_mute と toggle_global_mute は、状態を変えて global-mute-changed を送る', async () => {
+        const { emitted, direct, stop } = observe();
+        const invoke = mockWindow().__TAURI_INTERNALS__?.invoke;
+        await invoke?.('set_global_mute', { active: false });
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0.1, 0.1]);
+        await invoke?.('toggle_global_mute');
+        stop();
+        expect(mockWindow().__e2eMeterLevels?.(0.1)?.output).toEqual([0, 0]);
+        expect(emitted).toEqual([...conditions, ['global-mute-changed', false], ...conditions, ['global-mute-changed', true]]);
+        expect(direct).not.toHaveBeenCalled();
+    });
+
+    it('set_output_gain と __e2eSetOutputGain は、実エンジンと同じく変更の前後で条件の通知を送る', async () => {
+        const { emitted, stop } = observe();
+        const synced: number[] = [];
+        const sync = (event: Event) => { if (event instanceof CustomEvent && typeof event.detail === 'number') synced.push(event.detail); };
+        window.addEventListener('output-gain-sync', sync);
+        await mockWindow().__TAURI_INTERNALS__?.invoke('set_output_gain', { value: 0.5 });
+        expect(emitted).toEqual(conditions);
+        expect(synced).toEqual([]);
+        mockWindow().__e2eSetOutputGain?.(0);
+        stop(); window.removeEventListener('output-gain-sync', sync);
+        expect(emitted).toEqual([...conditions, ...conditions]);
+        expect(synced).toEqual([0]);
+    });
+
+    it('停止中は条件の通知を送らない（実エンジンはコマンドを実行できない）', async () => {
+        installTauriMock({ ...legacyOptions, stoppedHome: true });
+        const emitted: string[] = [];
+        mockWindow().__e2eEmit = event => { emitted.push(event); };
+        await mockWindow().__TAURI_INTERNALS__?.invoke('set_output_gain', { value: 0.5 });
+        mockWindow().__e2eSetOutputMuted?.(true);
+        expect(emitted).toEqual(['global-mute-changed']);
+    });
+});
+
+describe('模擬の反映待ち', () => {
+    it('__e2ePendControls(n) は、次の n 回の統計の読取りだけ controlsPending を真にする', async () => {
+        installTauriMock(legacyOptions);
+        const invoke = mockWindow().__TAURI_INTERNALS__?.invoke;
+        const pending = async () => {
+            const stats = await invoke?.('get_engine_runtime_stats');
+            const preparation = typeof stats === 'object' && stats !== null && 'preparation' in stats ? stats.preparation : null;
+            return typeof preparation === 'object' && preparation !== null && 'controlsPending' in preparation ? preparation.controlsPending : undefined;
+        };
+        expect(await pending()).toBe(false);
+        mockWindow().__e2ePendControls?.(2);
+        expect([await pending(), await pending(), await pending()]).toEqual([true, true, false]);
     });
 });
