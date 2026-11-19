@@ -127,6 +127,8 @@ test('広い窓のミュート中、接続の確認は主ボタンも確認ボ�
 
 test('広い窓の受け側は、未確認の間は注意色にせず、中立の案内を出す（#762）', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    // 送り先が未選択のあいだは確かめる相手がいないので、案内は送り先を選んでから出る（#807）。
+    await page.addInitScript(() => localStorage.setItem('vst_host_setup_goal', 'obs'));
     await page.goto('/');
     const flow = page.getByRole('region', { name: '接続の確認', exact: true }).getByRole('region', { name: '音の流れ', exact: true });
     await expect(flow).toBeVisible();

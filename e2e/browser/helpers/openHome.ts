@@ -38,10 +38,13 @@ export interface HomeSetup {
     presets?: string[];
     /** 使い道（配信・通話の送り先）を未選択にして開く。 */
     destinationUnset?: boolean;
+    /** 出力先の名前を置き換える（例：受け側の名前が分かる VB-CABLE）。 */
+    output?: string;
 }
 
-const applySetup = ({ presets, destinationUnset }: HomeSetup) => {
+const applySetup = ({ presets, destinationUnset, output }: HomeSetup) => {
     if (destinationUnset) localStorage.removeItem('vst_host_setup_goal');
+    if (output) localStorage.setItem('vst_host_audio_config', JSON.stringify({ ...JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}'), output }));
     const internals = window.__TAURI_INTERNALS__;
     if (!presets || !internals) return;
     const original = internals.invoke;
@@ -58,7 +61,7 @@ export async function openHome(
 ) {
     await page.setViewportSize(options.size);
     await page.addInitScript(seed, { locale: options.locale, purpose: options.purpose, theme: options.theme });
-    await page.addInitScript(applySetup, { presets: options.presets, destinationUnset: options.destinationUnset });
+    await page.addInitScript(applySetup, { presets: options.presets, destinationUnset: options.destinationUnset, output: options.output });
     await page.goto('/');
     await expect(page.getByText(splash(options.locale), { exact: true })).toHaveCount(0);
     await expect(page.locator('.home-content')).toBeVisible();

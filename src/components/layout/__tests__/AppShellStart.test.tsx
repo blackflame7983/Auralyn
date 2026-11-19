@@ -54,11 +54,11 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
 currentHost="WASAPI" engineProcessReady={true} isEngineRunning={running}>
         <p>エフェクト設定</p>
     </AppShell>);
-    const button = screen.queryByRole('button', { name: 'マイクと出力先を設定する' });
-    if (running) expect(button).not.toBeInTheDocument();
-    else { fireEvent.click(button!); expect(onOpenSettings).toHaveBeenCalledOnce(); }
-    // 同じ設定画面への入口は、準備の主ボタンと重ねない（DESIGN.md 2.2）。
-    expect(screen.queryAllByRole('button', { name: /マイクと出力先を設定する|入出力を変更/ })).toHaveLength(1);
+    if (running) expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
+    else { fireEvent.click(screen.getByRole('button', { name: 'マイクと出力先を設定する' })); expect(onOpenSettings).toHaveBeenCalledOnce(); }
+    // 「入出力を変更」は状態によらず1つ。直す操作は、準備に問題があるときだけ並べる（旧「準備の主ボタンと重ねない」を置き換えた。DESIGN.md 2.2）。
+    expect(screen.queryAllByRole('button', { name: '入出力を変更' })).toHaveLength(1);
+    expect(screen.queryAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(running ? 0 : 1);
 });
 
 it('音声停止中は声の流れも音量を測るも出さない。状態はいまの状態の読み上げに残す（#624）', () => {
@@ -291,6 +291,9 @@ it('音楽鑑賞のホームから、構成の切り替えと右の列の聴き�
     expect(screen.getAllByRole('switch', { name: compareName })).toHaveLength(1);
     const details = screen.getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
+    // 接続方式と周波数は、閉じた「詳しい状態と履歴」の中にある（#812）。
+    expect(screen.getByText('WASAPI・48 kHz')).not.toBeVisible();
+    fireEvent.click(screen.getByText('詳しい状態と履歴'));
     expect(screen.getByText('WASAPI・48 kHz')).toBeVisible();
 });
 
@@ -681,6 +684,8 @@ it('音楽鑑賞のホームは、見出しを音楽鑑賞にし、構成が無�
     expect(within(connect).getByRole('button', { name: '音のトラブルを診断' })).toBeInTheDocument();
     const details = within(connect).getByRole('button', { name: '接続の詳細' });
     if (details.getAttribute('aria-expanded') !== 'true') fireEvent.click(details);
+    expect(within(connect).getByText('WASAPI・48 kHz')).not.toBeVisible();
+    fireEvent.click(within(connect).getByText('詳しい状態と履歴'));
     expect(within(connect).getByText('WASAPI・48 kHz')).toBeVisible();
     expect(screen.queryByRole('region', { name: '音調整' })).not.toBeInTheDocument();
     expect(within(flow).getByRole('button', { name: '再生の音量を測る' })).toBeVisible();

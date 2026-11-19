@@ -1,5 +1,6 @@
 import { MdArrowForward, MdCallSplit, MdComputer, MdErrorOutline, MdMic, MdMusicNote, MdVolumeUp } from 'react-icons/md';
 import type { IconType } from 'react-icons';
+import type { ReactNode } from 'react';
 
 export interface AudioFlowNode {
     label: string;
@@ -7,6 +8,8 @@ export interface AudioFlowNode {
     warning?: string;
     /** 確認が要る事実ではない案内。注意色にせず、控えめな文字で出す。 */
     hint?: string;
+    /** この区間を変える操作。値の下に置く。 */
+    action?: ReactNode;
 }
 
 export interface AudioFlowProps {
@@ -18,6 +21,8 @@ export interface AudioFlowProps {
     branches?: AudioFlowNode[];
     inputKind?: 'microphone' | 'playback';
     processingWarning?: string;
+    /** 図の下に添える1行（受け側で選ぶ名前など）。 */
+    note?: string;
 }
 
 function FlowNode({ node, icon: Icon, unknownLabel }: { node: AudioFlowNode; icon: IconType; unknownLabel: string }) {
@@ -26,11 +31,12 @@ function FlowNode({ node, icon: Icon, unknownLabel }: { node: AudioFlowNode; ico
         <p className="mt-1 break-words text-muted-foreground">{node.value || unknownLabel}</p>
         {node.warning && <p className="mt-1 flex items-start gap-1 text-warning"><MdErrorOutline aria-hidden="true" className="mt-0.5 shrink-0" />{node.warning}</p>}
         {node.hint && !node.warning && <p className="mt-1 text-muted-foreground">{node.hint}</p>}
+        {node.action && <div className="mt-1">{node.action}</div>}
     </div>;
 }
 
 /** 選択済みの経路を示す。受信先での受信状態は推測しない。 */
-export function AudioFlow({ label, unknownLabel, input, output, receiver, branches = [], inputKind = 'microphone', processingWarning }: AudioFlowProps) {
+export function AudioFlow({ label, unknownLabel, input, output, receiver, branches = [], inputKind = 'microphone', processingWarning, note }: AudioFlowProps) {
     const nodes = [
         { node: input, icon: inputKind === 'playback' ? MdMusicNote : MdMic },
         { node: { label: 'Auralyn', value: ' ', warning: processingWarning }, icon: MdComputer },
@@ -50,5 +56,6 @@ export function AudioFlow({ label, unknownLabel, input, output, receiver, branch
                 </li>)}</ul>
             </li>}
         </ol>
+        {note && <p className="text-ui-support text-muted-foreground">{note}</p>}
     </section>;
 }

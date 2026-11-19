@@ -19,7 +19,7 @@ for (const theme of ['dark', 'light', 'gaming']) {
         const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
         await expect(prep.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
         expect((await prep.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(55);
-        await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
+        await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.destinationPrompt'), exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: message('ja', 'header.setupOpen'), exact: true })).toHaveCount(0);
         for (const key of ['header.emergency', 'liveBar.actions'] as const) {
             await expect(page.getByRole('button', { name: message('ja', key), exact: true })).toBeInViewport();
@@ -73,7 +73,8 @@ test('音楽鑑賞は送り先を変更せず、再生元と聴く機器を示�
     await expect(page.locator('main')).not.toContainText('CABLE Output → スピーカー');
     const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
     await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
-    await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
+    await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.destinationPrompt'), exact: true })).toHaveCount(0);
+    await expect(prep.getByRole('button', { name: message('ja', 'prep.changeDestinationLabel'), exact: true })).toHaveCount(0);
     await expect(prep.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText(message('ja', 'music.source'));
     expect(await page.evaluate(() => localStorage.getItem('vst_host_setup_goal'))).toBe('obs');
     await page.screenshot({ path: info.outputPath('music.png') });

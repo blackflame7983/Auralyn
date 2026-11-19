@@ -13,10 +13,10 @@ test.beforeEach(async ({ page }) => {
     });
 });
 
-test('未選択の主操作から送り先へキーボードで移動し、選択後は通常の次操作に戻る', async ({ page }, info) => {
+test('未選択の主操作から送り先へキーボードで移動し、選択後は「変更」へ戻る', async ({ page }, info) => {
     await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-    await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
+    await setOutputMuted(page, false);
     const choose = page.getByRole('button', { name: '送り先を選ぶ', exact: true });
     await expect(choose).toBeInViewport();
     await expect(page.locator('.now-action').getByRole('button', { name: '送り先を選ぶ', exact: true })).toHaveCount(1);
@@ -26,9 +26,13 @@ test('未選択の主操作から送り先へキーボードで移動し、選�
     await expect(radio).toBeFocused();
     await expect(radio.locator('..')).toBeInViewport();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('radio', { name: '通話（Discordなど）', exact: true })).toBeChecked();
+    // 選んだ時点で4択は消え、同じ行の「変更」へフォーカスが戻る。準備の次の手順は、閉じた「詳しい状態と履歴」へ移した。
+    const check = page.getByRole('region', { name: '接続の確認', exact: true });
+    await expect(check.getByRole('radiogroup')).toHaveCount(0);
+    await expect(check.getByRole('button', { name: '送り先を変更', exact: true })).toBeFocused();
+    await expect(check.getByRole('region', { name: '音の流れ', exact: true })).toContainText('通話');
     await expect(choose).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '音調整', exact: true })).toHaveClass(/bg-primary/);
+    await expect(check.getByRole('button', { name: '音調整', exact: true })).toBeHidden();
     await page.screenshot({ path: info.outputPath('destination.png') });
 });
 

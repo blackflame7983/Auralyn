@@ -19,6 +19,8 @@ declare global {
     interface Window {
         __TAURI_INTERNALS__?: TauriInternals;
         __e2eEmit?: (event: string, payload: unknown) => void;
+        /** 模擬が成功で隠さず記録した、未定義の IPC 名（src/dev/tauriMock.ts）。 */
+        __e2eUnexpected?: string[];
         __e2eStarts?: StartRequest[];
         __e2eStartFailure?: boolean;
         __e2eArmed?: boolean;

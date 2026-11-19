@@ -104,7 +104,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         await page.screenshot({ path: info.outputPath('healthy.png') });
         await page.getByRole('button', { name: message('ja', 'prep.steps'), exact: true }).click();
         await expect(live).toBeVisible();
-        await expect(page.getByRole('radiogroup', { name: message('ja', 'prep.usage') })).toBeVisible();
+        await expect(page.getByRole('region', { name: message('ja', 'prep.title'), exact: true }).getByRole('button', { name: message('ja', 'prep.changeDestinationLabel'), exact: true })).toBeVisible();
         await live.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
         await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
         // 歌配信の準備は設定ではなく、ホームの配信ミックスのパネルを開いて移る（#299）。

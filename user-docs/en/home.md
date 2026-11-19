@@ -2,7 +2,7 @@
 title: "Home overview"
 description: "Understand live status, volume and entry points for checks."
 order: 5
-uiLabels: ["Locked", "Running", "Audio stopped", "Choose destination", "Sing", "Talk", "Custom sound", "Current voice", "Not a saved Sing/Talk mode", "Mode", "Level being sent", "Muted / 0%", "Not sending sound", "Not playing sound", "Peak", "Output level", "Lock controls", "Microphone", "Playback source", "Output", "A bit low", "In range", "Too loud", "Receiving", "The area between the lines is in range.", "Check the connection", "Connection details", "Output volume", "Source volume", "Bypass VST", "Emergency mute", "Open VST", "Add", "Voice Check", "Check that sound is arriving", "VST", "Measure level", "Measure playback level", "Measure surrounding sound", "Basics", "Shape the sound", "Audio flow", "Compares before and after", "Music listening", "Start listening", "Saved setups", "Saved VST setup", "Automatic backups", "Noise reduction", "Shape voice", "Save modes", "Singing tuning", "Loudness protection", "Detailed settings", "Add VST", "Folders to search", "Detailed adjustments are on the Sound page.", "More", "Light compression remains even at 0%. Turn it off to stop it.", "Sound controls", "Status unavailable", "Start audio to measure.", "Save and restore settings", "Stopped", "Start audio", "Stop Auralyn’s audio", "Quit Auralyn"]
+uiLabels: ["Locked","Running","Audio stopped","Choose destination","Sing","Talk","Custom sound","Current voice","Not a saved Sing/Talk mode","Mode","Level being sent","Muted / 0%","Not sending sound","Not playing sound","Peak","Output level","Lock controls","Microphone","Playback source","Output","A bit low","In range","Too loud","Receiving","The area between the lines is in range.","Check the connection","Connection details","Output volume","Source volume","Bypass VST","Emergency mute","Open VST","Add","Voice Check","Check that sound is arriving","VST","Measure level","Measure playback level","Measure surrounding sound","Basics","Shape the sound","Audio flow","Compares before and after","Music listening","Start listening","Saved setups","Saved VST setup","Automatic backups","Noise reduction","Shape voice","Save modes","Singing tuning","Loudness protection","Detailed settings","Add VST","Folders to search","Detailed adjustments are on the Sound page.","More","Light compression remains even at 0%. Turn it off to stop it.","Sound controls","Status unavailable","Start audio to measure.","Save and restore settings","Stopped","Start audio","Stop Auralyn’s audio","Quit Auralyn","Change","Change devices","Open Setup","Status and history","Set up microphone and output","Refresh status"]
 ---
 
 This page separates the home overview for streaming and calls from the overview for listening to music.
@@ -77,9 +77,17 @@ Turn noise reduction and voice shaping on or off with the switch on each card. S
 
 On a wide window, the connection column opens on the right of Home. On a narrow window, open it from “Connection details” below.
 
+“Check the connection” holds only the audio-flow diagram, “Change” on the destination row, and “Change devices”. The check box and “Open Setup” are inside the closed “Status and history”.
+
+“Change” opens a menu to choose the destination again. The audio route does not change; how you check it and what is shown change, and the saved receiver name is cleared.
+
+Until you choose a destination, the four choices stay open instead of the menu.
+
+Only when preparation has a problem, “Set up microphone and output” or “Refresh status” appears to the right of “Change devices”.
+
 Hearing your own voice and confirming sound in your streaming or calling app are separate checks.
 
-The name of the input or source selected in the receiving app stays off Home, and diagnosis asks for it when the receiving-app checklist appears. You can leave it blank and still continue. You can change or clear a saved name in that diagnosis. The saved name also stays in “Connection details”.
+The name of the input or source selected in the receiving app stays off Home, and diagnosis asks for it when the receiving-app checklist appears. You can leave it blank and still continue. You can change or clear a saved name in that diagnosis. The saved name also stays in “Status and history”.
 
 On a wide window, preparation stays open as “Check the connection” in a column on the right of Home, with no button to open or close it. On a narrow window, open it from “Connection details” below. Tell the output device apart from the destination, and confirm the receiving app as well.
 
@@ -107,7 +115,7 @@ Press the status on the top band to open a menu. While running, it offers “Sto
 
 When setup is already finished, the order matches Sing / Talk: Current status, “Audio flow”, “Shape the sound”, then “Saved setups” only when a setup is saved, then the connection details.
 
-“Saved setups” only switches saved setups. The connection method and sample rate are in “Connection details”.
+“Saved setups” only switches saved setups. The connection method and sample rate are in “Status and history” under “Check the connection”.
 
 The path on the top band prefers the running setup, and otherwise uses the saved playback source and output. On Home, when the window is 1400px wide or more, the path is not shown on the top band; it appears in the “Check the connection” diagram in the right column. On other pages it stays on the top band at any width. The note beside the start button names the playback source and the output. “Check that sound is arriving” opens from the right end of that band and shows the input and output levels and the output. When no sound has come in from the playback source for about 5 seconds, a one-line note appears under the source, telling you where to send your player's output (for example, set it to CABLE Input and sound will arrive). The device name follows your playback source. It does not appear while sound is arriving, while stopped, or when you use an app's audio as the source. “Bypass VST” inside it uses the same name and the same state as the switch in the right column.
 
@@ -146,6 +154,8 @@ The standard folders cannot be removed. Add other places from “Folders to sear
 Use “Connection details” to check the connection.
 
 On a wide window, the connection column opens on the right of Home. On a narrow window, open it from “Connection details” below.
+
+“Check the connection” holds only the audio-flow diagram and “Change devices”. “Check that sound is arriving” is on the top band, not here.
 
 ### Controls on the right of the screen (stop or compare the sound) {#music-output}
 
