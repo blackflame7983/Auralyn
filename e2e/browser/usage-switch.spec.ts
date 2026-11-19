@@ -202,7 +202,7 @@ test.describe('使い道の切り替え', () => {
         for (const reload of [false, true]) {
             if (reload) { await page.reload(); await openConnectionPage(page); } else await openConnection(page);
             await expect(page.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
-            await expect(page.getByText('ホームの表示と入力の用途が違います。')).toHaveCount(0);
+            await expect(page.getByRole('button', { name: message('ja', 'purpose.align'), exact: true })).toHaveCount(0);
             await expect(page.getByRole('button', { name: '切り替える', exact: true })).toBeEnabled();
             expect(await stored()).toEqual({ display: 'voice', purpose: 'voice' });
         }
@@ -282,7 +282,7 @@ test.describe('使い道の切り替え', () => {
             await expect(output.locator('option:checked')).toHaveText('スピーカー');
             // 上の帯は、戻した接続の入力名まで出している（900 幅では先頭の区切りを「…」で隠すが、全文は title に残る）。
             await expect(page.locator('[data-route-box]')).toHaveAttribute('title', /^CABLE Output → スピーカー/);
-            await expect(page.getByText(message(locale, 'purpose.mismatch'))).toHaveCount(0);
+            await expect(page.getByRole('button', { name: message(locale, 'purpose.align'), exact: true })).toHaveCount(0);
             // 音声は元の接続で再起動し直している（切り替えの保存の開始と、元へ戻す再起動）。
             await expect.poll(() => page.evaluate(() => (window.__e2eStarts ?? []).length)).toBe(2);
             const box = await notice.boundingBox();

@@ -89,6 +89,39 @@ describe('模擬の機器名', () => {
     });
 });
 
+describe('模擬の入力の用途', () => {
+    it('realistic の保存値は、入力の用途を使い道と同じにする（ホームの表示との不一致を作らない）', () => {
+        const purposeOf = (value: string) => (JSON.parse(value) as { inputSource?: { kind?: string; config?: { purpose?: string } } }).inputSource;
+        expect(purposeOf(realisticAudioConfig('voice'))).toEqual({ kind: 'device', config: { purpose: 'voice' } });
+        expect(purposeOf(realisticAudioConfig('music'))).toEqual({ kind: 'device', config: { purpose: 'music' } });
+    });
+});
+
+describe('模擬のボイスチェックの試聴先', () => {
+    const preview = (action: string) => mockWindow().__TAURI_INTERNALS__?.invoke('voice_check_preview', { request: { action, sessionId: 7, operationId: 3, clientId: 'c', epoch: null } });
+
+    it('realistic は、試聴の準備が成功し、非仮想の出力を含む試聴先を返す', async () => {
+        installTauriMock({ ...legacyOptions, devices: 'realistic' });
+        const opened = await preview('open') as { sessionId: number; operationId: number; state: string; error: unknown; epoch: string };
+        expect(opened).toMatchObject({ sessionId: 7, operationId: 3, state: 'idle', error: null });
+        expect(opened.epoch).not.toBe('');
+        const listed = await preview('devices') as { devices: { id: string; name: string }[] };
+        expect(listed.devices.map(device => device.name)).toEqual([realisticDeviceNames.streamOutput, realisticDeviceNames.musicOutput]);
+        expect(new Set(listed.devices.map(device => device.id)).size).toBe(2);
+        expect(((await preview('close')) as { state: string }).state).toBe('closed');
+    });
+
+    it('legacy は、これまでどおり未定義の IPC として扱う', async () => {
+        installTauriMock(legacyOptions);
+        await expect(preview('open')).rejects.toThrow('未定義のテストIPC: voice_check_preview');
+    });
+
+    it('録音・再生の操作は、realistic でも模擬しない', async () => {
+        installTauriMock({ ...legacyOptions, devices: 'realistic' });
+        await expect(preview('start')).rejects.toThrow('未定義のテストIPC: voice_check_preview');
+    });
+});
+
 // 実エンジン（audio_engine/core/startup.rs）は、緊急ミュート中は出力を無音で書いて出力レベルを 0 にし、
 // 入力レベルはそのまま送る。ミュートでないときは、出力音量を掛けたあとを測る。
 describe('模擬のメーターレベル', () => {

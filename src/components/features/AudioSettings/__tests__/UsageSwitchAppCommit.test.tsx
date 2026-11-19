@@ -190,7 +190,7 @@ describe('アプリの音声を保存したあと、表示の確定に失敗し�
         await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
         sameAsBefore(before);
         expect(screen.getByText('使い道：配信・通話（マイクの声を整えて送る）')).toBeVisible();
-        expect(screen.queryByText(message('ja', 'purpose.mismatch'))).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: message('ja', 'purpose.align') })).not.toBeInTheDocument();
         const opener = screen.getByRole('button', { name: '切り替える' });
         expect(opener).toBeEnabled();
         expect(opener).not.toHaveAccessibleDescription(message('ja', 'purpose.blockedPending'));
@@ -267,7 +267,8 @@ describe('表示と入力の用途が食い違ったまま切り替え、表示�
         expect(screen.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
         sameAsBefore(before);
         expect(JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}')).toMatchObject({ inputSource: mismatched.inputSource });
-        expect(screen.getByText(message('ja', 'purpose.mismatch'))).toBeVisible();
+        expect(screen.getByText(message('ja', 'purpose.mismatch', { display: message('ja', 'purpose.voice'), input: message('ja', 'purpose.inputMusic'), target: message('ja', 'purpose.inputVoice') }))).toBeVisible();
+        expect(screen.getByRole('button', { name: message('ja', 'purpose.align') })).toBeVisible();
     });
 });
 

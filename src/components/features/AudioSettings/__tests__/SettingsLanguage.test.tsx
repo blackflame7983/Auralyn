@@ -194,7 +194,7 @@ it('表示と入力の使い道が違うときは、そろえるまで下書き�
         inputSource: { kind: 'device', config: { purpose: 'voice' } },
     }));
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText('ホームの表示と入力の使い道が違います。')).toBeVisible();
+    expect(await screen.findByText(message('ja', 'purpose.mismatch', { display: message('ja', 'purpose.music'), input: message('ja', 'purpose.inputVoice'), target: message('ja', 'purpose.inputMusic') }))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'そろえる' }));
     fireEvent.click(within(await screen.findByRole('alertdialog', { name: '入力の使い道も音楽にしますか？' })).getByRole('button', { name: 'キャンセル' }));
     expect(screen.getByText('接続設定に変更はありません')).toBeVisible();

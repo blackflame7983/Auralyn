@@ -19,6 +19,8 @@ export function realisticAudioConfig(purpose: 'voice' | 'music') {
         output: purpose === 'music' ? realisticDeviceNames.musicOutput : realisticDeviceNames.streamOutput,
         sampleRate: 48000,
         bufferSize: 512,
+        // ホームの表示（?purpose=）と入力の用途をそろえる。保存値に無いと声になり、音楽鑑賞で不一致の案内が出る。
+        inputSource: { kind: 'device', config: { purpose } },
     });
 }
 
@@ -148,6 +150,16 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         }
         if (command === 'mixing' && action() === 'snapshot') return { epoch: 'mix-empty', revision: '0', config: null, savedConfig: null, running: false, error: null, accompaniment: null, primaryClock: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [0, 0], knownVoiceProcessingFrames: null, pending: false, failed: false };
         if (command === 'post_mix' && action() === 'snapshot') return { epoch: 'post-empty', revision: '0', enabled: false, running: false, savedPlugins: [], plugins: [], restored: false, error: null, transportLatencyFrames: 0, declaredPluginLatencyFrames: null, attached: null, ready: null, failed: null, processedPackets: null, sampleRate: null };
+        // 評価用の機器名のときだけ、ボイスチェックの試聴先（出力の候補）を返し、録音前の準備を成功させる。録音・再生は模擬しない。
+        if (devices === 'realistic' && command === 'voice_check_preview' && ['open', 'status', 'devices', 'stop', 'close'].includes(action())) {
+            return {
+                epoch: 'preview', sessionId: request()?.sessionId, operationId: request()?.operationId, recordingId: null,
+                state: action() === 'close' ? 'closed' : 'idle', positionMs: 0, durationMs: 0, source: 'processed', loopPlayback: false,
+                levelMatch: false, levelMatchAvailable: false, metadata: null, recordingStale: false,
+                devices: realisticOutputs.map(({ id, name }) => ({ id, name })), error: null, owner: null, conflict: null,
+                levelMatchAttenuationDb: [0, 0], safetyAttenuationDb: 0, candidate: null,
+            };
+        }
         if (liveHome && command === 'live_output') return { config: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
         switch (command) {
             case 'temporary_session_status': return { temporary: false, reviewOnly: false, directory: null };
