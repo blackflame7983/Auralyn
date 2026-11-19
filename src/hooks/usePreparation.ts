@@ -1,4 +1,4 @@
-import { startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
+import { createOutputChangeScheduler, OUTPUT_RETRY_LIMIT, startPreparationRefresh } from '@/hooks/internal/preparationRefresh';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -6,12 +6,20 @@ import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
 import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
+import { withOutputControls } from '@/lib/preparationOutputControls';
 import { engineInputName } from '@/lib/inputSource';
 import {
     buildPreparationObservation, emptyObservation, expireConfirmations,
-    normalizeReceiver, observationStamp, preparationReach, readPreparationContext, savePreparationContext,
+    normalizeReceiver, observationStamp, preparationReach, readPreparationContext, savePreparationContext, validPreparationSnapshot,
     type Confirmations, type PreparationContext, type PreparationObservation, type PreparationStage,
 } from '@/lib/preparation';
+import type { EngineRuntimeStats } from '@/api/audio';
+
+// 読取りで確定した出力音量。反映待ちや読めない統計では確定していないので null。
+const settledOutputGain = (stats: EngineRuntimeStats): number | null => {
+    const p = stats.preparation;
+    return validPreparationSnapshot(p) && !p.controlsPending ? p.outputGain : null;
+};
 
 export function usePreparation({ blocked = false, running = false }: { blocked?: boolean; running?: boolean }) {
     const [context, setContext] = useState(readPreparationContext);
@@ -31,19 +39,36 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
     runningRef.current = running;
     const eventStopped = useRef(false);
     const inFlight = useRef<Promise<PreparationObservation | null> | null>(null);
+    const probeSequence = useRef(0);
+    // 取得停止中に最後に始めた読取りの番号。他の通知で読取りが破棄されたとき、最新の読取りだけが読み直しを予約する。
+    const probeStarted = useRef(0);
+    // 反映待ち・読取りの失敗で読み直した回数。通知ごと・ページの開閉で0へ戻す。
+    const outputRetries = useRef(0);
+    const retryOutput = useRef<() => void>(() => {});
+    const cancelOutput = useRef<() => void>(() => {});
+    // 最後の読取りで確定した出力音量。同じ値の再通知を見分けるためだけに使い、読めなかった・止まった・変わったときは消す。
+    const settledGain = useRef<number | null>(null);
 
+    // 反映待ちのまま返った読取りは、上限つきで短く読み直す。待てる間に回復しなければ、次の通知かページを閉じたときに回復する。
+    const retryPending = useCallback(() => {
+        if (outputRetries.current >= OUTPUT_RETRY_LIMIT) return;
+        outputRetries.current += 1;
+        retryOutput.current();
+    }, []);
     const accept = useCallback((next: PreparationObservation) => {
+        probeSequence.current += 1;
         setObservation(next);
         setRecords(old => expireConfirmations(old, next));
     }, []);
     const expireAll = useCallback(() => {
-        generation.current += 1;
+        generation.current += 1; probeSequence.current += 1; settledGain.current = null;
         setRecords(old => Object.fromEntries(Object.entries(old).map(([stage, receipt]) => [stage, { ...receipt, expired: true }])));
     }, []);
     const refresh = useCallback((): Promise<PreparationObservation | null> => {
         if (!alive.current || !runningRef.current || eventStopped.current || blockedRef.current || isAppHidden() || !listenersReady.current) return Promise.resolve(null);
         if (inFlight.current) return inFlight.current;
         const version = generation.current;
+        probeSequence.current += 1;
         const capturedContext = currentContext.current;
         const receipt = preparationReach.get();
         setChecking(true);
@@ -52,6 +77,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
                 const state = await audioApi.getAudioState();
                 if (!state || typeof state.is_running !== 'boolean') throw new Error('Unavailable audio state');
                 let next: PreparationObservation;
+                let settled: number | null = null;
                 if (!state.is_running) next = { ...emptyObservation(state.config?.host ? 'stopped' : 'unconfigured'), config: state.config };
                 else {
                     const before = await audioApi.getEngineRuntimeStats();
@@ -63,11 +89,15 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
                     const finalState = await audioApi.getAudioState();
                     if (observationStamp(before) !== observationStamp(after) || JSON.stringify(state) !== JSON.stringify(finalState)) throw new Error('Audio conditions changed while reading');
                     next = buildPreparationObservation(state, after, live, capturedContext, capturedContext.usage === 'obs' ? receipt : null, obsCurrent);
+                    settled = settledOutputGain(after);
                 }
-                if (!alive.current || version !== generation.current || blockedRef.current || isAppHidden()) return null;
+                if (!alive.current || version !== generation.current || blockedRef.current || isAppHidden()) { settledGain.current = null; return null; }
+                settledGain.current = settled;
                 accept(next);
+                if (next.availability === 'pending') retryPending(); else outputRetries.current = 0;
                 return next;
             } catch {
+                settledGain.current = null;
                 if (alive.current && version === generation.current && !isAppHidden()) accept(emptyObservation());
                 return null;
             } finally {
@@ -79,13 +109,44 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         })();
         inFlight.current = request;
         return request;
-    }, [accept]);
+    }, [accept, retryPending]);
 
+    // 取得を止めている間は、札に出るミュートと音量ゼロだけを読み直す。最新の読取りだけを採る。
+    const probeOutputControls = useCallback(async () => {
+        if (!alive.current || !runningRef.current || eventStopped.current || isAppHidden()) return;
+        const sequence = ++probeSequence.current;
+        probeStarted.current = sequence;
+        const live = () => alive.current && blockedRef.current && runningRef.current && !eventStopped.current && !isAppHidden();
+        // 応答を採るのは、その間に取り直し・停止・失敗・開始・再開・非表示が起きていないときだけ。
+        const current = () => live() && sequence === probeSequence.current;
+        // 他の通知で破棄された最新の読取りは、読み直しを必ず予約する（古い応答は採らず、最新の状態を読む）。
+        const discarded = () => { if (live() && probeStarted.current === sequence) retryOutput.current(); };
+        try {
+            const stats = await audioApi.getEngineRuntimeStats();
+            if (!current()) { discarded(); return; }
+            const shown = currentObservation.current.availability;
+            settledGain.current = shown === 'ready' || shown === 'muted' ? settledOutputGain(stats) : null;
+            setObservation(old => withOutputControls(old, stats));
+            const p = stats.preparation;
+            if (validPreparationSnapshot(p) && p.controlsPending) retryPending(); else outputRetries.current = 0;
+        } catch {
+            if (!current()) { discarded(); return; }
+            settledGain.current = null;
+            retryPending(); // 読めなかったときも、上限つきで読み直す。上限のあとは次の通知かページを閉じたときに回復する。
+        }
+    }, [retryPending]);
     useEffect(() => {
         alive.current = true;
         let active = true;
         // 診断などで読み取りを止めている間は、背後の画面を確認待ちにしない。再開時に読み直す。
-        const refreshConditions = () => { if (!active) return; generation.current += 1; if (blockedRef.current) return; setChecking(true); setObservation(old => ({ ...old, availability: 'pending' })); void refresh(); };
+        // エンジンの条件の通知は、ミュートや音量の操作のたびに2回来る。古い読取りは世代で捨て、連続する通知は間隔ごとに1回の取り直しへまとめる。
+        const outputScheduler = createOutputChangeScheduler(() => { if (blockedRef.current) void probeOutputControls(); else void refresh(); });
+        retryOutput.current = () => outputScheduler.request();
+        cancelOutput.current = () => outputScheduler.cancel();
+        // 音を送っていない札は、取り直しの間も消さない。ミュートや音量の操作のたびに条件の通知が来るので、札が点滅するのを防ぐ。
+        const markConditionsChanged = (coalesce: boolean) => { if (!active) return; generation.current += 1; probeSequence.current += 1; settledGain.current = null; if (blockedRef.current) return; setChecking(true); setObservation(old => old.availability === 'muted' ? old : { ...old, availability: 'pending' }); if (coalesce) outputScheduler.request(); else void refresh(); };
+        const refreshConditions = () => { markConditionsChanged(false); };
+        const engineConditionsChanged = () => { markConditionsChanged(true); };
         const stop = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('stopped')); };
         const fail = () => { if (!active) return; eventStopped.current = true; expireAll(); accept(emptyObservation('failed')); };
         const external = () => { if (!active) return; expireAll(); void refresh(); };
@@ -112,9 +173,19 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             }
             void refresh();
         };
+        // 緊急ミュートと出力音量の変化の通知からも、同じ間隔で取り直す。
+        const outputChanged = () => { if (!active) return; generation.current += 1; outputRetries.current = 0; outputScheduler.request(); };
+        // 直前の読取りで確定した値と同じ再通知（音量の自動調整の状態確認など）では取り直さない。
+        const gainSynced = (event: Event) => {
+            const pct = event instanceof CustomEvent ? event.detail as unknown : null;
+            const settled = settledGain.current;
+            if (typeof pct === 'number' && Number.isFinite(pct) && settled !== null && Math.abs(pct - settled * 100) < 1e-6) return;
+            outputChanged();
+        };
         const subscriptions = [
             listen('audio-started', started), listen('audio-stopped', stop), listen('audio-error', fail), listen('audio-stream-error', fail),
-            listen('audio-conditions-changed', refreshConditions), listen('global-bypass-changed', refreshConditions),
+            listen('audio-conditions-changed', engineConditionsChanged), listen('global-bypass-changed', refreshConditions),
+            listen('global-mute-changed', outputChanged),
             listen('obs://reach-invalidated', obsInvalidated), listen('obs://timing-invalidated', obsInvalidated),
         ];
         void Promise.all(subscriptions).then(() => {
@@ -131,22 +202,26 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         });
         addAppVisibilityListener(visibility);
         window.addEventListener('preparation-external-change', external);
+        window.addEventListener('output-gain-sync', gainSynced);
         window.addEventListener('profile-fx-applied', refreshConditions);
         window.addEventListener('preparation-purpose-changed', purposeChanged);
         const stopRefresh = startPreparationRefresh(() => { void refresh(); });
         return () => {
-            active = false; alive.current = false; listenersReady.current = false; generation.current += 1;
-            stopRefresh(); unsubscribe();
+            active = false; alive.current = false; listenersReady.current = false; generation.current += 1; probeSequence.current += 1; settledGain.current = null;
+            stopRefresh(); unsubscribe(); outputScheduler.cancel(); retryOutput.current = () => {}; cancelOutput.current = () => {};
             removeAppVisibilityListener(visibility);
             window.removeEventListener('preparation-external-change', external);
+            window.removeEventListener('output-gain-sync', gainSynced);
             window.removeEventListener('profile-fx-applied', refreshConditions);
             window.removeEventListener('preparation-purpose-changed', purposeChanged);
             subscriptions.forEach(p => { void p.then(stop => stop()).catch(() => {}); });
         };
-    }, [accept, expireAll, refresh]);
+    }, [accept, expireAll, refresh, probeOutputControls, retryPending]);
 
     useEffect(() => {
-        generation.current += 1;
+        generation.current += 1; probeSequence.current += 1; settledGain.current = null; outputRetries.current = 0;
+        // ページを閉じたら、取得停止中の読み直しの予約を止める。直後の取り直しが最新の状態を読む。
+        if (!blocked) cancelOutput.current();
         if (!running) { expireAll(); accept(emptyObservation('stopped')); }
         if (!blocked) void refresh();
     }, [blocked, running, accept, expireAll, refresh]);

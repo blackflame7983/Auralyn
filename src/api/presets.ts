@@ -240,7 +240,8 @@ export function syncLocalStateFromProfile(summary: ApplyProfileSummary): void {
         const outputPct = dbToPct(ac.masterGainDb);
 
         try {
-            const prev = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}');
+            const stored: unknown = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}');
+            const prev: Record<string, unknown> = typeof stored === 'object' && stored !== null && !Array.isArray(stored) ? Object.fromEntries(Object.entries(stored)) : {};
             const next = {
                 ...prev,
                 host: ac.host,
@@ -257,6 +258,8 @@ export function syncLocalStateFromProfile(summary: ApplyProfileSummary): void {
         localStorage.setItem('vst_host_input_gain', String(inputPct));
         localStorage.setItem('vst_host_output_gain', String(outputPct));
         window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: inputPct }));
+        // 適用の確定後に知らせる。設定のページを開いたままでも、出力音量ゼロの札と音量の表示が追従する。
+        window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: outputPct }));
         window.dispatchEvent(new CustomEvent('profile-audio-applied', { detail: ac }));
     }
 

@@ -6,7 +6,7 @@ import { audioApi } from '@/api/audio';
 import { liveOutputApi } from '@/api/liveOutput';
 import { obsApi } from '@/api/obs';
 import type { ObsAudioReachResult } from '@/api/obs';
-import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/preparation';
+import { context, audioState, runtime, runtimeWith, liveStatus } from '@/__tests__/fixtures/preparation';
 import { confirmationState, editPreparationReceiver, preparationReach, readPreparationContext, savePreparationContext } from '@/lib/preparation';
 import { usePreparation } from '../usePreparation';
 
@@ -191,6 +191,323 @@ it('空白だけの名前は空として保存する', async () => {
     act(() => { editPreparationReceiver('   '); }); await settle();
     expect(result.current.context.receiver).toBe('');
     expect(readPreparationContext().receiver).toBe('');
+});
+// ---- #799: 緊急ミュートと出力音量ゼロを、定期の取り直し（2秒）を待たずに札へ反映する ----
+const controls = { muted: false, outputGain: 1 };
+const timers = () => { vi.useRealTimers(); vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] }); };
+const emitTauri = (name: string) => act(() => { handlers.get(name)?.forEach(fn => fn()); });
+const gainSynced = (pct: number) => act(() => { window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: pct })); });
+const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+const mockControls = () => {
+    controls.muted = false; controls.outputGain = 1;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => runtimeWith(controls));
+};
+const readsOf = () => vi.mocked(audioApi.getAudioState).mock.calls.length / 2;
+
+it('緊急ミュートの通知で、2秒の定期取得を待たずに「音を送っていません」へ変わり、解除でも戻る', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    controls.muted = true; emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    expect(result.current.observation.muteCause).toBe('muted');
+    await advance(300);
+    controls.muted = false; emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+it('出力音量を0にした同期で、定期取得を待たずに音量ゼロへ変わり、戻すと戻る', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    controls.outputGain = 0; gainSynced(0); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+    await advance(300);
+    controls.outputGain = 1; gainSynced(100); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+it('取り直しの途中でミュートが解けても、前の状態の応答で上書きせず、最後の操作の状態が残る', async () => {
+    timers(); mockControls(); controls.muted = true;
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    let release!: () => void; let calls = 0; let hold = true;
+    vi.mocked(audioApi.getAudioState).mockImplementation(async () => {
+        calls += 1;
+        if (hold && calls === 2) await new Promise<void>(resolve => { release = resolve; });
+        return audioState;
+    });
+    act(() => { void result.current.refresh(); }); await settle();
+    controls.muted = false; emitTauri('global-mute-changed');
+    hold = false; release(); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    // 解除→再ミュートの順で操作しても、最後のミュートが残る。
+    calls = 0; hold = true;
+    act(() => { void result.current.refresh(); }); await settle();
+    controls.muted = true; emitTauri('global-mute-changed');
+    await advance(300);
+    controls.muted = false; emitTauri('global-mute-changed');
+    await advance(300);
+    controls.muted = true; emitTauri('global-mute-changed');
+    hold = false; release(); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('スライダーの連続操作で、取り直しは操作の回数だけ走らず、最後の値が残る', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    const before = readsOf();
+    for (let i = 0; i < 20; i += 1) { controls.outputGain = (19 - i) / 19; gainSynced(controls.outputGain * 100); }
+    await settle(); await advance(300); await settle();
+    expect(readsOf() - before).toBeGreaterThanOrEqual(1);
+    expect(readsOf() - before).toBeLessThanOrEqual(3);
+    expect(result.current.observation.availability).toBe('muted');
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+    const spread = readsOf();
+    for (let i = 0; i < 20; i += 1) { controls.outputGain = i / 20 + .05; gainSynced(controls.outputGain * 100); await advance(30); await settle(); }
+    await advance(300); await settle();
+    expect(readsOf() - spread).toBeLessThanOrEqual(6);
+    expect(result.current.observation.availability).toBe('ready');
+});
+it('診断・設定などで取得を止めている間も、ミュートと音量ゼロの札だけは変わり、確認の記録と構成は保つ', async () => {
+    timers(); mockControls();
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    await act(async () => result.current.confirm('sound'));
+    const config = result.current.observation.config;
+    rerender({ blocked: true }); await settle();
+    const full = { state: vi.mocked(audioApi.getAudioState).mock.calls.length, live: vi.mocked(liveOutputApi.request).mock.calls.length };
+    controls.muted = true; emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    expect(result.current.observation.muteCause).toBe('muted');
+    await advance(300);
+    controls.muted = false; controls.outputGain = 0; gainSynced(0); await settle();
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+    await advance(300);
+    controls.outputGain = 1; gainSynced(100); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    expect(result.current.observation.config).toBe(config);
+    expect(result.current.checking).toBe(false);
+    expect(confirmationState(result.current.records, 'sound')).toBe('confirmed');
+    expect(vi.mocked(audioApi.getAudioState).mock.calls.length).toBe(full.state);
+    expect(vi.mocked(liveOutputApi.request).mock.calls.length).toBe(full.live);
+});
+it('取得を止めている間に、読取りが失敗しても札を「確認できません」へ落とさない', async () => {
+    timers(); mockControls();
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    rerender({ blocked: true }); await settle();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+
+// ---- #799 レビュー指摘：同じ音量の再通知の判定は、読取りで確定した値だけを使う ----
+it('読取りに失敗したあとの、同じ音量の再通知でも取り直して、札が直る', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    controls.outputGain = 0;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValueOnce(new Error('offline'));
+    gainSynced(0); await settle();
+    expect(result.current.observation.availability).toBe('unknown');
+    await advance(300);
+    mockControls(); controls.outputGain = 0;
+    gainSynced(0); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+});
+it('反映待ち（controlsPending）の読取りのあとの、同じ音量の再通知でも取り直す', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith({ muted: false, outputGain: 0 });
+        return { ...stats, preparation: stats.preparation && { ...stats.preparation, controlsPending: true } };
+    });
+    gainSynced(0); await settle();
+    expect(result.current.observation.availability).toBe('pending');
+    await advance(300);
+    mockControls(); controls.outputGain = 0;
+    gainSynced(0); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('実際に読めた値と同じ再通知（音量の自動調整の状態確認など）では取り直さない', async () => {
+    timers(); mockControls();
+    renderHook(() => usePreparation({ running: true })); await settle();
+    const before = readsOf();
+    gainSynced(100); await settle(); await advance(300); gainSynced(100); await settle();
+    expect(readsOf()).toBe(before);
+    controls.outputGain = .5; gainSynced(50); await settle();
+    expect(readsOf()).toBe(before + 1);
+    await advance(300);
+    gainSynced(50); await settle();
+    expect(readsOf()).toBe(before + 1);
+});
+it('通知なしに音量が変わっても、次の読取りで確定した値と突き合わせるので、再通知を取りこぼさない', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    controls.outputGain = 0; gainSynced(0); await settle();
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+    // 通知を出さない経路（定期の取り直し）で音量が戻ったあと、もう一度0にした通知を受ける。
+    controls.outputGain = 1; await advance(2000); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    controls.outputGain = 0; gainSynced(0); await settle();
+    expect(result.current.observation.muteCause).toBe('zeroGain');
+});
+
+// ---- #799 レビュー指摘：取得を止めている間の読取りは、古い応答で新しい状態を上書きしない ----
+it('設定のページを閉じて開き直しても、前の読取りの古い応答で現在の札を上書きしない', async () => {
+    timers(); mockControls();
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    let release!: () => void; let hold = true;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith(controls);
+        if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve; }); }
+        return stats;
+    });
+    controls.muted = true; emitTauri('global-mute-changed'); await settle();
+    // 古い読取り（ミュート）が返らないまま、ミュートが解けて、ページを閉じて開き直す。
+    controls.muted = false;
+    rerender({ blocked: false }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    release(); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+it('取得停止中の読取りが、停止・再開・ページの開き直しのあとに返っても、現在の札を上書きしない', async () => {
+    timers(); mockControls();
+    const { result, rerender } = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    let release!: () => void; let hold = true;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith({ muted: true, outputGain: 1 });
+        if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve; }); }
+        return stats;
+    });
+    emitTauri('global-mute-changed'); await settle();
+    emitTauri('audio-stopped'); await settle();
+    expect(result.current.observation.availability).toBe('stopped');
+    // 再開し、ページを閉じて読み直し、もう一度開く。その後で、停止前に出した読取り（ミュート）が返る。
+    mockControls(); controls.muted = false;
+    emitTauri('audio-started'); rerender({ blocked: false }); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    rerender({ blocked: true }); await settle();
+    release(); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+
+// ---- #799 再レビュー：取得停止中の読取りの取りこぼし ----
+const pendingFirst = (reads: number) => {
+    let left = reads;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith(controls);
+        if (left > 0 && stats.preparation) { left -= 1; return { ...stats, preparation: { ...stats.preparation, controlsPending: true } }; }
+        return stats;
+    });
+};
+const statsReads = () => vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
+const renderBlocked = async () => {
+    const view = renderHook(({ blocked }) => usePreparation({ running: true, blocked }), { initialProps: { blocked: false } }); await settle();
+    view.rerender({ blocked: true }); await settle();
+    return view;
+};
+
+it('取得停止中に反映待ち（controlsPending）の読取りが返っても、短い再試行で札が回復する', async () => {
+    timers(); mockControls();
+    const { result } = await renderBlocked();
+    pendingFirst(2); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    await advance(500); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('取得停止中の読取りが失敗しても、短い再試行で札が回復する', async () => {
+    timers(); mockControls();
+    const { result } = await renderBlocked();
+    let failures = 2;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        if (failures-- > 0) throw new Error('offline');
+        return runtimeWith(controls);
+    });
+    controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+    await advance(500); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+it('再試行の回数には上限があり、上限のあとも次の通知で回復し、ページを閉じたら予約が止まる', async () => {
+    timers(); mockControls();
+    const { result, rerender } = await renderBlocked();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+        const stats = runtimeWith(controls);
+        return { ...stats, preparation: stats.preparation && { ...stats.preparation, controlsPending: true } };
+    });
+    const before = statsReads(); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    await advance(5000); await settle();
+    // 最初の読取り1回と、上限の5回だけ。
+    expect(statsReads() - before).toBe(6);
+    expect(result.current.observation.availability).toBe('ready');
+    // 上限のあとでも、次の通知で読み直して回復する。
+    mockControls(); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle(); await advance(300); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    // 予約が残る状態でページを閉じると、予約は止まり、定期の取り直しの1本だけが残る。
+    pendingFirst(100); controls.muted = false;
+    emitTauri('global-mute-changed'); await settle();
+    expect(vi.getTimerCount()).toBeGreaterThan(1);
+    mockControls(); controls.muted = false;
+    rerender({ blocked: false }); await settle();
+    expect(vi.getTimerCount()).toBe(1);
+});
+for (const trigger of ['profile-fx-applied', 'audio-conditions-changed', 'global-bypass-changed'] as const) {
+    it(`同じ処理の中の別の通知（${trigger}）で取得停止中の読取りが破棄されても、最新の状態を読み直す`, async () => {
+        timers(); mockControls();
+        const { result } = await renderBlocked();
+        let release!: () => void; let hold = true;
+        vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => {
+            const stats = runtimeWith(controls);
+            if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve; }); }
+            return stats;
+        });
+        controls.outputGain = 0; gainSynced(0); await settle();
+        if (trigger === 'profile-fx-applied') act(() => { window.dispatchEvent(new Event('profile-fx-applied')); });
+        else emitTauri(trigger);
+        release(); await settle(); await advance(300); await settle();
+        expect(result.current.observation.muteCause).toBe('zeroGain');
+    });
+}
+it('取得を止めていないときも、反映待ちの読取りは短い再試行で回復する', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    pendingFirst(4); controls.muted = true;
+    emitTauri('global-mute-changed'); await settle();
+    expect(result.current.observation.availability).toBe('pending');
+    await advance(1000); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+});
+
+it('条件の通知（ミュートや音量の操作のたびに来る）の間も、音を送っていない札は消えず、取り直しで状態が変わる', async () => {
+    timers(); mockControls(); controls.muted = true;
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    expect(result.current.observation.availability).toBe('muted');
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+        emitTauri('audio-conditions-changed'); seen.push(result.current.observation.availability);
+        await settle(); seen.push(result.current.observation.availability);
+    }
+    expect(new Set(seen)).toEqual(new Set(['muted']));
+    await advance(300);
+    await advance(300);
+    controls.muted = false; emitTauri('audio-conditions-changed'); await settle();
+    expect(result.current.observation.availability).toBe('ready');
+});
+
+it('条件の通知が続いても（スライダーの操作ごとに2回ずつ来る）、取り直しは間隔ごとに1回へまとまり、最後の状態が残る', async () => {
+    timers(); mockControls();
+    const { result } = renderHook(() => usePreparation({ running: true })); await settle();
+    const before = readsOf();
+    for (let i = 0; i < 40; i += 1) { controls.outputGain = (39 - i) / 39; emitTauri('audio-conditions-changed'); await advance(10); await settle(); }
+    await advance(300); await settle();
+    expect(readsOf() - before).toBeLessThanOrEqual(8);
+    expect(result.current.observation.muteCause).toBe('zeroGain');
 });
 it('アプリの音声で確認した記録の対象は、空ではなくアプリ名になる（#756）', async () => {
     const source = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'chrome.exe', rawEndpointId: 'raw-1', purpose: 'music' } } as const;
