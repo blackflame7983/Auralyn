@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { isPreparationUse, type PreparationUse } from '@/lib/preparation';
 
+// 選択の確定は onActivate が持つ。矢印で移った先のラジオを、未選択のまま保つ。
+const keepUnset = () => undefined;
+
 interface ChangeProps {
     usage: PreparationUse | '';
     /** 送り先を変えると、受け側の名前と確認の記録が外れる（usePreparation の changeContext）。 */
@@ -36,7 +39,8 @@ export function DestinationMenu({ usage, onChange, triggerRef }: ChangeProps & {
     </DropdownMenu>;
 }
 
-/** 送り先が未選択のときだけ、4択をパネルの中にそのまま開いて出す。中身は標準のラジオボタンで、矢印キーと読み上げを保つ。 */
+/** 送り先が未選択のときだけ、4択をパネルの中にそのまま開いて出す。中身は標準のラジオボタンで、矢印キーと読み上げを保つ。
+ *  矢印キーは焦点を動かすだけで、クリック・Enter・Space で決める（「変更」のメニューと同じ）。 */
 export function DestinationPicker({ usage, onChange, pickerRef, name, highlighted }: ChangeProps & { pickerRef: Ref<HTMLDivElement>; name: string; highlighted: boolean }) {
     const t = useMessages();
     const labelId = `${name}-label`;
@@ -44,7 +48,7 @@ export function DestinationPicker({ usage, onChange, pickerRef, name, highlighte
         <p id={labelId}>{t('prep.destinationPrompt')}</p>
         <div ref={pickerRef} role="radiogroup" aria-labelledby={labelId} className={cn('grid gap-2 sm:grid-cols-2', highlighted && 'rounded-card ring-1 ring-primary/60 p-1')}>
             {destinationChoices.map(({ value, label, icon: Icon }) => <ChoiceCard key={value} name={name} value={value} checked={usage === value}
-                onChange={() => onChange(value)}>
+                onChange={keepUnset} onActivate={() => onChange(value)}>
                 <span className="flex items-center gap-2"><Icon aria-hidden="true" className="h-4 w-4 shrink-0" /><span>{t(label)}</span></span>
             </ChoiceCard>)}
         </div>

@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
     });
 });
 
-test('未選択の主操作から送り先へキーボードで移動し、選択後は「変更」へ戻る', async ({ page }, info) => {
+test('未選択の主操作から送り先へキーボードで移動し、矢印では決めずEnterで決め、選択後は「変更」へ戻る', async ({ page }, info) => {
     await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     await setOutputMuted(page, false);
@@ -26,8 +26,13 @@ test('未選択の主操作から送り先へキーボードで移動し、選�
     await expect(radio).toBeFocused();
     await expect(radio.locator('..')).toBeInViewport();
     await page.keyboard.press('ArrowRight');
-    // 選んだ時点で4択は消え、同じ行の「変更」へフォーカスが戻る。準備の次の手順は、閉じた「詳しい状態と履歴」へ移した。
+    // 矢印キーは焦点を動かすだけで、決めない。Enter で決める。
     const check = page.getByRole('region', { name: '接続の確認', exact: true });
+    await expect(page.getByRole('radio', { name: '通話（Discordなど）', exact: true })).toBeFocused();
+    await expect(check.getByRole('radiogroup')).toBeVisible();
+    await expect(check.getByRole('radio', { checked: true })).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    // 選んだ時点で4択は消え、同じ行の「変更」へフォーカスが戻る。準備の次の手順は、閉じた「詳しい状態と履歴」へ移した。
     await expect(check.getByRole('radiogroup')).toHaveCount(0);
     await expect(check.getByRole('button', { name: '送り先を変更', exact: true })).toBeFocused();
     await expect(check.getByRole('region', { name: '音の流れ', exact: true })).toContainText('通話');

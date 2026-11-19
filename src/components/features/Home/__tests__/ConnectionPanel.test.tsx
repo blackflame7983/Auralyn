@@ -252,3 +252,43 @@ it('送り先が未選択のあいだは、確かめる相手がいないので�
     renderPanels(fixture(''), 'ja', { audioReady: true });
     expect(within(panel('ja')).queryByText(m('ja', 'flow.receiverCheckHint'))).not.toBeInTheDocument();
 });
+
+// 未選択の4択は、矢印キーでは焦点が動くだけで、クリックか Enter・Space で決める。メニューの操作とそろえる。
+it('未選択の4択は、矢印キーでは確定せず、Enter とクリックで確定する', () => {
+    const model = fixture('');
+    renderPanels(model, 'ja');
+    const group = within(panel('ja')).getByRole('radiogroup', { name: m('ja', 'prep.destinationPrompt') });
+    const [first, second] = within(group).getAllByRole('radio');
+    if (!first || !second) throw new Error('4択がありません');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    fireEvent.click(second);
+    expect(model.changeContext).not.toHaveBeenCalled();
+    expect(group).toBeVisible();
+    fireEvent.keyDown(second, { key: 'Enter' });
+    expect(model.changeContext).toHaveBeenCalledOnce();
+    expect(model.changeContext).toHaveBeenCalledWith({ usage: 'discord', receiver: '' });
+});
+
+it('未選択の4択は、Space でも確定する', () => {
+    const model = fixture('');
+    renderPanels(model, 'ja');
+    const radio = within(panel('ja')).getByRole('radio', { name: m('ja', 'prep.other') });
+    radio.focus();
+    fireEvent.keyDown(radio, { key: ' ' });
+    expect(model.changeContext).toHaveBeenCalledWith({ usage: 'other', receiver: '' });
+});
+
+// 音楽鑑賞の直す操作は、マイクと出力先ではなく、再生元と聴く機器の言葉にする。
+it.each(['ja', 'en'] as const)('音楽鑑賞の直す操作は、再生元と聴く機器の言葉で出す（%s）', locale => {
+    saveDisplayPurpose('music');
+    for (const availability of ['unconfigured', 'failed', 'stopped'] as const) {
+        const { unmount } = renderPanels(withAvailability(fixture('obs'), availability), locale, { audioReady: false });
+        expect(within(panel(locale)).getByRole('button', { name: m(locale, 'music.configure') }), availability).toBeVisible();
+        expect(within(panel(locale)).queryByRole('button', { name: m(locale, 'shell.configure') })).not.toBeInTheDocument();
+        unmount();
+    }
+    const unknown = renderPanels(withAvailability(fixture('obs'), 'unknown'), locale, { audioReady: false });
+    expect(within(panel(locale)).getByRole('button', { name: m(locale, 'prep.refresh') })).toBeVisible();
+    unknown.unmount();
+});

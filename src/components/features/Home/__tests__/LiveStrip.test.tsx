@@ -9,6 +9,7 @@ import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/p
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
+import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 const meter = vi.hoisted(() => ({ input: 'waiting' as MeterState, output: 'waiting' as MeterState, levels: [0, 0] as [number, number], peak: [0, 0] as [number, number] }));
 vi.mock('../../LevelMeter/MeterContext', () => ({
@@ -276,4 +277,16 @@ it.each(hintCases)('音楽鑑賞：$name', ({ config, saved, shown }) => {
         const hint = screen.getByRole('region', { name: 'いまの状態' }).querySelector('[data-music-source-hint]');
         expect(hint !== null).toBe(shown);
     } finally { vi.useRealTimers(); }
+});
+// 開始の失敗は、配信・通話でも音楽鑑賞でも、いまの状態の中に文と入口を出す。
+it.each(['ja', 'en'] as const)('音楽鑑賞でも、開始の失敗の文と入出力を変える入口を出す (%s)', locale => {
+    saveDisplayPurpose('music');
+    try {
+        render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped onStartAudio={vi.fn()} startError="Device missing" /></LocaleProvider>);
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent(message(locale, 'home.startFailed'));
+        expect(within(alert).getByRole('button', { name: message(locale, 'home.changeDevices') })).toBeVisible();
+        fireEvent.click(within(alert).getByText(message(locale, 'prep.details')));
+        expect(screen.getByText('Device missing')).toBeVisible();
+    } finally { saveDisplayPurpose('voice'); }
 });

@@ -97,7 +97,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     const availability = settledAvailability.current;
     // 準備に問題があるときだけ、ここに直す操作を出す。通常の停止は上の帯の「音声を開始」が受け持つ。
     const needsFix = availability === 'unconfigured' || availability === 'failed' || availability === 'unknown' || (availability === 'stopped' && !stoppedInStrip);
-    const fixLabel: MessageKey = availability === 'unknown' ? 'prep.refresh' : 'shell.configure';
+    const fixLabel: MessageKey = availability === 'unknown' ? 'prep.refresh' : music ? 'music.configure' : 'shell.configure';
     const fix = () => { if (availability === 'unknown') void refreshManually(); else onSettings(); };
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const stage = next === 'sound' || next === 'listen' || next === 'receiver' ? next : null;
