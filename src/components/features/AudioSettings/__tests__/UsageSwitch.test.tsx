@@ -95,8 +95,7 @@ it('不一致の案内は、どちらがどの用途かと、そろえたあと�
     const text = screen.getByText(mismatch('ja', 'voice', 'music')).textContent ?? '';
     expect(text).toContain('ホームの表示は「配信・通話」');
     expect(text).toContain('入力の使い道は「音楽」');
-    expect(text).toContain('入力の使い道を「声」にする下書き');
-    expect(text).toContain('下書き');
+    expect(text).toContain('「声」にすると接続の下書きに入ります');
     expect(text).toContain('音は変わりません');
     expect(text).not.toMatch(/\{\w+\}/);
     for (const locale of ['ja', 'en'] as const) expect(mismatch(locale, 'music', 'voice')).not.toMatch(/\{\w+\}/);

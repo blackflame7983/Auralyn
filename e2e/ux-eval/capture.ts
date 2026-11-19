@@ -206,8 +206,8 @@ async function openShot(page: Page, shot: Shot, size: (typeof sizes)[number]) {
 // 撮影の都合で出る表示は、画像に残さない。評価者が利用者の不具合として数えてしまう。
 async function expectNoCaptureArtifacts(page: Page, shot: Shot) {
     const t = (key: MessageKey) => message(shot.locale, key);
-    // 接続の「ホームの表示と入力の用途が違います」は、そろえるボタンと一緒に出る。撮影は表示と入力の用途を同じにしてあるので、どの画面にも出ない。
-    await expect(page.getByRole('button', { name: t('purpose.align'), exact: true }), '表示と入力の用途がそろっていない').toHaveCount(0);
+    // ホームの表示と入力の使い道が違うときの案内は、そろえるボタンと一緒に出る。撮影は両方を同じにしてあるので、どの画面にも出ない。
+    await expect(page.getByRole('button', { name: t('purpose.align'), exact: true }), '表示と入力の使い道がそろっていない').toHaveCount(0);
     if (shot.name !== 'voice-check') return;
     // 録音前のボイスチェックは、試聴先を読めたあと、録音の操作だけが出る。試聴の欄と準備の失敗は、録音したあとか実際の失敗のときだけ。
     await expect(page.getByRole('button', { name: message(shot.locale, 'voice.recordMax', { seconds: '10' }) }), '録音の操作が使える状態になる').toBeEnabled();
