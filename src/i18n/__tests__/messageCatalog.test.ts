@@ -43,5 +43,6 @@ it.each(['ja', 'en'] as const)('診断の呼び方・機器の再検出・VST復
     expect(explanation).not.toMatch(/構成|保護中/);
     expect(message(locale, 'wizard.interruptHint')).toContain(message(locale, 'header.setupOpen'));
     expect(message(locale, 'wizard.interruptHint')).toContain(message(locale, 'prep.steps'));
+    expect(message(locale, 'wizard.interruptHint')).toContain(message(locale, 'prep.details'));
     expect(message(locale, 'wizard.interruptHint')).not.toMatch(/ヘッダー|header/);
 });

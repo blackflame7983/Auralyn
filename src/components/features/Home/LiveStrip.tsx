@@ -86,8 +86,8 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             {chooseButton && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
             {startNote && <p className="text-ui-support text-muted-foreground">{t(music ? 'home.startSavedPlayback' : 'home.startSavedDevices')}</p>}
         </div>}
-        {!music && <div className="now-controls flex min-h-10 flex-col gap-2">
-            {liveControls}
+        {(!music || startError) && <div className="now-controls flex min-h-10 flex-col gap-2">
+            {!music && liveControls}
             {/* 開始の失敗だけは、出た行数の分だけ区画を伸ばす。操作の結果なので、停止中の高さには含めない。 */}
             {startError && <div role="alert" className="flex flex-wrap items-center gap-2 text-ui-control text-destructive-text">
                 <p className="min-w-0 basis-full">{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>

@@ -216,7 +216,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await wizard.getByRole('button', { name: message(locale, 'common.back'), exact: true }).click();
         await wizard.getByRole('button', { name: message(locale, 'wizard.skip'), exact: true }).click();
         // 未設定のホームは送り先の選択を並べず、音の流れと次の1歩だけを出す（#297）。
-        await expect(page.getByRole('radiogroup', { name: message(locale, 'prep.usage'), exact: true })).toHaveCount(0);
+        await expect(page.getByRole('radiogroup', { name: message(locale, 'prep.destinationPrompt'), exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: message(locale, 'unsetFlow.chooseDestination'), exact: true })).toBeVisible();
     });
 }
