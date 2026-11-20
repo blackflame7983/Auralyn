@@ -1,12 +1,12 @@
 # 旧 API の互換の契約（`9567061a` の実際の振る舞い）
 
-状態：F0 の成果物。コードを読んで確かめた事実を表にした。実機・実際の WebView では確かめていない。
+状態：F0 の成果物（第2回のレビューを反映した改訂版）。コードを読んで確かめた事実を表にした。実機・実際の WebView では確かめていない。
 設計は [audio-session-controller.md](audio-session-controller.md)。試験の行は [audio-session-acceptance.md](audio-session-acceptance.md)。
 
 読み方：
 
 - 「事実」の列は、`9567061a` のコードで確かめたこと。根拠を `ファイル:行` で示す（行は `9567061a` の値）。
-- 「F1a」の列：**変えない**（互換の試験で固定する）。
+- 「F1a」の列：**変えない**（互換の試験で固定する）。F1a は、F1a-0（互換の試験・入口の一本化・受付順の記録）、F1a-1（通信とプロセスの寿命）、F1a-2（持ち主の移行）の全体を指す。受付順を記録することは、勝ち負けを変えることとは別の差分で、F1a-0 は勝敗を変えない。
 - 「F1b」の列：安全のために変える候補。個別の承認が要る差分（9章）。
 - 「通知の順序」は、Rust がイベントを `emit` する順序と、`emit` を呼ぶスレッドの順序を述べる。WebView に届く順序は、コードだけでは確かめられていない（9章の「未確認」）。
 
@@ -31,7 +31,8 @@
 | 適用先 | `start_audio` だけ。`restart_audio_engine` は `expected_state` を受け取らない（フロントは付けるが、Tauri が無視する） | `commands/audio.rs:383-388`、`:624-628`、`api/audio.ts:206-219` | 変えない | 変えない |
 | 照合の規則 | 次のいずれかなら失敗：`current.is_running == false`、`current.condition_witness == None`、`expected` に `condition_witness` キーがない、`serde_json::to_value(current) != expected`（**JSON の完全一致**） | `commands/audio.rs:433-447` | 変えない | 変えない |
 | 完全一致の意味 | `config` を含む全体を比べる。項目の欠落・余分な項目は不一致。`revision`・`epoch` の文字列の差も不一致 | 同上 | 変えない | 変えない |
-| 同じ設定でも拒む場合 | 停止・再開（`lifecycle`）で `revision` と `epoch` が進むので、旧の witness は拒まれる | `commands/audio.rs:455-481`（試験）、`audio/conditions.rs:138-146` | 変えない | 変えない |
+| 同じ設定でも拒む場合 | 停止・再開（`lifecycle`）は **`revision` だけ**を進める（`pending` を挟んで +2）。`engine_epoch` は、子の生成（`new_engine`）と退役（`retire_engine`）でだけ進む。したがって、同じ子で Stop → Start すると、旧の witness は `revision` の不一致で拒まれる（`epoch` の更新によるものではない）。接続が変わると、両方が変わる | `commands/audio.rs:455-481`（試験）、`audio/conditions.rs:95-104`、`:138-146` | 変えない | 変えない |
+| 古い reader による `running` の書き込み | `engine_event` は、最初の epoch の照合に通った後、`running` を書き、再照合で接続が変わっていたら `running = false` を書く。**照合の後に接続が変わると、新しい接続の `running` を落とせる**（旧 reader が最初の照合を通った場合）。「古い接続の通知は `Conditions` に作用しない」のは、最初の照合の前に接続が変わった場合に限る | `audio/conditions.rs:106-121` | 変えない（試験で、この窓があることを固定） | 接続の照合を `conn == current` に一本化して窓を閉じる（D-6 に含める） |
 | 照合の時点 | ロックを取った後、`resolve_input_source` と開始の前 | `commands/audio.rs:409-416` | 変えない（actor の上でも、同じ順序で照合） | 変えない |
 | エラーの文字列 | `音声の条件が変わりました。現在の設定を確認してから再試行してください。`（`localize_audio_error` を通さない） | `commands/audio.rs:442-444`、`:409-412` | 変えない | 変えない |
 
@@ -53,7 +54,11 @@
 | 失敗したときの通知 | 子の `start_audio_impl` が失敗すると、`Stopped` イベントの後に `Response::Error`。したがって失敗の開始でも、`audio-stopped` が、エラーの応答の前に出る | `audio_engine/core.rs:1328-1334`、`core/commands.rs:618-622` | 変えない | 変えない |
 | タイムアウト | 1コマンドごとに10秒。文字列は `Timeout or disconnect waiting for engine response: timed out waiting on channel operation`（`localize` で包まれる）。**タイムアウト後も `Stop` を送らない**。応答が来るまで、次の要求は `前の音声操作の応答待ちです。しばらく待つか、エンジンを再起動してください。` で拒まれる | `audio.rs:1184-1188`、`audio/replies.rs:13-21` | 変えない | 隔離と清掃の `Stop`（承認が要る差分。設計 5.3） |
 | 開始の内部の手順 | `SetGlobalMute` → `Start` の2コマンド。そのほか前提として、機能確認・二系統出力・モニターの復帰（それぞれ別の IPC）。1つでも失敗すれば、その時点で失敗 | `audio.rs:1586-1626`、`:3028-3038` | 変えない | 変えない |
-| 確認に失敗した成功 | 機器 ID の不一致、経路の確認不能、アプリ入力の確認不能では、`Stop` を送り、`開始した機器のIDを確認できません。機器を選び直してください`、`音声エンジンが接続設定の確認に対応していません`、`アプリ入力で開始したことを確認できません。音声エンジンを更新してください` で失敗 | `audio.rs:1647-1672` | 変えない | 変えない |
+| 確認に失敗した成功 | 機器 ID の不一致、経路の確認不能、アプリ入力の確認不能では、`Stop` を送り、`開始した機器のIDを確認できません。機器を選び直してください`、`音声エンジンが接続設定の確認に対応していません`、`アプリ入力で開始したことを確認できません。音声エンジンを更新してください` で失敗。**この `Stop` の結果は無視される**（`let _ =`）。したがって、`Stop` が失敗しても、エラーを返し、音声が残りうる | `audio.rs:1647-1672` | 変えない（残りうることを試験で固定） | 清掃の `Stop` の成功を、失敗を返す条件にする（B12。D-1 に含める） |
+| 入力元の解決のエラー | `start_audio` の `resolve_input_source` のエラーは、**`e.to_string()` を直接返す**（`localize` を通さない）。`restart_audio_engine` では、マイク許可の確認だけ `localize` を通し、`preflight_live_changes`・`resolve_input_source` のエラーは `e.to_string()` を直接返す | `commands/audio.rs:413-415`、`:650-663` | 変えない | 変えない |
+| `localize` の分岐 | `access denied`・`access is denied`（小文字化して判定）・`0x80070005`・`アクセスが拒否` を含めば、マイク許可の案内の日本語。`device not found`、`sample clock or rate cannot be determined`、`stream configuration is not supported` も固定の日本語 | `audio.rs:3044-3078` | 変えない | 変えない |
+| 子の `Start` の事前の検査 | `initial_controls` の検証に失敗すると、子は **`Stopped` を出さずに** `Response::Error` を返す。それ以外の失敗（`start_audio_impl` の失敗）は `Stopped` の後に `Error` | `audio_engine/core/commands.rs:547-565`、`audio_engine/core.rs:1328-1334` | 変えない | 変えない |
+| 開始の命令の列（`initial_controls` つき） | `SetGlobalMute` → `Start` の順とは限らない。`initial_controls` つきの開始は、`start_on_existing_generation` を通り、ミュートの送信を挟まない | `audio.rs:1618-1626`、`:2349` | 変えない | 変えない |
 
 ### 3.2 `stop_audio`
 
@@ -83,11 +88,13 @@
 
 | コマンド | 応答 | 子を起動するか | 備考 | 根拠 | F1a | F1b |
 |---|---|---|---|---|---|---|
-| `get_saved_audio_config` | `Option<ActiveAudioConfig>`。ファイルがなければ `null`、`host` が空ならエラー `保存済み接続方式が空です` | 起動しない | `last_audio_config.json` を直接読む | `commands/audio.rs:270-283`、`audio.rs:2932-2942` | 変えない | 変えない |
+| `get_saved_audio_config` | `Option<ActiveAudioConfig>`。ファイルがなければ `null`、`host` が空ならエラー `保存済み接続方式が空です`、破損していれば JSON のエラー | 起動しない | `last_audio_config.json` を**呼び出しのたびに直接読む**。スナップショットにすると、欠損・破損・移行の後の結果が変わりうる | `commands/audio.rs:270-283`、`audio.rs:2932-2942` | 変えない（スナップショットにしない。ファイルを直接読むまま） | 変えない |
 | `audio_frontend_bootstrap` | `{outcome: "started"\|"attached"\|"inactive", initialPage, error}` | 既存の接続の確認のみ。warmup が済んでいれば起動しない。`frontend_seen`・取り消し後は、状態を触らない | 一度だけ有効。reload 後は `attached` または `inactive` | `commands/audio.rs:256-268`、`audio/frontend_bootstrap.rs:90-210` | 変えない | 変えない |
 | `get_output_gain_observation` | `{generation: string, state: auto_gain.Snapshot}`。`generation` は `engine_generation` の10進数 | 起動しない（`Status` は `existing_only`） | 子への IPC を1回 | `commands/audio.rs:243-254`、`audio/frontend_bootstrap.rs:112-120` | 変えない | 変えない |
 | `auto_gain`（`status`） | `Snapshot`。`running`・`stream_failed` を含む | 起動しない | フロントの `getAudioStreamState` がこれを使う | `audio.rs:2128-2190`、`api/audio.ts:144` | 変えない | 変えない |
 | `get_engine_runtime_stats`、`set_*`（ゲイン・NR・ミュートなど） | それぞれの型 | `execute_command` 経由は**起動する**。`existing_only` と `*_routed(require_running=true)` は起動しない | 個別の差は多い。F1a は全入口で「起動する／しない」を保存する | `audio.rs:1086-1126`、`audio/engine_exit.rs:222-300` | 変えない | 変えない |
+| `audio_frontend_bootstrap`（最初のフォールバック） | warmup が `config` なしで子だけ準備した場合に限り、一度だけ、保存した組と音量を引き継いで**開始する**（子を生成する経路がある） | 条件つきで起動する | `Start` の前に初期の制御を含む | `audio/frontend_bootstrap.rs:360-372`、`audio.rs:1618-1626` | 変えない | 変えない |
+| `prepare_update`（更新・移行・一時利用） | `check_can_interrupt` → 子があれば **`stop()`（失敗したら先へ進まない）** → `maintenance = true` → `kill_engine`。子があるときは、`Stop` により `audio-stopped` が出る（`audio-engine-exited` は出ない） | 起動しない | `finish_update_attempt` で `maintenance` を戻す | `audio.rs:2743-2777` | 変えない | 変えない |
 | `restart` の前の `preflight_live_changes`、`begin_live_changes`、`end_live_changes` | それぞれの型 | 起動しない（既存の接続の確認） | 本番保護の変更の範囲 | `commands/audio.rs:1154-1198` | 変えない | 変えない |
 
 ## 4. 子を起動する／しない（まとめ）
@@ -166,29 +173,42 @@
 
 1. 1〜7章の「F1a：変えない」のすべて。
 2. 旧の通知の名前・ペイロード・`emit` の順序（特に `audio-conditions-changed` が先）。
-3. 通知がコマンドの応答の前に `emit` される順序（コード上の順序）。
-4. 意図した終了で `audio-engine-exited`・`audio-error` を出さないこと。
-5. `localize_audio_error` の包み方（start／restart だけ）。`stop_audio` を包まないこと。
-6. `expectedState` の完全一致の規則と、エラーの文字列。
-7. 子を起動する／しない（4章）。
-8. 保存の副作用（成功のたびに `last_audio_config.json` を書く。失敗はログだけ）。
-9. 10秒の期限と、タイムアウト後の「応答待ち」の拒否の文言。
+3. **旧の通知は、reader（および `AudioHost` のメソッド）から直接 `emit` する。** コマンドの結果を返す前に、旧の通知の発行が終わっている（`emit` の呼び出しの順序。結果は、それより後に呼び出し側へ渡る）。Emitter のキューを経由して順序を変えない。Emitter は F1b の新しい通知（`audio-session`）とメーターのためだけに使う（`emitter` の Mutex は、`OnceLock<AppHandle>` に置き換えてよい。発行の順序は変えない）。
+4. **`get_audio_state` の待ちの境界：** 先行する命令が完了した後の値を返す（列を通る読み取り）。F1a で `SnapshotCell` にして、途中の版を返すようにしない（直後の `expectedState` の照合が変わる）。
+5. **`expectedState` の比較は、旧の形に固定する：** 比較は、旧の項目（`is_running`、`config`、`condition_witness`）に射影した値どうしで行う。F1b 以降に `get_audio_state` の応答へ任意の項目を足しても、比較の対象には含めない。射影の外の未知の項目は不一致とする（旧の「余分な項目は不一致」を保つ）。足した項目は、契約として列挙し、その列挙にあるものだけを射影の前に除く。
+6. 意図した終了で `audio-engine-exited`・`audio-error` を出さないこと。
+7. `localize_audio_error` の包み方（start／restart の子の応答のエラーだけ。3.1 の直接返るエラーを含む）。`stop_audio` を包まないこと。
+8. `expectedState` の完全一致の規則と、エラーの文字列。
+9. 子を起動する／しない（4章）。
+10. 保存の副作用（成功のたびに `last_audio_config.json` を書く。失敗はログだけ）。
+11. 10秒の期限と、タイムアウト後の「応答待ち」の拒否の文言。
+12. `get_saved_audio_config` は、ファイルを直接読む。
+13. `Stop` が無視される箇所（機器 ID の不一致の後）も、そのまま（試験で、音声が残りうることを固定する）。
 
 ### 8.2 F1b で安全のために変える候補（個別に承認する差分）
 
+受付順を記録すること（F1a-0）と、その順序で利用者から見た勝ち負けを変えること（D-9）は、別の差分として承認を求める。F1a-1 の安全のための変更（D-13）も、F1a の中で個別に承認を求める。
+
 | # | 変更 | 影響する利用者の挙動 | 承認の観点 |
 |---|---|---|---|
-| D-1 | 開始のタイムアウトの後に、清掃の `Stop` を送り、応答がなければ接続を隔離する | タイムアウト後に、音声が止まる（今は遅れて動き出す）。隔離すると VST が失われる | 音が出続ける窓と VST の保持のどちらを優先するか（J-4） |
-| D-2 | `is_running` を、終了の確定後に `false` にする | EOF で死んだ後の表示が、すぐ正しくなる | 旧フロントが `is_running` に頼る箇所（`usePlugins.ts:370`、`:440` など）の確認 |
-| D-3 | `Start` の期限を延ばす（任意） | 遅い機器での失敗が減る。失敗の表示が遅れる | 利用者の体験 |
-| D-4 | 保存の失敗の注記を、開始の応答の任意の項目に足す | 今はログだけ。追加の項目は旧フロントが無視する | 旧フロントの型（追加の項目が許されるか） |
-| D-5 | 子のエラーのコールバックを、atomic の印だけにし、番号つきの通知は制御ループから出す | 旧の `audio-stream-error` の出るタイミングが、わずかに遅れる可能性 | RT の試験。文字列（`Stream Error`）は保つ |
-| D-6 | 古い接続の `LevelMeter`・`Loudness` などを、世代で捨てる | 旧 reader の遅れた値が出なくなる | 影響は小さい |
-| D-7 | `Stop` の応答待ちで子が応答しないときの隔離 | 今は10秒で失敗するだけ | D-1 と同じ観点 |
+| D-1 | 開始のタイムアウトの後に、清掃の `Stop` を送り、応答がなければ接続を隔離する。機器 ID の不一致の後の `Stop` の成功を、失敗を返す条件にする | タイムアウト後に、音声が止まる（今は遅れて動き出す）。**音が止まるまでの時間：最大でおよそ32秒**（設計 5.3）。隔離すると VST の状態（読み込み済みのプラグイン、パラメーター）が失われる | VST の状態を失う条件（`Stop` の応答なしが20秒続いたとき）と、音が出続ける窓のどちらを優先するか。窓そのものの解消は別の Issue（J-4） |
+| D-2 | `is_running` を、プロセスの終了の確定後に `false` にする | EOF で死んだ後の表示が、すぐ正しくなる | EOF とプロセスの終了を分ける。`is_running` を使う VST の復元の経路（`hooks/usePlugins.ts:370`、`:440`）と、動作を比べてから決める |
+| D-3 | `Start` の期限（10秒）は**保つ**（推奨）。延ばす変更は、別の承認 | 失敗の表示の速さが変わる | 利用者の体験（J-4 で10秒を維持と決定） |
+| D-4 | 保存の結果を、開始の応答の任意の項目（`persist`）に足す。保存の結果が決まるまでは、`failed` と報告しない（`PersistPending`） | 今はログだけ | 旧フロントの型（追加の項目を許すか）。`PersistPending` の表示（設計 J-10） |
+| D-5 | 子のエラーのコールバックを、atomic の印（世代・input／output の区別）だけにし、文字列と番号つきの通知は制御ループから出す | 旧の `audio-stream-error` の出るタイミングがわずかに遅れうる | RT の試験。**契約に含めるもの：入力と出力の区別、ストリームの世代、文字列に `Stream Error` を含めること**（`hooks/useAudioRecovery.ts:28-31` の旧の復旧のフィルター）。固定の印だけでは再現できない詳しい文面（`Input Stream Error: …` の詳細）は、ログへ残し、通知の文字列は区別の語を保つ |
+| D-6 | 古い接続の `LevelMeter`・`Loudness` などを世代で捨てる。`Conditions` の接続の照合の窓を閉じる | 旧 reader の遅れた値が出なくなる | **同じ接続の中のストリームの切り替え（A → B）での旧のメーター**、旧のメーターの購読側の頻度と最初の値（`hooks/useMeterLevels.ts:48-58`）を、確かめてから決める |
+| D-7 | `Stop` の応答待ちで子が応答しないときの隔離。**主のエンジンと配信ミックスを分ける**：配信ミックスは、`Stop` が失敗すると、今も子を終わらせる（`child.kill_engine()`）。主は今は10秒で失敗するだけ | 主の応答なしで、VST の状態を失う条件が新しく生じる | D-1 と同じ観点。配信ミックスの今の挙動（`audio/post_mix.rs:644-650`）は、変えない前提で比べる |
+| D-8 | `get_audio_state`・`get_audio_session` を `SnapshotCell` から返す（待たない） | 先行する命令の完了前の値が返る。直後の `expectedState` の照合に影響する（旧の境界を変える） | 旧の読み取りの待ちの境界。F1a は変えない |
+| D-9 | 通常の開始の `Superseded`：開始の待ちの間に停止を受け付けたら、確定せず清掃する | 今は、停止が開始の後ろに並び、開始が成功してから停止される | 受付順の記録とは別の差分。利用者から見た勝ち負けを変える（保存される設定が変わる） |
+| D-10 | stdin の書き込みの5秒での隔離 | 今は10秒の応答待ちで失敗するだけ | 隔離で VST の状態を失う条件 |
+| D-11 | 旧の通知を間引く・Emitter を通す（F1b で新しい通知を足すとき） | 旧の通知の発行の順序・頻度が変わりうる | 旧の通知の発行の順序（F1a で固定したもの）を変える差分。変えるなら、購読側（15箇所）への影響を確かめてから |
+| D-12 | メーターの任意の項目（`seq`）の追加 | 旧の購読側は無視 | 旧の形（`input`・`output`）は保つ |
+| D-13 | F1a-1：Job の割り当ての失敗の扱い（その子を kill し、起動を失敗にする）。プロセスの終了を確認できない間（`Unconfirmed`）の要求の失敗（`engine_unconfirmed`） | 今は割り当ての失敗を無視する。起動できない場合・操作できない時間が新しく生じる | 安全のための変更。F1a の中で個別に承認 |
+| D-14 | 子の `Error` に世代と side を付ける。`apply_deadline` つきの適用 | 旧のペイロード（文字列）は保つ | 子の側の差分 |
 
 ## 9. 確かめていないこと
 
-- 旧の通知とコマンドの応答が、WebView に届く順序（`emit` の呼び出しの順序だけを確かめた）。互換の試験で実測する。
+- 旧の通知とコマンドの応答が、WebView に届く順序（`emit` の呼び出しの順序だけを確かめた）。F1a-0 の互換の試験で、実際の WebView で測る。
 - `get_audio_state` を、ロックを待たない形にしたときの、フロントの2秒ごとの照合への影響。
 - 子の `Stop` が、ストリームを実際に止める時間（フェードの待ち）。
 - `stop_audio` の `Pending` が落ちるタイミングで進む `revision` が、witness の照合に与える影響の細部。
