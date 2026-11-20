@@ -50,3 +50,7 @@ NRの変更や二入力への拡張は、関連する受入条件を満たした
 2026-07の旧6計画と文言棚卸しは削除した。実装前の前提や古い順序が現在の残件と混同されるためである。
 既存機能の品質は現行コード・[検証手順](../TESTING.md)・[文言ガイドライン](../COPY_GUIDELINES.md)と各Issueで確認する。
 旧文書が必要な場合は、`74a3aba`時点の`docs/plans/`をGit履歴から参照できる。
+
+## 音声セッションの設計（#825・#806、F0）
+
+[設計](audio-session-controller.md)、[旧 API の互換の契約](audio-session-compat-contract.md)、[合格の条件の表](audio-session-acceptance.md)。設計のみで、実装・検証はしていない。
