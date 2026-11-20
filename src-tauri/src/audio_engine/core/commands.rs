@@ -617,6 +617,7 @@ impl Engine {
                                 .active_output
                                 .as_ref()
                                 .and_then(|d| d.id.clone()),
+                            stream_generation: self.current_stream_generation(),
                         });
                     }
                     Err(error) => self.send_error(error.to_string()),

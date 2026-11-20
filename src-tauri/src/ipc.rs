@@ -775,6 +775,9 @@ pub enum Response {
         input_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_id: Option<String>,
+        /// 子が振った開始の試行の番号。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_generation: Option<u64>,
     },
     Error(String),
     PluginLoaded {
@@ -898,15 +901,26 @@ pub enum EngineEvent {
     MixingOutputFailed,
     Log(String),
     Error(String),
-    // Peak Meters (Input L/R, Output L/R)
-    LevelMeter(MeterLevels),
+    // Peak Meters (Input L/R, Output L/R)。番号は、そのレベルを出した開始の試行。
+    LevelMeter {
+        levels: MeterLevels,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_generation: Option<u64>,
+    },
     Loudness(crate::audio_engine::loudness::LoudnessReading),
-    Stopped,
+    /// 番号は、最後の開始の試行。一度も試行していなければ None。
+    Stopped {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_generation: Option<u64>,
+    },
     // Channel Activity Scan (Up to 32 chans)
     ChannelLevels(Vec<f32>),
+    /// 同じ試行では、子はこの通知をその試行の最初のレベルより先に送る。
     Started {
         sample_rate: u32,
         buffer_size: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_generation: Option<u64>,
     },
     VoiceCheckState {
         state: String,

@@ -80,6 +80,9 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     let definitions: { schemaVersion: number; version: string; singing: unknown; talk: unknown } = { schemaVersion: 1, version: '1', singing: liveHome && registeredModes ? builtin : null, talk: liveHome && registeredModes ? builtin : null };
     const modeWrites: unknown[] = [];
     let audioRunning = liveHome && !stoppedHome;
+    // 実エンジンと同じく、開始の試行ごとに番号を進め、失敗した試行も番号を使い切る。親（エンジンのプロセス）の番号は 1 に固定する。
+    let streamAttempt = audioRunning ? 1 : 0;
+    const streamGeneration = () => (streamAttempt > 0 ? { stream_generation: `1:${streamAttempt}` } : {});
     const starts: unknown[] = [];
     const quits: unknown[] = [];
     Object.assign(window, { __e2eStarts: starts, __e2eQuits: quits });
@@ -135,7 +138,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         const out = outputMuted ? 0 : level * outputGain;
         return { input: [level, level], output: [out, out] };
     };
-    Object.assign(window, { __e2eMeterLevels: meterLevels, __e2eEmitLevel: (level: number) => page.__e2eEmit?.('audio-level', meterLevels(level)) });
+    Object.assign(window, { __e2eMeterLevels: meterLevels, __e2eEmitLevel: (level: number) => page.__e2eEmit?.('audio-level', { ...meterLevels(level), ...(audioRunning ? streamGeneration() : {}) }) });
     Object.assign(window, { __e2eModeWrites: modeWrites });
     const openedUrls: string[] = [];
     Object.assign(window, { __e2eOpenedUrls: openedUrls });
@@ -171,19 +174,20 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'stop_audio': {
                 if (page.__e2eStopFailure) throw new Error('テスト用: 音声を止められません');
                 audioRunning = false;
-                page.__e2eEmit?.('audio-stopped', {});
+                page.__e2eEmit?.('audio-stopped', streamGeneration());
                 return;
             }
             case 'quit_app': quits.push(0); return;
             case 'start_audio': {
                 starts.push(args);
+                streamAttempt += 1;
                 if (page.__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
                 audioRunning = true;
-                page.__e2eEmit?.('audio-started', { sample_rate: 48000, buffer_size: 512 });
+                page.__e2eEmit?.('audio-started', { sample_rate: 48000, buffer_size: 512, ...streamGeneration() });
                 const started = audioRoute();
                 const routing = asRecord(args.channelRouting);
                 return { host: 'WASAPI', input: started.input.name, output: started.output.name, sample_rate: 48000, buffer_size: 512,
-                    routing: routing ? { ...routing, inputChannels: routing.inputChannels ?? [0, 1] } : undefined };
+                    routing: routing ? { ...routing, inputChannels: routing.inputChannels ?? [0, 1] } : undefined, ...streamGeneration() };
             }
             case 'set_input_channels':
                 if (page.__e2eChannelFailure) throw new Error('テスト用: 入力チャンネルの反映失敗');

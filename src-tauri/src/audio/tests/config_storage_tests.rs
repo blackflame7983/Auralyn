@@ -382,6 +382,7 @@ fn start_sends_retained_mute_before_start_in_both_states() {
                     routing: None,
                     input_id: None,
                     output_id: None,
+                    stream_generation: Some(1),
                 }
             } else {
                 IpcResponse::Success
@@ -504,6 +505,7 @@ fn start_is_not_sent_after_mute_rejection_or_connection_loss() {
                     routing: None,
                     input_id: None,
                     output_id: None,
+                    stream_generation: Some(1),
                 }),
             }
         })
@@ -1241,4 +1243,45 @@ fn saved_audio_config_read_is_scoped_readonly_and_keeps_corrupt_files() {
     );
     assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn stream_generation_label_combines_engine_and_child_numbers() {
+    assert_eq!(stream_generation_label(3, Some(7)).as_deref(), Some("3:7"));
+    assert_eq!(stream_generation_label(3, None), None);
+    assert_eq!(stream_generation_label(0, Some(7)), None);
+}
+
+#[test]
+fn stream_payloads_keep_existing_fields_and_add_the_generation() {
+    let level = serde_json::to_value(LevelPayload {
+        levels: crate::ipc::MeterLevels {
+            input: [0.25, 0.5],
+            output: [0.75, 1.0],
+        },
+        stream_generation: Some("1:2".into()),
+    })
+    .unwrap();
+    // 今のフロントが読む input・output は、そのまま最上位に残す。
+    assert_eq!(
+        level,
+        serde_json::json!({"input": [0.25, 0.5], "output": [0.75, 1.0], "stream_generation": "1:2"})
+    );
+    let started = serde_json::to_value(StartedPayload {
+        sample_rate: 48_000,
+        buffer_size: 256,
+        stream_generation: None,
+    })
+    .unwrap();
+    assert_eq!(
+        started,
+        serde_json::json!({"sample_rate": 48_000, "buffer_size": 256})
+    );
+    assert_eq!(
+        serde_json::to_value(StoppedPayload {
+            stream_generation: Some("2:1".into())
+        })
+        .unwrap(),
+        serde_json::json!({"stream_generation": "2:1"})
+    );
 }

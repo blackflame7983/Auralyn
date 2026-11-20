@@ -411,6 +411,7 @@ impl Engine {
             buffer_size,
             device_ids,
         } = request;
+        self.begin_stream_generation();
         self.last_processing_preparation = "start_audio";
         self.builtin
             .invalidate_history_with_reason(crate::audio_engine::history::Reason::StreamChanged);
@@ -647,9 +648,7 @@ impl Engine {
         let (mut retire_prod, retire_cons) = retire_rb.split();
         self.retire_rx = Some(retire_cons);
 
-        let level_rb = HeapRb::<MeterLevels>::new(4096);
-        let (mut level_prod, level_cons) = level_rb.split();
-        self.level_rx = Some(level_cons);
+        let mut level_prod = self.prepare_meter_channel();
         let loudness_rb = HeapRb::<LoudnessReading>::new(64);
         let (mut loudness_prod, loudness_cons) = loudness_rb.split();
         self.loudness_rx = Some(loudness_cons);
@@ -2260,6 +2259,7 @@ impl Engine {
         self.send_event(EngineEvent::Started {
             sample_rate: self.current_sample_rate as u32,
             buffer_size: self.current_block_size as u32,
+            stream_generation: self.current_stream_generation(),
         });
 
         Ok(None)

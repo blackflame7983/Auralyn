@@ -513,6 +513,7 @@ pub(super) mod tests {
                         routing: Some(routing),
                         input_id: None,
                         output_id: None,
+                        stream_generation: Some(1),
                     }
                 }
                 _ => panic!("unexpected IPC"),
@@ -577,6 +578,7 @@ pub(super) mod tests {
                         routing: Some(routing),
                         input_id,
                         output_id,
+                        stream_generation: Some(1),
                     }
                 }
                 _ => panic!("旧設定は先に再生やチャンネル変更をしない"),

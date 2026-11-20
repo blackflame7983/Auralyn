@@ -93,6 +93,8 @@ export interface AudioConfig {
     buffer_size: number;
     channels: number;
     routing?: ChannelRouting;
+    /** この開始で動き始めた音声の番号（`"{engine}:{child}"`）。`audio-started`・`audio-level`・`audio-stopped` の通知にも載る。 */
+    stream_generation?: string;
 }
 export interface FrontendBootstrapRequest {
     config: { host: string; input?: string; output?: string; inputId?: string; outputId?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number]; outputRouting?: OutputRouting; inputSource?: InputSource } | null;
