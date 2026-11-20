@@ -46,6 +46,8 @@ mod post_mix;
 mod session_rack;
 #[path = "core/startup.rs"]
 mod startup;
+#[path = "core/stream_generation.rs"]
+mod stream_generation;
 use super::auto_gain::{self, Session as GainSession};
 use super::auto_gain_preview;
 use super::callback_diagnostics::{
@@ -402,8 +404,7 @@ pub struct Engine {
     queue_state: QueueState,
     queue_slots_at_stop: Option<usize>,
     queue_attempt: u64,
-    /// 開始の試行ごとに入口で進める番号。失敗した試行も番号を使い切る。0 は未試行。
-    stream_generation: u64,
+    streams: stream_generation::StreamGenerations,
     meter: meter::MeterAccumulator,
     frame_timing: Option<super::frame_timing::Observer>,
 
@@ -543,7 +544,7 @@ impl Engine {
             queue_state: QueueState::Preparing,
             queue_slots_at_stop: None,
             queue_attempt: 0,
-            stream_generation: 0,
+            streams: stream_generation::StreamGenerations::default(),
             meter: meter::MeterAccumulator::default(),
             frame_timing: None,
             input_channel_l: 0,
@@ -1335,11 +1336,11 @@ impl Engine {
 
     /// 開始の試行の入口で呼ぶ。失敗した試行にも新しい番号を振る。
     fn begin_stream_generation(&mut self) {
-        self.stream_generation = self.stream_generation.saturating_add(1);
+        self.streams.begin_attempt();
     }
 
     fn current_stream_generation(&self) -> Option<u64> {
-        (self.stream_generation > 0).then_some(self.stream_generation)
+        self.streams.attempt()
     }
 
     /// 新しいストリームのメーターの受け口を作る。前の音声のピークと無音の省略を持ち越さない。
@@ -1351,8 +1352,10 @@ impl Engine {
     }
 
     fn send_stopped(&mut self) {
+        let stopped = self.streams.stopped();
         self.send_event(EngineEvent::Stopped {
-            stream_generation: self.current_stream_generation(),
+            stream_generation: stopped.attempt,
+            ended_stream_generation: stopped.ended,
         });
     }
 
@@ -2104,6 +2107,7 @@ impl Engine {
         self.voice_check_buffers.collect();
         self.level_rx = None;
         self.meter.reset();
+        self.streams.cleared();
         self.loudness_rx = None;
     }
 }

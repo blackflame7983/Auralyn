@@ -81,8 +81,12 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
     const modeWrites: unknown[] = [];
     let audioRunning = liveHome && !stoppedHome;
     // 実エンジンと同じく、開始の試行ごとに番号を進め、失敗した試行も番号を使い切る。親（エンジンのプロセス）の番号は 1 に固定する。
+    // レベルと停止の「終わった音声」には、最後に動き始めた試行の番号を使う（失敗した試行の番号は使わない）。
     let streamAttempt = audioRunning ? 1 : 0;
-    const streamGeneration = () => (streamAttempt > 0 ? { stream_generation: `1:${streamAttempt}` } : {});
+    let liveAttempt = audioRunning ? 1 : 0;
+    const label = (attempt: number) => `1:${attempt}`;
+    const streamGeneration = () => (streamAttempt > 0 ? { stream_generation: label(streamAttempt) } : {});
+    const liveGeneration = () => (audioRunning && liveAttempt > 0 ? { stream_generation: label(liveAttempt) } : {});
     const starts: unknown[] = [];
     const quits: unknown[] = [];
     Object.assign(window, { __e2eStarts: starts, __e2eQuits: quits });
@@ -138,7 +142,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
         const out = outputMuted ? 0 : level * outputGain;
         return { input: [level, level], output: [out, out] };
     };
-    Object.assign(window, { __e2eMeterLevels: meterLevels, __e2eEmitLevel: (level: number) => page.__e2eEmit?.('audio-level', { ...meterLevels(level), ...(audioRunning ? streamGeneration() : {}) }) });
+    Object.assign(window, { __e2eMeterLevels: meterLevels, __e2eEmitLevel: (level: number) => page.__e2eEmit?.('audio-level', { ...meterLevels(level), ...liveGeneration() }) });
     Object.assign(window, { __e2eModeWrites: modeWrites });
     const openedUrls: string[] = [];
     Object.assign(window, { __e2eOpenedUrls: openedUrls });
@@ -173,8 +177,9 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'get_saved_audio_config': return null;
             case 'stop_audio': {
                 if (page.__e2eStopFailure) throw new Error('テスト用: 音声を止められません');
+                const ended = audioRunning && liveAttempt > 0 ? { ended_stream_generation: label(liveAttempt) } : {};
                 audioRunning = false;
-                page.__e2eEmit?.('audio-stopped', streamGeneration());
+                page.__e2eEmit?.('audio-stopped', { ...streamGeneration(), ...ended });
                 return;
             }
             case 'quit_app': quits.push(0); return;
@@ -183,6 +188,7 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 streamAttempt += 1;
                 if (page.__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
                 audioRunning = true;
+                liveAttempt = streamAttempt;
                 page.__e2eEmit?.('audio-started', { sample_rate: 48000, buffer_size: 512, ...streamGeneration() });
                 const started = audioRoute();
                 const routing = asRecord(args.channelRouting);

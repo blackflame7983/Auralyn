@@ -254,8 +254,16 @@ describe('模擬の音声の番号', () => {
         expect(emitted.filter(([event]) => event.startsWith('audio-'))).toEqual([
             ['audio-started', { sample_rate: 48000, buffer_size: 512, stream_generation: '1:1' }],
             ['audio-level', { input: [0.5, 0.5], output: [0, 0], stream_generation: '1:1' }],
-            ['audio-stopped', { stream_generation: '1:1' }],
+            ['audio-stopped', { stream_generation: '1:1', ended_stream_generation: '1:1' }],
         ]);
+    });
+
+    it('動いている音声の再開始が失敗しても、レベルには動いている音声の番号を付ける', async () => {
+        const { emitted, invoke } = observe(legacyOptions);
+        page().__e2eStartFailure = true;
+        await expect(invoke('start_audio')).rejects.toThrow();
+        page().__e2eEmitLevel?.(0.5);
+        expect(emitted).toContainEqual(['audio-level', { input: [0.5, 0.5], output: [0, 0], stream_generation: '1:1' }]);
     });
 
     it('失敗した開始も番号を使い切り、次の開始は新しい番号になる', async () => {

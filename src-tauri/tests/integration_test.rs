@@ -58,7 +58,14 @@ fn stopped_generations(events: Vec<EngineEvent>) -> Vec<Option<u64>> {
     events
         .into_iter()
         .filter_map(|event| match event {
-            EngineEvent::Stopped { stream_generation } => Some(stream_generation),
+            EngineEvent::Stopped {
+                stream_generation,
+                ended_stream_generation,
+            } => {
+                // 動いていない状態からの失敗や停止では、終わった音声はない。
+                assert_eq!(ended_stream_generation, None);
+                Some(stream_generation)
+            }
             _ => None,
         })
         .collect()

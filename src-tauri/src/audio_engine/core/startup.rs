@@ -2256,10 +2256,11 @@ impl Engine {
             self.current_sample_rate, self.current_block_size, self.current_channels
         )));
 
+        let stream_generation = self.streams.started();
         self.send_event(EngineEvent::Started {
             sample_rate: self.current_sample_rate as u32,
             buffer_size: self.current_block_size as u32,
-            stream_generation: self.current_stream_generation(),
+            stream_generation,
         });
 
         Ok(None)

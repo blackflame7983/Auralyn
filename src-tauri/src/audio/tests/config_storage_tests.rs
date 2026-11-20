@@ -1279,9 +1279,10 @@ fn stream_payloads_keep_existing_fields_and_add_the_generation() {
     );
     assert_eq!(
         serde_json::to_value(StoppedPayload {
-            stream_generation: Some("2:1".into())
+            stream_generation: Some("2:3".into()),
+            ended_stream_generation: Some("2:1".into()),
         })
         .unwrap(),
-        serde_json::json!({"stream_generation": "2:1"})
+        serde_json::json!({"stream_generation": "2:3", "ended_stream_generation": "2:1"})
     );
 }

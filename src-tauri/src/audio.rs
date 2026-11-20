@@ -116,10 +116,13 @@ struct LevelPayload {
     stream_generation: Option<String>,
 }
 
+/// `stream_generation` は最後の開始の試行、`ended_stream_generation` はこの停止で実際に終わった音声。
 #[derive(Serialize, Clone)]
 struct StoppedPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_generation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ended_stream_generation: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -872,7 +875,10 @@ impl AudioHost {
                                         }
                                     }
                                 }
-                                EngineEvent::Stopped { stream_generation } => {
+                                EngineEvent::Stopped {
+                                    stream_generation,
+                                    ended_stream_generation,
+                                } => {
                                     if !conditions.engine_event(condition_epoch, false) {
                                         continue;
                                     }
@@ -884,6 +890,10 @@ impl AudioHost {
                                                 stream_generation: stream_generation_label(
                                                     engine_generation,
                                                     stream_generation,
+                                                ),
+                                                ended_stream_generation: stream_generation_label(
+                                                    engine_generation,
+                                                    ended_stream_generation,
                                                 ),
                                             },
                                         );

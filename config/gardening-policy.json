@@ -16,7 +16,7 @@
     "src-tauri/clippy.toml": "d17e5c311153066ff9e94a78b6fcc9cd3ef168ee2e62a19f24fdcd1e652ee8f2",
     "config/gardening-baseline.json": "431967206524218ff67e9619175b9385c31102347edb5fb1ee108a49d31eac81",
     "config/gardening-python-baseline.json": "7c1051f6e2bc3943b7c1dbe4da229694455681b8875a346c99279e555edb733f",
-    "config/gardening-rust-baseline.json": "2ca8ed9eb45d4165f8e4261574486f57d90972310517a01cdafb6c464e79a7b2",
+    "config/gardening-rust-baseline.json": "e273e9a0e2950eb03f562223e7e9b13521d7a33e4c10b849f4e87ddb16ddff9f",
     "config/verification-features.json": "e9eb66ed686d5742956204a2fcb190638b8942b656829dcab8b487d1aa632c66",
     ".github/workflows/frontend-quality.yml": "a51d64ee33708fc03482f7cf71e91db7f0b2f20cf0b0be410463b496edc54273",
     ".github/CODEOWNERS": "c0e9d98459a15a00544a5715eef1ae895389ed286f68dd942120db113848ba30",

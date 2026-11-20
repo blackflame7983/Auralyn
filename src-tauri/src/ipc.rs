@@ -903,15 +903,20 @@ pub enum EngineEvent {
     Error(String),
     // Peak Meters (Input L/R, Output L/R)。番号は、そのレベルを出した開始の試行。
     LevelMeter {
+        // 子の JSON を直接読む実機の検証スクリプトのため、input・output を payload の最上位に保つ。
+        #[serde(flatten)]
         levels: MeterLevels,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_generation: Option<u64>,
     },
     Loudness(crate::audio_engine::loudness::LoudnessReading),
-    /// 番号は、最後の開始の試行。一度も試行していなければ None。
+    /// `stream_generation` は最後の開始の試行、`ended_stream_generation` はこの停止で実際に終わった音声。
+    /// 動いている音声を新しい試行が片付けてから失敗すると、2つは異なる。
     Stopped {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_generation: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ended_stream_generation: Option<u64>,
     },
     // Channel Activity Scan (Up to 32 chans)
     ChannelLevels(Vec<f32>),
@@ -939,6 +944,34 @@ pub enum EngineEvent {
         recent_underflow: u64,
         window_secs: u32,
     },
+}
+
+#[cfg(test)]
+mod stream_event_tests {
+    use super::{EngineEvent, MeterLevels};
+
+    #[test]
+    fn level_meter_keeps_input_and_output_at_the_top_of_the_payload() {
+        let event = EngineEvent::LevelMeter {
+            levels: MeterLevels {
+                input: [0.25, 0.5],
+                output: [0.75, 1.0],
+            },
+            stream_generation: Some(3),
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"type": "LevelMeter", "payload": {"input": [0.25, 0.5], "output": [0.75, 1.0], "stream_generation": 3}})
+        );
+        assert!(matches!(
+            serde_json::from_value::<EngineEvent>(json).unwrap(),
+            EngineEvent::LevelMeter {
+                stream_generation: Some(3),
+                ..
+            }
+        ));
+    }
 }
 
 #[cfg(test)]
