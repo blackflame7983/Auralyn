@@ -421,6 +421,7 @@ mod tests {
             routing: None,
             input_id: None,
             output_id: None,
+            stream_generation: Some(1),
         }
     }
 

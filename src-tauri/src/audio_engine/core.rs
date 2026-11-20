@@ -34,6 +34,8 @@ mod control_stall;
 mod input;
 #[path = "core/lifecycle.rs"]
 pub(super) mod lifecycle;
+#[path = "core/meter.rs"]
+mod meter;
 #[path = "core/mixing.rs"]
 mod mixing_state;
 #[path = "core/native_stream.rs"]
@@ -44,6 +46,8 @@ mod post_mix;
 mod session_rack;
 #[path = "core/startup.rs"]
 mod startup;
+#[path = "core/stream_generation.rs"]
+mod stream_generation;
 use super::auto_gain::{self, Session as GainSession};
 use super::auto_gain_preview;
 use super::callback_diagnostics::{
@@ -400,6 +404,8 @@ pub struct Engine {
     queue_state: QueueState,
     queue_slots_at_stop: Option<usize>,
     queue_attempt: u64,
+    streams: stream_generation::StreamGenerations,
+    meter: meter::MeterAccumulator,
     frame_timing: Option<super::frame_timing::Observer>,
 
     // Channel Mapping (Runtime)
@@ -538,6 +544,8 @@ impl Engine {
             queue_state: QueueState::Preparing,
             queue_slots_at_stop: None,
             queue_attempt: 0,
+            streams: stream_generation::StreamGenerations::default(),
+            meter: meter::MeterAccumulator::default(),
             frame_timing: None,
             input_channel_l: 0,
             input_channel_r: 1,
@@ -629,16 +637,9 @@ impl Engine {
         let voice_check_interval = Duration::from_millis(100);
         let mut last_voice_check_state = VC_STATE_IDLE;
 
-        let mut current_in_l = 0.0f32;
-        let mut current_in_r = 0.0f32;
-        let mut current_out_l = 0.0f32;
-        let mut current_out_r = 0.0f32;
-
-        let mut updates_received = 0;
         let mut last_data_time = Instant::now();
         let mut last_heartbeat = Instant::now();
         let mut last_processing_watch = Instant::now();
-        let mut last_meter_was_zero = false;
         let mut last_channel_scan_was_zero = false;
         let mut last_channel_scan_generation = self.scan_generation;
 
@@ -784,68 +785,28 @@ impl Engine {
                     }
 
                     // Meter Processing
-                    let mut meter_event_to_send = None;
+                    let mut meter_to_send = None;
                     if let Some(consumer) = &mut self.level_rx {
                         while let Some(levels) = consumer.try_pop() {
-                            updates_received += 1;
                             last_data_time = Instant::now();
-                            if levels.input[0] > current_in_l {
-                                current_in_l = levels.input[0];
-                            }
-                            if levels.input[1] > current_in_r {
-                                current_in_r = levels.input[1];
-                            }
-                            if levels.output[0] > current_out_l {
-                                current_out_l = levels.output[0];
-                            }
-                            if levels.output[1] > current_out_r {
-                                current_out_r = levels.output[1];
-                            }
+                            self.meter.push(&levels);
                         }
 
                         if last_meter_time.elapsed() >= meter_interval {
-                            let time_since_data = last_data_time.elapsed();
-
-                            if updates_received > 0 {
-                                let safe_in_l = current_in_l.clamp(0.0, 10.0);
-                                let safe_in_r = current_in_r.clamp(0.0, 10.0);
-                                let safe_out_l = current_out_l.clamp(0.0, 10.0);
-                                let safe_out_r = current_out_r.clamp(0.0, 10.0);
-
-                                let is_zero = safe_in_l == 0.0
-                                    && safe_in_r == 0.0
-                                    && safe_out_l == 0.0
-                                    && safe_out_r == 0.0;
-                                if !is_zero || !last_meter_was_zero {
-                                    meter_event_to_send =
-                                        Some(EngineEvent::LevelMeter(MeterLevels {
-                                            input: [safe_in_l, safe_in_r],
-                                            output: [safe_out_l, safe_out_r],
-                                        }));
-                                }
-
-                                current_in_l = 0.0;
-                                current_in_r = 0.0;
-                                current_out_l = 0.0;
-                                current_out_r = 0.0;
-                                updates_received = 0;
+                            if self.meter.has_updates() {
+                                meter_to_send = self.meter.take();
                                 last_meter_time = Instant::now();
-                                last_meter_was_zero = is_zero;
-                            } else if time_since_data > Duration::from_millis(75) {
-                                if !last_meter_was_zero {
-                                    meter_event_to_send =
-                                        Some(EngineEvent::LevelMeter(MeterLevels {
-                                            input: [0.0, 0.0],
-                                            output: [0.0, 0.0],
-                                        }));
-                                    last_meter_was_zero = true;
-                                }
+                            } else if last_data_time.elapsed() > Duration::from_millis(75) {
+                                meter_to_send = self.meter.idle();
                                 last_meter_time = Instant::now();
                             }
                         }
                     }
-                    if let Some(evt) = meter_event_to_send {
-                        self.send_event(evt);
+                    if let Some(levels) = meter_to_send {
+                        self.send_event(EngineEvent::LevelMeter {
+                            levels,
+                            stream_generation: self.current_stream_generation(),
+                        });
                     }
 
                     let mut loudness = None;
@@ -1368,9 +1329,34 @@ impl Engine {
         // ローカルstreamとcallbackが破棄されてから、共有キューと所有値を回収する。
         if result.is_err() {
             self.clear_audio_resources();
-            self.send_event(EngineEvent::Stopped);
+            self.send_stopped();
         }
         result
+    }
+
+    /// 開始の試行の入口で呼ぶ。失敗した試行にも新しい番号を振る。
+    fn begin_stream_generation(&mut self) {
+        self.streams.begin_attempt();
+    }
+
+    fn current_stream_generation(&self) -> Option<u64> {
+        self.streams.attempt()
+    }
+
+    /// 新しいストリームのメーターの受け口を作る。前の音声のピークと無音の省略を持ち越さない。
+    fn prepare_meter_channel(&mut self) -> <HeapRb<MeterLevels> as Split>::Prod {
+        let (producer, consumer) = HeapRb::<MeterLevels>::new(4096).split();
+        self.level_rx = Some(consumer);
+        self.meter.reset();
+        producer
+    }
+
+    fn send_stopped(&mut self) {
+        let stopped = self.streams.stopped();
+        self.send_event(EngineEvent::Stopped {
+            stream_generation: stopped.attempt,
+            ended_stream_generation: stopped.ended,
+        });
     }
 
     fn configure_processing_capacity(
@@ -1439,7 +1425,7 @@ impl Engine {
 
     fn stop_audio_immediately(&mut self) {
         self.clear_audio_resources();
-        self.send_event(EngineEvent::Stopped);
+        self.send_stopped();
     }
 
     fn processing_progress_sample(&self) -> super::processing_watch::ProgressSample {
@@ -2120,6 +2106,8 @@ impl Engine {
             .store(recorded_frames > 0, Ordering::Relaxed);
         self.voice_check_buffers.collect();
         self.level_rx = None;
+        self.meter.reset();
+        self.streams.cleared();
         self.loudness_rx = None;
     }
 }

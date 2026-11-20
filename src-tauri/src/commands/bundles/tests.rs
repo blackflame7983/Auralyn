@@ -1093,6 +1093,7 @@ fn prepared_voice_does_not_restart_for_mismatched_route_or_device() {
         buffer_size: 512,
         channels: 2,
         routing: Some(routing),
+        stream_generation: Some("1:1".into()),
     };
     let mut actual = audio::ActiveAudioConfig {
         host: "WASAPI".into(),

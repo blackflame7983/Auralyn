@@ -229,3 +229,60 @@ describe('模擬の反映待ち', () => {
         expect([await pending(), await pending(), await pending()]).toEqual([true, true, false]);
     });
 });
+
+// 実エンジンは、開始の試行ごとに番号を進め、失敗した試行も番号を使い切る（src-tauri/tests/integration_test.rs）。
+describe('模擬の音声の番号', () => {
+    const observe = (options: TauriMockOptions) => {
+        installTauriMock(options);
+        const emitted: Array<[string, unknown]> = [];
+        mockWindow().__e2eEmit = (event, payload) => { emitted.push([event, payload]); };
+        const internals = mockWindow().__TAURI_INTERNALS__;
+        if (!internals) throw new Error('模擬の Tauri が入っていません');
+        const invoke = (command: string, args: Record<string, unknown> = {}) => internals.invoke(command, args);
+        return { emitted, invoke };
+    };
+    const page = () => window as { __e2eStartFailure?: boolean; __e2eEmitLevel?: (level: number) => void };
+
+    afterEach(() => { delete page().__e2eStartFailure; });
+
+    it('停止中から開始すると、応答と開始・レベル・停止の通知に同じ番号を載せる', async () => {
+        const { emitted, invoke } = observe({ ...legacyOptions, stoppedHome: true });
+        const response = await invoke('start_audio');
+        page().__e2eEmitLevel?.(0.5);
+        await invoke('stop_audio');
+        expect(response).toMatchObject({ stream_generation: '1:1' });
+        expect(emitted.filter(([event]) => event.startsWith('audio-'))).toEqual([
+            ['audio-started', { sample_rate: 48000, buffer_size: 512, stream_generation: '1:1' }],
+            ['audio-level', { input: [0.5, 0.5], output: [0, 0], stream_generation: '1:1' }],
+            ['audio-stopped', { stream_generation: '1:1', ended_stream_generation: '1:1' }],
+        ]);
+    });
+
+    it('動いている音声の再開始が失敗しても、レベルには動いている音声の番号を付ける', async () => {
+        const { emitted, invoke } = observe(legacyOptions);
+        page().__e2eStartFailure = true;
+        await expect(invoke('start_audio')).rejects.toThrow();
+        page().__e2eEmitLevel?.(0.5);
+        expect(emitted).toContainEqual(['audio-level', { input: [0.5, 0.5], output: [0, 0], stream_generation: '1:1' }]);
+    });
+
+    it('失敗した開始も番号を使い切り、次の開始は新しい番号になる', async () => {
+        const { emitted, invoke } = observe({ ...legacyOptions, stoppedHome: true });
+        page().__e2eStartFailure = true;
+        await expect(invoke('start_audio')).rejects.toThrow();
+        page().__e2eStartFailure = false;
+        expect(await invoke('start_audio')).toMatchObject({ stream_generation: '1:2' });
+        expect(emitted).toContainEqual(['audio-started', { sample_rate: 48000, buffer_size: 512, stream_generation: '1:2' }]);
+    });
+
+    it('一度も開始していなければ、停止の通知は番号を持たない', async () => {
+        const { emitted, invoke } = observe({ ...legacyOptions, liveHome: false, stoppedHome: true });
+        await invoke('stop_audio');
+        expect(emitted).toEqual([['audio-stopped', {}]]);
+    });
+
+    it('起動時から動いている音声は 1:1 として扱い、次の開始は 1:2 になる', async () => {
+        const { invoke } = observe(legacyOptions);
+        expect(await invoke('start_audio')).toMatchObject({ stream_generation: '1:2' });
+    });
+});

@@ -92,6 +92,45 @@ pub struct AudioConfig {
     pub buffer_size: u32,
     pub channels: u32,
     pub routing: Option<crate::ipc::ChannelRouting>,
+    /// この開始で動き始めた音声の番号（`"{engine}:{child}"`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_generation: Option<String>,
+}
+
+/// 親のエンジンの番号と、子の開始の試行の番号を組み合わせる。子を作り直しても重ならない。
+/// どちらかが未採番なら番号なしにする。
+pub(crate) fn stream_generation_label(
+    engine_generation: u64,
+    child: Option<u64>,
+) -> Option<String> {
+    child
+        .filter(|_| engine_generation > 0)
+        .map(|child| format!("{engine_generation}:{child}"))
+}
+
+#[derive(Serialize, Clone)]
+struct LevelPayload {
+    #[serde(flatten)]
+    levels: crate::ipc::MeterLevels,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
+}
+
+/// `stream_generation` は最後の開始の試行、`ended_stream_generation` はこの停止で実際に終わった音声。
+#[derive(Serialize, Clone)]
+struct StoppedPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ended_stream_generation: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct StartedPayload {
+    sample_rate: u32,
+    buffer_size: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -744,6 +783,7 @@ impl AudioHost {
         self.voice_activity = Arc::new(AtomicBool::new(false));
         let voice_activity = self.voice_activity.clone();
         let conditions = self.conditions.clone();
+        let engine_generation = self.engine_generation;
 
         thread::spawn(move || {
             for line in stdout.lines() {
@@ -816,20 +856,47 @@ impl AudioHost {
                                         let _ = h.emit("audio-stream-error", &s);
                                     }
                                 }
-                                EngineEvent::LevelMeter(levels) => {
+                                EngineEvent::LevelMeter {
+                                    levels,
+                                    stream_generation,
+                                } => {
                                     if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        if let Err(e) = h.emit("audio-level", levels) {
+                                        if let Err(e) = h.emit(
+                                            "audio-level",
+                                            LevelPayload {
+                                                levels,
+                                                stream_generation: stream_generation_label(
+                                                    engine_generation,
+                                                    stream_generation,
+                                                ),
+                                            },
+                                        ) {
                                             log::warn!("Failed to emit audio-level: {}", e);
                                         }
                                     }
                                 }
-                                EngineEvent::Stopped => {
+                                EngineEvent::Stopped {
+                                    stream_generation,
+                                    ended_stream_generation,
+                                } => {
                                     if !conditions.engine_event(condition_epoch, false) {
                                         continue;
                                     }
                                     if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                         let _ = h.emit("audio-conditions-changed", ());
-                                        let _ = h.emit("audio-stopped", ());
+                                        let _ = h.emit(
+                                            "audio-stopped",
+                                            StoppedPayload {
+                                                stream_generation: stream_generation_label(
+                                                    engine_generation,
+                                                    stream_generation,
+                                                ),
+                                                ended_stream_generation: stream_generation_label(
+                                                    engine_generation,
+                                                    ended_stream_generation,
+                                                ),
+                                            },
+                                        );
                                     }
                                 }
                                 EngineEvent::Loudness(reading) => {
@@ -847,22 +914,22 @@ impl AudioHost {
                                 EngineEvent::Started {
                                     sample_rate,
                                     buffer_size,
+                                    stream_generation,
                                 } => {
                                     if !conditions.engine_event(condition_epoch, true) {
                                         continue;
                                     }
                                     if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                         let _ = h.emit("audio-conditions-changed", ());
-                                        #[derive(serde::Serialize, Clone)]
-                                        struct StartedPayload {
-                                            sample_rate: u32,
-                                            buffer_size: u32,
-                                        }
                                         let _ = h.emit(
                                             "audio-started",
                                             StartedPayload {
                                                 sample_rate,
                                                 buffer_size,
+                                                stream_generation: stream_generation_label(
+                                                    engine_generation,
+                                                    stream_generation,
+                                                ),
                                             },
                                         );
                                     }
@@ -1575,6 +1642,7 @@ impl AudioHost {
                 routing,
                 input_id: actual_input_id,
                 output_id: actual_output_id,
+                stream_generation,
             } => {
                 if channel_routing.is_some() && routing.is_none() {
                     let _ = self.execute_running_command(IpcCommand::Stop);
@@ -1632,6 +1700,10 @@ impl AudioHost {
                     buffer_size,
                     routing,
                     channels: 2, // Hardcoded for now, or fetch?
+                    stream_generation: stream_generation_label(
+                        self.engine_generation,
+                        stream_generation,
+                    ),
                 })
             }
             IpcResponse::Success => {

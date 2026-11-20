@@ -54,6 +54,45 @@ fn sidecar_ipc_smoke_without_audio_device() {
     engine.finish();
 }
 
+fn stopped_generations(events: Vec<EngineEvent>) -> Vec<Option<u64>> {
+    events
+        .into_iter()
+        .filter_map(|event| match event {
+            EngineEvent::Stopped {
+                stream_generation,
+                ended_stream_generation,
+            } => {
+                // 動いていない状態からの失敗や停止では、終わった音声はない。
+                assert_eq!(ended_stream_generation, None);
+                Some(stream_generation)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn every_start_attempt_uses_a_new_stream_generation_even_when_it_fails() {
+    let mut engine = EngineProcess::spawn();
+    assert!(matches!(engine.request(Command::Stop), Response::Success));
+    // 一度も開始を試していなければ、停止の通知は番号を持たない。
+    assert_eq!(stopped_generations(engine.take_events()), vec![None]);
+    for expected in [1, 2] {
+        assert!(matches!(
+            engine.request(start("invalid-test-host")),
+            Response::Error(_)
+        ));
+        assert_eq!(
+            stopped_generations(engine.take_events()),
+            vec![Some(expected)]
+        );
+    }
+    // 開始していない後の停止は、最後の試行の番号を名乗る。
+    assert!(matches!(engine.request(Command::Stop), Response::Success));
+    assert_eq!(stopped_generations(engine.take_events()), vec![Some(2)]);
+    engine.finish();
+}
+
 #[test]
 #[ignore = "既定の WASAPI 入出力デバイスによる実機録音が必要"]
 fn audio_engine_hardware_recording_lifecycle() {
@@ -72,7 +111,7 @@ fn audio_engine_hardware_recording_lifecycle() {
         !engine
             .take_events()
             .iter()
-            .any(|event| matches!(event, EngineEvent::Stopped)),
+            .any(|event| matches!(event, EngineEvent::Stopped { .. })),
         "同じStart内の再設定を利用者の停止として通知してはいけない"
     );
     assert!(matches!(
