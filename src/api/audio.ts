@@ -93,7 +93,10 @@ export interface AudioConfig {
     buffer_size: number;
     channels: number;
     routing?: ChannelRouting;
-    /** この開始で動き始めた音声の番号（`"{engine}:{child}"`）。`audio-started`・`audio-level`・`audio-stopped` の通知にも載る。 */
+    /**
+     * この開始で動き始めた音声の番号（`"{engine}:{child}"`）。`audio-started`・`audio-level` の `stream_generation` と照合する。
+     * その音声の終了は、`audio-stopped` の `ended_stream_generation` と照合する（`stream_generation` は最後の開始の試行で、失敗した試行のこともある）。
+     */
     stream_generation?: string;
 }
 /**
