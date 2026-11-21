@@ -41,39 +41,21 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
 
 ## 旧の通知とコマンドの応答の到着順の測定（W5）
 
-目的は、Rust が `emit` を呼んだ順序と、WebView に届いた順序を、**分けて記録する**こと。コードの読み取りでは前者しか分からない（互換の契約 5章・9章）。測定は実際の Tauri と音声機器を使うので、開始・停止を行ってよい環境で、操作の対象を確認してから行う。結果を、IPCモックの試験や聴感の合格とは分けて記録する。
+目的は、(a) Rust が `emit` を呼んだ順序、(b) WebView が通知を受け取った順序、(c) WebView が `invoke` の応答を受け取った順序を、**分けて記録し、照合する**こと。コードの読み取りでは (a) しか分からない（互換の契約 5章・9章）。測定は実際の Tauri と音声機器を使うので、開始・停止を行ってよい環境で、操作の対象を確認してから行う。結果を、IPCモックの試験や聴感の合格とは分けて記録する。
 
-1. 上の「Tauri MCP による実アプリの確認」の手順で、debug ビルドを起動する。起動するターミナルで、先に `$env:AURALYN_EMIT_TRACE = '1'` を設定する。これは測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
-2. Rust 側の記録は、標準エラーのログの `emit-trace` の行。`seq` は呼んだ順の通し番号、`kind=emit` は `AppHandle::emit` を呼ぶ直前、`kind=return` は `start_audio`・`stop_audio`・`restart_audio_engine` が結果を返す直前、`unix_us` は壁時計、`thread` は呼んだスレッド。
-3. WebView 側の記録は、接続したセッションで次のスクリプトを `webview-execute-js` に渡して入れる。旧の6通知を購読し、3つのコマンドの呼び出しと解決を `window.__w5` へ並べる。
+`window.__TAURI_INTERNALS__.invoke` は Tauri 2 では書き換えられないので、WebView 側の計測点はアプリのコードに置く。`src/lib/w5Probe.ts` が、開発ビルド（`import.meta.env.DEV`）だけで、次を `window.__auralynW5` へ順に並べる。本番ビルドでは分岐ごと消える（`w5Probe.test.ts` が本番での無効を確かめる。コードが消えることは、`vite build` の出力に `__auralynW5` が残らないことで確かめる）。
 
-```javascript
-(() => {
-  const marks = (window.__w5 = []);
-  const mark = (kind, name) =>
-    marks.push({ i: marks.length, kind, name, unix_us: Math.round((performance.timeOrigin + performance.now()) * 1000) });
-  const internals = window.__TAURI_INTERNALS__;
-  const tracked = new Set(['start_audio', 'stop_audio', 'restart_audio_engine']);
-  if (!internals.__w5_wrapped) {
-    const original = internals.invoke.bind(internals);
-    internals.invoke = (command, args, options) => {
-      const result = original(command, args, options);
-      if (tracked.has(command)) {
-        mark('invoke-called', command);
-        result.then(() => mark('invoke-resolved', command), () => mark('invoke-rejected', command));
-      }
-      return result;
-    };
-    internals.__w5_wrapped = true;
-  }
-  ['audio-conditions-changed', 'audio-started', 'audio-stopped', 'audio-stream-error', 'audio-error', 'audio-engine-exited'].forEach((name) =>
-    window.__TAURI__.event.listen(name, () => mark('event', name)));
-  return 'w5 probe installed';
-})()
-```
+- `invoke-called`／`invoke-resolved`／`invoke-rejected`：`audioApi.start`・`stop`・`restart` が `invoke` を呼んだ時点と、応答（拒否）を受けた時点。
+- `listen-registered`／`listen-failed`：旧の通知（`audio-conditions-changed`、`audio-started`、`audio-stopped`、`audio-stream-error`、`audio-error`、`audio-engine-exited`、`live-modes-invalidated`）の購読が登録できた時点。
+- `event`：その通知を受け取った時点。
 
-4. 画面から次の場面を、それぞれ10回以上行う（同じ機器・同じ設定）。A：開始の成功、B：開始の失敗（使用中や存在しない機器）、C：停止（接続あり）、D：停止（接続なし）、E：再起動。1回ごとに `window.__w5.length` の位置を控えると、場面ごとに切り分けられる。
-5. `JSON.stringify(window.__w5)` を `webview-execute-js` で読み、ログの `emit-trace` の行と、名前の出現順で突き合わせる。記録するのは、(a) Rust が呼んだ順（`seq`）、(b) WebView に届いた順（`i`）、(c) 2つが食い違った回数と場面。`invoke-resolved` と各イベントの先後は、(b) の中で別に数える。
+各行は `{ i, kind, name, unix_us }`。`i` は WebView 内の記録の順、`unix_us` は壁時計で、Rust の記録と同じ基準。
+
+1. 「Tauri MCP による実アプリの確認」の手順で、debug ビルドを起動する。起動するターミナルで、先に `$env:AURALYN_EMIT_TRACE = '1'` を設定する。これは測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。起動の出力を、ファイルへ残しておく。
+2. Rust 側の記録は、ログの `emit-trace` の行。`seq` は呼んだ順の通し番号、`kind=emit` は `emit` を呼ぶ直前、`kind=return` は `start_audio`・`stop_audio`・`restart_audio_engine` が結果を返す直前、`unix_us` は壁時計、`thread` は呼んだスレッド。
+3. WebView 側の記録は、アプリを開いた時点で入っている。購読の登録の完了（`listen-registered`）が揃ってから測る。`window.__auralynW5.length` を、場面の前後に控える。
+4. 画面から次の場面を、それぞれ10回以上行う（同じ機器・同じ設定）。A：開始の成功、B：開始の失敗（使用中や存在しない機器）、C：停止（接続あり）、D：停止（接続なし）、E：再起動。
+5. `JSON.stringify(window.__auralynW5)` を `webview-execute-js` で読み、`emit-trace` の行と、名前の出現順で突き合わせる。記録するのは、(a) Rust が呼んだ順（`seq`）、(b) 通知を WebView が受け取った順（`event` の `i`）、(c) 応答を受け取った順（`invoke-resolved` の `i`）、(d) (a) と (b)、(a) と (c) が食い違った回数と場面。`emit` を呼んだのに `event` が来なかった通知は、欠落として別に数える。同じ場面の `unix_us` の差（Rust の `emit` から `event` まで、`return` から `invoke-resolved` まで）も控える。
 6. 結果は互換の契約（9章）へ、機器・設定・回数とあわせて追記する。測定前は「未測定」とする。
 
 ホームの状態別主操作（#160〜#163）は `e2e/browser/home-actions.spec.ts` で確認する。960×640 の開始操作、機器IDの引継ぎ、開始失敗と開始後の設定失敗、設定からの復旧後の警告解除、送り先選択へのスクロール・キーボードフォーカス、3テーマのセグメント寸法と注意域メーターを扱う。本番保護中の経路維持と入力ペアの再適用禁止は `src/lib/__tests__/startHomeAudio.test.ts` で確認する。これらはIPCモック・ローカル試験であり、実機での開始・実音声の到達は別途確認する。

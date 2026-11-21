@@ -5,6 +5,28 @@ use std::sync::{
     Arc,
 };
 
+#[cfg(test)]
+type Hook = Box<dyn FnOnce()>;
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_RUNNING_STORE: std::cell::RefCell<Option<Hook>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// 試験用：`engine_event`が最初の照合を通って`running`を書いた直後に、同じスレッドで1回だけ呼ぶ。
+#[cfg(test)]
+pub(crate) fn set_after_running_store_hook(hook: impl FnOnce() + 'static) {
+    AFTER_RUNNING_STORE.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn run_after_running_store_hook() {
+    if let Some(hook) = AFTER_RUNNING_STORE.with(|slot| slot.borrow_mut().take()) {
+        hook();
+    }
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct Conditions {
     revision: AtomicU64,
@@ -60,6 +82,12 @@ impl Conditions {
         self.interrupt.fetch_add(1, Ordering::SeqCst);
         self.begin()
     }
+    /// 試験用：いま保持されている`Pending`の数。
+    #[cfg(test)]
+    pub(crate) fn pending_count(&self) -> u64 {
+        self.pending.load(Ordering::SeqCst)
+    }
+
     pub(super) fn restore_interrupt(&self) -> u64 {
         self.interrupt.load(Ordering::SeqCst)
     }
@@ -110,6 +138,8 @@ impl Conditions {
         self.pending.fetch_add(1, Ordering::SeqCst);
         self.revision.fetch_add(1, Ordering::SeqCst);
         self.running.store(running, Ordering::SeqCst);
+        #[cfg(test)]
+        run_after_running_store_hook();
         let current = self.engine_epoch.load(Ordering::SeqCst) == epoch;
         if !current {
             self.running.store(false, Ordering::SeqCst);

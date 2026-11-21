@@ -122,30 +122,53 @@ fn get_audio_state_shape_and_is_running_means_a_child_exists() {
     assert!(witness["epoch"].as_str().unwrap().parse::<u64>().is_ok());
 }
 
-// K2・K10：`Start`がロックを取ったことを確かめてから読む。読み取りは、開始が保存と状態の更新を終えた後の値を返す。
+fn entry_phases(f: &Fixture, name: &str) -> Vec<audio::control::Phase> {
+    f.control
+        .admission()
+        .records()
+        .iter()
+        .filter(|record| record.entry.name == name)
+        .map(|record| record.phase)
+        .collect()
+}
+
+// K2・K10：開始の応答を試験が止めている間（開始がロックを持っている間）、2つの読み取りは、それぞれ待つ。
+// 開始の応答を解放すると、読み取りは、開始が保存と状態の更新を終えた後の値を返す。
 #[test]
 fn k2_k10_reads_wait_for_the_start_that_holds_the_lock_and_return_the_finished_values() {
-    let mut slow = vec![Step::SleepMs(500)];
-    slow.extend(start_steps(1));
-    let f = Fixture::new([("Start#1", slow), ("Start", start_steps(1))]);
+    use audio::control::Phase;
+    let mut gated = vec![Step::WaitGate("start".into())];
+    gated.extend(start_steps(1));
+    let f = Fixture::new([("Start#1", gated), ("Start", start_steps(1))]);
     let app = mock(&f);
     let (start_state, state_reader, saved_reader) =
         (app.state(), app.state::<audio::AudioState>(), app.state());
     std::thread::scope(|scope| {
         let starter = scope.spawn(move || run(start_audio(start_state, options(), None)));
         wait_until(|| f.sent().iter().any(|name| name == "Start"));
-        let begun = Instant::now();
-        let saved = scope.spawn(move || run(get_saved_audio_config(saved_reader)));
-        let info = run(get_audio_state(state_reader)).unwrap();
+        let state_read = scope.spawn(move || run(get_audio_state(state_reader)));
+        wait_until(|| entry_phases(&f, "get_audio_state") == [Phase::Accepted]);
         assert!(
-            begun.elapsed() >= Duration::from_millis(300),
-            "読み取りは開始の完了を待つ"
+            !state_read.is_finished(),
+            "get_audio_state は開始の完了を待つ"
         );
+        let saved_read = scope.spawn(move || run(get_saved_audio_config(saved_reader)));
+        wait_until(|| entry_phases(&f, "get_saved_audio_config") == [Phase::Accepted]);
+        assert!(
+            !saved_read.is_finished(),
+            "get_saved_audio_config は開始の完了を待つ"
+        );
+        assert!(
+            !starter.is_finished(),
+            "開始は、応答を待っていて終わっていない"
+        );
+        f.release("start");
+        let info = state_read.join().unwrap().unwrap();
         assert!(
             info.is_running && info.config.is_some() && info.condition_witness.is_some(),
             "途中の版を返さない"
         );
-        let saved = saved.join().unwrap().unwrap();
+        let saved = saved_read.join().unwrap().unwrap();
         assert_eq!(
             saved.expect("開始の保存の後に読む").host,
             "ASIO",
@@ -233,8 +256,12 @@ fn b14_expected_state_must_match_exactly_and_the_error_text_is_not_localized() {
 // K12：`stop_audio`の`Pending`は、ロックを待つ前に作られ、ハンドラが終わるまで持たれる。受付の記録は、ロックの付与より先。
 #[test]
 fn k12_stop_audio_registers_its_pending_before_waiting_for_the_lock() {
-    let f = Fixture::new([]);
+    use audio::control::Phase;
+    let mut gated = vec![Step::WaitGate("stop".into())];
+    gated.extend(stop_steps(1));
+    let f = Fixture::new([("Start", start_steps(1)), ("Stop", gated)]);
     let app = mock(&f);
+    start_now(&app);
     let conditions = f
         .control
         .lock(audio::Entry::command("compat_test"))
@@ -245,21 +272,40 @@ fn k12_stop_audio_registers_its_pending_before_waiting_for_the_lock() {
     std::thread::scope(|scope| {
         let (state, condition_state) = (app.state(), app.state());
         let stop = scope.spawn(move || run(stop_audio(state, condition_state)));
-        wait_until(|| conditions.control_snapshot().is_err());
+        wait_until(|| {
+            conditions.control_snapshot().is_err()
+                && entry_phases(&f, "stop_audio") == [Phase::Accepted]
+        });
+        assert_eq!(
+            conditions.pending_count(),
+            1,
+            "ロックを待つあいだは、`interrupt_restore`の Pending だけ"
+        );
         assert!(!stop.is_finished(), "ロックを待っている");
         assert!(
             witness.validate().is_err(),
             "待っているあいだ、旧の witness は無効"
         );
-        let log = f.control.admission().records();
         assert!(
-            log.iter()
-                .any(|r| r.entry.name == "stop_audio" && r.phase == audio::control::Phase::Accepted)
-                && !log.iter().any(|r| r.entry.name == "stop_audio"
-                    && r.phase == audio::control::Phase::LockGranted),
-            "受付は記録済みで、ロックはまだ付与されていない"
+            !f.sent().iter().any(|name| name == "Stop"),
+            "ロックを待つあいだ、子へ Stop を送らない"
         );
         drop(holder);
+        // ロックを得て、子へ`Stop`を送った。応答は試験が止めているので、ハンドラは終わっていない。
+        wait_until(|| f.sent().iter().any(|name| name == "Stop"));
+        wait_until(|| entry_phases(&f, "stop_audio") == [Phase::Accepted, Phase::LockGranted]);
+        assert!(!stop.is_finished(), "ハンドラは子の応答を待っている");
+        assert!(
+            conditions.control_snapshot().is_err(),
+            "ロックを渡した後も、ハンドラが終わるまで Pending が保たれる"
+        );
+        assert_eq!(
+            conditions.pending_count(),
+            2,
+            "`interrupt_restore`の Pending に、停止の命令自身の Pending が加わる。前者は保たれている"
+        );
+        assert!(witness.validate().is_err());
+        f.release("stop");
         stop.join().unwrap().unwrap();
     });
     assert!(witness.validate().is_err());
@@ -294,6 +340,44 @@ fn k4_k14_input_source_errors_are_returned_raw_by_start_and_restart() {
         raw
     );
     assert_eq!(f.spawn_count(), 0);
+}
+
+// K4：再起動の事前の検査（`preflight_live_changes`）の拒否も、生の文言のまま返す。入力元の解決より先に拒み、動いている音声を保つ。
+#[test]
+fn k4_restart_preflight_rejection_is_raw_and_keeps_the_running_engine() {
+    let protected = "本番保護中はデバイス変更・スキャン・ラック／プロファイル置換はできません。停止・ミュートは利用できます。変更する場合は本番保護を解除してください";
+    let f = Fixture::new([("Start", start_steps(1))]);
+    let app = mock(&f);
+    start_now(&app);
+    arm_live_protection(
+        &mut f
+            .control
+            .lock(audio::Entry::command("compat_test"))
+            .unwrap(),
+    );
+    let mut bad = options();
+    bad.input_source = Some(crate::input_source::Request {
+        source: crate::input_source::Config::Device {
+            purpose: Default::default(),
+        },
+        candidate_id: Some("app-candidate".into()),
+    });
+    assert_eq!(
+        run(restart_audio_engine(app.state(), bad)).unwrap_err(),
+        protected,
+        "事前の検査が、入力元の解決より先に拒む。localize を通さない"
+    );
+    assert_eq!(
+        run(restart_audio_engine(app.state(), options())).unwrap_err(),
+        protected
+    );
+    assert_eq!(f.spawn_count(), 1, "動いている子を作り直さない");
+    assert_eq!(
+        f.sent().iter().filter(|name| *name == "Start").count(),
+        1,
+        "新しい開始を送らない"
+    );
+    assert!(state_json(&app)["is_running"].as_bool().unwrap());
 }
 
 // K5：権限の案内。4つの印で、決まった日本語になる。開始の応答のエラーも同じ。
@@ -413,10 +497,11 @@ fn k8a_first_call_without_a_child_spawns_once_and_auto_starts_from_the_saved_con
         ("Start", routed_start_steps()),
         ("AutoGain#1", vec![auto_gain_status(true, false)]),
     ]);
+    // フロントの要求（ASIO・512・48000）とは違う接続設定を保存しておく。子に送られた`Start`がどちらを使ったかで区別する。
     let saved = audio::ActiveAudioConfig {
-        host: "ASIO".into(),
-        buffer_size: Some(512),
-        sample_rate: Some(48000),
+        host: "WASAPI".into(),
+        buffer_size: Some(256),
+        sample_rate: Some(44100),
         routing: Some(routing()),
         ..Default::default()
     };
@@ -433,6 +518,18 @@ fn k8a_first_call_without_a_child_spawns_once_and_auto_starts_from_the_saved_con
         "保存した設定の自動開始は、初期の制御を載せない通常の開始"
     );
     assert_eq!(&sent[sent.len() - 2..], ["SetInputGain", "SetOutputGain"]);
+    let start = f
+        .sent_json()
+        .into_iter()
+        .find(|line| line["type"] == "Start")
+        .unwrap();
+    assert_eq!(start["payload"]["host"], "WASAPI", "保存値の接続方式");
+    assert_eq!(start["payload"]["buffer_size"], 256, "保存値のバッファ");
+    assert_eq!(start["payload"]["sample_rate"], 44100, "保存値のレート");
+    assert!(
+        start["payload"].get("initial_controls").is_none(),
+        "フロントの要求の設定は使わない"
+    );
 }
 
 // K8a（保存した設定なし）・K7：frontend の設定で、初期の制御つきの開始を一度だけ送る。
@@ -500,6 +597,20 @@ fn k8c_legacy_saved_config_waits_for_the_pair_then_starts_once() {
     );
     let reply = run(audio_frontend_bootstrap(app.state(), bootstrap_request())).unwrap();
     assert_eq!(serde_json::to_value(&reply).unwrap()["outcome"], "started");
+    assert_eq!(f.sent().iter().filter(|name| *name == "Start").count(), 1);
+    assert_eq!(f.spawn_count(), 1);
+    // ペアが届いた後の再呼び出し：開始せず、初回ではない。warmup を重ねても新しい開始を送らない。
+    let sent_before = f.sent().len();
+    let again = run(audio_frontend_bootstrap(app.state(), bootstrap_request())).unwrap();
+    let again_json = serde_json::to_value(&again).unwrap();
+    assert_eq!(again_json["outcome"], "attached");
+    assert!(!again.initial_page);
+    f.control
+        .lock(audio::Entry::new(audio::EntryKind::Warmup, "warmup"))
+        .unwrap()
+        .warmup()
+        .unwrap();
+    assert_eq!(f.sent().len(), sent_before, "再呼び出しは子へ何も送らない");
     assert_eq!(f.sent().iter().filter(|name| *name == "Start").count(), 1);
     assert_eq!(f.spawn_count(), 1);
 }

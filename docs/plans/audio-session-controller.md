@@ -723,7 +723,7 @@ RecoveryAuthority { id, failed_stream, conn, commit_manual_epoch, commit_stop_fl
 7. **試験：** 互換の契約の表を試験にする（合格の条件の表の K 群、W5）。試験の継ぎ目は、既存の試験が使うもの（`AudioHost::new` と、`execute_running_command` へ差し込む応答の模擬、`conditions`）を使う。足りない継ぎ目があれば、**製品の挙動を変えない最小の差し込み**だけを足す。`ScriptedEngine`（14章）は F1a-1 から。W5（WebView への到着の順序）は、実際の WebView で測り、**Rust が `emit` を呼ぶ順序と、WebView に届く順序を、分けて記録する**。
 8. **完了の条件：** K 群の全行が通る。既存の Rust 試験が通る。`npm run verify -- --static --rust` が通る。互換の契約の「F1a で変えない」の各項を、試験が1つ以上カバーする。W5 の測定結果を互換の契約に追記する。
 
-**F1a-0 に含めないもの：** actor、受信箱、reader/writer/reaper、`SnapshotCell`、Emitter、保存の変更、`Superseded`、新しい通知、子の変更。
+**F1a-0 に含めないもの：** actor、受信箱、reader/writer/reaper、`SnapshotCell`、F1b のキュー付きの Emitter、保存の変更、`Superseded`、新しい通知、子の変更。**含めるもの：** 旧の `emit` を呼ぶ順序を変えない同期の薄い包み（`AudioEmitter`。`AURALYN_EMIT_TRACE` による W5 の追跡と、試験の `Recorder` のためのもの）。キューも別スレッドも持たない。
 
 ### 13.2 UI の構成の分岐点（J-11）
 

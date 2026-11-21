@@ -136,9 +136,9 @@
 | 経路 | 通知 |
 |---|---|
 | `stop_audio`（接続あり） | `audio-conditions-changed`、`audio-stopped`（子から） |
-| `stop_audio`（接続なし） | `audio-conditions-changed` のみ（`kill_engine` の `retire_engine`）。`audio-stopped` は出ない |
-| `restart_audio_engine`／`kill_engine` | `audio-conditions-changed` のみ。`audio-engine-exited`・`audio-error` は出ない（`reader_active` を先に偽にするため） |
-| `prepare_update`（子がある） | 先に `Stop`：`audio-conditions-changed`、`audio-stopped`、その後の `kill_engine` で `audio-conditions-changed`。`audio-engine-exited`・`audio-error` は出ない。子がなければ `audio-conditions-changed` のみ |
+| `stop_audio`（接続なし） | `audio-conditions-changed`（`kill_engine` の `retire_engine`）。`audio-stopped` は出ない。`kill_engine` を通るので、条件によっては `live-modes-invalidated` も出る（下の行） |
+| `restart_audio_engine`／`kill_engine` | `audio-conditions-changed`。本番モードの世代が有効で未退役、または保護が有効（`armed`）のときは、その前に `live-modes-invalidated` も出る（`invalidate_live_protection`。1回または2回）。`audio-engine-exited`・`audio-error` は出ない（`reader_active` を先に偽にするため） |
+| `prepare_update`（子がある） | 先に `Stop`：`audio-conditions-changed`、`audio-stopped`、その後の `kill_engine` で `audio-conditions-changed`。`audio-engine-exited`・`audio-error` は出ない。子がなければ `audio-conditions-changed`（と、条件によって `live-modes-invalidated`）。`kill_engine` の前に `live-modes-invalidated` が出る条件は上の行と同じ |
 | アプリの終了（`Drop`） | 何も出さない |
 | 異常終了（EOF） | 上の `audio-error` の (a) |
 
@@ -209,7 +209,13 @@
 
 ## 9. 確かめていないこと
 
-- 旧の通知とコマンドの応答が、WebView に届く順序（`emit` の呼び出しの順序だけを確かめた）。F1a-0 で、Rust が呼んだ順と WebView に届いた順を分けて記録する仕組み（`AURALYN_EMIT_TRACE=1` と WebView の記録）と手順（[TESTING](../TESTING.md) の W5）を足した。**測定結果は未記録。**
+- 旧の通知とコマンドの応答が、WebView に届く順序：**実測した（2026-11-21、開発ビルドの実 WebView）。** 仕組みは、Rust の `AURALYN_EMIT_TRACE=1` と、WebView 側の `src/lib/w5Probe.ts`（`invoke` の呼び出し・応答、購読の登録、通知の受信を `window.__auralynW5` に並べる）。手順は [TESTING](../TESTING.md) の W5。
+  - 条件：Windows 11、`npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json`（debug ビルド）、WASAPI（入力：再生リダイレクト、出力：Voicemeeter In 2、512、48000、独立出力 1/2）。画面の操作ではなく、画面と同じ `audioApi.start`・`stop`・`restart` を WebView から呼んだ。1場面ごとに、応答の後 700ms 待った。各場面10回。
+  - 場面：A 開始の成功、B 開始の失敗（存在しない機器）、C 停止（動いている接続あり）、E 再起動。D（停止：接続なし）は、子を作り直さずに接続なしの状態を作れなかったので**未測定**。
+  - 結果：40場面の全部で、Rust が呼んだ順（`emit` と、結果を返す直前）と、WebView が受け取った順（通知の受信と、`invoke` の応答）が**一致した**（食い違い0回）。測った通知は272件で、すべて届き、欠落は0。コマンドの応答（40件）は、同じ場面の `emit` がすべて届いた後に届いた。
+  - 遅れ（Rust の `emit` から WebView の受信まで）：中央値 0.4ms、最大 31.1ms。（`return` から応答の受信まで）：中央値 15.0ms、最大 31.7ms。
+  - 観測：C（停止）と B（開始の失敗）で、`audio-stopped` は Rust でも WebView でも出なかった（各10回）。5章の「停止：`audio-conditions-changed`、`audio-stopped`、（応答）」と合わない。原因は調べていない（F1a-1 の前に、実際の子の `Stopped` の扱いを確かめる）。この測定は、聴感・実音声の合格ではない。
+  - この測定の範囲外：子の異常終了（EOF）の通知、複数ウィンドウ、本番ビルド（計測点は開発ビルドだけ）、`audio-level` などのメーター。
 - `get_audio_state` を、ロックを待たない形にしたときの、フロントの2秒ごとの照合への影響。
 - 子の `Stop` が、ストリームを実際に止める時間（フェードの待ち）。
 - `stop_audio` の `Pending` が落ちるタイミングで進む `revision` が、witness の照合に与える影響の細部。

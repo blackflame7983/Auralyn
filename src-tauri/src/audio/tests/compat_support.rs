@@ -15,6 +15,8 @@ pub(crate) enum Step {
     /// そのまま1行を書く。
     Line(String),
     SleepMs(u64),
+    /// 試験側が`Observer::release`で同じ名前の門を開けるまで、次の手順に進まない。
+    WaitGate(String),
     /// 標準出力を閉じて、子を終了する。
     Exit,
 }
@@ -115,6 +117,10 @@ pub(crate) fn auto_gain_status(running: bool, failed: bool) -> Step {
     ))
 }
 
+fn gate_path(log: &std::path::Path, name: &str) -> PathBuf {
+    log.with_file_name(format!("gate-{name}"))
+}
+
 /// 子の側。`scripted_engine_entry`から呼ぶ。標準入力が閉じたら終了する。
 fn run_scripted_child(script: Script) {
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
@@ -146,6 +152,12 @@ fn run_scripted_child(script: Script) {
                     let _ = out.flush();
                 }
                 Step::SleepMs(ms) => std::thread::sleep(std::time::Duration::from_millis(ms)),
+                Step::WaitGate(name) => {
+                    let gate = gate_path(&script.log, &name);
+                    while !gate.exists() {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                }
                 Step::Exit => std::process::exit(0),
             }
         }
@@ -188,6 +200,11 @@ impl Observer {
             .collect()
     }
 
+    /// 台本の`WaitGate(name)`で待っている子を進める。
+    pub(crate) fn release(&self, name: &str) {
+        std::fs::write(gate_path(&self.log, name), b"").unwrap();
+    }
+
     pub(crate) fn spawn_count(&self) -> u64 {
         self.spawned.load(Ordering::SeqCst)
     }
@@ -199,6 +216,11 @@ impl Observer {
     pub(crate) fn last_config_path(&self) -> PathBuf {
         self.dir.join("last_audio_config.json")
     }
+}
+
+/// 試験から本番保護を有効にする。`reader_active`が真のあいだだけ保たれる（偽だと次の検査で解除される）。
+pub(crate) fn arm_live_protection(host: &mut AudioHost) {
+    host.live_modes.armed = true;
 }
 
 pub(crate) fn scripted_parts(

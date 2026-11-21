@@ -66,7 +66,12 @@ pub struct Admission {
     next_seq: AtomicU64,
     counts: [AtomicU64; KIND_COUNT],
     log: Mutex<VecDeque<Record>>,
+    #[cfg(test)]
+    after_seq_hook: Mutex<Option<SeqHook>>,
 }
+
+#[cfg(test)]
+type SeqHook = Arc<dyn Fn(u64) + Send + Sync>;
 
 impl Admission {
     fn new() -> Self {
@@ -74,26 +79,55 @@ impl Admission {
             next_seq: AtomicU64::new(1),
             counts: std::array::from_fn(|_| AtomicU64::new(0)),
             log: Mutex::new(VecDeque::new()),
+            #[cfg(test)]
+            after_seq_hook: Mutex::new(None),
         }
     }
 
+    /// 採番と受付の追記を同じ短いロック区間で行い、記録の順を受付番号と一致させる。
+    /// ホストのロックはここでは取らない。
     fn accept(&self, entry: Entry) -> u64 {
-        let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
         self.counts[entry.kind as usize].fetch_add(1, Ordering::Relaxed);
-        self.push(seq, entry, Phase::Accepted);
+        // 10msごとの定期の更新で、直近の操作の記録を押し出さない。
+        if entry.kind == EntryKind::Scheduler {
+            return self.next_seq.fetch_add(1, Ordering::SeqCst);
+        }
+        let Ok(mut log) = self.log.lock() else {
+            return self.next_seq.fetch_add(1, Ordering::SeqCst);
+        };
+        let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
+        #[cfg(test)]
+        self.run_after_seq_hook(seq);
+        Self::append(&mut log, seq, entry, Phase::Accepted);
         seq
     }
 
-    fn push(&self, seq: u64, entry: Entry, phase: Phase) {
-        // 10msごとの定期の更新で、直近の操作の記録を押し出さない。
+    #[cfg(test)]
+    fn run_after_seq_hook(&self, seq: u64) {
+        let hook = self.after_seq_hook.lock().unwrap().clone();
+        if let Some(hook) = hook {
+            hook(seq);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_after_seq_hook(&self, hook: SeqHook) {
+        *self.after_seq_hook.lock().unwrap() = Some(hook);
+    }
+
+    fn append(log: &mut VecDeque<Record>, seq: u64, entry: Entry, phase: Phase) {
+        if log.len() == LOG_CAPACITY {
+            log.pop_front();
+        }
+        log.push_back(Record { seq, entry, phase });
+    }
+
+    fn push_granted(&self, seq: u64, entry: Entry) {
         if entry.kind == EntryKind::Scheduler {
             return;
         }
         if let Ok(mut log) = self.log.lock() {
-            if log.len() == LOG_CAPACITY {
-                log.pop_front();
-            }
-            log.push_back(Record { seq, entry, phase });
+            Self::append(&mut log, seq, entry, Phase::LockGranted);
         }
     }
 
@@ -200,9 +234,7 @@ impl<'a> Ticket<'a> {
 
     pub fn lock(self) -> LockResult<MutexGuard<'a, AudioHost>> {
         let result = self.control.host.lock();
-        self.control
-            .admission
-            .push(self.seq, self.entry, Phase::LockGranted);
+        self.control.admission.push_granted(self.seq, self.entry);
         result
     }
 }

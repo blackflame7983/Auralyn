@@ -2,6 +2,7 @@ import type { InputSource, InputSourceRequest, ProcessInputCandidate } from '@/l
 import { beginEngineAudioStateRead, publishEngineAudioState } from '@/lib/engineInputSource';
 import { readExtraScanFolders } from '@/lib/vstScanFolders';
 import { invoke } from "@tauri-apps/api/core";
+import { traceCommand } from '@/lib/w5Probe';
 import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
 
 export interface AudioDevice {
@@ -149,7 +150,7 @@ export const audioApi = {
         return await invoke("get_audio_devices", { forceRefresh });
     },
     start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting, inputSource?: InputSourceRequest): Promise<AudioConfig> => {
-        return await invoke("start_audio", {
+        return await traceCommand('start_audio', () => invoke<AudioConfig>("start_audio", {
             host,
             input,
             output,
@@ -160,10 +161,10 @@ export const audioApi = {
             ...(expectedState ? {expectedState} : {}),
             ...(channelRouting ? { channelRouting } : {}),
             ...(inputSource ? { inputSource } : {}),
-        });
+        }));
     },
     stop: async () => {
-        return await invoke("stop_audio");
+        return await traceCommand('stop_audio', () => invoke("stop_audio"));
     },
     scanPlugins: async (extraRoots?: string[]): Promise<VstPlugin[]> => {
         return await invoke("scan_plugins", withExtraRoots(extraRoots));
@@ -204,7 +205,7 @@ export const audioApi = {
         return await invoke("resume_plugin", { id });
     },
     restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting, inputSource?: InputSourceRequest): Promise<AudioConfig> => {
-        return await invoke("restart_audio_engine", {
+        return await traceCommand('restart_audio_engine', () => invoke<AudioConfig>("restart_audio_engine", {
             host,
             input,
             output,
@@ -215,7 +216,7 @@ export const audioApi = {
             ...(expectedState ? {expectedState} : {}),
             ...(channelRouting ? { channelRouting } : {}),
             ...(inputSource ? { inputSource } : {}),
-        });
+        }));
     },
     openEditor: async (id: string) => {
         window.dispatchEvent(new Event('preparation-external-change'));

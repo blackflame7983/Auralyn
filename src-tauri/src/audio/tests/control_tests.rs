@@ -69,6 +69,49 @@ fn k11_the_result_follows_the_lock_order_not_the_recorded_acceptance_order() {
     assert_eq!(&granted[..2], ["B", "A"], "ロックを取った順は B→A");
 }
 
+// 採番と記録の追加が別区間だと、A が番号 1 を得て中断した間に B（番号 2）が先に記録され、記録の順が番号と逆になる。
+#[test]
+fn the_record_order_matches_the_acceptance_numbers_when_a_thread_is_interrupted_after_numbering() {
+    use std::sync::mpsc;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    let control = control();
+    let (a_numbered_tx, a_numbered_rx) = mpsc::channel::<()>();
+    let (b_done_tx, b_done_rx) = mpsc::channel::<()>();
+    let a_numbered_tx = Mutex::new(a_numbered_tx);
+    let b_done_rx = Mutex::new(b_done_rx);
+    control.admission().set_after_seq_hook(Arc::new(move |seq| {
+        if seq != 1 {
+            return;
+        }
+        a_numbered_tx.lock().unwrap().send(()).unwrap();
+        // 修正前は B がすぐ終わって通知が届く。修正後は B が記録のロックで待つため、時間切れで進む。
+        let _ = b_done_rx
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_millis(300));
+    }));
+    let a_control = control.clone();
+    let a = std::thread::spawn(move || a_control.admit(Entry::command("A")).seq());
+    a_numbered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let b_control = control.clone();
+    let b = std::thread::spawn(move || {
+        let seq = b_control.admit(Entry::command("B")).seq();
+        b_done_tx.send(()).unwrap();
+        seq
+    });
+    assert_eq!(a.join().unwrap(), 1);
+    assert_eq!(b.join().unwrap(), 2);
+    let seqs: Vec<u64> = control
+        .admission()
+        .records()
+        .iter()
+        .map(|record| record.seq)
+        .collect();
+    assert_eq!(seqs, [1, 2], "記録は受付番号の順に並ぶ");
+}
+
 #[test]
 fn note_records_without_taking_the_lock() {
     let control = control();
