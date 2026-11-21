@@ -230,11 +230,71 @@ impl ChildGuard {
     }
 }
 
+/// 終了の確認の上限。
+const GUARD_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 終了を要求し、`try_wait` を `interval` ごとに繰り返して `limit` まで待つ。要求の失敗・待ちの失敗・時間切れは
+/// `Err` にする。時間切れのときは、もう一度終了を要求してから戻る（ハンドルは呼び出し側が持ったまま）。
+fn end_process<T, S>(
+    target: &mut T,
+    mut kill: impl FnMut(&mut T) -> std::io::Result<()>,
+    mut try_wait: impl FnMut(&mut T) -> std::io::Result<Option<S>>,
+    limit: std::time::Duration,
+    interval: std::time::Duration,
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の要求に失敗: {error}"));
+    }
+    let start = std::time::Instant::now();
+    loop {
+        match try_wait(target) {
+            Ok(Some(_)) => {
+                return if problems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(problems.join(" / "))
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                problems.push(format!("終了の確認に失敗: {error}"));
+                break;
+            }
+        }
+        if start.elapsed() >= limit {
+            problems.push(format!("{limit:?} 待っても終わらない"));
+            break;
+        }
+        std::thread::sleep(interval);
+    }
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の再要求に失敗: {error}"));
+    }
+    Err(problems.join(" / "))
+}
+
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if let Some(child) = self.0.as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
+        let Some(child) = self.0.as_mut() else {
+            return;
+        };
+        let pid = child.id();
+        let result = end_process(
+            child,
+            |c| c.kill(),
+            |c| c.try_wait(),
+            GUARD_LIMIT,
+            std::time::Duration::from_millis(20),
+        );
+        if let Err(problem) = result {
+            let message = format!("試験の子（PID {pid}）を片付けられない: {problem}");
+            // 試験が失敗して巻き戻っている最中の二重の panic を避ける。
+            if std::thread::panicking() {
+                eprintln!("{message}");
+            } else {
+                panic!("{message}");
+            }
         }
     }
 }
@@ -458,5 +518,66 @@ impl Drop for Fixture {
             host.kill_engine();
         }
         let _ = std::fs::remove_dir_all(&self.observer.dir);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::end_process;
+    use std::io::{Error, Result};
+    use std::time::Duration;
+
+    const SHORT: Duration = Duration::from_millis(60);
+    const STEP: Duration = Duration::from_millis(5);
+
+    #[test]
+    fn an_exit_that_is_confirmed_is_ok() {
+        assert!(end_process(&mut (), |_| Ok(()), |_| Ok(Some(())), SHORT, STEP).is_ok());
+    }
+
+    #[test]
+    fn a_failed_request_is_reported_even_when_the_exit_is_confirmed() {
+        let result = end_process(
+            &mut (),
+            |_| Err(Error::other("denied")),
+            |_| Ok(Some(())),
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の要求に失敗"));
+    }
+
+    #[test]
+    fn a_failed_wait_is_reported_and_the_request_is_repeated() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Err(Error::other("wait failed")) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の確認に失敗"));
+        assert_eq!(kills, 2);
+    }
+
+    #[test]
+    fn a_timeout_is_reported_and_the_request_is_repeated_before_letting_go() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Ok(None) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("待っても終わらない"));
+        assert_eq!(kills, 2);
     }
 }

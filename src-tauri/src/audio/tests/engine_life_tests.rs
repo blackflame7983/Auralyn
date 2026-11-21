@@ -411,7 +411,7 @@ impl Parent {
         }
     }
 
-    /// 親を停止の状態で作った直後から ChildGuard に預ける。割り当てが失敗（ail_assign は注入）したら、
+    /// 親を停止の状態で作った直後から ChildGuard に預ける。割り当てが失敗（`fail_assign` は注入）したら、
     /// 親を kill して終了を待ち、作った親のハンドルを返す（残っていないことを呼び出し側が確かめる）。
     fn try_start(mode: &str, fail_assign: bool) -> Result<Self, ProcessProbe> {
         let dir = std::env::temp_dir().join(format!(

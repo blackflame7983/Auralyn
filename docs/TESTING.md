@@ -373,17 +373,30 @@ cargo test --locked --lib audio::post_mix::life_tests
 構成：`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`（`TAURI_CONFIG` の `externalBin` を空にして、`target\debug\audio_engine.exe` の既存の debug の子を使用）、Tauri MCP CLI 0.13.2 で `invoke` を実行。起動と終了だけの確認で、`Start` の明示操作はしていない（保存済みの設定の自動開始は、アプリが自分で行った）。音・聴感の確認ではない。
 
 使った成果物（実行後に、ファイルから読み直した記録）：
-  - Host：D:\Programming\App\VSTHost\src-tauri\target\debug\AuralynHost.exe（更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E）。	auri dev が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（spawn_engine_binary への分割と pply_creation_flags）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
-  - 子：D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe（更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。udio_engine と in のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
-  - 実行したコマンド：$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target、$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'、
-pm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json、
-px -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223。
+
+- Host：`D:\Programming\App\VSTHost\src-tauri\target\debug\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 `FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E`）。`tauri dev` が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（`spawn_engine_binary` への分割と `apply_creation_flags`）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
+- 子：`D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 `D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D`）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。`audio_engine` と `bin` のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
+- 実行したコマンド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target`、`$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'`、`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`、`npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223`。
 
 - (a) 起動：主の子（PID 5140）が起動し、`IsProcessInJob` が真。`stop_audio` の後に `post_mix` の `restore_saved` で配信ミックスの子（`--post-mix-worker`）が起動し、同じく Job に入っていた。起動の失敗：主の子を `Stop-Process` し、`audio_engine.exe` を一時的に改名すると、`get_audio_devices` は「Audio Engine binary not found」で失敗した。元の名前へ戻した後の同じ操作は成功し、新しい子が起動した。この失敗は、子が見つからない経路（Job の失敗の経路ではない。Job・割り当て・再開の失敗は注入の試験で確認した）。
 - (b) 通常の終了：主の子（PID 54892）が動き、`get_audio_devices`（再検出）が作る `--scan` の孫（PID 26372）が生きている状態で、`quit_app` を実行した。孫は一瞬で終わるため、監視のジョブが現れた瞬間に `NtSuspendProcess` で止めて生かした（孫は実プロセス）。監視のジョブが起動時に取った Process のハンドル（開始時刻つき）で、Host の終了コード 0、子と孫の終了を確認した。残ったプロセスはなかった。
 - (c) 強制の終了：別の起動（Host 56820、主の子 47596、孫 55820＝止めた `--scan`）で、`Stop-Process -Id <Host> -Force` により Host だけを終了した（終了コード -1）。同じ方法で、子と孫がどちらも終了したことを確認した。
 - 実行後、`AuralynHost`・`audio_engine` のプロセス、`.hold` に改名したファイルの残りはない。
 - MSIX：行っていない。`docs/MSIX_PROTOTYPE.md` の手順は、署名用の証明書の作成と、LocalMachine の信頼するストアへの登録（管理者の操作）、`Add-AppxPackage` が要る。システムの設定を変えるので実施していない。必要なのは、(1) 試験用の証明書の信頼登録（管理者）、(2) 署名済みの MSIX のインストール、(3) 同じ確認（ネストした Job の下での主・配信ミックスの起動、通常と強制の終了）。
+
+#### 配布用ビルド（release の Host と、その横の release の子）での確認の結果（2026-11-21）
+
+インストーラー（NSIS）では確認していない。理由：インストーラーは PC にインストールするため、利用者がふだん使っている Auralyn を上書きするおそれがある。代わりに、`npm run tauri -- build --no-bundle` で作った release の Host と、その同じフォルダーに置かれた release の子（インストール後と同じ並び）を、ビルド先から直接起動した。`--no-bundle` にした理由：`createUpdaterArtifacts` が有効で、NSIS の成果物の段階は署名の鍵を要するため。インストーラーの生成、署名、MSIX、インストール先のパス（`Program Files` 配下など）での確認は未実施。
+
+- ビルド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target` のもとで `npm run tauri -- build --no-bundle`（`beforeBuildCommand` の `npm run build` が release の `audio_engine` と `plugin_scanner` を作る）。`Built application at: ...\target\release\AuralynHost.exe`、終了コード 0。ビルド時のコミットは 2a41e452（作業ツリーの未コミットの差分は、試験・文書だけ。製品のコードは同じ）。
+- Host：`D:\Programming\App\VSTHost\src-tauri\target\release\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:38:58、18089984 バイト、SHA-256 `B8C7ADE3DA013F827066DD12E9D354A4AA278228035732557B296B498CC86538`）。
+- 子：`D:\Programming\App\VSTHost\src-tauri\target\release\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:37:12、5662208 バイト、SHA-256 `4367FE1657593F0BE0B80EA5F3982F7891EC163B8F56EA762E82B1FA5A19F458`）。実行中のプロセスの `ExecutablePath` がこのファイルであることを確認した。参考：`src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe` の SHA-256 は `D43D30471C835A4AAFAB2B3BA1FD425B782749A84ECB45F41A8CF4B7B3078F75` で、上のファイルとは一致しなかった（原因は調べていない。確認に使ったのは上の `release\audio_engine.exe`）。
+- 起動と操作：`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` を設定して Host を直接起動し、WebView2 の DevTools プロトコル（`Runtime.evaluate`）で `window.__TAURI_INTERNALS__.invoke` を実行した（release にはデバッグ用の bridge がないため）。
+- (a) 起動：主の子が起動し Job に入っていた。`stop_audio` の後、`post_mix` の `restore_saved` で配信ミックスの子が起動し、同じく Job に入っていた。子を終了して `audio_engine.exe` を一時的に改名すると `get_audio_devices` は「Audio Engine binary not found」で失敗し、戻した後の同じ操作は成功して新しい子が起動し、Job に入っていた（子が見つからない経路。Job の失敗の経路は注入の試験で確認した）。
+- (b) 通常の終了：Host 40428、主の子 46860、`--scan` の孫 53860（現れた瞬間に `NtSuspendProcess` で止めて生かした実プロセス）。`quit_app` の後、Host の終了コード 0、子と孫が終了した。ハンドルは、起動のときに取った Process（開始時刻つき）。
+- (c) 強制の終了：Host 66716、主の子 43032、孫 32608（止めた `--scan`）。`stop_audio` で音声を止めてから、`Stop-Process -Id <Host> -Force` で Host だけを終了した（終了コード -1）。子と孫が終了した。
+- 自動の開始：起動の直後に、保存した設定で音声が自動で始まった。(a) と (c) は確かめる前に `stop_audio` で止めた。(b) は止めずに `quit_app` した（終了とともに止まった）。聴感の確認ではない。
+- 後始末：実行後に `AuralynHost`・`audio_engine` のプロセスはなく、改名したファイルは元の名前に戻した。容量は足りたので、キャッシュは消していない（空き約 16 GB）。
 
 ### 自発的に状態が変わるVSTの確認（#465）
 
