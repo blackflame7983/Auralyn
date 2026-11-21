@@ -4,7 +4,7 @@
 
 - サポート対象は Windows 11 x64（READMEの契約に合わせる）。
 - Node.js 24 LTS 系と npm を推奨。2026-11-17の作業環境は Node 24.22.1 / npm 11.19.1。現在のVite 8などの `engines` を確認し、古いNode 18を前提にしない。
-- Rust stable。`AtomicU64::try_update` を使うため1.95以降が必要。2026-10-28の確認環境は rustc / cargo 1.99.1。依存更新時には各crateのMSRVも確認する。
+- Rust 1.100.0。リポジトリ直下の `rust-toolchain.toml` で固定し（clippy・rustfmt つき）、`src-tauri/Cargo.toml` の `rust-version` を `1.100` とする。rustup が版を自動で選ぶため、`rustup default` は変えない。`AtomicU64::try_update` は1.95以降、`ChildExt::main_thread_handle` は1.100で安定化。依存更新時には各crateのMSRVも確認する。
 - Microsoft C++ Build Tools、LLVM/Clang、ASIO SDK。固定SDK・対応ソースの扱いは `SOURCE-DISTRIBUTION.md` と `config/release-policy.json` を参照する。
 
 上記のバージョン表示は環境の観測であり、全ビルドの成功記録やRust最小対応バージョンの保証ではない。
