@@ -70,31 +70,52 @@ fn k11_the_result_follows_the_lock_order_not_the_recorded_acceptance_order() {
 }
 
 // 採番と記録の追加が別区間だと、A が番号 1 を得て中断した間に B（番号 2）が先に記録され、記録の順が番号と逆になる。
+// 待ちはすべて門で、時間切れは試験の失敗。B が受付に着いたことを確かめてから A を進め、
+// A が記録のロックを持っていなければ（採番と追記が別区間）、B が追記を終えるまで A を止める。
 #[test]
 fn the_record_order_matches_the_acceptance_numbers_when_a_thread_is_interrupted_after_numbering() {
+    use super::control::TestPoint;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
+    const GATE: Duration = Duration::from_secs(10);
     let control = control();
     let (a_numbered_tx, a_numbered_rx) = mpsc::channel::<()>();
+    let (b_arrived_tx, b_arrived_rx) = mpsc::channel::<()>();
     let (b_done_tx, b_done_rx) = mpsc::channel::<()>();
-    let a_numbered_tx = Mutex::new(a_numbered_tx);
-    let b_done_rx = Mutex::new(b_done_rx);
-    control.admission().set_after_seq_hook(Arc::new(move |seq| {
-        if seq != 1 {
-            return;
-        }
-        a_numbered_tx.lock().unwrap().send(()).unwrap();
-        // 修正前は B がすぐ終わって通知が届く。修正後は B が記録のロックで待つため、時間切れで進む。
-        let _ = b_done_rx
-            .lock()
-            .unwrap()
-            .recv_timeout(Duration::from_millis(300));
-    }));
+    let (a_numbered_tx, b_arrived_tx) = (Mutex::new(a_numbered_tx), Mutex::new(b_arrived_tx));
+    let (b_arrived_rx, b_done_rx) = (Mutex::new(b_arrived_rx), Mutex::new(b_done_rx));
+    let a_held_the_log = Arc::new(AtomicBool::new(false));
+    let observed = a_held_the_log.clone();
+    control
+        .admission()
+        .set_hook(Arc::new(move |point| match point {
+            TestPoint::Entry("B") => b_arrived_tx.lock().unwrap().send(()).unwrap(),
+            TestPoint::AfterSeq { seq: 1, lock_held } => {
+                observed.store(lock_held, Ordering::SeqCst);
+                a_numbered_tx.lock().unwrap().send(()).unwrap();
+                b_arrived_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(GATE)
+                    .expect("B が受付に着かなかった");
+                if !lock_held {
+                    b_done_rx
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(GATE)
+                        .expect("記録のロックがないのに B が終わらなかった");
+                }
+            }
+            _ => {}
+        }));
     let a_control = control.clone();
     let a = std::thread::spawn(move || a_control.admit(Entry::command("A")).seq());
-    a_numbered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    a_numbered_rx
+        .recv_timeout(GATE)
+        .expect("A が採番に着かなかった");
     let b_control = control.clone();
     let b = std::thread::spawn(move || {
         let seq = b_control.admit(Entry::command("B")).seq();
@@ -103,6 +124,10 @@ fn the_record_order_matches_the_acceptance_numbers_when_a_thread_is_interrupted_
     });
     assert_eq!(a.join().unwrap(), 1);
     assert_eq!(b.join().unwrap(), 2);
+    assert!(
+        a_held_the_log.load(Ordering::SeqCst),
+        "採番は記録のロックの中で行う"
+    );
     let seqs: Vec<u64> = control
         .admission()
         .records()
@@ -111,7 +136,6 @@ fn the_record_order_matches_the_acceptance_numbers_when_a_thread_is_interrupted_
         .collect();
     assert_eq!(seqs, [1, 2], "記録は受付番号の順に並ぶ");
 }
-
 #[test]
 fn note_records_without_taking_the_lock() {
     let control = control();

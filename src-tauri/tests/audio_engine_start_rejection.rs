@@ -70,28 +70,44 @@ fn the_sidecar_rejects_out_of_range_initial_controls_before_any_stopped_event() 
     .unwrap();
     stdin.flush().unwrap();
 
-    let mut before_response = Vec::new();
-    let response = loop {
-        let message = rx
-            .recv_timeout(Duration::from_secs(30))
-            .expect("サイドカーが応答しなかった");
-        if message["kind"] == "Response" {
-            break message;
+    let next_response = |what: &str| {
+        let mut events = Vec::new();
+        loop {
+            let message = rx
+                .recv_timeout(Duration::from_secs(30))
+                .unwrap_or_else(|_| panic!("サイドカーが{what}に応答しなかった"));
+            if message["kind"] == "Response" {
+                return (message, events);
+            }
+            events.push(message);
         }
-        before_response.push(message);
     };
+    let (response, before_response) = next_response("Start");
     assert_eq!(response["data"]["type"], "Error", "{response}");
     assert_eq!(response["data"]["payload"], "初期音量が範囲外です");
-    assert!(
-        !before_response
-            .iter()
-            .any(|message| message["data"]["type"] == "Stopped"),
-        "拒否の前に Stopped を出さない: {before_response:?}"
-    );
-    assert!(
-        !before_response
-            .iter()
-            .any(|message| message["data"]["type"] == "Started"),
-        "デバイスを開く前に拒む: {before_response:?}"
-    );
+
+    // `Error` の直後に `Stopped` が来る誤りを捕まえるため、副作用のない命令の応答までを見る。
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::to_string(&Command::StartIdentityCapability).unwrap()
+    )
+    .unwrap();
+    stdin.flush().unwrap();
+    let (probe, after_response) = next_response("状態の問い合わせ");
+    assert_eq!(probe["data"]["type"], "StartIdentityCapability", "{probe}");
+
+    for (label, events) in [
+        ("拒否の前", &before_response),
+        ("拒否の後", &after_response),
+    ] {
+        for forbidden in ["Stopped", "Started"] {
+            assert!(
+                !events
+                    .iter()
+                    .any(|message| message["data"]["type"] == forbidden),
+                "{label}に {forbidden} を出さない: {events:?}"
+            );
+        }
+    }
 }

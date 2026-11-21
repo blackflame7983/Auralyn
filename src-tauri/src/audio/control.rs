@@ -67,11 +67,19 @@ pub struct Admission {
     counts: [AtomicU64; KIND_COUNT],
     log: Mutex<VecDeque<Record>>,
     #[cfg(test)]
-    after_seq_hook: Mutex<Option<SeqHook>>,
+    hook: Mutex<Option<TestHook>>,
+}
+
+/// 試験用：受付の途中の地点。`lock_held`は、その地点で記録のロックが（呼び出したスレッドを含めて）保たれているか。
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TestPoint {
+    Entry(&'static str),
+    AfterSeq { seq: u64, lock_held: bool },
 }
 
 #[cfg(test)]
-type SeqHook = Arc<dyn Fn(u64) + Send + Sync>;
+type TestHook = Arc<dyn Fn(TestPoint) + Send + Sync>;
 
 impl Admission {
     fn new() -> Self {
@@ -80,13 +88,15 @@ impl Admission {
             counts: std::array::from_fn(|_| AtomicU64::new(0)),
             log: Mutex::new(VecDeque::new()),
             #[cfg(test)]
-            after_seq_hook: Mutex::new(None),
+            hook: Mutex::new(None),
         }
     }
 
     /// 採番と受付の追記を同じ短いロック区間で行い、記録の順を受付番号と一致させる。
     /// ホストのロックはここでは取らない。
     fn accept(&self, entry: Entry) -> u64 {
+        #[cfg(test)]
+        self.run_hook(TestPoint::Entry(entry.name));
         self.counts[entry.kind as usize].fetch_add(1, Ordering::Relaxed);
         // 10msごとの定期の更新で、直近の操作の記録を押し出さない。
         if entry.kind == EntryKind::Scheduler {
@@ -97,22 +107,25 @@ impl Admission {
         };
         let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
         #[cfg(test)]
-        self.run_after_seq_hook(seq);
+        {
+            let lock_held = self.log.try_lock().is_err();
+            self.run_hook(TestPoint::AfterSeq { seq, lock_held });
+        }
         Self::append(&mut log, seq, entry, Phase::Accepted);
         seq
     }
 
     #[cfg(test)]
-    fn run_after_seq_hook(&self, seq: u64) {
-        let hook = self.after_seq_hook.lock().unwrap().clone();
+    fn run_hook(&self, point: TestPoint) {
+        let hook = self.hook.lock().unwrap().clone();
         if let Some(hook) = hook {
-            hook(seq);
+            hook(point);
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn set_after_seq_hook(&self, hook: SeqHook) {
-        *self.after_seq_hook.lock().unwrap() = Some(hook);
+    pub(crate) fn set_hook(&self, hook: TestHook) {
+        *self.hook.lock().unwrap() = Some(hook);
     }
 
     fn append(log: &mut VecDeque<Record>, seq: u64, entry: Entry, phase: Phase) {
