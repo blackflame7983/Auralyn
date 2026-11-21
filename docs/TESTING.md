@@ -332,6 +332,42 @@ cargo test --locked --test repro_ott -- --ignored
 OTTがない、デバイスを開けない、録音できない、エディタが開けない場合は成功へ読み替えない。
 GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を保証しない。以下の実機手順と分けて記録する。
 
+### 音声エンジンの子プロセスの寿命（W 群。F1a-1、D-13）
+
+設計は [audio-session-controller.md](plans/audio-session-controller.md) の 18.3、合格の行は [audio-session-acceptance.md](plans/audio-session-acceptance.md) の B16・B17・B17b・B18・B40a・D7・W1〜W4。
+子は試験の実行ファイル自身（`compat_support.rs` の台本つきの子）で、製品と同じ手順（停止の状態で作成、Job への割り当て、`ResumeThread`）を通る。
+差し替えは `#[cfg(test)]` の `engine_life::seam` だけ（Job の作成・割り当て・再開の戻り値・`try_wait`・時計。試験のスレッドごと）。本番に差し替え口はない。
+
+```powershell
+Set-Location D:\Programming\App\VSTHost\src-tauri
+$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
+cargo test --locked --lib audio::engine_life_tests
+cargo test --locked --lib audio::post_mix::life_tests
+```
+
+| 行 | 試験 | 種別 |
+|---|---|---|
+| W1a | `w1a_job_creation_failure_ends_the_suspended_child_and_a_later_start_works` | 注入＋実プロセス（子が実際に終わる） |
+| W1b | `w1b_assignment_failure_blocks_the_same_role_until_the_exit_is_confirmed` | 注入＋実プロセス |
+| W1b' | `w1b_prime_a_job_that_refuses_the_child_leaves_no_unmanaged_process`（`ActiveProcessLimit = 1` の Job に別のプロセスを入れて渡す） | 実プロセス（OS の拒否） |
+| W1c | `w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start`（戻り値 `0`・`u32::MAX`・`2`、先に実際に再開した子） | 注入＋実プロセス |
+| W2 | 主：`b17_d7_*`・`b17b_*`・`w2_a_primary_write_failure_*`・`j13_*`。配信ミックス：`post_mix::life_tests::w2_*`（停止・開始・書き込み・EOF 後の `snapshot()`・`State` の差し替え） | 注入 |
+| B40a・B18 | `b40a_*`・`b18_*`（配信ミックスを挟む場合は `post_mix::life_tests::b40a_*`） | 実プロセス |
+| W4a | `w4a_a_normal_exit_leaves_no_child_or_grandchild`（親＝試験の実行ファイルが `process::exit(0)`／`Drop` の後に終了。子と孫のハンドルで確かめる） | 実プロセス |
+| W4b (1)(2)(3) | `w4b_forced_exit_*`（親だけを `TerminateProcess`。(1) は試験が持つ子のハンドルで残ったことを確かめ、そのハンドルで片付ける） | 実プロセス |
+
+- 孫は、台本つきの子が作る別のプロセス（試験の実行ファイル。`Step::SpawnGrandchild`）。実 sidecar の `--scan` の孫ではない。
+- (1)(2) は、試験の継ぎ目（`seam::on_stage`）で親を「作成の直後」「割り当ての直後」に止めてから強制終了する。
+- `try_wait` を差し替える試験は、時計も仮想にして実際には待たない。子の終了は、試験のハンドルで実際に待ってから `Real` に戻す。
+- W4a の `app.exit(0)` は、Tauri のアプリを使わず、親プロセスの `process::exit(0)` で代用している（Job の kill-on-close は、プロセスの終了でハンドルが閉じることで働く）。
+
+実アプリ（実 sidecar）で確かめる手順（自動にしていない。必要なときだけ手で行い、結果を PR に記録する）：
+
+1. アプリを起動して音声を開始する。`Get-Process AuralynHost,audio_engine` で、sidecar が1つ動いていることを確かめる。
+2. 通常の終了（トレイの「終了」）の後、`Get-Process audio_engine` が空になることを確かめる。
+3. もう一度起動して音声を開始し、`Stop-Process -Name AuralynHost -Force` で親だけを強制終了する。数秒以内に `audio_engine` が残らないことを確かめる。
+4. 更新・アンインストールが子の残りで妨げられた場合は、Windows を再起動してから再試行する（J-15）。
+
 ### 自発的に状態が変わるVSTの確認（#465）
 
 開発用CLI `vst_state_drift` は、操作なしで生成信号をVSTへ渡し、`getState`の内容を比較する。
