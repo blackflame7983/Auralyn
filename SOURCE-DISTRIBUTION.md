@@ -27,7 +27,7 @@ Prerequisites:
 
 - Windows 11 x64
 - Node.js and npm
-- Rust stable with the `x86_64-pc-windows-msvc` target
+- Rust 1.100.0 (pinned by `rust-toolchain.toml`; `rustup` installs it automatically) with the `x86_64-pc-windows-msvc` target
 - Visual Studio Build Tools with the MSVC and Windows SDK components
 - LLVM/Clang required by `asio-sys`
 
