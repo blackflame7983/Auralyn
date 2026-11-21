@@ -44,7 +44,7 @@ fn preflight_rejection_never_stops_audio_or_changes_saved_files() {
         |_| panic!("事前拒否はEngineへ要求を送らない"),
         |host, calls| {
             host.mixing = crate::audio::mixing::State::new(&root);
-            host.post_mix = crate::audio::post_mix::State::new(&root);
+            host.post_mix = crate::audio::post_mix::State::new(&root, host.retired.clone());
             host.mixing.selected = Some(Start {
                 config: config("wasapi:one"),
                 target: None,
@@ -163,7 +163,7 @@ fn backup_failure_after_stopping_prevents_apply_and_preserves_originals() {
         |host, calls| {
             host.last_config_path = root.join("last_audio_config.json");
             host.mixing = crate::audio::mixing::State::new(&root);
-            host.post_mix = crate::audio::post_mix::State::new(&root);
+            host.post_mix = crate::audio::post_mix::State::new(&root, host.retired.clone());
             host.mixing.selected = Some(Start {
                 config: config("wasapi:one"),
                 target: None,

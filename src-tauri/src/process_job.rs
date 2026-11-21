@@ -34,6 +34,28 @@ impl Job {
         }
     }
 
+    /// 試験用：同時に動けるプロセスを `limit` 個に制限した Job。超える割り当ては OS が拒否する。
+    #[cfg(test)]
+    pub fn new_with_active_process_limit(limit: u32) -> Option<Self> {
+        use windows::Win32::System::JobObjects::JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        // SAFETY: 新規 Job のハンドルを所有し、設定構造体は指定サイズで呼び出し中生存する。
+        unsafe {
+            let job = Self(CreateJobObjectW(None, None).ok()?);
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags =
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            info.BasicLimitInformation.ActiveProcessLimit = limit;
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+            .ok()?;
+            Some(job)
+        }
+    }
+
     pub fn assign(&self, process: HANDLE) -> bool {
         // SAFETY: self が Job を保持し、呼び出し元は生存中の Child のハンドルを渡す。
         unsafe { AssignProcessToJobObject(self.0, process).is_ok() }

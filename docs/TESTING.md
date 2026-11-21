@@ -332,6 +332,72 @@ cargo test --locked --test repro_ott -- --ignored
 OTTがない、デバイスを開けない、録音できない、エディタが開けない場合は成功へ読み替えない。
 GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を保証しない。以下の実機手順と分けて記録する。
 
+### 音声エンジンの子プロセスの寿命（W 群。F1a-1、D-13）
+
+設計は [audio-session-controller.md](plans/audio-session-controller.md) の 18.3、合格の行は [audio-session-acceptance.md](plans/audio-session-acceptance.md) の B16・B17・B17b・B18・B40a・D7・W1〜W4。
+子は試験の実行ファイル自身（`compat_support.rs` の台本つきの子）で、製品と同じ手順（停止の状態で作成、Job への割り当て、`ResumeThread`）を通る。
+差し替えは `#[cfg(test)]` の `engine_life::seam` だけ（Job の作成・割り当て・再開の戻り値・`try_wait`・時計。試験のスレッドごと）。本番に差し替え口はない。
+
+```powershell
+Set-Location D:\Programming\App\VSTHost\src-tauri
+$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
+cargo test --locked --lib audio::engine_life_tests
+cargo test --locked --lib audio::post_mix::life_tests
+```
+
+| 行 | 試験 | 種別 |
+|---|---|---|
+| W1a | `w1a_job_creation_failure_ends_the_suspended_child_and_a_later_start_works` | 注入＋実プロセス（子が実際に終わる） |
+| W1b | `w1b_assignment_failure_blocks_the_same_role_until_the_exit_is_confirmed` | 注入＋実プロセス |
+| W1b' | `w1b_prime_a_job_that_refuses_the_child_leaves_no_unmanaged_process`（`ActiveProcessLimit = 1` の Job に別のプロセスを入れて渡す） | 実プロセス（OS の拒否） |
+| W1c | `w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start`（戻り値 `0`・`u32::MAX`・`2`、先に実際に再開した子） | 注入＋実プロセス |
+| W2 | 主：`b17_d7_*`・`b17b_*`・`w2_a_primary_write_failure_*`・`j13_*`。配信ミックス：`post_mix::life_tests::w2_*`（停止・開始・書き込み・EOF 後の `snapshot()`・`State` の差し替え） | 注入 |
+| B40a・B18 | `b40a_*`・`b18_*`（配信ミックスを挟む場合は `post_mix::life_tests::b40a_*`） | 実プロセスに、終了の確認の失敗を注入する試験 |
+| W4a | `w4a_a_normal_exit_leaves_no_child_or_grandchild`（親＝試験の実行ファイルが `process::exit(0)`／`Drop` の後に終了。子と孫のハンドルで確かめる） | 実プロセス |
+| W4b (1)(2)(3) | `w4b_forced_exit_*`（親だけを `TerminateProcess`。(1) は試験が持つ子のハンドルで残ったことを確かめ、そのハンドルで片付ける） | 実プロセス |
+
+- 孫は、台本つきの子が作る別のプロセス（試験の実行ファイル。`Step::SpawnGrandchild`）。実 sidecar の `--scan` の孫ではない。
+- (1)(2) は、試験の継ぎ目（`seam::on_stage`）で親を「作成の直後」「割り当ての直後」に止めてから強制終了する。
+- `try_wait` を差し替える試験は、時計も仮想にして実際には待たない。子の終了は、試験のハンドルで実際に待ってから `Real` に戻す。
+- W4a の `app.exit(0)` は、Tauri のアプリを使わず、親プロセスの `process::exit(0)` で代用している（Job の kill-on-close は、プロセスの終了でハンドルが閉じることで働く）。
+
+実アプリ（実 sidecar）で確かめる手順（自動にしていない。必要なときだけ手で行い、結果を PR に記録する）：
+
+1. アプリを起動して音声を開始する。`Get-Process AuralynHost,audio_engine` で、sidecar が1つ動いていることを確かめる。
+2. 通常の終了（トレイの「終了」）の後、`Get-Process audio_engine` が空になることを確かめる。
+3. もう一度起動して音声を開始し、`Stop-Process -Name AuralynHost -Force` で親だけを強制終了する。数秒以内に `audio_engine` が残らないことを確かめる。
+4. 更新・アンインストールが子の残りで妨げられた場合は、Windows を再起動してから再試行する（J-15）。
+
+#### 実アプリでの確認の結果（2026-11-21、codex/audio-session-f1a1、D-13 の条件）
+
+構成：`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`（`TAURI_CONFIG` の `externalBin` を空にして、`target\debug\audio_engine.exe` の既存の debug の子を使用）、Tauri MCP CLI 0.13.2 で `invoke` を実行。起動と終了だけの確認で、`Start` の明示操作はしていない（保存済みの設定の自動開始は、アプリが自分で行った）。音・聴感の確認ではない。
+
+使った成果物（実行後に、ファイルから読み直した記録）：
+
+- Host：`D:\Programming\App\VSTHost\src-tauri\target\debug\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 `FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E`）。`tauri dev` が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（`spawn_engine_binary` への分割と `apply_creation_flags`）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
+- 子：`D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 `D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D`）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。`audio_engine` と `bin` のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
+- 実行したコマンド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target`、`$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'`、`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`、`npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223`。
+
+- (a) 起動：主の子（PID 5140）が起動し、`IsProcessInJob` が真。`stop_audio` の後に `post_mix` の `restore_saved` で配信ミックスの子（`--post-mix-worker`）が起動し、同じく Job に入っていた。起動の失敗：主の子を `Stop-Process` し、`audio_engine.exe` を一時的に改名すると、`get_audio_devices` は「Audio Engine binary not found」で失敗した。元の名前へ戻した後の同じ操作は成功し、新しい子が起動した。この失敗は、子が見つからない経路（Job の失敗の経路ではない。Job・割り当て・再開の失敗は注入の試験で確認した）。
+- (b) 通常の終了：主の子（PID 54892）が動き、`get_audio_devices`（再検出）が作る `--scan` の孫（PID 26372）が生きている状態で、`quit_app` を実行した。孫は一瞬で終わるため、監視のジョブが現れた瞬間に `NtSuspendProcess` で止めて生かした（孫は実プロセス）。監視のジョブが起動時に取った Process のハンドル（開始時刻つき）で、Host の終了コード 0、子と孫の終了を確認した。残ったプロセスはなかった。
+- (c) 強制の終了：別の起動（Host 56820、主の子 47596、孫 55820＝止めた `--scan`）で、`Stop-Process -Id <Host> -Force` により Host だけを終了した（終了コード -1）。同じ方法で、子と孫がどちらも終了したことを確認した。
+- 実行後、`AuralynHost`・`audio_engine` のプロセス、`.hold` に改名したファイルの残りはない。
+- MSIX：行っていない。`docs/MSIX_PROTOTYPE.md` の手順は、署名用の証明書の作成と、LocalMachine の信頼するストアへの登録（管理者の操作）、`Add-AppxPackage` が要る。システムの設定を変えるので実施していない。必要なのは、(1) 試験用の証明書の信頼登録（管理者）、(2) 署名済みの MSIX のインストール、(3) 同じ確認（ネストした Job の下での主・配信ミックスの起動、通常と強制の終了）。
+
+#### 配布用ビルド（release の Host と、その横の release の子）での確認の結果（2026-11-21）
+
+インストーラー（NSIS）では確認していない。理由：インストーラーは PC にインストールするため、利用者がふだん使っている Auralyn を上書きするおそれがある。代わりに、`npm run tauri -- build --no-bundle` で作った release の Host と、その同じフォルダーに置かれた release の子（インストール後と同じ並び）を、ビルド先から直接起動した。`--no-bundle` にした理由：`createUpdaterArtifacts` が有効で、NSIS の成果物の段階は署名の鍵を要するため。インストーラーの生成、署名、MSIX、インストール先のパス（`Program Files` 配下など）での確認は未実施。
+
+- ビルド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target` のもとで `npm run tauri -- build --no-bundle`（`beforeBuildCommand` の `npm run build` が release の `audio_engine` と `plugin_scanner` を作る）。`Built application at: ...\target\release\AuralynHost.exe`、終了コード 0。ビルド時のコミットは 2a41e452（作業ツリーの未コミットの差分は、試験・文書だけ。製品のコードは同じ）。
+- Host：`D:\Programming\App\VSTHost\src-tauri\target\release\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:38:58、18089984 バイト、SHA-256 `B8C7ADE3DA013F827066DD12E9D354A4AA278228035732557B296B498CC86538`）。
+- 子：`D:\Programming\App\VSTHost\src-tauri\target\release\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:37:12、5662208 バイト、SHA-256 `4367FE1657593F0BE0B80EA5F3982F7891EC163B8F56EA762E82B1FA5A19F458`）。実行中のプロセスの `ExecutablePath` がこのファイルであることを確認した。参考：`src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe` の SHA-256 は `D43D30471C835A4AAFAB2B3BA1FD425B782749A84ECB45F41A8CF4B7B3078F75` で、上のファイルとは一致しなかった（原因は調べていない。確認に使ったのは上の `release\audio_engine.exe`）。
+- 起動と操作：`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` を設定して Host を直接起動し、WebView2 の DevTools プロトコル（`Runtime.evaluate`）で `window.__TAURI_INTERNALS__.invoke` を実行した（release にはデバッグ用の bridge がないため）。
+- (a) 起動：主の子が起動し Job に入っていた。`stop_audio` の後、`post_mix` の `restore_saved` で配信ミックスの子が起動し、同じく Job に入っていた。子を終了して `audio_engine.exe` を一時的に改名すると `get_audio_devices` は「Audio Engine binary not found」で失敗し、戻した後の同じ操作は成功して新しい子が起動し、Job に入っていた（子が見つからない経路。Job の失敗の経路は注入の試験で確認した）。
+- (b) 通常の終了：Host 40428、主の子 46860、`--scan` の孫 53860（現れた瞬間に `NtSuspendProcess` で止めて生かした実プロセス）。`quit_app` の後、Host の終了コード 0、子と孫が終了した。ハンドルは、起動のときに取った Process（開始時刻つき）。
+- (c) 強制の終了：Host 66716、主の子 43032、孫 32608（止めた `--scan`）。`stop_audio` で音声を止めてから、`Stop-Process -Id <Host> -Force` で Host だけを終了した（終了コード -1）。子と孫が終了した。
+- 自動の開始：起動の直後に、保存した設定で音声が自動で始まった。(a) と (c) は確かめる前に `stop_audio` で止めた。(b) は止めずに `quit_app` した（終了とともに止まった）。聴感の確認ではない。
+- 後始末：実行後に `AuralynHost`・`audio_engine` のプロセスはなく、改名したファイルは元の名前に戻した。容量は足りたので、キャッシュは消していない（空き約 16 GB）。
+
 ### 自発的に状態が変わるVSTの確認（#465）
 
 開発用CLI `vst_state_drift` は、操作なしで生成信号をVSTへ渡し、`getState`の内容を比較する。

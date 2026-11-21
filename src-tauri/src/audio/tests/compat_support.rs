@@ -19,6 +19,8 @@ pub(crate) enum Step {
     WaitGate(String),
     /// 標準出力を閉じて、子を終了する。
     Exit,
+    /// 孫のプロセス（長く待つだけの試験の実行ファイル）を作り、そのプロセス番号を指定のファイルへ書く。
+    SpawnGrandchild(PathBuf),
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -124,6 +126,8 @@ fn gate_path(log: &std::path::Path, name: &str) -> PathBuf {
 /// 子の側。`scripted_engine_entry`から呼ぶ。標準入力が閉じたら終了する。
 fn run_scripted_child(script: Script) {
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+    // 孫は待たない。この子が終わったあとは、Job が回収する。
+    let mut grandchildren: Vec<Child> = Vec::new();
     for line in std::io::BufRead::lines(std::io::stdin().lock()).map_while(Result::ok) {
         if let Ok(mut log) = std::fs::OpenOptions::new()
             .create(true)
@@ -159,6 +163,11 @@ fn run_scripted_child(script: Script) {
                     }
                 }
                 Step::Exit => std::process::exit(0),
+                Step::SpawnGrandchild(pid_file) => {
+                    grandchildren.push(spawn_idle_process());
+                    let pid = grandchildren.last().unwrap().id();
+                    std::fs::write(pid_file, pid.to_string()).unwrap();
+                }
             }
         }
     }
@@ -172,6 +181,176 @@ fn scripted_engine_entry() {
     }
 }
 
+const GRANDCHILD_ENV: &str = "AURALYN_IDLE_GRANDCHILD";
+
+/// 長く待つだけの試験の実行ファイル自身を、別のプロセスとして起動する。
+pub(crate) fn spawn_idle_process() -> Child {
+    let name = format!(
+        "{}::idle_grandchild_entry",
+        module_path!().split_once("::").unwrap().1
+    );
+    Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &name, "--nocapture"])
+        .env(GRANDCHILD_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
+/// 孫の側。環境変数がなければ何もしない。Job が終わらせなければ、2分で自分で終わる。
+#[test]
+fn idle_grandchild_entry() {
+    if std::env::var_os(GRANDCHILD_ENV).is_some() {
+        std::thread::sleep(std::time::Duration::from_secs(120));
+    }
+}
+
+/// 作った直後から子を預かる。どこで失敗しても（panic を含む）、Drop で kill して終了を待つ。
+/// 停止の状態で作った子を、割り当て・再開・ハンドルの取得の前に、試験の失敗で残さない。
+pub(crate) struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    pub(crate) fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    pub(crate) fn id(&self) -> u32 {
+        self.0.as_ref().expect("預かっている").id()
+    }
+
+    pub(crate) fn child(&self) -> &Child {
+        self.0.as_ref().expect("預かっている")
+    }
+
+    /// 以後の終了の処理は、受け取った側が持つ。
+    pub(crate) fn release(mut self) -> Child {
+        self.0.take().expect("預かっている")
+    }
+}
+
+/// 終了の確認の上限。
+const GUARD_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 終了を要求し、`try_wait` を `interval` ごとに繰り返して `limit` まで待つ。要求の失敗・待ちの失敗・時間切れは
+/// `Err` にする。時間切れのときは、もう一度終了を要求してから戻る（ハンドルは呼び出し側が持ったまま）。
+fn end_process<T, S>(
+    target: &mut T,
+    mut kill: impl FnMut(&mut T) -> std::io::Result<()>,
+    mut try_wait: impl FnMut(&mut T) -> std::io::Result<Option<S>>,
+    limit: std::time::Duration,
+    interval: std::time::Duration,
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の要求に失敗: {error}"));
+    }
+    let start = std::time::Instant::now();
+    loop {
+        match try_wait(target) {
+            Ok(Some(_)) => {
+                return if problems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(problems.join(" / "))
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                problems.push(format!("終了の確認に失敗: {error}"));
+                break;
+            }
+        }
+        if start.elapsed() >= limit {
+            problems.push(format!("{limit:?} 待っても終わらない"));
+            break;
+        }
+        std::thread::sleep(interval);
+    }
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の再要求に失敗: {error}"));
+    }
+    Err(problems.join(" / "))
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let Some(child) = self.0.as_mut() else {
+            return;
+        };
+        let pid = child.id();
+        let result = end_process(
+            child,
+            |c| c.kill(),
+            |c| c.try_wait(),
+            GUARD_LIMIT,
+            std::time::Duration::from_millis(20),
+        );
+        if let Err(problem) = result {
+            let message = format!("試験の子（PID {pid}）を片付けられない: {problem}");
+            // 試験が失敗して巻き戻っている最中の二重の panic を避ける。
+            if std::thread::panicking() {
+                eprintln!("{message}");
+            } else {
+                panic!("{message}");
+            }
+        }
+    }
+}
+
+/// 試験が持つプロセスのハンドル。親が死んでも、このハンドルで子の生死を確かめて片付けられる。
+pub(crate) struct ProcessProbe {
+    handle: windows::Win32::Foundation::HANDLE,
+}
+
+// SAFETY: ハンドルは所有者だけが閉じ、操作は OS の API に委ねる。
+unsafe impl Send for ProcessProbe {}
+// SAFETY: 共有の操作は待機・終了・閉じるだけで、OS の API が直列化する。
+unsafe impl Sync for ProcessProbe {}
+
+impl ProcessProbe {
+    pub(crate) fn open(pid: u32) -> Option<Self> {
+        use windows::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+        };
+        // SAFETY: 取得したハンドルは `ProcessProbe` が所有し、`Drop` で一度だけ閉じる。
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE | PROCESS_TERMINATE,
+                false,
+                pid,
+            )
+        }
+        .ok()?;
+        Some(Self { handle })
+    }
+
+    /// 終了するまで最大 `millis` ミリ秒待つ。
+    pub(crate) fn wait_exit(&self, millis: u32) -> bool {
+        use windows::Win32::Foundation::WAIT_OBJECT_0;
+        use windows::Win32::System::Threading::WaitForSingleObject;
+        // SAFETY: `self.handle` は生存中の有効なハンドル。
+        unsafe { WaitForSingleObject(self.handle, millis) == WAIT_OBJECT_0 }
+    }
+
+    pub(crate) fn exited(&self) -> bool {
+        self.wait_exit(0)
+    }
+
+    pub(crate) fn terminate(&self) {
+        // SAFETY: `self.handle` は生存中の有効なハンドル。
+        let _ = unsafe { windows::Win32::System::Threading::TerminateProcess(self.handle, 1) };
+    }
+}
+
+impl Drop for ProcessProbe {
+    fn drop(&mut self) {
+        // SAFETY: このハンドルを所有するのは自分だけで、ここで一度だけ閉じる。
+        let _ = unsafe { windows::Win32::Foundation::CloseHandle(self.handle) };
+    }
+}
+
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
 
 /// 試験側から見える記録。子へ送った行、`emit`の呼び出し、起動の回数。
@@ -181,9 +360,15 @@ pub(crate) struct Observer {
     log: PathBuf,
     spawned: Arc<AtomicU64>,
     fail_spawn: Arc<AtomicBool>,
+    probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>>,
 }
 
 impl Observer {
+    /// 起動した子のハンドル（起動した順）。
+    pub(crate) fn probe(&self, index: usize) -> Arc<ProcessProbe> {
+        self.probes.lock().unwrap()[index].clone()
+    }
+
     /// 子へ送った行から、命令の種類を送った順に返す。
     pub(crate) fn sent(&self) -> Vec<String> {
         self.sent_json()
@@ -267,8 +452,10 @@ pub(crate) fn scripted_parts(
     let spawned = Arc::new(AtomicU64::new(0));
     let fail_spawn = Arc::new(AtomicBool::new(false));
     *host.emitter.lock().unwrap() = Some(recorder.emitter());
-    let (counter, fail) = (spawned.clone(), fail_spawn.clone());
+    let probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>> = Arc::default();
+    let (counter, fail, seen) = (spawned.clone(), fail_spawn.clone(), probes.clone());
     host.test_engine_launcher = Some(Arc::new(move || {
+        // 製品と同じ生成のフラグ。Job への割り当てと再開は起動の手順が行う。
         counter.fetch_add(1, Ordering::SeqCst);
         anyhow::ensure!(!fail.load(Ordering::SeqCst), "fixture spawn failure");
         let name = format!(
@@ -282,7 +469,12 @@ pub(crate) fn scripted_parts(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        Ok(command.spawn()?)
+        engine_life::apply_creation_flags(&mut command);
+        let child = command.spawn()?;
+        if let Some(probe) = ProcessProbe::open(child.id()) {
+            seen.lock().unwrap().push(Arc::new(probe));
+        }
+        Ok(child)
     }));
     (
         host,
@@ -292,6 +484,7 @@ pub(crate) fn scripted_parts(
             log,
             spawned,
             fail_spawn,
+            probes,
         },
     )
 }
@@ -325,5 +518,66 @@ impl Drop for Fixture {
             host.kill_engine();
         }
         let _ = std::fs::remove_dir_all(&self.observer.dir);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::end_process;
+    use std::io::{Error, Result};
+    use std::time::Duration;
+
+    const SHORT: Duration = Duration::from_millis(60);
+    const STEP: Duration = Duration::from_millis(5);
+
+    #[test]
+    fn an_exit_that_is_confirmed_is_ok() {
+        assert!(end_process(&mut (), |_| Ok(()), |_| Ok(Some(())), SHORT, STEP).is_ok());
+    }
+
+    #[test]
+    fn a_failed_request_is_reported_even_when_the_exit_is_confirmed() {
+        let result = end_process(
+            &mut (),
+            |_| Err(Error::other("denied")),
+            |_| Ok(Some(())),
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の要求に失敗"));
+    }
+
+    #[test]
+    fn a_failed_wait_is_reported_and_the_request_is_repeated() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Err(Error::other("wait failed")) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の確認に失敗"));
+        assert_eq!(kills, 2);
+    }
+
+    #[test]
+    fn a_timeout_is_reported_and_the_request_is_repeated_before_letting_go() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Ok(None) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("待っても終わらない"));
+        assert_eq!(kills, 2);
     }
 }

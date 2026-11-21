@@ -274,6 +274,8 @@ fn read(path: &Path) -> Result<(Option<Vec<u8>>, Option<Saved>)> {
 pub(super) struct State {
     path: PathBuf,
     child: Option<Box<AudioHost>>,
+    /// 主の `AudioHost` の記録。子の `AudioHost` が手放す、終わらない子もここへ移る。
+    retired: Arc<engine_life::Store>,
     raw: Option<Vec<u8>>,
     saved: Option<Saved>,
     epoch: String,
@@ -284,7 +286,7 @@ pub(super) struct State {
     error: Option<String>,
 }
 impl State {
-    pub(super) fn new(root: &Path) -> Self {
+    pub(super) fn new(root: &Path, retired: Arc<engine_life::Store>) -> Self {
         let path = root.join("post-mix.json");
         let (raw, saved, error) = match read(&path) {
             Ok((r, s)) => (r, s, None),
@@ -293,6 +295,7 @@ impl State {
         Self {
             path,
             child: None,
+            retired,
             raw,
             saved,
             epoch: crate::bundle::revision(),
@@ -387,7 +390,10 @@ impl State {
                 .parent()
                 .ok_or_else(|| anyhow!("保存先がありません"))?
                 .join("post-mix-runtime");
-            self.child = Some(Box::new(super::control::post_mix_child_host(root)));
+            self.child = Some(Box::new(super::control::post_mix_child_host(
+                root,
+                self.retired.clone(),
+            )));
         }
         let child = self.child.as_mut().expect("子Hostは作成済み");
         child.ensure_engine_running()?;
@@ -631,6 +637,12 @@ impl State {
     pub(super) fn kill(&mut self) {
         self.discard_child();
     }
+    /// アプリの終了。子の `AudioHost` が持つ子を、主の `Drop` の共通の期限へ渡す。
+    pub(super) fn take_children_for_shutdown(
+        &mut self,
+    ) -> Option<(Child, Option<engine_life::JobHandle>)> {
+        self.child.as_mut()?.take_engine_for_shutdown()
+    }
     fn discard_child(&mut self) {
         if let Some(mut child) = self.child.take() {
             child.kill_engine();
@@ -720,7 +732,9 @@ impl State {
                 self.restored = false;
                 self.running = false;
                 self.error = Some("配信VSTのEngineが終了しました".into());
-                self.child = None;
+                if let Some(mut child) = self.child.take() {
+                    child.release_engine();
+                }
             }
         }
         let plugins = self.rack()?;
@@ -990,6 +1004,9 @@ impl State {
         Ok(())
     }
 }
+#[cfg(test)]
+#[path = "tests/post_mix_life_tests.rs"]
+mod life_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
