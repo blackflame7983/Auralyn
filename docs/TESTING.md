@@ -51,8 +51,45 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
 
 各行は `{ i, kind, name, unix_us }`。`i` は WebView 内の記録の順、`unix_us` は壁時計で、Rust の記録と同じ基準。
 
-1. **起動する前に、Host と子（サイドカー）の版をそろえる。この手順は、上の一般の起動手順（`npm run rebuild-engine` を含む）の代わりに、独立して行う。** 背景：Host は自分と同じフォルダー（`<target>/debug/audio_engine.exe`）の子を最初に使う（`audio.rs` の `spawn_engine_process` の探索順）。そのファイルは、Host のビルド（`build.rs` の `tauri-build`）が、`externalBin` の元ファイル（`src-tauri/bin/audio_engine-x86_64-pc-windows-msvc.exe` と `plugin_scanner-x86_64-pc-windows-msvc.exe`）から上書きでコピーする。両方の元ファイルが無いと、`cargo build` の `build.rs` が失敗する。`tauri dev` の `beforeDevCommand` はサイドカーをビルドしない。古い子が残っていると、今の Host は旧い形の `Stopped`（`payload` がない）をパースエラーとして捨て、`audio-stopped` が出ない（過去にこれで誤った結果を得た）。**実測した構成は、debug の Host と release の子の組み合わせ**。同じターミナルで、次の順に行う（`CARGO_TARGET_DIR` は共有の target）。(a) 元ファイルが2本そろっていなければ（最初の環境）、先に `npm run rebuild-engine` を1回だけ実行して2本を作る（debug 版が入る。(c) で上書きする）。(b) release の子を作る。`$env:CARGO_TARGET_DIR = '<target>'; $env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'; cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin audio_engine; Remove-Item Env:TAURI_CONFIG`（`TAURI_CONFIG` で `externalBin` を空にするのは、`scripts/test-native-e2e.mjs` と同じ既存の方法で、元ファイルが欠けていても失敗させない）。(c) release の子を、Tauri がコピーする元へ置き、更新時刻を今にする。`Copy-Item <target>\release\audio_engine.exe src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe -Force; (Get-Item src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe).LastWriteTime = Get-Date`。Cargo は更新時刻でビルドスクリプトの再実行を判断するので、古い時刻のままコピーすると、再実行されず、`<target>/debug/audio_engine.exe` が古いまま残ることがある。(d) トレースを有効にして、同じターミナルから Host を起動する。`$env:AURALYN_EMIT_TRACE = '1'; npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log`（Host のビルドが、(c) の子を `<target>/debug/audio_engine.exe` へコピーする）。(e) **起動した後で、実際の子を照合する。** `Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe'" | Select ProcessId,ExecutablePath` で動いている子のパスを得て、`Get-FileHash <パス>` の SHA-256 が、`<target>\release\audio_engine.exe` のハッシュと一致することを確かめる。パスが `<target>/debug/audio_engine.exe` であること、ログに `Engine IPC parse error` が出ていないことも確かめる（1件でもあれば、その回の結果は使わない。ハッシュが合わなければ、Host を止めて (c) の更新時刻をやり直す）。ビルドから配置までは、Host を起動する直前（`cargo build --bin AuralynHost` の後）に、`<target>/debug/audio_engine.exe` のハッシュが release と一致することを確かめられる。子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test` や `cargo build --bin audio_engine` も `<target>/debug/audio_engine.exe` を debug の子に戻すので、測定の間は実行しない。**注意：今のソースから作った debug の子は、WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる。debug の子では W5 を測れない。別の Issue で扱う（番号は統括が入れる）。**
-2. 「Tauri MCP による実アプリの確認」の手順で、debug ビルドを起動する。起動するターミナルで、先に `$env:AURALYN_EMIT_TRACE = '1'` を設定する。これは測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。起動の出力を、ファイルへ残しておく。
+1. **起動する前に、Host と子（サイドカー）の版をそろえる。この手順は、上の一般の起動手順（`npm run rebuild-engine` を含む）の代わりに、独立して行う。** 背景：Host は自分と同じフォルダー（`$env:CARGO_TARGET_DIR\debug\audio_engine.exe`）の子を最初に使う（`audio.rs` の `spawn_engine_process` の探索順）。そのファイルは、Host のビルド（`build.rs` の `tauri-build`）が、`externalBin` の元ファイル（`src-tauri/bin/audio_engine-x86_64-pc-windows-msvc.exe` と `plugin_scanner-x86_64-pc-windows-msvc.exe`）から上書きでコピーする。`externalBin` の元ファイルが1本でも無いと、どの `cargo build` でも `build.rs` が失敗する（`npm run rebuild-engine` の中の `cargo build` も同じ）。`tauri dev` の `beforeDevCommand` はサイドカーをビルドしない。古い子が残っていると、今の Host は旧い形の `Stopped`（`payload` がない）をパースエラーとして捨て、`audio-stopped` が出ない（過去にこれで誤った結果を得た）。**実測した構成は、debug の Host と release の子の組み合わせ**。リポジトリのルートの PowerShell 7 で、次を順に実行する。各段は、前の段が成功したときだけ進む（`throw` で止まる）。
+
+   ```powershell
+   # (a) 共有の target を絶対パスで指定し、externalBin を空にする（scripts/test-native-e2e.mjs と同じ既存の方法）。
+   $env:CARGO_TARGET_DIR = Join-Path $PWD 'src-tauri\target'
+   $env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'
+   # (b) 元ファイルが2本そろっていなければ（最初の環境）、サイドカーを2本作って置く。debug 版が入るが、(d) で audio_engine を上書きする。
+   $bin = 'src-tauri\bin'
+   if (-not ((Test-Path "$bin\audio_engine-x86_64-pc-windows-msvc.exe") -and (Test-Path "$bin\plugin_scanner-x86_64-pc-windows-msvc.exe"))) {
+     npm run rebuild-engine; if ($LASTEXITCODE -ne 0) { throw 'rebuild-engine failed' }
+   }
+   # (c) release の子を作る。
+   cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin audio_engine
+   if ($LASTEXITCODE -ne 0) { throw 'release build failed' }
+   $release = Join-Path $env:CARGO_TARGET_DIR 'release\audio_engine.exe'
+   # (d) release の子を Tauri がコピーする元へ置き、更新時刻を今にする（Cargo は更新時刻で build.rs の再実行を判断する。古い時刻のままだと再実行されず、debug フォルダーの子が古いまま残ることがある）。
+   $src = "$bin\audio_engine-x86_64-pc-windows-msvc.exe"
+   Copy-Item $release $src -Force -ErrorAction Stop
+   (Get-Item $src).LastWriteTime = Get-Date
+   if ((Get-FileHash $src).Hash -ne (Get-FileHash $release).Hash) { throw 'copy mismatch' }
+   # (e) externalBin の上書きを解除し、トレースを有効にして Host を起動する（Host のビルドが、(d) の子を debug フォルダーへコピーする）。
+   Remove-Item Env:TAURI_CONFIG
+   $env:AURALYN_EMIT_TRACE = '1'
+   npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log
+   ```
+
+   `rebuild-engine` が `TAURI_CONFIG` を引き継がない場合に備え、(b) が失敗したら、そのメッセージを確かめてから (a) をやり直す。`AURALYN_EMIT_TRACE` は測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
+
+   (f) **起動した後で、実際の子を照合する。** 別のターミナルで次を実行し、`True` と、`debug\audio_engine.exe` のパスが出ることを確かめる。ログ（`w5-dev.log`）に `Engine IPC parse error` が1件でもあれば、その回の結果は使わない。ハッシュが合わなければ、Host を止めて (d) からやり直す。
+
+   ```powershell
+   $release = Join-Path $PWD 'src-tauri\target\release\audio_engine.exe'  # リポジトリのルートで実行する
+   $child = Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe'" | Select-Object -First 1
+   $child.ExecutablePath
+   (Get-FileHash $child.ExecutablePath).Hash -eq (Get-FileHash $release).Hash
+   ```
+
+   子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test`、`cargo build --bin audio_engine`、`npm run rebuild-engine` は、debug フォルダーの子を debug の子に戻すので、測定の間は実行しない。**注意：今のソースから作った debug の子は、WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる。debug の子では W5 を測れない。別の Issue で扱う（番号は統括が入れる）。**
+2. 起動したら、「Tauri MCP による実アプリの確認」のうち、**CLI のセッションを開始して `connected: true` を確かめる部分だけ**を行う。その節の起動手順（`npm run rebuild-engine` と `tauri dev`）は実行しない（release の子を debug の子で上書きするため）。
 3. Rust 側の記録は、ログの `emit-trace` の行。`seq` は呼んだ順の通し番号、`kind=emit` は `emit` を呼ぶ直前、`kind=return` は `start_audio`・`stop_audio`・`restart_audio_engine` が結果を返す直前、`unix_us` は壁時計、`thread` は呼んだスレッド。
 4. WebView 側の記録は、アプリを開いた時点で入っている。購読の登録の完了（`listen-registered`）が揃ってから測る。`window.__auralynW5.length` を、場面の前後に控える。
 5. 画面から次の場面を、それぞれ10回以上行う（同じ機器・同じ設定）。呼ぶのは、画面と同じ `audioApi`（開発ビルドでは、WebView から `import('/src/api/audio.ts')` で得られる）。A：開始の成功＝`audioApi.start(host, input, output, bufferSize, sampleRate, inputId, outputId, undefined, routing)`（保存した設定の値）。B：開始の失敗＝同じ `start` の入力と出力を `'no-such-device'` にし、機器 ID と `routing` を渡さない。C：停止（接続あり）＝`audioApi.stop()`。D：停止（接続なし）＝開発セッションで子のプロセスを終了させ、**次の2つの両方**を確かめてから（reader が無効になったこと＝`audio-engine-exited` と `audio-error` を WebView が受け取ったこと、**かつ**、対象の子の PID が OS 上で終わったこと＝`Get-Process -Id <PID>` が見つからないこと。通知を受け取っても、`try_wait()` が終了をまだ返さなければ、停止は終了済みの接続の後始末の経路（`reap_confirmed_stopped_connection`）に入らない） `audioApi.stop()`。次の回のために、`start` で子を起動し直す。E：再起動＝A と同じ引数の `audioApi.restart(...)`。**観測の区間は、始まりを `invoke-called`、終わりを各呼び出しの応答（`invoke-resolved` または `invoke-rejected`）の 700ms 後**とし、その間に届いた通知を、その場面に数える。
