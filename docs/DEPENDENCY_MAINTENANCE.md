@@ -445,3 +445,12 @@ npm 10.9.4 で `npm install` / `npm uninstall` を行うと `libc` 欄が再び�
 - フロント1,632件、右パネルを含むブラウザ e2e 46件、型検査、release readiness が成功。実 Tauri（WebView2）でのフレーム間隔、非表示ウィンドウでの退場の片付け、署名付き配布は未確認。
 - 他の動きへ広げるかは、この結果と実 Tauri の確認を見て別途決める。
 - 2026-11-14 追記：段階 F（#526）で右パネルを消したため、`motion` を読み込む製品のコードはなくなった。依存の削除は規約整理と混ぜず、別の変更で判断する。
+
+## 2026-11-21 Rust ツールチェーンを 1.100.0 に固定
+
+Rust を 1.99.1（stable）から 1.100.0 へ上げ、版を固定した。理由は利用者の決定 J-16（`docs/plans/audio-session-controller.md` 16.1）。次の F1a-1 で 1.100.0 で安定化した `std::os::windows::process::ChildExt::main_thread_handle` を使うため。この変更では、その API はまだ使わない。
+
+- 固定の方法：リポジトリ直下に `rust-toolchain.toml`（`channel = "1.100.0"`、`components = ["clippy", "rustfmt"]`、`profile = "minimal"`）を置く。rustup は作業ディレクトリから親へたどって探すため、ルートと `src-tauri/` のどちらで cargo を動かしても、npm のスクリプト経由でも同じ版が選ばれる。あわせて `src-tauri/Cargo.toml` の `[package]` に `rust-version = "1.100"` を足した。手元の既定（`rustup default`）は変えていない。
+- 1.100.0 の clippy が、既存の検査 `needless_bool` で `src-tauri/src/vst_host/instance.rs` の `needs_deferred_connection` に1件出たため、`allow` を足さず式に直した（挙動は同じ）。このファイルのハッシュが変わるため、Rust 例外台帳の該当指紋と、台帳の承認済み指紋（`config/gardening-policy.json`）だけを更新した。allow/expect の件数（2）は変わらない。
+- 確認したこと：`npm run verify -- --static --rust`（lint・型・clippy `-D warnings`・fmt・RT の試験）、`cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence`（1018件成功・7件は理由付き ignore）、`cargo test --locked --test integration_test --test repro_ott`。いずれも `CARGO_TARGET_DIR` は共有の `src-tauri/target`。
+- 確認していないこと：理由付き ignore の実機試験、実音声・聴感・長時間運転、署名済み配布物のビルド、CI での確認（CI は Rust をビルドしておらず、rustsec の監査だけ）。1.100.0 でのリリースビルドの成果物の比較もしていない。

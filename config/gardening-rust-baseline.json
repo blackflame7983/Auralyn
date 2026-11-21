@@ -123,7 +123,7 @@
     {
       "file": "src-tauri/src/vst_host/instance.rs",
       "rule": "rust/suppression",
-      "hash": "2db3895d62369c9b06044ae8273535d4913a9a850c9240b7de8a3bfc2f84c411",
+      "hash": "64b3f6136308b575001576c12d7777c418bf556e0292f510967273d04950f209",
       "count": 2,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },

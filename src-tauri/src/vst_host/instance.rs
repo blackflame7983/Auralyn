@@ -2249,10 +2249,7 @@ impl VstInstance {
 
     pub fn needs_deferred_connection(&self) -> bool {
         // Quick check for now, ideally reuse get_plugin_quirks logic
-        if self.name.contains("Insight 2") && !self.resources.connected {
-            return true;
-        }
-        false
+        self.name.contains("Insight 2") && !self.resources.connected
     }
 
     // Create a processor handle to be moved to audio thread
