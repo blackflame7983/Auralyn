@@ -130,6 +130,24 @@ fn w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start() {
     }
 }
 
+// 製品の生成（`spawn_engine_process` が呼ぶ `spawn_engine_binary`）が、子を停止の状態で作る。
+// 試験の launcher は別の組み立てなので、製品のフラグを外しても W1・W4 の試験は気づかない。この試験が気づく。
+#[test]
+fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
+    let host = AudioHost::new(std::env::temp_dir().join("auralyn-product-spawn"));
+    let cmd = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+        .join("System32")
+        .join("cmd.exe");
+    let child = host.spawn_engine_binary(cmd).unwrap();
+    let probe = ProcessProbe::open(child.id()).unwrap();
+    let (mut child, job) =
+        engine_life::contain_and_resume(&host.retired, Role::Primary, child).unwrap();
+    assert!(job.is_some(), "停止の状態だったので、再開の戻り値が1");
+    let _ = child.kill();
+    assert!(probe.wait_exit(5000));
+    let _ = child.wait();
+}
+
 // Job の失敗が、マイクの権限の案内（フロントの判定と `localize_audio_error`）に写らない。
 #[test]
 fn a_job_failure_is_never_read_as_a_microphone_permission_denial() {
@@ -229,7 +247,7 @@ fn w2_a_primary_write_failure_records_the_child_before_returning_the_original_er
 
 // J-13：どれかの記録が3回に達したら案内を変える。開始（`localize_audio_error`）と更新（生の文字列）の両方。
 #[test]
-fn j13_the_third_unconfirmed_request_changes_the_message_on_both_paths_in_both_languages() {
+fn j13_the_third_unconfirmed_request_changes_the_japanese_message_on_both_paths() {
     let (mut host, observer) = stuck_primary();
     let first = start(&mut host).unwrap_err().to_string();
     assert_eq!(first, JA_FIRST_FINAL);
@@ -376,9 +394,12 @@ fn life_parent_entry() {
     }
 }
 
+/// 親のプロセス。試験が外側の Job（kill-on-close）を持ち、親と、親が作る子・孫を入れる。
+/// 試験が途中で失敗しても、Drop で全部が回収される（親が死んでも、外側の Job は残る）。
 struct Parent {
     child: Child,
     dir: PathBuf,
+    _outer: crate::process_job::Job,
 }
 
 impl Parent {
@@ -397,15 +418,29 @@ impl Parent {
             dir: dir.clone(),
             mode: mode.into(),
         };
+        use std::os::windows::process::{ChildExt, CommandExt};
+        const CREATE_SUSPENDED: u32 = 0x00000004;
+        // 親は停止の状態で作り、外側の Job へ入れてから動かす（子・孫が外側の Job から漏れない）。
+        let outer = crate::process_job::Job::new_kill_on_drop().unwrap();
         let child = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", &name, "--nocapture"])
             .env(PARENT_ENV, serde_json::to_string(&plan).unwrap())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .creation_flags(CREATE_SUSPENDED)
             .spawn()
             .unwrap();
-        Self { child, dir }
+        assert!(outer.assign(windows::Win32::Foundation::HANDLE(child.as_raw_handle())));
+        let thread = windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
+        // SAFETY: 親の child が生きているあいだ、主スレッドのハンドルは有効。
+        let resumed = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
+        assert_eq!(resumed, 1);
+        Self {
+            child,
+            dir,
+            _outer: outer,
+        }
     }
 
     fn pid(&self, name: &str) -> u32 {
@@ -440,7 +475,8 @@ fn w4a_a_normal_exit_leaves_no_child_or_grandchild() {
             "終了の前は動いている"
         );
         publish(&parent.dir, "go", "1");
-        parent.child.wait().unwrap();
+        let status = parent.child.wait().unwrap();
+        assert!(status.success(), "親は正常に終了する（{mode}）: {status:?}");
         assert!(child.wait_exit(5000), "子が残らない（{mode}）");
         assert!(grandchild.wait_exit(5000), "孫が残らない（{mode}）");
     }

@@ -4,7 +4,7 @@
     {
       "file": "src-tauri/src/audio.rs",
       "rule": "rust/suppression",
-      "hash": "fcfbddf024151702629739972accc22589c640007976afb89aac1e09f4d4647a",
+      "hash": "e212a74c46a74becb3c02854cf163375a118eb293eb5d8bd82699679444d192d",
       "count": 8,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },

@@ -352,7 +352,7 @@ cargo test --locked --lib audio::post_mix::life_tests
 | W1b' | `w1b_prime_a_job_that_refuses_the_child_leaves_no_unmanaged_process`（`ActiveProcessLimit = 1` の Job に別のプロセスを入れて渡す） | 実プロセス（OS の拒否） |
 | W1c | `w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start`（戻り値 `0`・`u32::MAX`・`2`、先に実際に再開した子） | 注入＋実プロセス |
 | W2 | 主：`b17_d7_*`・`b17b_*`・`w2_a_primary_write_failure_*`・`j13_*`。配信ミックス：`post_mix::life_tests::w2_*`（停止・開始・書き込み・EOF 後の `snapshot()`・`State` の差し替え） | 注入 |
-| B40a・B18 | `b40a_*`・`b18_*`（配信ミックスを挟む場合は `post_mix::life_tests::b40a_*`） | 実プロセス |
+| B40a・B18 | `b40a_*`・`b18_*`（配信ミックスを挟む場合は `post_mix::life_tests::b40a_*`） | 実プロセスに、終了の確認の失敗を注入する試験 |
 | W4a | `w4a_a_normal_exit_leaves_no_child_or_grandchild`（親＝試験の実行ファイルが `process::exit(0)`／`Drop` の後に終了。子と孫のハンドルで確かめる） | 実プロセス |
 | W4b (1)(2)(3) | `w4b_forced_exit_*`（親だけを `TerminateProcess`。(1) は試験が持つ子のハンドルで残ったことを確かめ、そのハンドルで片付ける） | 実プロセス |
 
@@ -367,6 +367,16 @@ cargo test --locked --lib audio::post_mix::life_tests
 2. 通常の終了（トレイの「終了」）の後、`Get-Process audio_engine` が空になることを確かめる。
 3. もう一度起動して音声を開始し、`Stop-Process -Name AuralynHost -Force` で親だけを強制終了する。数秒以内に `audio_engine` が残らないことを確かめる。
 4. 更新・アンインストールが子の残りで妨げられた場合は、Windows を再起動してから再試行する（J-15）。
+
+#### 実アプリでの確認の結果（2026-11-21、codex/audio-session-f1a1、D-13 の条件）
+
+構成：`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`（`TAURI_CONFIG` の `externalBin` を空にして、`target\debug\audio_engine.exe` の既存の debug の子を使用）、Tauri MCP CLI 0.13.2 で `invoke` を実行。起動と終了だけの確認で、`Start` の明示操作はしていない（保存済みの設定の自動開始は、アプリが自分で行った）。音・聴感の確認ではない。
+
+- (a) 起動：主の子（PID 5140）が起動し、`IsProcessInJob` が真。`stop_audio` の後に `post_mix` の `restore_saved` で配信ミックスの子（`--post-mix-worker`）が起動し、同じく Job に入っていた。起動の失敗：主の子を `Stop-Process` し、`audio_engine.exe` を一時的に改名すると、`get_audio_devices` は「Audio Engine binary not found」で失敗した。元の名前へ戻した後の同じ操作は成功し、新しい子が起動した。この失敗は、子が見つからない経路（Job の失敗の経路ではない。Job・割り当て・再開の失敗は注入の試験で確認した）。
+- (b) 通常の終了：主の子（PID 54892）が動き、`get_audio_devices`（再検出）が作る `--scan` の孫（PID 26372）が生きている状態で、`quit_app` を実行した。孫は一瞬で終わるため、監視のジョブが現れた瞬間に `NtSuspendProcess` で止めて生かした（孫は実プロセス）。監視のジョブが起動時に取った Process のハンドル（開始時刻つき）で、Host の終了コード 0、子と孫の終了を確認した。残ったプロセスはなかった。
+- (c) 強制の終了：別の起動（Host 56820、主の子 47596、孫 55820＝止めた `--scan`）で、`Stop-Process -Id <Host> -Force` により Host だけを終了した（終了コード -1）。同じ方法で、子と孫がどちらも終了したことを確認した。
+- 実行後、`AuralynHost`・`audio_engine` のプロセス、`.hold` に改名したファイルの残りはない。
+- MSIX：行っていない。`docs/MSIX_PROTOTYPE.md` の手順は、署名用の証明書の作成と、LocalMachine の信頼するストアへの登録（管理者の操作）、`Add-AppxPackage` が要る。システムの設定を変えるので実施していない。必要なのは、(1) 試験用の証明書の信頼登録（管理者）、(2) 署名済みの MSIX のインストール、(3) 同じ確認（ネストした Job の下での主・配信ミックスの起動、通常と強制の終了）。
 
 ### 自発的に状態が変わるVSTの確認（#465）
 

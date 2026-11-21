@@ -363,9 +363,7 @@ pub(crate) fn scripted_parts(
     let probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>> = Arc::default();
     let (counter, fail, seen) = (spawned.clone(), fail_spawn.clone(), probes.clone());
     host.test_engine_launcher = Some(Arc::new(move || {
-        use std::os::windows::process::CommandExt;
-        // 製品と同じ。停止の状態で作り、Job への割り当てと再開は起動の手順が行う。
-        const CREATE_SUSPENDED: u32 = 0x00000004;
+        // 製品と同じ生成のフラグ。Job への割り当てと再開は起動の手順が行う。
         counter.fetch_add(1, Ordering::SeqCst);
         anyhow::ensure!(!fail.load(Ordering::SeqCst), "fixture spawn failure");
         let name = format!(
@@ -378,8 +376,8 @@ pub(crate) fn scripted_parts(
             .env(ENV, serde_json::to_string(&script).unwrap())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_SUSPENDED);
+            .stderr(Stdio::null());
+        engine_life::apply_creation_flags(&mut command);
         let child = command.spawn()?;
         if let Some(probe) = ProcessProbe::open(child.id()) {
             seen.lock().unwrap().push(Arc::new(probe));

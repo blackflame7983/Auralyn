@@ -198,3 +198,105 @@ fn b40a_post_mix_children_do_not_move_the_primary_generation() {
     assert_eq!(post_generation, 1);
     rig.finish();
 }
+
+fn mixing_config(id: &str) -> crate::audio_engine::mixing::Config {
+    serde_json::from_value(serde_json::json!({
+        "version": 1,
+        "source": { "kind": "device", "config": { "host": "WASAPI", "inputId": id, "inputChannels": [0, 1] } },
+        "levels": { "voice": { "gain": 1.0, "muted": false }, "accompaniment": { "gain": 1.0, "muted": false }, "monitorAccompaniment": true, "offsetMs": 0 }
+    }))
+    .unwrap()
+}
+
+// W2：配信セットの復元の失敗とロールバック（`with_bundle_mixing` の実際の入口）。
+// 復元の失敗で `kill()` と `State` の差し替えが起き、そのとき終わらない子が主の記録に残り、
+// 差し替えた後の配信ミックスも、同じ記録を見て同じ役割の子を作れない。
+#[cfg(windows)]
+#[test]
+fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_recorded_child() {
+    use crate::audio_engine::mixing::Start;
+    use crate::bundle::mixing_configuration::PostMixPreset;
+    use crate::bundle::MixingConfiguration;
+    let root =
+        std::env::temp_dir().join(format!("auralyn-w2-bundle-{}", crate::bundle::revision()));
+    std::fs::create_dir(&root).unwrap();
+    let target = MixingConfiguration {
+        version: 1,
+        input: Some(mixing_config("wasapi:one")),
+        post_mix: PostMixPreset {
+            schema_version: 1,
+            role: "post_mix".into(),
+            enabled: false,
+            plugins: Vec::new(),
+        },
+    };
+    let mix_bytes = serde_json::to_vec(&Some(mixing_config("wasapi:one"))).unwrap();
+    let post_bytes = serde_json::to_vec(&target.post_mix).unwrap();
+    std::fs::write(root.join("mixing.json"), &mix_bytes).unwrap();
+    std::fs::write(root.join("post-mix.json"), &post_bytes).unwrap();
+    // 復元の最初の書き込み（バックアップ先の作成）を失敗させる。
+    std::fs::write(root.join("post-mix-backups"), b"keep backup fixture").unwrap();
+    let original = std::fs::create_dir_all(root.join("post-mix-backups"))
+        .unwrap_err()
+        .to_string();
+    let (post_host, post_observer) = scripted_parts([(
+        "GetPluginRack",
+        vec![response_line(&IpcResponse::PluginRack {
+            plugins: Vec::new(),
+            restore_eligible: true,
+            revision: 0,
+            running: false,
+        })],
+    )]);
+    let mut post_child = post_host;
+    crate::audio::session_rack::tests::with_host(
+        |command| {
+            match command {
+            IpcCommand::Stop => IpcResponse::Success,
+            IpcCommand::Mixing { .. } => IpcResponse::Mixing(Box::new(
+                serde_json::from_value(serde_json::json!({
+                    "epoch":"engine", "revision":"0", "config":null, "running":false, "accompaniment":null,
+                    "voicePeak":[0,0], "accompanimentPeak":[0,0], "mixPeak":[0,0],
+                    "knownVoiceProcessingFrames":null, "pending":false, "failed":false, "primaryClock":null
+                }))
+                .unwrap(),
+            )),
+            other => panic!("予期しない fake IPC: {other:?}"),
+        }
+        },
+        |host, _calls| {
+            host.last_config_path = root.join("last_audio_config.json");
+            host.mixing = crate::audio::mixing::State::new(&root);
+            host.post_mix = State::new(&root, host.retired.clone());
+            host.mixing.selected = Some(Start {
+                config: mixing_config("wasapi:one"),
+                target: None,
+            });
+            host.is_global_muted = true;
+            post_child.post_role = true;
+            post_child.retired = host.retired.clone();
+            post_child.ensure_engine_running().unwrap();
+            host.post_mix.child = Some(Box::new(post_child));
+            host.post_mix.restored = true;
+            let (_, witness) = host.capture_bundle_mixing().unwrap();
+            seam::set_wait(seam::Wait::Stuck);
+            let error = host
+                .with_bundle_mixing(&target, &witness, |_| Ok(()))
+                .unwrap_err();
+            assert_eq!(error, original, "元のエラーが返る");
+            assert_eq!(
+                host.retired.pending(Role::PostMix),
+                1,
+                "終わらない子は、その時点で主の記録に残っている"
+            );
+            let blocked = host.post_mix.child().map(|_| ()).unwrap_err();
+            assert_eq!(
+                blocked.to_string(),
+                engine_life::EngineUnconfirmed::text(false),
+                "差し替えた後の配信ミックスも、同じ役割の子を作れない"
+            );
+        },
+    );
+    let _ = std::fs::remove_dir_all(&post_observer.dir);
+    let _ = std::fs::remove_dir_all(&root);
+}

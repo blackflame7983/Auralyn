@@ -709,39 +709,22 @@ impl AudioHost {
 
         log::info!("Found engine at: {:?}", binary_path);
 
-        #[cfg(windows)]
-        let child = {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            // 停止の状態で作り、Job へ入れてから `contain_and_resume` が動かす。
-            const CREATE_SUSPENDED: u32 = 0x00000004;
-            let mut command = Command::new(binary_path);
-            if self.post_role {
-                command.arg("--post-mix-worker");
-            }
-            command
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit())
-                .creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
-            self.apply_engine_tuning_env(&mut command);
-            command.spawn()?
-        };
+        self.spawn_engine_binary(binary_path)
+    }
 
-        #[cfg(not(windows))]
-        let child = {
-            let mut command = Command::new(binary_path);
-            if self.post_role {
-                command.arg("--post-mix-worker");
-            }
-            command
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit());
-            self.apply_engine_tuning_env(&mut command);
-            command.spawn()?
-        };
-        Ok(child)
+    /// 子のプロセスを作る。製品と試験の起動が、同じコマンドの組み立てと生成のフラグを通る。
+    fn spawn_engine_binary(&self, binary_path: PathBuf) -> Result<Child> {
+        let mut command = Command::new(binary_path);
+        if self.post_role {
+            command.arg("--post-mix-worker");
+        }
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        engine_life::apply_creation_flags(&mut command);
+        self.apply_engine_tuning_env(&mut command);
+        Ok(command.spawn()?)
     }
 
     fn ensure_engine_running(&mut self) -> Result<()> {

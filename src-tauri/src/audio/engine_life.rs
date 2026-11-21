@@ -272,6 +272,20 @@ pub(super) fn terminate_all(children: Vec<(Child, Option<JobHandle>)>) {
     }
 }
 
+/// 子の生成のフラグ。停止の状態で作り（`contain_and_resume` が Job へ入れてから動かす）、窓を出さない。
+/// 製品の生成と試験の起動が、この1か所を通る。
+pub(super) fn apply_creation_flags(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const CREATE_SUSPENDED: u32 = 0x00000004;
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
 /// 停止の状態の子を Job に入れ、主スレッドを再開する。どれかが失敗したら、子を終わらせて失敗にする。
 #[cfg(windows)]
 pub(super) fn contain_and_resume(
