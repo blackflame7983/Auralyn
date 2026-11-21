@@ -140,7 +140,7 @@ Input =
 起動は `Spawn` の状態機械で行う。接続の世代の更新、起動時の IPC（ピーク保護・true-peak の引き継ぎ、F-12）、旧 reader の終了処理まで含める。
 
 1. 旧接続があれば、`Teardown`（4.4）を先に終える。終わるまで、新しい接続は作らない。F1a-1 は、`Teardown` の代わりに、主の `AudioHost` の役割ごとの記録 `retired` の確認（18.3 の作り直しの条件）を行う。
-2. 子を**停止の状態で**作り（`CREATE_SUSPENDED`）、Job Object に割り当ててから再開する。**割り当ての成功が、その接続を使い始める条件**。Job の作成・割り当て・再開のどれかが失敗したら、ただちにその子を `kill` し、終了を確かめるまで、新しい子を起動せず、結果を失敗にする（今は子を作った後に割り当て、結果を `let _ =` で捨てている：`audio.rs:754-765`）。**F1a-1** は、ここまでを今の `Mutex` の下で、同期の上限つきの待ち（最大2秒。18.3）で行い、reader は今のまま。**F1b-0** で、`ConnId` を採り、終了の確認を reaper に任せ、成功したら reader・writer・reaper を起動する。
+2. 子を**停止の状態で**作り（`CREATE_SUSPENDED`）、Job Object に割り当ててから再開する。**割り当ての成功が、その接続を使い始める条件**。Job の作成・割り当て・再開のどれかが失敗したら、ただちにその子を `kill` し、終了を確かめるまで、新しい子を起動せず、結果を失敗にする（今は子を作った後に割り当て、結果を `let _ =` で捨てている：`audio.rs:776-780`）。**F1a-1** は、ここまでを今の `Mutex` の下で、同期の上限つきの待ち（最大2秒。18.3）で行い、reader は今のまま。**F1b-0** で、`ConnId` を採り、終了の確認を reaper に任せ、成功したら reader・writer・reaper を起動する。
 3. 引き継ぎの IPC を、段として順に送る。1つ失敗したら、その接続を `Teardown` し、結果は「開始していません」の失敗にする。
 4. 機器のスキャンは、今の `DeviceScanTicket` の方式（`audio.rs:38-48`）をそのまま、1段の待ちとして扱う。接続が変わったら、チケットは古いものとして捨てる。
 
@@ -209,7 +209,7 @@ S0〜S3 の段の境目ごとに、**権限の照合（6.4）**を行う。失�
 
 ### 4.4 `Teardown`（接続の終了処理）と、プロセスの終了の確認
 
-**F1a-1 と F1b-0 の分担：** この節の `ConnectionRecord`・reaper・`Reaped`・`Teardown` は F1b-0 の設計。F1a-1 は reaper を作らず、`kill()` の後の `try_wait()`（50ms 間隔、最大2秒）で終了を確かめる。終わらない子と Job は、主の `AudioHost` の役割ごとの記録 `retired` に残し、同じ役割の作り直しは、最初の `kill()` から10秒の期限で `engine_unconfirmed` にする。アプリの終了の回収は Job に任せ、`Drop` が走れば共通の2秒、`prepare_update` は終わらない子が残れば `engine_unconfirmed`（18.3）。`try_wait()` の `Err` は終了の証拠ではない。EOF の後の自動の隔離（W2a）、`process_unconfirmed`・`process_confirmed` の履歴、復帰の表示は F1b-0・F1b。
+**F1a-1 と F1b-0 の分担：** この節の `ConnectionRecord`・reaper・`Reaped`・`Teardown` は F1b-0 の設計。F1a-1 は reaper を作らず、`kill()` の後の `try_wait()`（50ms 間隔、最大2秒）で終了を確かめる。終わらない子と Job は、主の `AudioHost` の役割ごとの記録 `retired` に残し、同じ役割の作り直しは、最初の `kill()` から10秒の期限で `engine_unconfirmed` にする。アプリの終了の回収は Job に任せ（`Drop` が走ることは保証しない。走れば共通の2秒）、`prepare_update` は終わらない子が残れば `engine_unconfirmed`（18.3）。停止のまま残る子と、Job に入らず終わらなかった子は、次の起動での片付け（18.3 の 9、W4c）で終わらせる。`try_wait()` の `Err` は終了の証拠ではない。EOF の後の自動の隔離（W2a）、`process_unconfirmed`・`process_confirmed` の履歴、復帰の表示は F1b-0・F1b。
 
 **通信の切断**と**プロセスの終了**は、別の状態にする。
 
@@ -236,7 +236,7 @@ ConnectionRecord.process: Running | Terminated(status) | Unconfirmed
 - `Unconfirmed` の間は、**新しい子の起動も、その接続の再利用もしない**（P12）。旧の子が機器を持ったままの可能性があるため。
 - 要求は、期限付きで失敗にする：`Spawn` を要する命令は、`Unconfirmed` が解けるまで最大10秒保留し、解けなければ `engine_unconfirmed`（`音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください`）で失敗する。
 - 解消を試み続ける：2秒ごとに `TerminateProcess` を再実行し、reaper の `Reaped` を待つ。Job の割り当てに成功していれば、Job の破棄が孫まで終わらせる。
-- アプリの終了時（`Drop`）だけは、actor の外で、上限2秒の `wait` を行い、終了しなければそのままアプリを終える（Job が回収する）。この `Drop` の上限は F1a-1 で入れる（今は上限なし）。
+- アプリの終了の回収は、Job の kill-on-close に任せる（F1a-1。`Drop` が走ることは保証しない）。`Drop` が走った場合だけ、actor の外で、共通の期限2秒で `kill()` と確認を行い、終了しなければそのままアプリを終える。この上限は F1a-1 で入れる（今は上限なし）。F1b-0 では `Shutdown` 入力を `Teardown` が受ける。
 
 ### 4.5 stdin の書き込みの上限
 
@@ -265,7 +265,7 @@ ConnectionRecord.process: Running | Terminated(status) | Unconfirmed
 | 配信セット（`live_bundle.rs`、`bundles`） | `lock` を長く持つ。`interrupt_restore` を別スレッドから | 「複数の転送の列」。途中の停止は `latest_stop_seq` で見る |
 | 起動時の設定（`lib.rs:300-312`） | `AudioHost::new`、レビューのみの一時利用なら `require_explicit_start`、`ConditionState` と `AudioState` の登録、スケジューラの開始、`set_event_emitter`、warmup スレッド | F1a-0：同じ場所で同じ手順。actor へは F1b-0 で移す（起動の順序を試験で固定） |
 | 配信セット（`commands/bundles.rs:2011`） | 同じ `Arc<Mutex<AudioHost>>`（`AudioState`）を渡している | F1a-0：`AudioControl` の入口を通す。長い保持は F1b-0 の「複数の転送の列」 |
-| アプリの終了（`quit_app`、`Drop`） | `Drop` で `kill`+`wait` | F1a-1：`quit_app` → `app.exit(0)` → `Drop` で `kill`＋最大2秒の待ち（今は上限なし）。F1b-0：`Shutdown` 入力 → `Teardown` → 上限2秒 |
+| アプリの終了（`quit_app`、`Drop`） | `Drop` で `kill`+`wait` | F1a-1：`quit_app` → `app.exit(0)`。回収は Job の kill-on-close。`Drop` が走れば共通の2秒で `kill()` と確認（今は上限なし）。F1b-0：`Shutdown` 入力 → `Teardown` → 上限2秒 |
 | 機器のスキャン | `DeviceScanTicket` | 1段の待ち。接続が変われば古いチケットを捨てる |
 | フロント（`api/audio.ts`） | 個別の `invoke` | F1a は変えない。F3 以降で `audioSession` 経由 |
 
@@ -707,7 +707,7 @@ RecoveryAuthority { id, failed_stream, conn, commit_manual_epoch, commit_stop_fl
 |---|---|---|---|
 | **F0**（この PR） | 3文書。コードは変えない | `npm run verify -- --changed` | なし |
 | **F1a-0** | 互換の試験（`9567061a` の挙動の固定）。`AudioControl` の入口の一本化。`Admission` での**受付順の記録**まで。`Mutex` は残し、勝敗は今の順序のまま | 互換の契約の試験（旧の通知の順序、`get_audio_state` の待ちの境界、`expectedState`、エラーの文字列） | **変えない**。受付順は記録するだけで、利用者から見た勝ち負けは変えない |
-| **F1a-1** プロセスの寿命（J-14 で範囲を絞った。18.3） | 停止の状態での作成と Job への割り当て、上限つきの終了の確認（2秒・10秒）、主の `AudioHost` の役割ごとの記録 `retired`、作り直しの条件、`engine_unconfirmed` と J-13 の案内。`Mutex` と実行の経路は保つ。actor・受信箱・writer・reaper・EOF の後の自動の隔離は F1b-0 | 試験の継ぎ目での失敗の注入、実プロセスの境界の試験（14.4、W1・W2・W4） | 変えない。`Unconfirmed` のときの要求の失敗（`engine_unconfirmed`）と Job の割り当ての失敗の扱いは、**F1a-1 でも安全のための変更なので、個別の承認が要る**（互換の契約 D-13） |
+| **F1a-1** プロセスの寿命（J-14 で範囲を絞った。18.3） | 停止の状態での作成と Job への割り当て、上限つきの終了の確認（2秒・10秒）、主の `AudioHost` の役割ごとの記録 `retired`、作り直しの条件、`engine_unconfirmed` と J-13 の案内。`Mutex` と実行の経路は保つ。actor・受信箱・writer・reaper・EOF の後の自動の隔離は F1b-0 | 試験の継ぎ目での失敗の注入、実プロセスの境界の試験（14.4、W1a・W1b・W1b'・W1c・W2・W4a〜W4c） | 変えない。`Unconfirmed` のときの要求の失敗（`engine_unconfirmed`）と Job の割り当ての失敗の扱いは、**F1a-1 でも安全のための変更なので、個別の承認が要る**（互換の契約 D-13） |
 | **F1b-0**（旧 F1a-2。J-14）actor と持ち主の移行 | actor・受信箱・reader / writer のスレッド（3.1、4.1、4.5、4.7。宿題は PRE-F1b-12）。入口の一覧（4.6）を、確かめられる単位で順に移す：(1) 主のコマンド (2) 配信ミックス（第2接続）(3) 機器のスキャン (4) warmup・frontend_bootstrap (5) 更新・移行・一時利用 (6) スケジューラ・トレイ・ショートカット・OBS・配信セット。各単位ごとに互換の試験を通す | 各単位の互換試験、既存の Rust 試験、W3、B25〜B28、B36〜B42 | **受付と実行の順（K11）、停止の優先、`busy_overloaded`、書き込みの5秒での隔離を変える。D-9・D-10 の承認とともに入れる**（J-12・J-14） |
 | **F1b** 新しい契約 | `RequestId`・`AttemptId`・確定点（5.2）、タイムアウトの後始末（5.3）、終了の確定（7章）、`audio-session`・`get_audio_session`、履歴、`clientRequestId`、`PersistPolicy`、`MeterCell`、子の `attempt_id` の echo・`Error` の世代・`StreamState`・能力の確認。`SnapshotCell` による読み取り | 合格の条件の表の F1b の行 | **安全のための変更を、互換の契約の 8.2 の表（D-1〜D-14）の単位で、個別に承認して入れる。** 「受付順を記録すること」（F1a-0 で済み）と「その順序で利用者から見た勝ち負けを変えること（`Superseded` など）」は、別の差分として扱う |
 | **R1** 自動の再開の制限 | 12章の `RecoveryAuthority`、`recover`、フロントの再開の切り替え。再開の待ち時間の予約（2秒・4秒・6秒）は、フロントに残す。親へ移すのは、権限と実行 | 再開の順序の行 | 旧の再開が、手動の操作と競合したとき、拒否される。通常の再開は同じに動く |
@@ -791,11 +791,11 @@ ScriptedEngine::new()
 
 模擬の sidecar では確かめられない境界を、実際の Windows のプロセスで試す（`TESTING.md` の「実sidecarのプロセス境界と実機試験」の枠）。
 
-- F1a-1（W1a〜W1c）：Job の作成・割り当て・再開の失敗（停止の状態で作った子。割り当ては、`JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1` の Job に先に別のプロセスを入れて渡して起こす）。失敗時に子を kill し、終了を確かめ、新しい子を起動しない。
-- F1a-1（W2）：終わらない子。試験の継ぎ目で `try_wait()` を「終わっていない」にし続ける単体の試験（実プロセスの `kill` は試験では止められない）。
+- F1a-1（W1a・W1b・W1b'・W1c）：Job の作成の失敗（W1a）、割り当ての失敗（W1b。注入で、子は生きている）、割り当ての OS の拒否（W1b'。`JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1` の Job に先に別のプロセスを入れて渡して起こす）、再開の失敗（W1c。`ResumeThread` の戻り値が1以外）。失敗時に子を kill し、終了を確かめ、新しい子を起動しない。
+- F1a-1（W2）：終わらない子。試験の継ぎ目で `try_wait()` を「終わっていない」にし続ける注入の試験（実プロセスの `kill` は試験では止められない）。配信ミックスの停止・開始・書き込みの失敗、配信セットの復元の失敗、EOF の後の `snapshot()` のどれを通っても記録が残る。
 - F1b-0（W2a〜W2c）：stdout だけが閉じる子（stdin は開いたまま）。EOF の処理と `Reaped` の順序。
 - F1b-0（W3a・W3b）：パイプの詰まり（子が stdin を読まない）。writer の `try_send` と5秒の隔離。別の接続の入力の処理と、新しい操作の実行は別の期待値。
-- F1a-1（W4a・W4b）：アプリの終了（`quit_app` → `Drop`）と、親の強制終了での子と孫の回収（Job の kill-on-close）。
+- F1a-1（W4a・W4b・W4c）：アプリの通常の終了（`quit_app` → `app.exit(0)`）と、親の強制終了（割り当ての前・後・再開の後の3区間）での子と孫の回収（Job の kill-on-close。`Drop` の有無によらない）。停止のまま残る子と、Job に入らなかった子は、次の起動での片付け（W4c）で終わらせる。
 - 実際の WebView で、旧の `emit` と `invoke` の応答のどちらが先に届くかを測る（F1a-0 の互換試験の一部）。
 
 ## 15. レビューの指摘への対応表
