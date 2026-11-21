@@ -1,6 +1,6 @@
 # 旧 API の互換の契約（`9567061a` の実際の振る舞い）
 
-状態：F0 の成果物（第3回のレビューを反映した改訂版）。コードを読んで確かめた事実を表にした。実機・実際の WebView では確かめていない。
+状態：F0 の成果物（第3回のレビューを反映した改訂版）。コードを読んで確かめた事実を表にした。通知の順序と応答の到着順だけは、開発ビルドの実際の WebView と実機の WASAPI で実測した（9章。release の子。debug の子、聴感、複数ウィンドウ、本番ビルドは確かめていない）。
 設計は [audio-session-controller.md](audio-session-controller.md)。試験の行は [audio-session-acceptance.md](audio-session-acceptance.md)。
 
 読み方：
@@ -82,7 +82,7 @@
 | 成功の応答・エラー | `start_audio` と同じ形・同じ `localize` | `commands/audio.rs:668-680` | 変えない | 変えない |
 | 事前確認 | マイク許可の確認（プロセス入力でないとき）→ ロック → `preflight_live_changes` → 入力元の解決 → `preserve_live_changes_for_restart` → **`kill_engine`** → 開始 | `commands/audio.rs:650-679` | 変えない | 変えない |
 | 子を起動するか | 起動する（既存の子を殺して、新しい子を起動する） | 同上 | 変えない | 変えない |
-| 意図した終了の通知 | `kill_engine` は `reader_active` を先に偽にするので、`audio-engine-exited`・`audio-error`（クラッシュ）は出ない。`audio-stopped` も出ない。出るのは `audio-conditions-changed`（`retire_engine` の後）だけ。続けて新しい接続の通知 | `audio.rs:2779-2816`、`:1042-1056` | 変えない | 終了の確定の履歴（`reason = restart`）を足す。旧の通知は増やさない |
+| 意図した終了の通知 | `kill_engine` は `reader_active` を先に偽にするので、`audio-engine-exited`・`audio-error`（クラッシュ）は出ない。`audio-stopped` も出ない。出るのは `audio-conditions-changed`（`retire_engine` の後）と、条件つきの `live-modes-invalidated`（本番モードの世代が有効で未退役、または保護が有効のとき。`invalidate_live_protection`。`audio-conditions-changed` より前に、1回または2回）。続けて新しい接続の通知 | `audio.rs:2779-2816`、`:1042-1056` | 変えない | 終了の確定の履歴（`reason = restart`）を足す。旧の通知は増やさない |
 
 ### 3.4 補助のコマンド
 
@@ -119,15 +119,17 @@
 | `audio-stream-error` | 子の `Error`（文字列）を読み、`engine_event(epoch, false)` が真 | 文字列。**番号なし** | `audio-conditions-changed` → `audio-stream-error` | `audio.rs:849-858` |
 | `audio-error` | (a) 子の stdout が閉じ、`unexpected_exit` が真（`reader_active` を `swap(false)` で下げられた）(b) stdin の書き込みの失敗 | (a) `"Audio Engine Process Exited (Crash?)"` (b) `"音声エンジンとの通信が切れました"` | (a) `audio-conditions-changed` → `audio-engine-exited` → `audio-error`。その後、待っている呼び出しに `Error("Engine Crashed/Exited")` を渡す | `audio.rs:1042-1056`、`:1170-1182` |
 | `audio-engine-exited` | 上の (a) | `ExitPayload`（camelCase：`cause`、`op?`、`pluginId?`、`path?`、`classId?`、`name?`、`elapsedMs?`、`host?`、`input?`、`output?`、`phase?`） | 上の (a) | `audio/engine_exit.rs:10-33` |
-| `audio-conditions-changed` | (1) 子の起動（`new_engine` の後）(2) `command_changes` が真の命令の前後・失敗時 (3) `Mixing*Failed`／`Error`／`Stopped`／`Started` の `engine_event` が真 (4) 子の終了（EOF、`kill_primary_engine`） | `()` | 常に、対応する他の通知より**先** | `audio.rs:638-639`、`:2798-2799`、`audio/conditions.rs:70-93` |
+| `audio-conditions-changed` | (1) 子の起動（`new_engine` の後）(2) `command_changes` が真の命令の前後・失敗時 (3) `Mixing*Failed`／`Error`／`Stopped`／`Started` の `engine_event` が真 (4) 子の終了（EOF、`kill_primary_engine`） | `()` | 同じ子のイベントに対する通知の列の中では、対応する他の通知より**先**（reader が出す列に限る。`dispatch` や `AudioHost` が応答の後に出す分は含まない。9章） | `audio.rs:638-639`、`:2798-2799`、`audio/conditions.rs:70-93` |
 
+**この表と、下の「順序の事実」の短い列は、reader が同じ子のイベントに対して出す列に限る**（たとえば `Stopped` に対する `audio-conditions-changed` → `audio-stopped`）。これは観測される完全な列ではない。完全な列には、reader の外から出る通知が加わる。(1) `Conditions::dispatch` が、`command_changes` が真の命令の前後（と失敗時）に出す `audio-conditions-changed`。(2) `AudioHost` のメソッドが直接出す通知。終了の経路（`kill_engine` など）では、`invalidate_live_protection` が `audio-conditions-changed` より**先に** `live-modes-invalidated` を出すことがある（本番モードの世代が有効で未退役、または保護が有効なとき。`audio.rs:2812` 付近）。実測した完全な列は 9章を見る。たとえば C（停止・接続あり）の完全な列は、(1) `dispatch` の前の `audio-conditions-changed`、(2) reader が `Stopped` を受けて `audio-stopped` の直前に出す `audio-conditions-changed`、(3) `audio-stopped`、(4) 応答を受けた後に `dispatch` が出す `audio-conditions-changed`、(5) `stop_audio` の戻り（応答）、の順になる。`audio-stopped` の後に `audio-conditions-changed` が続くのは、この (4) による。
 その他の通知（互換の対象。F1a は変えない）：`audio-level`、`audio-loudness`、`audio-channel-scan`、`audio-control-stall`、`audio-processing-health`、`voice-check-state`、`voice-check-envelope`、`plugin-editor-opened`、`plugin-editor-closed`、`mixing-source-failed`、`mixing-output-failed`（`audio.rs:810-1030`）。
 
 順序の事実。
 
 - **`audio-conditions-changed` は、同じ事象の他の通知より前に `emit` される。** フロントはこの順序を前提にしている（`NoiseMeasurementPanel.tsx:67`、`useVoiceCheck.ts:498`、`usePreparation.ts:187`）。
 - 開始の成功：`audio-conditions-changed`、`audio-started`、（応答）。開始の失敗：`audio-conditions-changed`、`audio-stopped`、（エラーの応答）。停止：`audio-conditions-changed`、`audio-stopped`、（応答）。
-- **旧の通知は、コマンドの応答より前に `emit` される**（reader が `Response` を待ち手へ渡す前に、同じスレッドが先に `Event` の行を読んで `emit` する。子が `Event` を `Response` より前に出すため）。**これは Rust が `emit` を呼ぶ順序の事実。WebView に届く順序は別で、W5 で測って分けて記録する。** F1a-1 で通知を出す場所を変えるなら、(a) 同じ出来事の通知の列、(b) EOF の通知から、待っている呼び出しを解放する（`Error("Engine Crashed/Exited")` を渡す）までの順序、の2つを試験で固定する。
+- **上の `audio-stopped` を含む列は、現行の接続の子が `Stopped` を送り、reader がそれを受け取った場合の順序**（`engine_event` が真を返すとき：`audio-conditions-changed` → `audio-stopped` → 応答）。次の場合は、これとは別の扱いになる。(a) 開始前の拒否（親が子へ送る前の検査、または子が初期の制御などをデバイスを開く前に拒むとき）：`Stopped` が出ないので `audio-stopped` も出ない。(b) 接続なし：`kill_engine` の経路で、`audio-conditions-changed` だけ（子へ `Stop` を送らない）。(c) 手動の復旧中の停止：本番モードの VST の切替・復旧が止まっているときは、`Stop` を送らず、復旧を取り消して `kill_engine`（`stop_primary` の先頭の分岐）。出るのは `audio-conditions-changed`（と条件つきの `live-modes-invalidated`）だけ。(c') 子がすでに終了した接続（reader が無効）の停止は、`reap_confirmed_stopped_connection` が後始末し、`Stop` を送らない。(d) 旧い接続の破棄：`epoch` が違う旧 reader の `Started`・`Stopped`・`Error` は `emit` されない（次の項）。また、`payload` を付けない旧いサイドカーの `Stopped` は、今の Host がパースエラーとして捨てる（`audio.rs:1049`）ので、`audio-stopped` は出ない。
+- **reader が `Response` より先に読んだ `Event` に対する旧の通知は、その `Response` より前に `emit` される**（応答の後に `Conditions::dispatch` や `AudioHost` が出す通知は含まない。reader が `Response` を待ち手へ渡す前に、同じスレッドが先に `Event` の行を読んで `emit` する。子が `Event` を `Response` より前に出すため）。**これは Rust が `emit` を呼ぶ順序の事実。WebView に届く順序は別で、W5 で測って分けて記録する。** F1a-1 で通知を出す場所を変えるなら、(a) 同じ出来事の通知の列、(b) EOF の通知から、待っている呼び出しを解放する（`Error("Engine Crashed/Exited")` を渡す）までの順序、の2つを試験で固定する。
 - 古い接続の通知：`engine_event(epoch, …)` は、`epoch` が現在と違えば偽を返し、`continue` する。したがって古い `Started`・`Stopped`・`Error` は `emit` されない。ただし、`LevelMeter`・`Loudness`・`ChannelLevels`・`VoiceCheck*`・`EditorOpened/Closed`・`ProcessingHealth`・`ControlStall` は、**`reader_active` が真のあいだは epoch を見ずに `emit` される**（旧 reader が終われば止まる）。
 - `audio-stream-error` の文字列は、自動の再開が `Stream Error` を含むかで判定している（`hooks/useAudioRecovery.ts:29`）。文字列は契約。
 
@@ -136,9 +138,9 @@
 | 経路 | 通知 |
 |---|---|
 | `stop_audio`（接続あり） | `audio-conditions-changed`、`audio-stopped`（子から） |
-| `stop_audio`（接続なし） | `audio-conditions-changed` のみ（`kill_engine` の `retire_engine`）。`audio-stopped` は出ない |
-| `restart_audio_engine`／`kill_engine` | `audio-conditions-changed` のみ。`audio-engine-exited`・`audio-error` は出ない（`reader_active` を先に偽にするため） |
-| `prepare_update`（子がある） | 先に `Stop`：`audio-conditions-changed`、`audio-stopped`、その後の `kill_engine` で `audio-conditions-changed`。`audio-engine-exited`・`audio-error` は出ない。子がなければ `audio-conditions-changed` のみ |
+| `stop_audio`（接続なし） | `audio-conditions-changed`（`kill_engine` の `retire_engine`）。`audio-stopped` は出ない。`kill_engine` を通るので、条件によっては `live-modes-invalidated` も出る（下の行） |
+| `restart_audio_engine`／`kill_engine` | `audio-conditions-changed`。本番モードの世代が有効で未退役、または保護が有効（`armed`）のときは、その前に `live-modes-invalidated` も出る（`invalidate_live_protection`。1回または2回）。`audio-engine-exited`・`audio-error` は出ない（`reader_active` を先に偽にするため） |
+| `prepare_update`（子がある） | 先に `Stop`：`audio-conditions-changed`、`audio-stopped`、その後の `kill_engine` で `audio-conditions-changed`。`audio-engine-exited`・`audio-error` は出ない。子がなければ `audio-conditions-changed`（と、条件によって `live-modes-invalidated`）。`kill_engine` の前に `live-modes-invalidated` が出る条件は上の行と同じ |
 | アプリの終了（`Drop`） | 何も出さない |
 | 異常終了（EOF） | 上の `audio-error` の (a) |
 
@@ -174,7 +176,7 @@
 
 1. 1〜7章の「F1a：変えない」のすべて。
 2. 旧の通知の名前・ペイロード・`emit` の順序（特に `audio-conditions-changed` が先）。
-3. **旧の通知は、今の経路のまま出す（F1a-0）。** reader からの `emit`、`AudioHost` のメソッドからの `emit`、`Conditions::dispatch` の前後の `audio-conditions-changed`、`emitter` の Mutex の下での複数の通知のまとめを、いずれも変えない。コマンドの結果を返す前に、旧の通知の発行が終わっている。Emitter のキューを経由して順序を変えない。Emitter は F1b の新しい通知（`audio-session`）とメーターのためだけに使う。F1a-1 で通知を出す場所を変える場合は、5章の最後の2つの順序（同じ出来事の通知の列、EOF の通知から待ち手の解放まで）を試験で固定してから変える。
+3. **旧の通知は、今の経路のまま出す（F1a-0）。** reader からの `emit`、`AudioHost` のメソッドからの `emit`、`Conditions::dispatch` の前後の `audio-conditions-changed`、`emitter` の Mutex の下での複数の通知のまとめを、いずれも変えない。保証するのは次の2つに限る。(1) 同じ子のイベントに対する通知の列（reader が出す順）。(2) reader がその要求の応答を待ち手へ渡すまでの順序（その要求の応答より前に、同じ子のイベントに対する通知を出し終えている）。応答の後に `dispatch` や `AudioHost` が出す `audio-conditions-changed`（たとえば停止・再起動の実測の列。9章）は、この保証に含めない。Emitter のキューを経由して順序を変えない。Emitter は F1b の新しい通知（`audio-session`）とメーターのためだけに使う。F1a-1 で通知を出す場所を変える場合は、5章の最後の2つの順序（同じ出来事の通知の列、EOF の通知から待ち手の解放まで）を試験で固定してから変える。
 4. **読み取りの待ちの境界：** `get_audio_state` と `get_saved_audio_config` は、いずれも `state.lock()` を取ってから読む。`Start` がロックを持っている間に呼ばれた読み取りは、開始が保存と `active_config` の更新を終えた後の値を返す。F1a-0 は同じ `Mutex` の経路を使い、actor に移した後も同じ待ちの境界を保つ（`SnapshotCell` にしない）。
 5. **`expectedState` の比較：** F1a-0 は、既存の完全一致のまま（`commands/audio.rs:433-447`）。旧の項目に写す処理は、F1b で拡張のキーを実際に足すときに入れる（試験は F1b の K3）。
 6. 意図した終了で `audio-engine-exited`・`audio-error` を出さないこと。
@@ -207,9 +209,22 @@
 | D-13 | F1a-1：Job の割り当ての失敗の扱い（その子を kill し、起動を失敗にする）。プロセスの終了を確認できない間（`Unconfirmed`）の要求の失敗（`engine_unconfirmed`、10秒）。遅れて終了を確かめられたら、操作できる状態に戻ったことを表示する | 今は割り当ての失敗を無視する。起動できない場合・操作できない時間が新しく生じる | **決定：承認する。ただし、承認の条件は「Windows の実プロセスでの確認」**：Job の作成・割り当て・待ちの失敗、EOF だけが来る場合、遅れた終了の確認（W1〜W4、設計 14.4）を確かめてから、F1a-1 のマージを承認する |
 | D-14 | 子の `Error` に世代と side を付ける。`apply_deadline` つきの適用 | 旧のペイロード（文字列）は保つ | 子の側の差分 |
 
-## 9. 確かめていないこと
+## 9. 実測した範囲と、確かめていないこと
 
-- 旧の通知とコマンドの応答が、WebView に届く順序（`emit` の呼び出しの順序だけを確かめた）。F1a-0 の互換の試験で、実際の WebView で測る。
+- 旧の通知とコマンドの応答が、WebView に届く順序：**実測した（2026-11-21、開発ビルドの実 WebView。2回目の測り直しの結果）。** 仕組みは、Rust の `AURALYN_EMIT_TRACE=1` と、WebView 側の `src/lib/w5Probe.ts`（`invoke` の呼び出し・応答（拒否）、購読の登録、通知の受信を `window.__auralynW5` に並べる）。手順は [TESTING](../TESTING.md) の W5。
+  - **訂正（1回目の記録）：** 1回目は、B（開始の失敗）と C（停止）で `audio-stopped` が出なかった（各10回）と記録した。これは製品の挙動ではなく、**古い子（サイドカー）で測ったため**。`tauri dev` はサイドカーをビルドせず、Host は `src-tauri/target/debug/audio_engine.exe` を使う。そこに残っていた子は `Stopped` に `payload` を付けない旧い形で、今の Host が `Engine IPC parse error: missing field 'payload'` として捨てた（そのログが20件。B・C の各10回に対応）。5章の「停止：`audio-conditions-changed`、`audio-stopped`、（応答）」は、版をそろえた測定で成り立った（下）。1回目の遅れの数値も、この表で置き換える。
+  - **子（今回）：** `D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe`（実行中の子のパスを `Win32_Process` で確かめた）。SHA-256 は `13A29A40722B933A2F998CBE8E20187A31D2ACFC860921EB5AC1EBF499CBEBE0`。これは、今のソース（`df234df3` と同じ `audio_engine/` と `bin/`。F1a-0 はサイドカーのコードを変えていない）から `cargo build --release --locked --bin audio_engine` で作った `target/release/audio_engine.exe`（2026-11-21 12:59）と同じファイル。`Engine IPC parse error` は0件。同じファイルを単独で起動して読んだ生の IPC：`Stop`（接続あり）は `{"kind":"Event","data":{"type":"Stopped","payload":{"stream_generation":1,"ended_stream_generation":1}}}` の次に `{"kind":"Response","data":{"type":"Success"}}`。開始の失敗は `Stopped`（`payload`：`{"stream_generation":2}`）の次に `Response::Error("Input device not found: no-such")`。
+  - **debug の子は使えなかった：** 今のソースから `npm run rebuild-engine` で作った debug の子（SHA-256 `87906AE1FA4E8E601A11DDBE41AC6B26EE0C518C3C3DB66E11EA08B373F7B6FC`）は、WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（終了コード 0xC00000FD）で落ちた（Host のログでは `audio-engine-exited`（`cause: device_open`）。単独起動でも再現）。サイドカーのコードは e3d37ead から変わっていないので、この差分のせいではない。原因は調べていない（#309 の記録にも、機器を開くときのスタックオーバーフローがある）。そのため、測定は release の子で行った。debug の子での挙動は未測定。
+  - 条件：Windows 11、`npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json`（Host は debug）、WASAPI（入力：再生リダイレクト、出力：Voicemeeter In 2、512、48000、独立出力 1/2）。画面の操作ではなく、画面と同じ `audioApi.start`・`stop`・`restart` を WebView から呼んだ。応答の後 700ms 待った。各場面10回。
+  - 結果（Rust が呼んだ順と、WebView が受け取った順は、50場面の全部で一致。食い違い0回）。`x` は `invoke-rejected`。
+    - A 開始の成功：`conditions ×4`、`audio-started`、`conditions`、応答（`resolved`）。9回。1回は、その後に `conditions ×2` が続いた。
+    - B 開始の失敗（存在しない機器）：`conditions ×4`、**`audio-stopped`**、`conditions`、応答（`x`、`rejected`）。10回。
+    - C 停止（接続あり）：`conditions ×2`、**`audio-stopped`**、`conditions`、応答（`resolved`）。10回。
+    - D 停止（接続なし）：開発セッションで子のプロセスを終了させ、reader が無効になったこと（`audio-engine-exited` と `audio-error` の受信）を確かめてから呼んだ。`conditions`、応答（`resolved`）。**`audio-stopped` は出ない**（子へ `Stop` を送らず、`kill_engine` の経路）。10回。
+    - E 再起動：`live-modes-invalidated`、`conditions ×6`、`audio-started`、`conditions`、応答、`conditions ×2`。10回。`audio-stopped`・`audio-engine-exited`・`audio-error` は出ない。
+  - 通知（A・B・C・E）は272件で、すべて届き、欠落は0。応答（A・B・C・E の40件）は、同じ場面の応答の前の `emit` がすべて届いた後に届いた。
+  - 遅れ（A・B・C・E。Rust の `emit` から WebView の受信まで）：中央値 0.5ms、最大 45.3ms。（`return` から応答の受信まで）：中央値 27.1ms、最大 46.1ms。
+  - この測定は、聴感・実音声の合格ではない。範囲外：子の異常終了（EOF）の通知の順（D の準備で起きたが、順は照合していない）、複数ウィンドウ、本番ビルド（計測点は開発ビルドだけ）、debug の子、`audio-level` などのメーター。
 - `get_audio_state` を、ロックを待たない形にしたときの、フロントの2秒ごとの照合への影響。
 - 子の `Stop` が、ストリームを実際に止める時間（フェードの待ち）。
 - `stop_audio` の `Pending` が落ちるタイミングで進む `revision` が、witness の照合に与える影響の細部。

@@ -387,9 +387,7 @@ impl State {
                 .parent()
                 .ok_or_else(|| anyhow!("保存先がありません"))?
                 .join("post-mix-runtime");
-            let mut child = AudioHost::new(root);
-            child.post_role = true;
-            self.child = Some(Box::new(child));
+            self.child = Some(Box::new(super::control::post_mix_child_host(root)));
         }
         let child = self.child.as_mut().expect("子Hostは作成済み");
         child.ensure_engine_running()?;
@@ -640,6 +638,10 @@ impl State {
         self.restored = false;
         self.enabled = false;
         self.running = false;
+    }
+    #[cfg(test)]
+    pub(super) fn adopt_child_for_test(&mut self, child: AudioHost) {
+        self.child = Some(Box::new(child));
     }
     pub(super) fn stop(&mut self) -> Result<()> {
         if let Some(child) = &mut self.child {

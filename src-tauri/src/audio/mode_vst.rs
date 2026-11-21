@@ -523,16 +523,6 @@ impl AudioHost {
             }
         }
     }
-    pub(crate) fn start_mode_vst_scheduler(host: &Arc<Mutex<AudioHost>>) {
-        let weak = Arc::downgrade(host);
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(10));
-            let Some(host) = weak.upgrade() else { break };
-            if let Ok(mut host) = host.lock() {
-                host.poll_mode_vst();
-            };
-        });
-    }
     pub(crate) fn poll_mode_vst(&mut self) {
         self.poll_orphan_mode_disk();
         let Some(mut tx) = self.mode_vst.transaction.take() else {

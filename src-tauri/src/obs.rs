@@ -1,5 +1,5 @@
-use crate::audio::AudioState;
 use crate::audio::{conditions::Witness, ActiveAudioConfig};
+use crate::audio::{AudioState, Entry, EntryKind};
 use crate::routing_diag;
 use futures_util::StreamExt;
 use obws::requests::EventSubscription;
@@ -48,7 +48,7 @@ impl ReachTone for AudioState {
         let host = self.0.clone();
         tokio::task::spawn_blocking(move || {
             let mut host = host
-                .lock()
+                .lock(Entry::new(EntryKind::Obs, "play"))
                 .map_err(|_| "音声状態を取得できません".to_string())?;
             let witness = host
                 .begin_obs_reach_tone(duration_ms)
@@ -67,7 +67,7 @@ impl ReachTone for AudioState {
         let witness = receipt.witness.clone();
         tokio::task::spawn_blocking(move || {
             let mut host = host
-                .lock()
+                .lock(Entry::new(EntryKind::Obs, "stop"))
                 .map_err(|_| "音声状態を取得できません".to_string())?;
             let witness = host
                 .finish_obs_reach_tone(&witness)

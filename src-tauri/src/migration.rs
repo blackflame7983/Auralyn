@@ -472,7 +472,12 @@ pub async fn apply_settings(
     let audio = app.state::<crate::audio::AudioState>().0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = guard;
-        let mut host = audio.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut host = audio
+            .lock(crate::audio::Entry::new(
+                crate::audio::EntryKind::Migration,
+                "apply_migration",
+            ))
+            .map_err(|_| "音声状態を取得できません")?;
         host.check_can_interrupt().map_err(|e| e.to_string())?;
         let previous = snapshot(&root, ui)?;
         if !restore {

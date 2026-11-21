@@ -710,6 +710,21 @@ RecoveryAuthority { id, failed_stream, conn, commit_manual_epoch, commit_stop_fl
 
 分割の理由：F1a は、通信・プロセスの寿命・入口の移行・読み取りの境界など、互いに独立に確かめられる単位を含む。まとめて入れると、互換の試験の失敗の原因が特定できない。F1a-0 だけなら、`Mutex` を残したまま、受付順の記録と互換の試験の基準を先に固定できる。
 
+### 13.1 F1a-0 の実装の指針（この節と互換の契約だけで、実装と試験に進める）
+
+**目的：** `9567061a` の互換を試験で固定し、入口を1か所にまとめ、受付の順序を記録する。**製品の挙動は変えない。**
+
+1. **`AudioControl`（入口）：** 今と同じ場所（各コマンド、トレイ、ショートカット、更新・移行・一時利用、OBS、warmup、スケジューラ、配信セットなど）で、**同じ `Arc<Mutex<AudioHost>>` の `Mutex` を取る**入口にする。`run_blocking` との組み合わせも今のまま。`AudioControl` は、ロックを取る前後の記録と、入口の種類の名前を足すだけで、ロックの順序・保持の長さ・実行するスレッドを変えない。
+2. **`Admission`（受付の記録）：** 受付の通し番号 `seq` と入口の種類を、**記録するだけ**。記録は、ロックを取ることとは**別**（記録の順序と、実際にロックを取る順序は、一致しなくてよい）。**受付の記録の順序で、操作を並べ替えない。勝ち負けにも使わない。** 10ms のスケジューラも `AudioControl` を通るが、連番を振ることと、種類ごとの件数を数えることだけを行い、個々の連番と入口の組は履歴（`records()`）に残さない（直近の操作の記録を押し出さないため。`audio/control.rs` の `Admission::accept`）。 試験 K11 で、「受付の記録は A→B だが、実際にロックを取る順は B→A」の場合を固定し、記録を勝敗に使っていないことを確かめる。
+3. **`stop_audio`：** `interrupt_restore()` が返す `Pending` を、**ロックを待つ前に作り、ハンドラが終わるまで持つ**（`commands/audio.rs:484-496`、`audio/conditions.rs:55-58`）。今と同じ。
+4. **読み取り：** `get_audio_state`・`get_saved_audio_config` は、**`state.lock()` を取ってから読む**（同じ `Mutex` の経路。`SnapshotCell` にしない）。試験 K2・K10 は、`Start` がロックを取ったことを確かめてから読み取りを出し、開始が保存と状態の更新を終えた後の値を返すことを確かめる。
+5. **通知：** 今の経路のまま（reader の `emit`、`AudioHost` の `emit`、`Conditions::dispatch` の前後の通知、`emitter` の Mutex）。`expectedState` は、既存の完全一致のまま（旧の形に写す処理は入れない）。
+6. **入口の照合：** 4.6 の一覧に加えて、次を確かめる。(a) 同じ `Arc<Mutex<AudioHost>>` を渡している配信セット（`commands/bundles.rs:2011`）、(b) 10ms のスケジューラ（`audio/mode_vst.rs:526-535`。`weak` で `lock` する）、(c) 起動時の設定（`lib.rs:300-312`）、(d) 終了の経路（`quit_app`、`Drop for AudioHost`、`audio.rs:2945`）、(e) 配信ミックスの第2の `AudioHost`（`AudioState` を通らない。`audio/post_mix.rs:383-392`）。一覧にない入口がないことを、`state.lock()` と `AudioState` の全使用箇所の検索で確かめる。
+7. **試験：** 互換の契約の表を試験にする（合格の条件の表の K 群、W5）。試験の継ぎ目は、既存の試験が使うもの（`AudioHost::new` と、`execute_running_command` へ差し込む応答の模擬、`conditions`）を使う。足りない継ぎ目があれば、**製品の挙動を変えない最小の差し込み**だけを足す。`ScriptedEngine`（14章）は F1a-1 から。W5（WebView への到着の順序）は、実際の WebView で測り、**Rust が `emit` を呼ぶ順序と、WebView に届く順序を、分けて記録する**。
+8. **完了の条件：** K 群の全行が通る。既存の Rust 試験が通る。`npm run verify -- --static --rust` が通る。互換の契約の「F1a で変えない」の各項を、試験が1つ以上カバーする。W5 の測定結果を互換の契約に追記する。
+
+**F1a-0 に含めないもの：** actor、受信箱、reader/writer/reaper、`SnapshotCell`、F1b のキュー付きの Emitter、保存の変更、`Superseded`、新しい通知、子の変更。**含めるもの：** 旧の `emit` を呼ぶ順序を変えない同期の薄い包み（`AudioEmitter`。`AURALYN_EMIT_TRACE` による W5 の追跡と、試験の `Recorder` のためのもの）。キューも別スレッドも持たない。
+
 ### 13.2 UI の構成の分岐点（J-11）
 
 利用者は、Rust + Tauri から Rust + GPUI（GPUI Kit）への移行を検討している。F2 までは、どちらの UI でも必要なので必ず行う。F3 は、利用者に見える害を除く最小（F3-min）だけを行い、そこで分岐する。
@@ -718,21 +733,6 @@ RecoveryAuthority { id, failed_stream, conn, commit_manual_epoch, commit_stop_fl
 - **GPUI は別のブランチで試作する。** main は Tauri の構成のまま保つ。試作で確かめることは、Windows での安定性と配布、読み上げ、IME での日本語入力、日英の切り替え、VST のエディタの窓との共存、試験の手段（今のブラウザ試験の代わり）。
 - **戻る道を残す。** GPUI で問題が出たら、試作のブランチを閉じ、main の Tauri の構成で F3-rest と F4 を続ける。F3-min までに入れたものは、どちらの道でもそのまま使える。
 - **移る場合。** F3-rest と F4 は行わない。旧の通知と TypeScript の画面は、GPUI の画面に置き換わった時点で、まとめて片付ける。
-
-### 13.1 F1a-0 の実装の指針（この節と互換の契約だけで、実装と試験に進める）
-
-**目的：** `9567061a` の互換を試験で固定し、入口を1か所にまとめ、受付の順序を記録する。**製品の挙動は変えない。**
-
-1. **`AudioControl`（入口）：** 今と同じ場所（各コマンド、トレイ、ショートカット、更新・移行・一時利用、OBS、warmup、スケジューラ、配信セットなど）で、**同じ `Arc<Mutex<AudioHost>>` の `Mutex` を取る**入口にする。`run_blocking` との組み合わせも今のまま。`AudioControl` は、ロックを取る前後の記録と、入口の種類の名前を足すだけで、ロックの順序・保持の長さ・実行するスレッドを変えない。
-2. **`Admission`（受付の記録）：** 受付の通し番号 `seq` と入口の種類を、**記録するだけ**。記録は、ロックを取ることとは**別**（記録の順序と、実際にロックを取る順序は、一致しなくてよい）。**受付の記録の順序で、操作を並べ替えない。勝ち負けにも使わない。** 試験 K11 で、「受付の記録は A→B だが、実際にロックを取る順は B→A」の場合を固定し、記録を勝敗に使っていないことを確かめる。
-3. **`stop_audio`：** `interrupt_restore()` が返す `Pending` を、**ロックを待つ前に作り、ハンドラが終わるまで持つ**（`commands/audio.rs:484-496`、`audio/conditions.rs:55-58`）。今と同じ。
-4. **読み取り：** `get_audio_state`・`get_saved_audio_config` は、**`state.lock()` を取ってから読む**（同じ `Mutex` の経路。`SnapshotCell` にしない）。試験 K2・K10 は、`Start` がロックを取ったことを確かめてから読み取りを出し、開始が保存と状態の更新を終えた後の値を返すことを確かめる。
-5. **通知：** 今の経路のまま（reader の `emit`、`AudioHost` の `emit`、`Conditions::dispatch` の前後の通知、`emitter` の Mutex）。`expectedState` は、既存の完全一致のまま（旧の形に写す処理は入れない）。
-6. **入口の照合：** 4.6 の一覧に加えて、次を確かめる。(a) 同じ `Arc<Mutex<AudioHost>>` を渡している配信セット（`commands/bundles.rs:2011`）、(b) 10ms のスケジューラ（`audio/mode_vst.rs:526-535`。`weak` で `lock` する）、(c) 起動時の設定（`lib.rs:300-312`）、(d) 終了の経路（`quit_app`、`Drop for AudioHost`、`audio.rs:2945`）、(e) 配信ミックスの第2の `AudioHost`（`AudioState` を通らない。`audio/post_mix.rs:383-392`）。一覧にない入口がないことを、`state.lock()` と `AudioState` の全使用箇所の検索で確かめる。
-7. **試験：** 互換の契約の表を試験にする（合格の条件の表の K 群、W5）。試験の継ぎ目は、既存の試験が使うもの（`AudioHost::new` と、`execute_running_command` へ差し込む応答の模擬、`conditions`）を使う。足りない継ぎ目があれば、**製品の挙動を変えない最小の差し込み**だけを足す。`ScriptedEngine`（14章）は F1a-1 から。W5（WebView への到着の順序）は、実際の WebView で測り、**Rust が `emit` を呼ぶ順序と、WebView に届く順序を、分けて記録する**。
-8. **完了の条件：** K 群の全行が通る。既存の Rust 試験が通る。`npm run verify -- --static --rust` が通る。互換の契約の「F1a で変えない」の各項を、試験が1つ以上カバーする。W5 の測定結果を互換の契約に追記する。
-
-**F1a-0 に含めないもの：** actor、受信箱、reader/writer/reaper、`SnapshotCell`、Emitter、保存の変更、`Superseded`、新しい通知、子の変更。
 
 ## F2 の前に確かめること
 

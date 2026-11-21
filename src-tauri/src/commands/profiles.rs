@@ -60,7 +60,9 @@ pub(crate) async fn save_profile(
     let state = state.0.clone();
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("save_profile"))
+            .map_err(|_| "Failed to lock audio state")?;
 
         let mut audio_config = None;
         let mut noise_control = None;
@@ -142,7 +144,9 @@ pub(crate) async fn apply_profile(
         super::audio::enumerate_devices_async(state.clone(), false).await?;
     }
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("apply_profile"))
+            .map_err(|_| "Failed to lock audio state")?;
         profile::apply_profile(
             &config_dir,
             &mut host,
@@ -183,7 +187,9 @@ pub(crate) async fn restore_backup_profile(
     .await?;
     super::audio::enumerate_devices_async(state.clone(), false).await?;
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("restore_backup_profile"))
+            .map_err(|_| "Failed to lock audio state")?;
         profile::apply_profile(
             &config_dir,
             &mut host,

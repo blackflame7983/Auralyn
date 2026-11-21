@@ -8,7 +8,6 @@ use crate::{
     vst_host::presets::*,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Default)]
@@ -570,7 +569,7 @@ fn validate_checked_conditions(
     Ok(())
 }
 async fn validate_checked(
-    host: Arc<Mutex<audio::AudioHost>>,
+    host: audio::AudioControl,
     claim: &CheckedClaim,
     include_output: bool,
     include_live: bool,
@@ -578,7 +577,9 @@ async fn validate_checked(
 ) -> Result<(), String> {
     let expected = claim.expected.clone();
     super::run_blocking(move || {
-        let mut host = host.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut host = host
+            .lock(audio::Entry::bundle("validate_checked"))
+            .map_err(|_| "音声状態を取得できません")?;
         host.preflight_live_changes().map_err(|e| e.to_string())?;
         let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
         validate_checked_conditions(
@@ -1981,18 +1982,16 @@ fn selected_start_intent(
     })
 }
 
-async fn capture_async(
-    host: Arc<Mutex<audio::AudioHost>>,
-) -> Result<(Captured, ControlWitness), String> {
+async fn capture_async(host: audio::AudioControl) -> Result<(Captured, ControlWitness), String> {
     super::run_blocking(move || {
-        let mut host = host.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut host = host
+            .lock(audio::Entry::bundle("capture_async"))
+            .map_err(|_| "音声状態を取得できません")?;
         capture(&mut host)
     })
     .await
 }
-async fn settle_capture(
-    host: Arc<Mutex<audio::AudioHost>>,
-) -> Result<(Captured, ControlWitness), String> {
+async fn settle_capture(host: audio::AudioControl) -> Result<(Captured, ControlWitness), String> {
     // RT ACK待ちを有限にする。失敗の理由を成功や未適用へ置換しない。
     let mut last = "反映状態を取得できません".to_string();
     for _ in 0..40 {
@@ -2088,7 +2087,7 @@ pub(crate) async fn broadcast_bundle(
                 let source = host.clone();
                 super::run_blocking(move || {
                     source
-                        .lock()
+                        .lock(audio::Entry::bundle("broadcast_bundle"))
                         .map_err(|_| "音声状態を取得できません")?
                         .process_snapshot_supported()
                         .map_err(|e| e.to_string())
@@ -2108,7 +2107,9 @@ pub(crate) async fn broadcast_bundle(
                 }
                 let source = host.clone();
                 super::run_blocking(move || {
-                    let mut host = source.lock().map_err(|_| "音声状態を取得できません")?;
+                    let mut host = source
+                        .lock(audio::Entry::bundle("broadcast_bundle"))
+                        .map_err(|_| "音声状態を取得できません")?;
                     if include_live {
                         host.full_snapshot_supported()
                     } else {
@@ -2358,7 +2359,9 @@ pub(crate) async fn broadcast_bundle(
                 let include_process = plan.bundle.process.is_some();
                 let include_live = plan.bundle.live.is_some();
                 super::run_blocking(move || {
-                    let mut host = check_host.lock().map_err(|_| "音声状態を取得できません")?;
+                    let mut host = check_host
+                        .lock(audio::Entry::bundle("broadcast_bundle"))
+                        .map_err(|_| "音声状態を取得できません")?;
                     if include_process {
                         host.process_snapshot_supported()
                     } else if include_live {
@@ -2380,7 +2383,7 @@ pub(crate) async fn broadcast_bundle(
                 let include_process = plan.bundle.process.is_some();
                 super::run_blocking(move || {
                     let mut host = checked_host
-                        .lock()
+                        .lock(audio::Entry::bundle("broadcast_bundle"))
                         .map_err(|_| "音声状態を取得できません")?;
                     if include_process {
                         host.process_snapshot_supported()
@@ -2469,7 +2472,7 @@ pub(crate) async fn broadcast_bundle(
             let host_begin = host.clone();
             let token = super::run_blocking(move || {
                 host_begin
-                    .lock()
+                    .lock(audio::Entry::bundle("broadcast_bundle"))
                     .map_err(|_| "音声状態を取得できません")?
                     .begin_live_changes()
                     .map_err(|e| e.to_string())
@@ -2487,7 +2490,7 @@ pub(crate) async fn broadcast_bundle(
             )
             .await;
             let end = super::run_blocking(move || {
-                host.lock()
+                host.lock(audio::Entry::bundle("broadcast_bundle"))
                     .map_err(|_| "音声状態を取得できません")?
                     .end_live_changes(token)
                     .map_err(|e| e.to_string())
@@ -2551,7 +2554,7 @@ pub(crate) async fn broadcast_bundle(
             let host_begin = host.clone();
             let token = super::run_blocking(move || {
                 host_begin
-                    .lock()
+                    .lock(audio::Entry::bundle("broadcast_bundle"))
                     .map_err(|_| "音声状態を取得できません")?
                     .begin_live_changes()
                     .map_err(|e| e.to_string())
@@ -2559,7 +2562,7 @@ pub(crate) async fn broadcast_bundle(
             .await?;
             let result = undo_owned(&root, host.clone(), &obs, history).await;
             let end = super::run_blocking(move || {
-                host.lock()
+                host.lock(audio::Entry::bundle("broadcast_bundle"))
                     .map_err(|_| "音声状態を取得できません")?
                     .end_live_changes(token)
                     .map_err(|e| e.to_string())
@@ -2596,7 +2599,7 @@ pub(crate) async fn broadcast_bundle(
 
 async fn apply_owned(
     root: &std::path::Path,
-    host: Arc<Mutex<audio::AudioHost>>,
+    host: audio::AudioControl,
     obs: &obs::ObsState,
     plan: Preview,
     session: &mut Session,
@@ -2716,7 +2719,9 @@ async fn apply_owned(
     let verify_devices = recovery_devices.clone();
     let apply_host = host.clone();
     let applied = super::run_blocking(move || {
-        let mut host = apply_host.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut host = apply_host
+            .lock(audio::Entry::bundle("apply_owned"))
+            .map_err(|_| "音声状態を取得できません")?;
         witness.validate()?;
         let summary = host.bundle_change_scope(|host| {
             apply_selected(&root_owned, host, &target, &before, recovery_devices)
@@ -2788,7 +2793,7 @@ async fn apply_owned(
         let conditions_host = host.clone();
         let witness = super::run_blocking(move || {
             conditions_host
-                .lock()
+                .lock(audio::Entry::bundle("apply_owned"))
                 .map_err(|_| "音声状態を取得できません")?
                 .conditions()
                 .snapshot()
@@ -2823,7 +2828,7 @@ async fn apply_owned(
 
 async fn undo_owned(
     root: &std::path::Path,
-    host: Arc<Mutex<audio::AudioHost>>,
+    host: audio::AudioControl,
     obs: &obs::ObsState,
     history: &mut Operation,
 ) -> Result<(), String> {
@@ -2867,7 +2872,9 @@ async fn undo_owned(
     let verify_backup = backup.clone();
     let apply_host = host.clone();
     let summary = super::run_blocking(move || {
-        let mut host = apply_host.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut host = apply_host
+            .lock(audio::Entry::bundle("undo_owned"))
+            .map_err(|_| "音声状態を取得できません")?;
         // OBS await/実行queue待ちの後、実際に変更するHost lock内で再照合する。
         witness.validate()?;
         let (fresh, _) = capture(&mut host)?;
@@ -2922,7 +2929,7 @@ async fn undo_owned(
     Ok(())
 }
 
-async fn refresh_current(host: Arc<Mutex<audio::AudioHost>>, history: &mut Operation) {
+async fn refresh_current(host: audio::AudioControl, history: &mut Operation) {
     if let Ok((current, _)) = settle_capture(host).await {
         history.result.current = Some(current_dto(&current));
         // 失敗後の実値は表示同期にだけ使い、外部編集をUndoの新しい基準へ採用しない。

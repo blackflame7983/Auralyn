@@ -30,6 +30,7 @@ if (import.meta.env.DEV) {
     if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') location.search = prototypeRequested ? '' : '?proto=ab';
   });
 }
+if (import.meta.env.DEV) void import('./lib/w5Probe').then(({ installW5Probe }) => installW5Probe());
 initializeAppVisibility();
 if (prototypeRequested) {
   import('./prototypes/PrototypeLab').then(({ default: PrototypeLab }) => render(<PrototypeLab />));
