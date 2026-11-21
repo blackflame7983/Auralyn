@@ -163,7 +163,10 @@ pub async fn install_update(
         app.save_window_state(tauri_plugin_window_state::StateFlags::all())
             .map_err(|e| e.to_string())?;
         audio
-            .lock()
+            .lock(crate::audio::Entry::new(
+                crate::audio::EntryKind::Update,
+                "prepare_update",
+            ))
             .map_err(|_| "音声状態を取得できません")?
             .prepare_update()
             .map_err(|e| e.to_string())?;
@@ -171,7 +174,10 @@ pub async fn install_update(
         let result = update.install(bytes).map_err(|e| {
             format!("更新できませんでした。音声は停止しています。音声設定から再開してください: {e}")
         });
-        if let Ok(mut host) = audio.lock() {
+        if let Ok(mut host) = audio.lock(crate::audio::Entry::new(
+            crate::audio::EntryKind::Update,
+            "finish_update_attempt",
+        )) {
             host.finish_update_attempt();
         }
         result

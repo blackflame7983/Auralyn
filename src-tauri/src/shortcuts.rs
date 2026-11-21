@@ -420,7 +420,10 @@ pub fn dispatch(app: AppHandle, id: u32) {
             let audio = app.state::<crate::audio::AudioState>();
             let mut host = audio
                 .0
-                .lock()
+                .lock(crate::audio::Entry::new(
+                    crate::audio::EntryKind::Shortcut,
+                    "global_shortcut",
+                ))
                 .map_err(|_| ShortcutError::AudioStateUnavailable)?;
             // 開始前に待機していた操作は、入力開始後に実行しない。
             let shortcuts = app.state::<Shortcuts>();

@@ -1,4 +1,7 @@
 pub(crate) mod conditions;
+pub(crate) mod control;
+pub(crate) mod emit;
+pub use control::{AudioControl, Entry, EntryKind};
 mod engine_exit;
 pub(crate) mod frontend_bootstrap;
 mod live_bundle;
@@ -22,7 +25,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
     crate::migration::write_json(path, config).map_err(anyhow::Error::msg)
@@ -252,7 +255,9 @@ pub struct AudioHost {
     // Since we assume sequential commands from the UI (mutex locked AudioState),
     // we only have one pending request at a time.
     pending_reply_tx: Arc<ReplySlot>,
-    emitter: Arc<Mutex<Option<AppHandle>>>,
+    emitter: Arc<Mutex<Option<emit::AudioEmitter>>>,
+    #[cfg(test)]
+    test_engine_launcher: Option<Arc<dyn Fn() -> Result<Child> + Send + Sync>>,
     cached_devices: Option<AudioDeviceList>,
     engine_generation: u64,
     bundle_change_generation: Option<u64>,
@@ -513,6 +518,8 @@ impl AudioHost {
             stdin: None,
             pending_reply_tx: Arc::new(ReplySlot::default()),
             emitter: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            test_engine_launcher: None,
             cached_devices: None,
             engine_generation: 0,
             bundle_change_generation: None,
@@ -543,7 +550,7 @@ impl AudioHost {
     }
 
     pub fn set_event_emitter(&mut self, handle: AppHandle) {
-        *self.emitter.lock().unwrap() = Some(handle);
+        *self.emitter.lock().unwrap() = Some(emit::AudioEmitter::app(handle));
     }
 
     pub(crate) fn conditions(&self) -> Arc<conditions::Conditions> {
@@ -598,45 +605,11 @@ impl AudioHost {
         }
     }
 
-    fn ensure_engine_running(&mut self) -> Result<()> {
-        self.guard_mode_vst()?;
-        if self.maintenance {
-            return Err(anyhow!("更新を適用中のため音声操作はできません。"));
+    fn spawn_engine_process(&self) -> Result<Child> {
+        #[cfg(test)]
+        if let Some(launch) = &self.test_engine_launcher {
+            return launch();
         }
-        // ... (check child logic same as before) ...
-        if self.child.is_some() {
-            // Check if still alive
-            if let Some(c) = self.child.as_mut() {
-                match c.try_wait() {
-                    Ok(Some(status)) => {
-                        log::error!("Audio Engine exited unexpectedly! Status: {}", status);
-                        log::warn!("Forcing restart with empty state");
-                        self.reader_active.store(false, Ordering::Release);
-                        self.child = None;
-                        self.stdin = None;
-                        #[cfg(windows)]
-                        {
-                            self.engine_job = None;
-                        }
-                    }
-                    Ok(None) => return Ok(()), // Running
-                    Err(e) => {
-                        log::error!("Error waiting on audio engine child process: {}", e);
-                        self.reader_active.store(false, Ordering::Release);
-                        self.child = None;
-                        self.stdin = None;
-                        #[cfg(windows)]
-                        {
-                            self.engine_job = None;
-                        }
-                    }
-                }
-            }
-        }
-
-        log::info!("Spawning Audio Engine Sidecar...");
-        let condition_epoch = self.conditions.new_engine();
-        self.notify_conditions_changed();
         let cwd = std::env::current_dir()?;
         log::debug!("  CWD: {:?}", cwd);
 
@@ -721,7 +694,7 @@ impl AudioHost {
         log::info!("Found engine at: {:?}", binary_path);
 
         #[cfg(windows)]
-        let mut child = {
+        let child = {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             let mut command = Command::new(binary_path);
@@ -738,7 +711,7 @@ impl AudioHost {
         };
 
         #[cfg(not(windows))]
-        let mut child = {
+        let child = {
             let mut command = Command::new(binary_path);
             if self.post_role {
                 command.arg("--post-mix-worker");
@@ -750,6 +723,49 @@ impl AudioHost {
             self.apply_engine_tuning_env(&mut command);
             command.spawn()?
         };
+        Ok(child)
+    }
+
+    fn ensure_engine_running(&mut self) -> Result<()> {
+        self.guard_mode_vst()?;
+        if self.maintenance {
+            return Err(anyhow!("更新を適用中のため音声操作はできません。"));
+        }
+        // ... (check child logic same as before) ...
+        if self.child.is_some() {
+            // Check if still alive
+            if let Some(c) = self.child.as_mut() {
+                match c.try_wait() {
+                    Ok(Some(status)) => {
+                        log::error!("Audio Engine exited unexpectedly! Status: {}", status);
+                        log::warn!("Forcing restart with empty state");
+                        self.reader_active.store(false, Ordering::Release);
+                        self.child = None;
+                        self.stdin = None;
+                        #[cfg(windows)]
+                        {
+                            self.engine_job = None;
+                        }
+                    }
+                    Ok(None) => return Ok(()), // Running
+                    Err(e) => {
+                        log::error!("Error waiting on audio engine child process: {}", e);
+                        self.reader_active.store(false, Ordering::Release);
+                        self.child = None;
+                        self.stdin = None;
+                        #[cfg(windows)]
+                        {
+                            self.engine_job = None;
+                        }
+                    }
+                }
+            }
+        }
+
+        log::info!("Spawning Audio Engine Sidecar...");
+        let condition_epoch = self.conditions.new_engine();
+        self.notify_conditions_changed();
+        let mut child = self.spawn_engine_process()?;
 
         // Best-effort: kill process tree (child + grandchildren) on host drop/restart (Windows)
         #[cfg(windows)]
@@ -3038,7 +3054,7 @@ fn start_with_mute(
 }
 
 // Global state container
-pub struct AudioState(pub Arc<Mutex<AudioHost>>);
+pub struct AudioState(pub control::AudioControl);
 
 /// Translate common audio engine errors into user-friendly Japanese messages.
 pub fn localize_audio_error(e: String) -> String {
@@ -3089,3 +3105,15 @@ mod config_storage_tests;
 #[cfg(test)]
 #[path = "audio/tests/device_scan_tests.rs"]
 mod device_scan_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/compat_support.rs"]
+pub(crate) mod compat_support;
+
+#[cfg(test)]
+#[path = "audio/tests/compat_tests.rs"]
+mod compat_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/control_tests.rs"]
+mod control_tests;

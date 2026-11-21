@@ -208,7 +208,10 @@ pub(crate) async fn acknowledge_session_review(
     let host = state.0.clone();
     crate::commands::run_blocking(move || {
         let observation = host
-            .lock()
+            .lock(crate::audio::Entry::new(
+                crate::audio::EntryKind::TemporarySession,
+                "acknowledge_session_review",
+            ))
             .map_err(|_| "音声状態を取得できません")?
             .auto_gain(crate::audio_engine::auto_gain::Request::Status)
             .map_err(|e| e.to_string())?;
@@ -279,7 +282,12 @@ pub(crate) async fn restart_temporary_session(
     };
     let state = app.state::<crate::audio::AudioState>().0.clone();
     crate::commands::run_blocking(move || {
-        let mut audio = state.lock().map_err(|_| "音声状態を取得できません")?;
+        let mut audio = state
+            .lock(crate::audio::Entry::new(
+                crate::audio::EntryKind::TemporarySession,
+                "switch_session",
+            ))
+            .map_err(|_| "音声状態を取得できません")?;
         audio.preflight_live_changes().map_err(|e| e.to_string())?;
         if let Some(root) = snapshot_root {
             crate::commands::bundles::preserve_temporary_runtime(&root, &mut audio)?;

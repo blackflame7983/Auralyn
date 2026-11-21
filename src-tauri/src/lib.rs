@@ -1,6 +1,5 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::await_holding_lock)]
-use std::sync::{Arc, Mutex};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
@@ -71,6 +70,11 @@ async fn set_autostart_enabled(
 /// 上の帯のメニューの「Auralyn を終了」とトレイの「終了」の共通の終了。終了コードは呼び出し側から受け取らない。
 #[tauri::command]
 fn quit_app(app: AppHandle) {
+    if let Some(audio_state) = app.try_state::<audio::AudioState>() {
+        audio_state
+            .0
+            .note(audio::Entry::new(audio::EntryKind::Quit, "quit_app"));
+    }
     app.exit(0);
 }
 
@@ -306,9 +310,9 @@ pub fn run() {
                 audio_host.require_explicit_start();
             }
             app.manage(audio::conditions::ConditionState(audio_host.conditions()));
-            app.manage(audio::AudioState(Arc::new(Mutex::new(audio_host))));
+            app.manage(audio::AudioState(audio::AudioControl::new(audio_host)));
             let state = app.state::<audio::AudioState>();
-            audio::AudioHost::start_mode_vst_scheduler(&state.0);
+            state.0.start_mode_vst_scheduler();
 
             // Explicitly set window icon (Fix for taskbar icon issue)
             if let Some(window) = app.get_webview_window("main") {
@@ -348,7 +352,10 @@ pub fn run() {
                     }
                     "mute_toggle" => {
                         if let Some(audio_state) = app.try_state::<audio::AudioState>() {
-                            if let Ok(mut host) = audio_state.0.lock() {
+                            if let Ok(mut host) = audio_state
+                                .0
+                                .lock(audio::Entry::new(audio::EntryKind::Tray, "mute_toggle"))
+                            {
                                 let _ = host.toggle_global_mute();
                             }
                         }
@@ -379,14 +386,19 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // Lock and set the emitter
-            if let Ok(mut host) = state.0.lock() {
+            if let Ok(mut host) = state.0.lock(audio::Entry::new(
+                audio::EntryKind::Startup,
+                "set_event_emitter",
+            )) {
                 host.set_event_emitter(handle);
             }
 
             // Warmup Audio Engine (Spawn Sidecar in Background)
             let host_clone = state.0.clone();
             std::thread::spawn(move || {
-                if let Ok(mut host) = host_clone.lock() {
+                if let Ok(mut host) =
+                    host_clone.lock(audio::Entry::new(audio::EntryKind::Warmup, "warmup"))
+                {
                     log::info!("Warming up Audio Engine...");
                     if let Err(e) = host.warmup() {
                         log::error!("Failed to warmup audio engine: {}", e);

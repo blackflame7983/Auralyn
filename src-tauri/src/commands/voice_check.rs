@@ -13,7 +13,9 @@ pub(crate) async fn voice_check_preview(
 ) -> Result<crate::audio_engine::voice_check::preview::Snapshot, String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("voice_check_preview"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.voice_check_preview(request)
             .map_err(|error| error.to_string())
     })
@@ -63,7 +65,9 @@ pub(crate) async fn start_voice_check(
 ) -> Result<(), String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("start_voice_check"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.start_voice_check(max_ms.unwrap_or(10_000))
             .map_err(|e| e.to_string())
     })
@@ -74,7 +78,9 @@ pub(crate) async fn start_voice_check(
 pub(crate) async fn stop_voice_check(state: State<'_, audio::AudioState>) -> Result<(), String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("stop_voice_check"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.stop_voice_check().map_err(|e| e.to_string())
     })
     .await
@@ -88,7 +94,9 @@ pub(crate) async fn play_voice_check(
 ) -> Result<(), String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("play_voice_check"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.play_voice_check(source, loop_playback.unwrap_or(true))
             .map_err(|e| e.to_string())
     })
@@ -101,7 +109,9 @@ pub(crate) async fn stop_voice_check_playback(
 ) -> Result<(), String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("stop_voice_check_playback"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.stop_voice_check_playback().map_err(|e| e.to_string())
     })
     .await
@@ -121,7 +131,9 @@ pub(crate) async fn export_voice_check_wav(
 
         match path {
             Some(p) => {
-                let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+                let mut host = state
+                    .lock(audio::Entry::command("export_voice_check_wav"))
+                    .map_err(|_| "Failed to lock audio state")?;
                 host.export_voice_check(p.to_string_lossy().to_string(), source)
                     .map_err(|e| e.to_string())
             }
@@ -139,7 +151,9 @@ pub(crate) async fn export_voice_check(
 ) -> Result<(), String> {
     let state = state.0.clone();
     super::run_blocking(move || {
-        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        let mut host = state
+            .lock(audio::Entry::command("export_voice_check"))
+            .map_err(|_| "Failed to lock audio state")?;
         host.export_voice_check(path, source)
             .map_err(|e| e.to_string())
     })
@@ -164,7 +178,9 @@ pub(crate) async fn analyze_voice_check(
         let processed_path = temp_dir.join("processed.wav");
 
         let buffer_size = {
-            let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+            let mut host = state
+                .lock(audio::Entry::command("analyze_voice_check"))
+                .map_err(|_| "Failed to lock audio state")?;
             let buffer_size = host.get_state().config.as_ref().and_then(|c| c.buffer_size);
             host.export_voice_check(raw_path.to_string_lossy().to_string(), "raw".to_string())
                 .map_err(|e| e.to_string())?;
