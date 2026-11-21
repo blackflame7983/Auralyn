@@ -280,10 +280,15 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
             host.post_mix.restored = true;
             let (_, witness) = host.capture_bundle_mixing().unwrap();
             seam::set_wait(seam::Wait::Stuck);
+            let epoch_before = host.post_mix.epoch.clone();
             let error = host
                 .with_bundle_mixing(&target, &witness, |_| Ok(()))
                 .unwrap_err();
             assert_eq!(error, original, "元のエラーが返る");
+            assert_ne!(
+                host.post_mix.epoch, epoch_before,
+                "ロールバックで State が差し替わっている"
+            );
             assert_eq!(
                 host.retired.pending(Role::PostMix),
                 1,

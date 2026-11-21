@@ -207,6 +207,38 @@ fn idle_grandchild_entry() {
     }
 }
 
+/// 作った直後から子を預かる。どこで失敗しても（panic を含む）、Drop で kill して終了を待つ。
+/// 停止の状態で作った子を、割り当て・再開・ハンドルの取得の前に、試験の失敗で残さない。
+pub(crate) struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    pub(crate) fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    pub(crate) fn id(&self) -> u32 {
+        self.0.as_ref().expect("預かっている").id()
+    }
+
+    pub(crate) fn child(&self) -> &Child {
+        self.0.as_ref().expect("預かっている")
+    }
+
+    /// 以後の終了の処理は、受け取った側が持つ。
+    pub(crate) fn release(mut self) -> Child {
+        self.0.take().expect("預かっている")
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 /// 試験が持つプロセスのハンドル。親が死んでも、このハンドルで子の生死を確かめて片付けられる。
 pub(crate) struct ProcessProbe {
     handle: windows::Win32::Foundation::HANDLE,

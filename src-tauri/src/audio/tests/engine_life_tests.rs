@@ -138,14 +138,15 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     let cmd = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
         .join("System32")
         .join("cmd.exe");
-    let child = host.spawn_engine_binary(cmd).unwrap();
-    let probe = ProcessProbe::open(child.id()).unwrap();
-    let (mut child, job) =
-        engine_life::contain_and_resume(&host.retired, Role::Primary, child).unwrap();
+    // 作った直後から預け、ハンドルの取得や再開が失敗しても、停止したままの子を残さない。
+    let guard = ChildGuard::new(host.spawn_engine_binary(cmd).unwrap());
+    let probe = ProcessProbe::open(guard.id()).unwrap();
+    let (child, job) =
+        engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+    let guard = ChildGuard::new(child);
     assert!(job.is_some(), "停止の状態だったので、再開の戻り値が1");
-    let _ = child.kill();
+    drop(guard);
     assert!(probe.wait_exit(5000));
-    let _ = child.wait();
 }
 
 // Job の失敗が、マイクの権限の案内（フロントの判定と `localize_audio_error`）に写らない。
@@ -404,6 +405,15 @@ struct Parent {
 
 impl Parent {
     fn start(mode: &str) -> Self {
+        match Self::try_start(mode, false) {
+            Ok(parent) => parent,
+            Err(_) => panic!("外側の Job へ入れられない"),
+        }
+    }
+
+    /// 親を停止の状態で作った直後から ChildGuard に預ける。割り当てが失敗（ail_assign は注入）したら、
+    /// 親を kill して終了を待ち、作った親のハンドルを返す（残っていないことを呼び出し側が確かめる）。
+    fn try_start(mode: &str, fail_assign: bool) -> Result<Self, ProcessProbe> {
         let dir = std::env::temp_dir().join(format!(
             "auralyn-life-{}-{}",
             std::process::id(),
@@ -422,25 +432,39 @@ impl Parent {
         const CREATE_SUSPENDED: u32 = 0x00000004;
         // 親は停止の状態で作り、外側の Job へ入れてから動かす（子・孫が外側の Job から漏れない）。
         let outer = crate::process_job::Job::new_kill_on_drop().unwrap();
-        let child = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", &name, "--nocapture"])
-            .env(PARENT_ENV, serde_json::to_string(&plan).unwrap())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_SUSPENDED)
-            .spawn()
-            .unwrap();
-        assert!(outer.assign(windows::Win32::Foundation::HANDLE(child.as_raw_handle())));
-        let thread = windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
+        let guard = ChildGuard::new(
+            Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", &name, "--nocapture"])
+                .env(PARENT_ENV, serde_json::to_string(&plan).unwrap())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(CREATE_SUSPENDED)
+                .spawn()
+                .unwrap(),
+        );
+        let probe = ProcessProbe::open(guard.id()).expect("親のハンドルを開ける");
+        let assigned = !fail_assign
+            && outer.assign(windows::Win32::Foundation::HANDLE(
+                guard.child().as_raw_handle(),
+            ));
+        if !assigned {
+            drop(guard);
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(probe);
+        }
+        let child = guard.release();
+        let guard = ChildGuard::new(child);
+        let thread =
+            windows::Win32::Foundation::HANDLE(guard.child().main_thread_handle().as_raw_handle());
         // SAFETY: 親の child が生きているあいだ、主スレッドのハンドルは有効。
         let resumed = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
         assert_eq!(resumed, 1);
-        Self {
-            child,
+        Ok(Self {
+            child: guard.release(),
             dir,
             _outer: outer,
-        }
+        })
     }
 
     fn pid(&self, name: &str) -> u32 {
@@ -461,6 +485,15 @@ impl Drop for Parent {
         let _ = self.child.wait();
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+// 外側の Job へ入れられない（注入）。作った親は kill され、終了が確かめられ、残らない。
+#[test]
+fn a_parent_that_cannot_join_the_outer_job_is_killed_and_not_left_suspended() {
+    let Err(probe) = Parent::try_start("wait", true) else {
+        panic!("注入した割り当ての失敗で成功してはいけない");
+    };
+    assert!(probe.exited(), "持っているハンドルで、親が終わっている");
 }
 
 // W4a：通常の終了（`Drop` が走らない場合と走る場合）。Job に入った子と孫が残らない。

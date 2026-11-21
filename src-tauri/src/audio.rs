@@ -3077,7 +3077,7 @@ pub struct AudioState(pub control::AudioControl);
 pub fn localize_audio_error(e: String) -> String {
     let lower = e.to_lowercase();
 
-    // 日英とも最終の文言を持つので、そのまま返す（既定の包みをかけない）。
+    // 日本語の最終の文言を持つので、そのまま返す（英語は #833）（既定の包みをかけない）。
     if e.contains(engine_life::REPEATED_JA) {
         return engine_life::EngineUnconfirmed::text(true);
     }

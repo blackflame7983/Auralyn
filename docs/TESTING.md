@@ -372,6 +372,13 @@ cargo test --locked --lib audio::post_mix::life_tests
 
 構成：`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`（`TAURI_CONFIG` の `externalBin` を空にして、`target\debug\audio_engine.exe` の既存の debug の子を使用）、Tauri MCP CLI 0.13.2 で `invoke` を実行。起動と終了だけの確認で、`Start` の明示操作はしていない（保存済みの設定の自動開始は、アプリが自分で行った）。音・聴感の確認ではない。
 
+使った成果物（実行後に、ファイルから読み直した記録）：
+  - Host：D:\Programming\App\VSTHost\src-tauri\target\debug\AuralynHost.exe（更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E）。	auri dev が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（spawn_engine_binary への分割と pply_creation_flags）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
+  - 子：D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe（更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。udio_engine と in のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
+  - 実行したコマンド：$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target、$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'、
+pm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json、
+px -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223。
+
 - (a) 起動：主の子（PID 5140）が起動し、`IsProcessInJob` が真。`stop_audio` の後に `post_mix` の `restore_saved` で配信ミックスの子（`--post-mix-worker`）が起動し、同じく Job に入っていた。起動の失敗：主の子を `Stop-Process` し、`audio_engine.exe` を一時的に改名すると、`get_audio_devices` は「Audio Engine binary not found」で失敗した。元の名前へ戻した後の同じ操作は成功し、新しい子が起動した。この失敗は、子が見つからない経路（Job の失敗の経路ではない。Job・割り当て・再開の失敗は注入の試験で確認した）。
 - (b) 通常の終了：主の子（PID 54892）が動き、`get_audio_devices`（再検出）が作る `--scan` の孫（PID 26372）が生きている状態で、`quit_app` を実行した。孫は一瞬で終わるため、監視のジョブが現れた瞬間に `NtSuspendProcess` で止めて生かした（孫は実プロセス）。監視のジョブが起動時に取った Process のハンドル（開始時刻つき）で、Host の終了コード 0、子と孫の終了を確認した。残ったプロセスはなかった。
 - (c) 強制の終了：別の起動（Host 56820、主の子 47596、孫 55820＝止めた `--scan`）で、`Stop-Process -Id <Host> -Force` により Host だけを終了した（終了コード -1）。同じ方法で、子と孫がどちらも終了したことを確認した。
