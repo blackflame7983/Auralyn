@@ -1,6 +1,6 @@
 # 旧 API の互換の契約（`9567061a` の実際の振る舞い）
 
-状態：F0 の成果物（第3回のレビューを反映した改訂版）。コードを読んで確かめた事実を表にした。実機・実際の WebView では確かめていない。
+状態：F0 の成果物（第3回のレビューを反映した改訂版）。コードを読んで確かめた事実を表にした。通知の順序と応答の到着順だけは、開発ビルドの実際の WebView と実機の WASAPI で実測した（9章。release の子。debug の子、聴感、複数ウィンドウ、本番ビルドは確かめていない）。
 設計は [audio-session-controller.md](audio-session-controller.md)。試験の行は [audio-session-acceptance.md](audio-session-acceptance.md)。
 
 読み方：
@@ -121,6 +121,8 @@
 | `audio-engine-exited` | 上の (a) | `ExitPayload`（camelCase：`cause`、`op?`、`pluginId?`、`path?`、`classId?`、`name?`、`elapsedMs?`、`host?`、`input?`、`output?`、`phase?`） | 上の (a) | `audio/engine_exit.rs:10-33` |
 | `audio-conditions-changed` | (1) 子の起動（`new_engine` の後）(2) `command_changes` が真の命令の前後・失敗時 (3) `Mixing*Failed`／`Error`／`Stopped`／`Started` の `engine_event` が真 (4) 子の終了（EOF、`kill_primary_engine`） | `()` | 常に、対応する他の通知より**先** | `audio.rs:638-639`、`:2798-2799`、`audio/conditions.rs:70-93` |
 
+**この表と、下の「順序の事実」の短い列は、reader が保証する相対の順**（同じ出来事の中での先後）であり、観測される完全な列ではない。完全な観測の列には、`Conditions::dispatch` が出す `audio-conditions-changed` が加わる。実測した列は 9章を見る。たとえば C（停止・接続あり）の完全な列は、(1) `dispatch` の前の `audio-conditions-changed`、(2) reader が `Stopped` を受けて `audio-stopped` の直前に出す `audio-conditions-changed`、(3) `audio-stopped`、(4) 応答を受けた後に `dispatch` が出す `audio-conditions-changed`、(5) `stop_audio` の戻り（応答）、の順になる。`audio-stopped` の後に `audio-conditions-changed` が続くのは、この (4) による。
+
 その他の通知（互換の対象。F1a は変えない）：`audio-level`、`audio-loudness`、`audio-channel-scan`、`audio-control-stall`、`audio-processing-health`、`voice-check-state`、`voice-check-envelope`、`plugin-editor-opened`、`plugin-editor-closed`、`mixing-source-failed`、`mixing-output-failed`（`audio.rs:810-1030`）。
 
 順序の事実。
@@ -208,7 +210,7 @@
 | D-13 | F1a-1：Job の割り当ての失敗の扱い（その子を kill し、起動を失敗にする）。プロセスの終了を確認できない間（`Unconfirmed`）の要求の失敗（`engine_unconfirmed`、10秒）。遅れて終了を確かめられたら、操作できる状態に戻ったことを表示する | 今は割り当ての失敗を無視する。起動できない場合・操作できない時間が新しく生じる | **決定：承認する。ただし、承認の条件は「Windows の実プロセスでの確認」**：Job の作成・割り当て・待ちの失敗、EOF だけが来る場合、遅れた終了の確認（W1〜W4、設計 14.4）を確かめてから、F1a-1 のマージを承認する |
 | D-14 | 子の `Error` に世代と side を付ける。`apply_deadline` つきの適用 | 旧のペイロード（文字列）は保つ | 子の側の差分 |
 
-## 9. 確かめていないこと
+## 9. 実測した範囲と、確かめていないこと
 
 - 旧の通知とコマンドの応答が、WebView に届く順序：**実測した（2026-11-21、開発ビルドの実 WebView。2回目の測り直しの結果）。** 仕組みは、Rust の `AURALYN_EMIT_TRACE=1` と、WebView 側の `src/lib/w5Probe.ts`（`invoke` の呼び出し・応答（拒否）、購読の登録、通知の受信を `window.__auralynW5` に並べる）。手順は [TESTING](../TESTING.md) の W5。
   - **訂正（1回目の記録）：** 1回目は、B（開始の失敗）と C（停止）で `audio-stopped` が出なかった（各10回）と記録した。これは製品の挙動ではなく、**古い子（サイドカー）で測ったため**。`tauri dev` はサイドカーをビルドせず、Host は `src-tauri/target/debug/audio_engine.exe` を使う。そこに残っていた子は `Stopped` に `payload` を付けない旧い形で、今の Host が `Engine IPC parse error: missing field 'payload'` として捨てた（そのログが20件。B・C の各10回に対応）。5章の「停止：`audio-conditions-changed`、`audio-stopped`、（応答）」は、版をそろえた測定で成り立った（下）。1回目の遅れの数値も、この表で置き換える。

@@ -485,3 +485,171 @@ fn a9b_stale_engine_event_overwrites_the_new_connection_running_flag_in_the_know
         "現行の窓：新しい接続の running が false で上書きされる"
     );
 }
+
+// §5：`MixingSourceFailed`・`MixingOutputFailed`は、動いている現行の接続でだけ、`audio-conditions-changed`のあとに旧の通知（ペイロードなし）で転送される。
+#[test]
+fn mixing_failures_forward_conditions_then_the_legacy_notification_only_while_running() {
+    let script = || {
+        vec![
+            event_line(&EngineEvent::MixingSourceFailed),
+            event_line(&EngineEvent::MixingOutputFailed),
+            response_line(&IpcResponse::Success),
+        ]
+    };
+    let f = Fixture::new([("Start", start_steps(1)), ("GetDevices", script())]);
+    let mut running = host(&f);
+    start(&mut running).unwrap();
+    f.recorder.clear();
+    running
+        .execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
+    assert_eq!(
+        names(&f),
+        [CC, "mixing-source-failed", CC, "mixing-output-failed"]
+    );
+    assert!(f
+        .recorder
+        .events()
+        .iter()
+        .all(|(name, payload)| name == CC || name.starts_with("mixing-") && payload.is_null()));
+    drop(running);
+
+    let stopped = Fixture::new([("GetDevices", script())]);
+    let mut idle = host(&stopped);
+    idle.ensure_engine_running().unwrap();
+    stopped.recorder.clear();
+    idle.execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
+    assert!(
+        names(&stopped).is_empty(),
+        "動いていない接続の障害は通知しない"
+    );
+}
+
+// §5：reader が子の通知をそのまま旧の通知へ転送する。名前とペイロードが契約。
+#[test]
+fn reader_forwards_the_remaining_legacy_notifications_with_their_names_and_payloads() {
+    use crate::audio_engine::loudness::LoudnessReading;
+    use crate::audio_engine::processing_watch::{HealthState, StallKind};
+    let f = Fixture::new([(
+        "GetDevices",
+        vec![
+            event_line(&EngineEvent::ControlStall {
+                command: "LoadPlugin".into(),
+                plugin_id: Some("p1".into()),
+                module: None,
+                elapsed_ms: 1500,
+            }),
+            event_line(&EngineEvent::Loudness(LoudnessReading {
+                id: 7,
+                ready: true,
+                silent: false,
+                supported: true,
+                short_term_lufs: Some(-14.5),
+                true_peak_dbtp: None,
+            })),
+            event_line(&EngineEvent::ChannelLevels(vec![0.5, 0.25])),
+            event_line(&EngineEvent::VoiceCheckState {
+                state: "recording".into(),
+                position_ms: 10,
+                duration_ms: 2000,
+            }),
+            event_line(&EngineEvent::VoiceCheckEnvelope {
+                raw_peaks: vec![0.5],
+                processed_peaks: vec![0.25],
+            }),
+            event_line(&EngineEvent::EditorOpened { id: "e1".into() }),
+            event_line(&EngineEvent::EditorClosed { id: "e1".into() }),
+            event_line(&EngineEvent::ProcessingHealth {
+                state: HealthState::Stalled,
+                kind: Some(StallKind::Processing),
+                recent_late: 2,
+                recent_underflow: 3,
+                window_secs: 60,
+            }),
+            response_line(&IpcResponse::Success),
+        ],
+    )]);
+    let mut host = host(&f);
+    host.ensure_engine_running().unwrap();
+    f.recorder.clear();
+    host.execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
+    let expected = [
+        (
+            "audio-control-stall",
+            serde_json::json!({"command": "LoadPlugin", "pluginId": "p1", "module": null, "elapsedMs": 1500}),
+        ),
+        (
+            "audio-loudness",
+            serde_json::json!({"id": 7, "ready": true, "silent": false, "supported": true, "short_term_lufs": -14.5, "true_peak_dbtp": null}),
+        ),
+        ("audio-channel-scan", serde_json::json!([0.5, 0.25])),
+        (
+            "voice-check-state",
+            serde_json::json!({"state": "recording", "position_ms": 10, "duration_ms": 2000}),
+        ),
+        (
+            "voice-check-envelope",
+            serde_json::json!({"raw_peaks": [0.5], "processed_peaks": [0.25]}),
+        ),
+        ("plugin-editor-opened", serde_json::json!({"id": "e1"})),
+        ("plugin-editor-closed", serde_json::json!({"id": "e1"})),
+        (
+            "audio-processing-health",
+            serde_json::json!({"state": "stalled", "stallKind": "processing", "recentLate": 2, "recentUnderflow": 3, "windowSecs": 60}),
+        ),
+    ];
+    let actual = f.recorder.events();
+    assert_eq!(actual.len(), expected.len(), "{actual:?}");
+    for ((name, payload), (expected_name, expected_payload)) in actual.iter().zip(expected) {
+        assert_eq!(name, expected_name);
+        assert_eq!(payload, &expected_payload, "{name}");
+    }
+}
+
+// §5：`audio-started`・`audio-stopped`・`audio-engine-exited` のペイロード（名前と項目）。
+#[test]
+fn started_stopped_and_exited_payloads_keep_their_legacy_shape() {
+    let f = Fixture::new([
+        ("Start", start_steps(1)),
+        ("Stop", stop_steps(1)),
+        ("GetDevices", vec![Step::Exit]),
+    ]);
+    let mut host = host(&f);
+    start(&mut host).unwrap();
+    let events = f.recorder.events();
+    let started = events.iter().find(|(name, _)| name == "audio-started");
+    assert_eq!(
+        started.map(|(_, payload)| payload),
+        Some(
+            &serde_json::json!({"sample_rate": 48000, "buffer_size": 512, "stream_generation": "1:1"})
+        )
+    );
+    f.recorder.clear();
+    host.stop().unwrap();
+    let events = f.recorder.events();
+    let stopped = events.iter().find(|(name, _)| name == "audio-stopped");
+    assert_eq!(
+        stopped.map(|(_, payload)| payload),
+        Some(&serde_json::json!({"stream_generation": "1:1", "ended_stream_generation": "1:1"}))
+    );
+    f.recorder.clear();
+    let _ = host.execute_running_command(IpcCommand::GetDevices);
+    let events = f.recorder.events();
+    let exited = events
+        .iter()
+        .find(|(name, _)| name == "audio-engine-exited")
+        .expect("audio-engine-exited");
+    assert!(exited.1["cause"].is_string(), "{:?}", exited.1);
+    assert!(
+        exited
+            .1
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|key| !key.contains('_')),
+        "camelCase の項目名: {:?}",
+        exited.1
+    );
+}
