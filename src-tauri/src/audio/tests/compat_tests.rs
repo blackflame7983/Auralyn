@@ -503,15 +503,16 @@ fn mixing_failures_forward_conditions_then_the_legacy_notification_only_while_ru
     running
         .execute_running_command(IpcCommand::GetDevices)
         .unwrap();
+    let null = serde_json::Value::Null;
     assert_eq!(
-        names(&f),
-        [CC, "mixing-source-failed", CC, "mixing-output-failed"]
+        f.recorder.events(),
+        [
+            (CC.to_owned(), null.clone()),
+            ("mixing-source-failed".to_owned(), null.clone()),
+            (CC.to_owned(), null.clone()),
+            ("mixing-output-failed".to_owned(), null),
+        ]
     );
-    assert!(f
-        .recorder
-        .events()
-        .iter()
-        .all(|(name, payload)| name == CC || name.starts_with("mixing-") && payload.is_null()));
     drop(running);
 
     let stopped = Fixture::new([("GetDevices", script())]);
@@ -641,15 +642,56 @@ fn started_stopped_and_exited_payloads_keep_their_legacy_shape() {
         .iter()
         .find(|(name, _)| name == "audio-engine-exited")
         .expect("audio-engine-exited");
-    assert!(exited.1["cause"].is_string(), "{:?}", exited.1);
-    assert!(
-        exited
-            .1
-            .as_object()
-            .unwrap()
-            .keys()
-            .all(|key| !key.contains('_')),
-        "camelCase の項目名: {:?}",
-        exited.1
+    assert_eq!(
+        exited.1,
+        serde_json::json!({"cause": "unknown"}),
+        "利用者の停止のあとの終了は、原因の文脈を持たない"
+    );
+}
+
+// §5：開始の途中で子が終了したときの`audio-engine-exited`は、開始の文脈つき。
+#[test]
+fn exit_during_start_forwards_the_device_open_context() {
+    let f = Fixture::new([("Start", vec![Step::Exit])]);
+    let mut host = host(&f);
+    let _ = start(&mut host);
+    let mut payload = f
+        .recorder
+        .events()
+        .into_iter()
+        .find(|(name, _)| name == "audio-engine-exited")
+        .expect("audio-engine-exited")
+        .1;
+    assert!(payload["elapsedMs"].is_u64(), "{payload}");
+    payload.as_object_mut().unwrap().remove("elapsedMs");
+    assert_eq!(
+        payload,
+        serde_json::json!({"cause": "device_open", "host": "ASIO", "phase": "opening"})
+    );
+}
+
+// §5：VST の操作の途中で子が終了したときの`audio-engine-exited`は、操作・パス・クラス ID つき。
+#[test]
+fn exit_during_a_vst_load_forwards_the_operation_context() {
+    let f = Fixture::new([("LoadPlugin", vec![Step::Exit])]);
+    let mut host = host(&f);
+    host.ensure_engine_running().unwrap();
+    f.recorder.clear();
+    let _ = host.execute_running_command(IpcCommand::LoadPlugin {
+        path: "C:\\fixture\\a.vst3".into(),
+        class_id: Some("CID1".into()),
+    });
+    let mut payload = f
+        .recorder
+        .events()
+        .into_iter()
+        .find(|(name, _)| name == "audio-engine-exited")
+        .expect("audio-engine-exited")
+        .1;
+    assert!(payload["elapsedMs"].is_u64(), "{payload}");
+    payload.as_object_mut().unwrap().remove("elapsedMs");
+    assert_eq!(
+        payload,
+        serde_json::json!({"cause": "vst_operation", "op": "load", "path": "C:\\fixture\\a.vst3", "classId": "CID1"})
     );
 }
