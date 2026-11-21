@@ -76,8 +76,9 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
    # (e) externalBin の上書きを解除し、トレースを有効にして Host を起動する（Host のビルドが、(d) の子を debug フォルダーへコピーする）。
    Remove-Item Env:TAURI_CONFIG
    $env:AURALYN_EMIT_TRACE = '1'
-   npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log
-   if ($LASTEXITCODE -ne 0) { throw 'tauri dev failed: see w5-dev.log' }
+   # --no-watch：監視モードではコンパイルに失敗しても終わらず、終了コードで止められないため。
+   npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log
+   if (-not $? -or $LASTEXITCODE -ne 0) { throw 'tauri dev failed: see w5-dev.log' }
    ```
 
    `rebuild-engine` の `cargo build` は環境変数を引き継ぐので、(a) の `TAURI_CONFIG` が効き、元ファイルが無くても `build.rs` は失敗しない。`AURALYN_EMIT_TRACE` は測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
@@ -89,7 +90,7 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
    $debugDir = Join-Path $PWD 'src-tauri\target\debug'
    $hostProc = @(Get-CimInstance Win32_Process -Filter "Name='AuralynHost.exe'" | Where-Object { $_.ExecutablePath -eq (Join-Path $debugDir 'AuralynHost.exe') })
    if ($hostProc.Count -ne 1) { throw "expected one debug Host, found $($hostProc.Count)" }
-   $child = @(Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe' AND ParentProcessId=$($hostProc[0].ProcessId)")
+   $child = @(Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe' AND ParentProcessId=$($hostProc[0].ProcessId)" | Where-Object { $_.CommandLine -notmatch '--post-mix-worker' })  # 配信VST用の子を除く
    if ($child.Count -ne 1) { throw "expected one child of the Host, found $($child.Count)" }
    $child[0].ExecutablePath
    (Get-FileHash $child[0].ExecutablePath -ErrorAction Stop).Hash -eq (Get-FileHash $release -ErrorAction Stop).Hash
