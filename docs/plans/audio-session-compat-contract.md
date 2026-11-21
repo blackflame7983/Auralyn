@@ -6,7 +6,7 @@
 読み方：
 
 - 「事実」の列は、`9567061a` のコードで確かめたこと。根拠を `ファイル:行` で示す（行は `9567061a` の値）。
-- 「F1a」の列：**変えない**（互換の試験で固定する）。F1a は、F1a-0（互換の試験・入口の一本化・受付順の記録）、F1a-1（通信とプロセスの寿命）、F1a-2（持ち主の移行）の全体を指す。受付順を記録することは、勝ち負けを変えることとは別の差分で、F1a-0 は勝敗を変えない。
+- 「F1a」の列：**変えない**（互換の試験で固定する）。F1a は、F1a-0（互換の試験・入口の一本化・受付順の記録）と、F1a-1（プロセスの寿命。今の `Mutex` と実行の経路を保つ）の全体を指す。actor・受信箱・writer・reaper・入口の持ち主の移行（旧 F1a-2）は、受付と実行の順を変えるので **F1b-0** で、D-9・D-10 の承認とともに入れる（J-14）。受付順を記録することは、勝ち負けを変えることとは別の差分で、F1a-0 は勝敗を変えない。
 - 「F1b」の列：安全のために変える候補。個別の承認が要る差分（8.2 の表）。
 - 「通知の順序」は、Rust がイベントを `emit` する順序と、`emit` を呼ぶスレッドの順序を述べる。WebView に届く順序は、コードだけでは確かめられていない（9章の「未確認」）。
 
@@ -21,8 +21,8 @@
 | `config` | `active_config`（メモリ）。起動前は `null`。`Start` の成功で更新される。停止しても消えない | `audio.rs:1691`、`:2919` | 変えない | 変えない |
 | `config` の形 | `ActiveAudioConfig`：`input_source?`、`host`、`input`、`output`、`input_id?`、`output_id?`、`buffer_size`、`sample_rate`、`routing?`。`input_source`・`input_id`・`output_id`・`routing` は `None` のとき出力しない。`input`・`output`・`buffer_size`・`sample_rate` は `null` として出力 | `audio.rs:136-151` | 変えない | 変えない |
 | `condition_witness` の形 | `{revision: string, epoch: string}`。10進数の文字列。`Conditions::snapshot()` が成功したときだけ付く（走行中で、保留中の変更がないとき）。失敗なら項目ごと省く | `audio.rs:2920-2927`、`audio/conditions.rs:150-166` | 変えない | 変えない |
-| 子を起動するか・ロック | **起動しない**。読み取りだけ。ただし `state.lock()` を取ってから読む（`Start` がロックを持っていれば、その完了後の値を返す） | `commands/audio.rs:285-295` | **変えない。** F1a-0 は同じ `Mutex` の経路を使う。actor に移した後も、同じ待ちの境界（先行する命令が保存と状態の更新を終えた後に読む）を保つ | 待たない読み取り（`SnapshotCell`）は D-8（承認）。既存の `get_audio_state` の待ちを外す変更と、新しい `get_audio_session` の追加は別の差分 |
-| ロック待ち | `Mutex` を待つ。10秒の IPC 待ちの間は、応答が遅れる。基準の順序：`Start` がロックを持つ → `get_audio_state` が呼ばれる → 開始が保存と `active_config` の更新を終える → 読む | `audio.rs:3041`、`commands/audio.rs:290-293` | **変えない**（F1a-0・F1a-1・F1a-2 を通じて、待ちの境界は同じ。`SnapshotCell` にしない） | D-8 |
+| 子を起動するか・ロック | **起動しない**。読み取りだけ。ただし `state.lock()` を取ってから読む（`Start` がロックを持っていれば、その完了後の値を返す） | `commands/audio.rs:285-295` | **変えない。** F1a-0・F1a-1 は同じ `Mutex` の経路を使う。F1b-0 で actor に移した後も、同じ待ちの境界（先行する命令が保存と状態の更新を終えた後に読む）を保つ | 待たない読み取り（`SnapshotCell`）は D-8（承認）。既存の `get_audio_state` の待ちを外す変更と、新しい `get_audio_session` の追加は別の差分 |
+| ロック待ち | `Mutex` を待つ。10秒の IPC 待ちの間は、応答が遅れる。基準の順序：`Start` がロックを持つ → `get_audio_state` が呼ばれる → 開始が保存と `active_config` の更新を終える → 読む | `audio.rs:3041`、`commands/audio.rs:290-293` | **変えない**（F1a-0・F1a-1 は同じ `Mutex` の経路。F1b-0 で actor に移した後も、待ちの境界は同じ。`SnapshotCell` にしない） | D-8 |
 
 ## 2. `expectedState`（`start_audio` の任意の引数）の完全一致
 
@@ -33,7 +33,7 @@
 | 完全一致の意味 | `config` を含む全体を比べる。項目の欠落・余分な項目は不一致。`revision`・`epoch` の文字列の差も不一致 | 同上 | **F1a-0 は、既存の完全一致のまま**（旧の形に写す処理は入れない） | F1b で `get_audio_state` に拡張のキーを実際に足すときに、旧の形に写して比べる処理を入れる（試験は F1b の K3） |
 | 同じ設定でも拒む場合 | 停止・再開（`lifecycle`）は **`revision` だけ**を進める（`pending` を挟んで +2）。`engine_epoch` は、子の生成（`new_engine`）と退役（`retire_engine`）でだけ進む。したがって、同じ子で Stop → Start すると、旧の witness は `revision` の不一致で拒まれる（`epoch` の更新によるものではない）。接続が変わると、両方が変わる | `commands/audio.rs:455-481`（試験）、`audio/conditions.rs:95-104`、`:138-146` | 変えない | 変えない |
 | 古い reader による `running` の書き込み | `engine_event` は、最初の epoch の照合に通った後、`running` を書き、再照合で接続が変わっていたら `running = false` を書く。**照合の後に接続が変わると、新しい接続の `running` を落とせる**（旧 reader が最初の照合を通った場合）。「古い接続の通知は `Conditions` に作用しない」のは、最初の照合の前に接続が変わった場合に限る | `audio/conditions.rs:106-121` | 変えない（試験で、この窓があることを固定） | 接続の照合を `conn == current` に一本化して窓を閉じる（D-6 に含める） |
-| 照合の時点 | ロックを取った後、`resolve_input_source` と開始の前 | `commands/audio.rs:409-416` | 変えない（actor の上でも、同じ順序で照合） | 変えない |
+| 照合の時点 | ロックを取った後、`resolve_input_source` と開始の前 | `commands/audio.rs:409-416` | 変えない（F1b-0 で actor の上に移した後も、同じ順序で照合） | 変えない |
 | エラーの文字列 | `音声の条件が変わりました。現在の設定を確認してから再試行してください。`（`localize_audio_error` を通さない） | `commands/audio.rs:442-444`、`:409-412` | 変えない | 変えない |
 
 ## 3. 開始・停止・再起動の応答
@@ -88,7 +88,7 @@
 
 | コマンド | 応答 | 子を起動するか | 備考 | 根拠 | F1a | F1b |
 |---|---|---|---|---|---|---|
-| `get_saved_audio_config` | `Option<ActiveAudioConfig>`。ファイルがなければ `null`、`host` が空ならエラー `保存済み接続方式が空です`、破損していれば JSON のエラー | 起動しない | **`state.lock()` を取った後で**、`last_audio_config.json` を呼び出しのたびに直接読む（`Start` がロックを持っていれば、その完了後に読む）。スナップショットにすると、欠損・破損・移行の後の結果と待ちの境界が変わりうる | `commands/audio.rs:270-283`、`audio.rs:2932-2942` | **変えない。** F1a-0 は同じロックの経路。actor に移した後も、同じ待ちの境界を保ち、ファイルを直接読む | D-8 の対象にしない（別の差分） |
+| `get_saved_audio_config` | `Option<ActiveAudioConfig>`。ファイルがなければ `null`、`host` が空ならエラー `保存済み接続方式が空です`、破損していれば JSON のエラー | 起動しない | **`state.lock()` を取った後で**、`last_audio_config.json` を呼び出しのたびに直接読む（`Start` がロックを持っていれば、その完了後に読む）。スナップショットにすると、欠損・破損・移行の後の結果と待ちの境界が変わりうる | `commands/audio.rs:270-283`、`audio.rs:2932-2942` | **変えない。** F1a-0・F1a-1 は同じロックの経路。F1b-0 で actor に移した後も、同じ待ちの境界を保ち、ファイルを直接読む | D-8 の対象にしない（別の差分） |
 | `audio_frontend_bootstrap` | `{outcome: "started"\|"attached"\|"inactive", initialPage, error}` | **最初の呼び出しは `warmup_once` を実行する**（子を生成しうる）。4つの場合：(1) **子がない最初の呼び出し**：`warmup_once` が `ensure_engine_running` で子を作り、保存した設定で自動開始する。(2) **準備済み**：warmup が済んでいれば、状態を確かめるだけ（`auto_gain` の `Status`）。(3) **保存済みの入力のペアを待っている**（旧形式の設定）：開始せず、frontend から組が届いてから一度だけ開始する。(4) **失敗済み・既存の接続が不明**：自動では生成し直さず `inactive` を返す | 一度だけ有効。`frontend_seen`・取り消し後（reload を含む）は、状態を触らず `attached` または `inactive` | `commands/audio.rs:256-268`、`audio/frontend_bootstrap.rs:133-210`、`audio.rs:2825-2909` | 変えない | 変えない |
 | `get_output_gain_observation` | `{generation: string, state: auto_gain.Snapshot}`。`generation` は `engine_generation` の10進数 | 起動しない（`Status` は `existing_only`） | 子への IPC を1回 | `commands/audio.rs:243-254`、`audio/frontend_bootstrap.rs:112-120` | 変えない | 変えない |
 | `auto_gain`（`status`） | `Snapshot`（camelCase）。`running`・**`streamFailed`**・`confirmedGain` などを含む。フロントの `getAudioStreamState` は `{running, streamFailed}` を読む | 起動しない | 子への IPC（ロックを取って10秒まで待つ） | `audio.rs:2128-2190`、`audio_engine/auto_gain.rs:228-245`、`api/audio.ts:144` | 変えない | 変えない |
@@ -129,7 +129,7 @@
 - **`audio-conditions-changed` は、同じ事象の他の通知より前に `emit` される。** フロントはこの順序を前提にしている（`NoiseMeasurementPanel.tsx:67`、`useVoiceCheck.ts:498`、`usePreparation.ts:187`）。
 - 開始の成功：`audio-conditions-changed`、`audio-started`、（応答）。開始の失敗：`audio-conditions-changed`、`audio-stopped`、（エラーの応答）。停止：`audio-conditions-changed`、`audio-stopped`、（応答）。
 - **上の `audio-stopped` を含む列は、現行の接続の子が `Stopped` を送り、reader がそれを受け取った場合の順序**（`engine_event` が真を返すとき：`audio-conditions-changed` → `audio-stopped` → 応答）。次の場合は、これとは別の扱いになる。(a) 開始前の拒否（親が子へ送る前の検査、または子が初期の制御などをデバイスを開く前に拒むとき）：`Stopped` が出ないので `audio-stopped` も出ない。(b) 接続なし：`kill_engine` の経路で、`audio-conditions-changed` だけ（子へ `Stop` を送らない）。(c) 手動の復旧中の停止：本番モードの VST の切替・復旧が止まっているときは、`Stop` を送らず、復旧を取り消して `kill_engine`（`stop_primary` の先頭の分岐）。出るのは `audio-conditions-changed`（と条件つきの `live-modes-invalidated`）だけ。(c') 子がすでに終了した接続（reader が無効）の停止は、`reap_confirmed_stopped_connection` が後始末し、`Stop` を送らない。(d) 旧い接続の破棄：`epoch` が違う旧 reader の `Started`・`Stopped`・`Error` は `emit` されない（次の項）。また、`payload` を付けない旧いサイドカーの `Stopped` は、今の Host がパースエラーとして捨てる（`audio.rs:1049`）ので、`audio-stopped` は出ない。
-- **reader が `Response` より先に読んだ `Event` に対する旧の通知は、その `Response` より前に `emit` される**（応答の後に `Conditions::dispatch` や `AudioHost` が出す通知は含まない。reader が `Response` を待ち手へ渡す前に、同じスレッドが先に `Event` の行を読んで `emit` する。子が `Event` を `Response` より前に出すため）。**これは Rust が `emit` を呼ぶ順序の事実。WebView に届く順序は別で、W5 で測って分けて記録する。** F1a-1 で通知を出す場所を変えるなら、(a) 同じ出来事の通知の列、(b) EOF の通知から、待っている呼び出しを解放する（`Error("Engine Crashed/Exited")` を渡す）までの順序、の2つを試験で固定する。
+- **reader が `Response` より先に読んだ `Event` に対する旧の通知は、その `Response` より前に `emit` される**（応答の後に `Conditions::dispatch` や `AudioHost` が出す通知は含まない。reader が `Response` を待ち手へ渡す前に、同じスレッドが先に `Event` の行を読んで `emit` する。子が `Event` を `Response` より前に出すため）。**これは Rust が `emit` を呼ぶ順序の事実。WebView に届く順序は別で、W5 で測って分けて記録する。** F1a-1 は通知を出す場所を変えない（J-14）。F1b-0 で変えるなら、(a) 同じ出来事の通知の列、(b) EOF の通知から、待っている呼び出しを解放する（`Error("Engine Crashed/Exited")` を渡す）までの順序、の2つを試験で固定する。
 - 古い接続の通知：`engine_event(epoch, …)` は、`epoch` が現在と違えば偽を返し、`continue` する。したがって古い `Started`・`Stopped`・`Error` は `emit` されない。ただし、`LevelMeter`・`Loudness`・`ChannelLevels`・`VoiceCheck*`・`EditorOpened/Closed`・`ProcessingHealth`・`ControlStall` は、**`reader_active` が真のあいだは epoch を見ずに `emit` される**（旧 reader が終われば止まる）。
 - `audio-stream-error` の文字列は、自動の再開が `Stream Error` を含むかで判定している（`hooks/useAudioRecovery.ts:29`）。文字列は契約。
 
@@ -141,7 +141,7 @@
 | `stop_audio`（接続なし） | `audio-conditions-changed`（`kill_engine` の `retire_engine`）。`audio-stopped` は出ない。`kill_engine` を通るので、条件によっては `live-modes-invalidated` も出る（下の行） |
 | `restart_audio_engine`／`kill_engine` | `audio-conditions-changed`。本番モードの世代が有効で未退役、または保護が有効（`armed`）のときは、その前に `live-modes-invalidated` も出る（`invalidate_live_protection`。1回または2回）。`audio-engine-exited`・`audio-error` は出ない（`reader_active` を先に偽にするため） |
 | `prepare_update`（子がある） | 先に `Stop`：`audio-conditions-changed`、`audio-stopped`、その後の `kill_engine` で `audio-conditions-changed`。`audio-engine-exited`・`audio-error` は出ない。子がなければ `audio-conditions-changed`（と、条件によって `live-modes-invalidated`）。`kill_engine` の前に `live-modes-invalidated` が出る条件は上の行と同じ |
-| アプリの終了（`Drop`） | 何も出さない |
+| アプリの終了（`quit_app`。`Drop` が走るかは保証しない） | 何も出さない |
 | 異常終了（EOF） | 上の `audio-error` の (a) |
 
 ## 6. メーター
@@ -176,8 +176,8 @@
 
 1. 1〜7章の「F1a：変えない」のすべて。
 2. 旧の通知の名前・ペイロード・`emit` の順序（特に `audio-conditions-changed` が先）。
-3. **旧の通知は、今の経路のまま出す（F1a-0）。** reader からの `emit`、`AudioHost` のメソッドからの `emit`、`Conditions::dispatch` の前後の `audio-conditions-changed`、`emitter` の Mutex の下での複数の通知のまとめを、いずれも変えない。保証するのは次の2つに限る。(1) 同じ子のイベントに対する通知の列（reader が出す順）。(2) reader がその要求の応答を待ち手へ渡すまでの順序（その要求の応答より前に、同じ子のイベントに対する通知を出し終えている）。応答の後に `dispatch` や `AudioHost` が出す `audio-conditions-changed`（たとえば停止・再起動の実測の列。9章）は、この保証に含めない。Emitter のキューを経由して順序を変えない。Emitter は F1b の新しい通知（`audio-session`）とメーターのためだけに使う。F1a-1 で通知を出す場所を変える場合は、5章の最後の2つの順序（同じ出来事の通知の列、EOF の通知から待ち手の解放まで）を試験で固定してから変える。
-4. **読み取りの待ちの境界：** `get_audio_state` と `get_saved_audio_config` は、いずれも `state.lock()` を取ってから読む。`Start` がロックを持っている間に呼ばれた読み取りは、開始が保存と `active_config` の更新を終えた後の値を返す。F1a-0 は同じ `Mutex` の経路を使い、actor に移した後も同じ待ちの境界を保つ（`SnapshotCell` にしない）。
+3. **旧の通知は、今の経路のまま出す（F1a-0）。** reader からの `emit`、`AudioHost` のメソッドからの `emit`、`Conditions::dispatch` の前後の `audio-conditions-changed`、`emitter` の Mutex の下での複数の通知のまとめを、いずれも変えない。保証するのは次の2つに限る。(1) 同じ子のイベントに対する通知の列（reader が出す順）。(2) reader がその要求の応答を待ち手へ渡すまでの順序（その要求の応答より前に、同じ子のイベントに対する通知を出し終えている）。応答の後に `dispatch` や `AudioHost` が出す `audio-conditions-changed`（たとえば停止・再起動の実測の列。9章）は、この保証に含めない。Emitter のキューを経由して順序を変えない。Emitter は F1b の新しい通知（`audio-session`）とメーターのためだけに使う。F1a-1 は通知を出す場所を変えない（J-14）。F1b-0 で場所を変える場合は、5章の最後の2つの順序（同じ出来事の通知の列、EOF の通知から待ち手の解放まで）を試験で固定してから変える。
+4. **読み取りの待ちの境界：** `get_audio_state` と `get_saved_audio_config` は、いずれも `state.lock()` を取ってから読む。`Start` がロックを持っている間に呼ばれた読み取りは、開始が保存と `active_config` の更新を終えた後の値を返す。F1a-0・F1a-1 は同じ `Mutex` の経路を使い、F1b-0 で actor に移した後も同じ待ちの境界を保つ（`SnapshotCell` にしない）。
 5. **`expectedState` の比較：** F1a-0 は、既存の完全一致のまま（`commands/audio.rs:433-447`）。旧の項目に写す処理は、F1b で拡張のキーを実際に足すときに入れる（試験は F1b の K3）。
 6. 意図した終了で `audio-engine-exited`・`audio-error` を出さないこと。
 7. `localize_audio_error` の包み方（start／restart で、子の応答のエラーと、`start_with_input_source` から伝わる親の側のエラーの両方。3.1 の直接返るエラー〔入力元の解決・事前の検査〕は包まない）。`stop_audio` を包まないこと。
@@ -190,7 +190,7 @@
 
 ### 8.2 F1b で安全のために変える候補（個別に承認する差分）
 
-受付順を記録すること（F1a-0）と、その順序で利用者から見た勝ち負けを変えること（D-9）は、別の差分として承認を求める。F1a-1 の安全のための変更（D-13）も、F1a の中で個別に承認を求める。
+受付順を記録すること（F1a-0）と、その順序で利用者から見た勝ち負けを変えること（D-9）は、別の差分として承認を求める。F1a-1 の安全のための変更（D-13）も、F1a の中で個別に承認を求める。実行の順や別の接続の進行を変える差分（D-9・D-10。actor・受信箱・writer・reaper の F1b-0）は、F1a には含めない（J-14）。
 
 | # | 変更 | 影響する利用者の挙動 | 承認の観点 |
 |---|---|---|---|
@@ -203,10 +203,10 @@
 | D-7 | `Stop` の応答待ちで子が応答しないときの隔離。**主のエンジンと配信ミックスを分ける**：配信ミックスは、`Stop` が失敗すると、今も子を終わらせる（`child.kill_engine()`）。主は今は10秒で失敗するだけ | 主の応答なしで、VST の状態を失う条件が新しく生じる | D-1 と同じ観点。配信ミックスの今の挙動（`audio/post_mix.rs:644-650`）は、変えない前提で比べる |
 | D-8 | **既存の** `get_audio_state` の待ちの境界を外し、`SnapshotCell` から返す（待たない）。**新しく作る** `get_audio_session` は、最初から待たない読み取りで、この承認の対象ではない（新しい契約） | 先行する命令の完了前の値が返る。直後の `expectedState` の照合に影響する（旧の境界を変える） | 旧の読み取りの待ちの境界。F1a は変えない |
 | D-9 | 通常の開始の `Superseded`：開始の待ちの間に停止を受け付けたら、確定せず清掃する | 今は、停止が開始の後ろに並び、開始が成功してから停止される | 受付順の記録とは別の差分。利用者から見た勝ち負けを変える（保存される設定が変わる） |
-| D-10 | stdin の書き込みの5秒での隔離。基準では、書き込みと flush が同期で終わってから、10秒の応答の待ちに入る。**書き込みが詰まること自体には、今は上限がない** | 今は、詰まった書き込みを待ち続ける。隔離で、VST の状態を失う条件が新しく生じる | 隔離で VST の状態を失う条件。**F1a-1 の承認に含めるか、F1b まで延ばすかは、F1a-1 の前に決める（設計 PRE-F1a1-4）。** 同様に、過負荷のときの拒否（`busy_overloaded`）と、停止を優先する実行も、承認の範囲を明示する |
+| D-10 | stdin の書き込みの5秒での隔離。基準では、書き込みと flush が同期で終わってから、10秒の応答の待ちに入る。**書き込みが詰まること自体には、今は上限がない** | 今は、詰まった書き込みを待ち続ける。隔離で、VST の状態を失う条件が新しく生じる | 隔離で VST の状態を失う条件。**決定（J-12・J-14）：F1b-0 まで延ばす。** F1a-1 は書き込みを今のまま同期で行う。過負荷のときの拒否（`busy_overloaded`）と、停止を優先する実行も、F1b でこの承認とともに有効にする（設計 18.3） |
 | D-11 | 旧の通知を間引く・Emitter を通す（F1b で新しい通知を足すとき） | 旧の通知の発行の順序・頻度が変わりうる | 旧の通知の発行の順序（F1a で固定したもの）を変える差分。変えるなら、購読側（15箇所）への影響を確かめてから |
 | D-12 | メーターの任意の項目（`seq`）の追加 | 旧の購読側は無視 | 旧の形（`input`・`output`）は保つ |
-| D-13 | F1a-1：Job の割り当ての失敗の扱い（その子を kill し、起動を失敗にする）。プロセスの終了を確認できない間（`Unconfirmed`）の要求の失敗（`engine_unconfirmed`、10秒）。遅れて終了を確かめられたら、操作できる状態に戻ったことを表示する | 今は割り当ての失敗を無視する。起動できない場合・操作できない時間が新しく生じる | **決定：承認する。ただし、承認の条件は「Windows の実プロセスでの確認」**：Job の作成・割り当て・待ちの失敗、EOF だけが来る場合、遅れた終了の確認（W1〜W4、設計 14.4）を確かめてから、F1a-1 のマージを承認する |
+| D-13 | F1a-1（設計 18.3 の第5版）：(a) 子を停止の状態で作り、Job に入れてから動かす。Job の作成・割り当て・再開の失敗は、その子を終わらせて起動を失敗にする。(b) 終了の待ちを、上限のない `wait()` から、最大2秒の確認に変える。終わらない子は主の `AudioHost` の役割ごとの記録（`retired`）に残し、同じ役割の子を作る要求は、最初の `kill()` から10秒の期限（要求ごとにやり直さない）で `engine_unconfirmed` で失敗する（3回続けたら J-13 の文言）。(c) `try_wait()` の失敗（`Err`）で作り直さない。(d) アプリの終了での子と孫の回収は Job の kill-on-close に任せる（保証は Job に入った子に限る。`Drop` が走ることは保証しない）。`Drop` が走った場合は、全部の子に共通の2秒で終える（今は上限なく待つ）。(e) `prepare_update` は、終わらない子が残ったら `engine_unconfirmed` を返し、更新・移行・一時利用へ進まない。(f) `kill_engine()` の後に結果を返す既存の入口（VST の復旧の途中の停止、書き込みの失敗など）は今の結果を返すが、旧の子がまだ生きている場合がある（作り直しは止める）。(g) 停止の状態で作ってから Job に入れるまでの窓で親が強制終了されると、停止したままの子が残る（J-15）。この窓は受け入れる。自動の回収は行わず、回復は Windows の再起動とする。更新・アンインストールが妨げられた場合は、再起動してから再試行する。Job の作成・割り当てに失敗し、終了を確かめられないまま親が終わった子も同じ扱い。**遅れて終了を確かめたときの表示と、EOF の後の自動の隔離は F1b-0（J-14）** | 今は割り当ての失敗を無視し、終わらない子をロックを持ったまま上限なく待つ。起動できない場合と、10秒で失敗を返す場合が新しく生じる（今は止まり続ける） | **決定：承認する。承認の条件は、18.3（第5版）の W 行の確認**：W1a・W1b・W1b'・W1c（Job の作成・割り当て・再開の失敗）、W2、W4a・W4b（アプリの通常の終了・強制の終了）。W1・W4 は実プロセス（一部は注入と併用）、W2 は失敗の注入で確かめる。**承認の範囲には、次の制約を含める：** 残った子が更新・アンインストールを妨げた場合は、Windows を再起動してから再試行する。MSIX でも、旧版のパスに子が残る場合がある。結果を見てから、F1a-1 のマージを承認する（16.1） |
 | D-14 | 子の `Error` に世代と side を付ける。`apply_deadline` つきの適用 | 旧のペイロード（文字列）は保つ | 子の側の差分 |
 
 ## 9. 実測した範囲と、確かめていないこと
