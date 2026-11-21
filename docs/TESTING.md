@@ -69,23 +69,30 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
    # (d) release の子を Tauri がコピーする元へ置き、更新時刻を今にする（Cargo は更新時刻で build.rs の再実行を判断する。古い時刻のままだと再実行されず、debug フォルダーの子が古いまま残ることがある）。
    $src = "$bin\audio_engine-x86_64-pc-windows-msvc.exe"
    Copy-Item $release $src -Force -ErrorAction Stop
-   (Get-Item $src).LastWriteTime = Get-Date
-   if ((Get-FileHash $src).Hash -ne (Get-FileHash $release).Hash) { throw 'copy mismatch' }
+   (Get-Item $src -ErrorAction Stop).LastWriteTime = Get-Date
+   $srcHash = (Get-FileHash $src -ErrorAction Stop).Hash
+   $releaseHash = (Get-FileHash $release -ErrorAction Stop).Hash
+   if (-not $srcHash -or $srcHash -ne $releaseHash) { throw 'copy mismatch' }
    # (e) externalBin の上書きを解除し、トレースを有効にして Host を起動する（Host のビルドが、(d) の子を debug フォルダーへコピーする）。
    Remove-Item Env:TAURI_CONFIG
    $env:AURALYN_EMIT_TRACE = '1'
    npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log
+   if ($LASTEXITCODE -ne 0) { throw 'tauri dev failed: see w5-dev.log' }
    ```
 
-   `rebuild-engine` が `TAURI_CONFIG` を引き継がない場合に備え、(b) が失敗したら、そのメッセージを確かめてから (a) をやり直す。`AURALYN_EMIT_TRACE` は測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
+   `rebuild-engine` の `cargo build` は環境変数を引き継ぐので、(a) の `TAURI_CONFIG` が効き、元ファイルが無くても `build.rs` は失敗しない。`AURALYN_EMIT_TRACE` は測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
 
    (f) **起動した後で、実際の子を照合する。** 別のターミナルで次を実行し、`True` と、`debug\audio_engine.exe` のパスが出ることを確かめる。ログ（`w5-dev.log`）に `Engine IPC parse error` が1件でもあれば、その回の結果は使わない。ハッシュが合わなければ、Host を止めて (d) からやり直す。
 
    ```powershell
    $release = Join-Path $PWD 'src-tauri\target\release\audio_engine.exe'  # リポジトリのルートで実行する
-   $child = Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe'" | Select-Object -First 1
-   $child.ExecutablePath
-   (Get-FileHash $child.ExecutablePath).Hash -eq (Get-FileHash $release).Hash
+   $debugDir = Join-Path $PWD 'src-tauri\target\debug'
+   $hostProc = @(Get-CimInstance Win32_Process -Filter "Name='AuralynHost.exe'" | Where-Object { $_.ExecutablePath -eq (Join-Path $debugDir 'AuralynHost.exe') })
+   if ($hostProc.Count -ne 1) { throw "expected one debug Host, found $($hostProc.Count)" }
+   $child = @(Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe' AND ParentProcessId=$($hostProc[0].ProcessId)")
+   if ($child.Count -ne 1) { throw "expected one child of the Host, found $($child.Count)" }
+   $child[0].ExecutablePath
+   (Get-FileHash $child[0].ExecutablePath -ErrorAction Stop).Hash -eq (Get-FileHash $release -ErrorAction Stop).Hash
    ```
 
    子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test`、`cargo build --bin audio_engine`、`npm run rebuild-engine` は、debug フォルダーの子を debug の子に戻すので、測定の間は実行しない。**注意：今のソースから作った debug の子は、WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる。debug の子では W5 を測れない。別の Issue で扱う（番号は統括が入れる）。**
