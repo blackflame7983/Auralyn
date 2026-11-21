@@ -187,6 +187,9 @@ fn the_scheduler_goes_through_the_entry_and_stops_when_the_state_is_dropped() {
 
 #[test]
 fn the_post_mix_child_host_is_built_only_through_the_control_module() {
-    let child = control::post_mix_child_host(std::env::temp_dir().join("auralyn-post-child-unit"));
+    let child = control::post_mix_child_host(
+        std::env::temp_dir().join("auralyn-post-child-unit"),
+        Arc::default(),
+    );
     assert!(child.post_role);
 }

@@ -255,7 +255,7 @@ impl AudioHost {
                 let mix_rollback = rollback_settings(&mix_original.0, &mix_original.1, &mix_current.1);
                 self.post_mix.kill();
                 if let Some(root) = self.last_config_path.parent() {
-                    self.post_mix = post_mix::State::new(root);
+                    self.post_mix = post_mix::State::new(root, self.retired.clone());
                     self.mixing = mixing::State::new(root);
                 }
                 if post_rollback.is_err() || mix_rollback.is_err() {

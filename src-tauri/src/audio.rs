@@ -3,6 +3,7 @@ pub(crate) mod control;
 pub(crate) mod emit;
 pub use control::{AudioControl, Entry, EntryKind};
 mod engine_exit;
+pub(crate) mod engine_life;
 pub(crate) mod frontend_bootstrap;
 mod live_bundle;
 mod live_modes;
@@ -30,9 +31,6 @@ use tauri::AppHandle;
 fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
     crate::migration::write_json(path, config).map_err(anyhow::Error::msg)
 }
-
-#[cfg(windows)]
-use crate::process_job as win_job;
 
 // Use shared IPC types
 use crate::ipc::DeviceScanStatus;
@@ -277,8 +275,9 @@ pub struct AudioHost {
     bundle_monitor_override: Option<Option<crate::audio_engine::split_monitor::State>>,
     bundle_interrupt: Option<u64>,
     output_gain_initialized: bool,
-    #[cfg(windows)]
-    engine_job: Option<win_job::Job>,
+    engine_job: Option<engine_life::JobHandle>,
+    /// 終了を確かめられない子の記録。配信ミックスの子の `AudioHost` と共有する。
+    retired: Arc<engine_life::Store>,
 }
 
 fn checked_snapshot_config_supported(
@@ -503,6 +502,10 @@ impl AudioHost {
         }
     }
     pub fn new(config_dir: PathBuf) -> Self {
+        Self::with_retired(config_dir, Arc::default())
+    }
+
+    fn with_retired(config_dir: PathBuf, retired: Arc<engine_life::Store>) -> Self {
         let mode_vst = mode_vst::State::new(&config_dir);
         let recovery_muted = mode_vst.blocked();
         Self {
@@ -533,7 +536,7 @@ impl AudioHost {
             active_config: None,
             process_inputs: Default::default(),
             mixing: mixing::State::new(&config_dir),
-            post_mix: post_mix::State::new(&config_dir),
+            post_mix: post_mix::State::new(&config_dir, retired.clone()),
             post_role: false,
             post_attached: false,
             bundle_mixing_override: false,
@@ -544,9 +547,22 @@ impl AudioHost {
             bundle_monitor_override: None,
             bundle_interrupt: None,
             output_gain_initialized: false,
-            #[cfg(windows)]
             engine_job: None,
+            retired,
         }
+    }
+
+    fn role(&self) -> engine_life::Role {
+        if self.post_role {
+            engine_life::Role::PostMix
+        } else {
+            engine_life::Role::Primary
+        }
+    }
+
+    /// 子を手放す。終了を確かめられなければ、次の生成より先に記録へ移る。
+    fn retire_engine(&self, child: Child, job: Option<engine_life::JobHandle>) {
+        engine_life::retire_child(&self.retired, self.role(), child, job);
     }
 
     pub fn set_event_emitter(&mut self, handle: AppHandle) {
@@ -697,6 +713,8 @@ impl AudioHost {
         let child = {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
+            // 停止の状態で作り、Job へ入れてから `contain_and_resume` が動かす。
+            const CREATE_SUSPENDED: u32 = 0x00000004;
             let mut command = Command::new(binary_path);
             if self.post_role {
                 command.arg("--post-mix-worker");
@@ -705,7 +723,7 @@ impl AudioHost {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
-                .creation_flags(CREATE_NO_WINDOW);
+                .creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
             self.apply_engine_tuning_env(&mut command);
             command.spawn()?
         };
@@ -735,50 +753,38 @@ impl AudioHost {
         if self.child.is_some() {
             // Check if still alive
             if let Some(c) = self.child.as_mut() {
-                match c.try_wait() {
+                match engine_life::try_wait(c) {
                     Ok(Some(status)) => {
                         log::error!("Audio Engine exited unexpectedly! Status: {}", status);
                         log::warn!("Forcing restart with empty state");
                         self.reader_active.store(false, Ordering::Release);
                         self.child = None;
                         self.stdin = None;
-                        #[cfg(windows)]
-                        {
-                            self.engine_job = None;
-                        }
+                        self.engine_job = None;
                     }
                     Ok(None) => return Ok(()), // Running
                     Err(e) => {
+                        // 終了の証拠ではない。確かめられるまで、同じ役割の子を作らない。
                         log::error!("Error waiting on audio engine child process: {}", e);
                         self.reader_active.store(false, Ordering::Release);
-                        self.child = None;
-                        self.stdin = None;
-                        #[cfg(windows)]
-                        {
-                            self.engine_job = None;
+                        if let Some(child) = self.child.take() {
+                            let job = self.engine_job.take();
+                            self.retire_engine(child, job);
                         }
+                        self.stdin = None;
                     }
                 }
             }
         }
 
+        self.retired.ensure_clear(self.role())?;
         log::info!("Spawning Audio Engine Sidecar...");
         let condition_epoch = self.conditions.new_engine();
         self.notify_conditions_changed();
-        let mut child = self.spawn_engine_process()?;
-
-        // Best-effort: kill process tree (child + grandchildren) on host drop/restart (Windows)
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawHandle;
-            use windows::Win32::Foundation::HANDLE;
-
-            let job = win_job::Job::new_kill_on_drop();
-            if let Some(ref job) = job {
-                let _ = job.assign(HANDLE(child.as_raw_handle()));
-            }
-            self.engine_job = job;
-        }
+        let launched = self.spawn_engine_process()?;
+        let (mut child, job) =
+            engine_life::contain_and_resume(&self.retired, self.role(), launched)?;
+        self.engine_job = job;
 
         let stdin = BufWriter::new(child.stdin.take().unwrap());
         let stdout = BufReader::new(child.stdout.take().unwrap());
@@ -2785,6 +2791,11 @@ impl AudioHost {
         }
         self.maintenance = true;
         self.kill_engine();
+        // 終わらない子が残る間は、更新・移行・一時利用へ進まない。
+        if let Err(error) = self.retired.recheck() {
+            self.maintenance = false;
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -2817,18 +2828,15 @@ impl AudioHost {
         self.device_scan = None;
         // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
         self.reader_active.store(false, Ordering::Release);
-        if let Some(mut child) = self.child.take() {
+        if let Some(child) = self.child.take() {
             log::warn!("Force Killing Audio Engine...");
-            let _ = child.kill();
-            let _ = child.wait();
+            let job = self.engine_job.take();
+            self.retire_engine(child, job);
         }
         self.stdin = None;
         self.child = None;
         self.voice_activity.store(false, Ordering::Release);
-        #[cfg(windows)]
-        {
-            self.engine_job = None;
-        }
+        self.engine_job = None;
     }
 
     pub fn warmup(&mut self) -> Result<()> {
@@ -2963,15 +2971,41 @@ impl Drop for AudioHost {
         // アプリ終了によるkillを、readerの異常終了通知から除外する。
         self.reader_active.store(false, Ordering::Release);
         self.conditions.retire_engine();
-        if let Some(mut child) = self.child.take() {
+        if self.post_role {
+            // 配信ミックスの子の `AudioHost` を手放す経路。終わらない子は、主の記録へ移す。
+            self.release_engine();
+            return;
+        }
+        // 主・配信ミックス・記録の子に、共通の期限で終了を確かめる。Job が残りを回収する。
+        let mut children = Vec::new();
+        children.extend(self.take_engine_for_shutdown());
+        children.extend(self.post_mix.take_children_for_shutdown());
+        if !self.post_role {
+            children.extend(self.retired.drain());
+        }
+        if !children.is_empty() {
             log::info!("Killing Audio Engine Sidecar (Drop)...");
-            let _ = child.kill();
-            let _ = child.wait();
+            engine_life::terminate_all(children);
         }
-        #[cfg(windows)]
-        {
-            self.engine_job = None;
+    }
+}
+
+impl AudioHost {
+    /// 子を手放す（`AudioHost` ごと捨てる前）。終了を確かめられなければ記録へ移す。
+    fn release_engine(&mut self) {
+        self.reader_active.store(false, Ordering::Release);
+        if let Some(child) = self.child.take() {
+            let job = self.engine_job.take();
+            self.retire_engine(child, job);
         }
+        self.stdin = None;
+    }
+
+    fn take_engine_for_shutdown(&mut self) -> Option<(Child, Option<engine_life::JobHandle>)> {
+        self.reader_active.store(false, Ordering::Release);
+        self.child
+            .take()
+            .map(|child| (child, self.engine_job.take()))
     }
 }
 
@@ -3060,6 +3094,13 @@ pub struct AudioState(pub control::AudioControl);
 pub fn localize_audio_error(e: String) -> String {
     let lower = e.to_lowercase();
 
+    // 日英とも最終の文言を持つので、そのまま返す（既定の包みをかけない）。
+    if e.contains(engine_life::REPEATED_JA) {
+        return engine_life::EngineUnconfirmed::text(true);
+    }
+    if e.contains(engine_life::UNCONFIRMED_JA) {
+        return engine_life::EngineUnconfirmed::text(false);
+    }
     if lower.contains("sample clock or rate cannot be determined") {
         return "オーディオデバイスのサンプルレートを取得できません。\n\n\
                 他のアプリ（Discord・ブラウザなど）がデバイスを使用中の可能性があります。\n\
@@ -3113,6 +3154,10 @@ pub(crate) mod compat_support;
 #[cfg(test)]
 #[path = "audio/tests/compat_tests.rs"]
 mod compat_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/engine_life_tests.rs"]
+mod engine_life_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/control_tests.rs"]

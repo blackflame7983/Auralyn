@@ -2,7 +2,7 @@
 //!
 //! 記録は受付の順序と、実際にロックを得た順序を残すだけである。操作の並べ替えにも、
 //! 利用者から見た勝ち負けにも使わない。ロックの種類・保持の長さ・実行するスレッドは変えない。
-use super::AudioHost;
+use super::{engine_life, AudioHost};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -253,8 +253,8 @@ impl<'a> Ticket<'a> {
 }
 
 /// 配信ミックス用の2つ目の`AudioHost`。独自の`Mutex`は持たず、主の`AudioHost`のロックの内側でだけ使う。
-pub(super) fn post_mix_child_host(root: PathBuf) -> AudioHost {
-    let mut child = AudioHost::new(root);
+pub(super) fn post_mix_child_host(root: PathBuf, retired: Arc<engine_life::Store>) -> AudioHost {
+    let mut child = AudioHost::with_retired(root, retired);
     child.post_role = true;
     child
 }
