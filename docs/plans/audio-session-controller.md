@@ -697,8 +697,8 @@ RecoveryAuthority { id, failed_stream, conn, commit_manual_epoch, commit_stop_fl
 |---|---|---|---|
 | **F0**（この PR） | 3文書。コードは変えない | `npm run verify -- --changed` | なし |
 | **F1a-0** | 互換の試験（`9567061a` の挙動の固定）。`AudioControl` の入口の一本化。`Admission` での**受付順の記録**まで。`Mutex` は残し、勝敗は今の順序のまま | 互換の契約の試験（旧の通知の順序、`get_audio_state` の待ちの境界、`expectedState`、エラーの文字列） | **変えない**。受付順は記録するだけで、利用者から見た勝ち負けは変えない |
-| **F1a-1** 通信とプロセスの寿命 | actor・受信箱（制御用・通常用）・reader / writer / reaper、接続の状態（通信とプロセスを分ける、4.4）、Job の割り当ての成功の確認、`Unconfirmed` の扱い。既存の実行の経路は保つ（旧の通知は reader から直接 `emit`。`get_audio_state` は actor の列を通る読み取りのまま） | 模擬 sidecar での段階の試験、実プロセスの境界の試験（14.4） | 変えない。`Unconfirmed` のときの要求の失敗（`engine_unconfirmed`）と Job の割り当ての失敗の扱いは、**F1a-1 でも安全のための変更なので、個別の承認が要る**（互換の契約 D-13） |
-| **F1a-2** 持ち主の移行 | 入口の一覧（4.6）を、確かめられる単位で順に移す：(1) 主のコマンド (2) 配信ミックス（第2接続）(3) 機器のスキャン (4) warmup・frontend_bootstrap (5) 更新・移行・一時利用 (6) スケジューラ・トレイ・ショートカット・OBS・配信セット。各単位ごとに互換の試験を通す | 各単位の互換試験、既存の Rust 試験 | 変えない |
+| **F1a-1** プロセスの寿命（J-14 で範囲を絞った。18.3） | 作成と同時の Job への割り当て、reaper、プロセスの状態（`Running`・`Terminated`・`Unconfirmed`）、作り直しの条件、EOF の後の隔離。`Mutex` と実行の経路は保つ。actor・受信箱・writer のスレッドは F1b-0 | 試験の継ぎ目での失敗の注入、実プロセスの境界の試験（14.4、W1・W2・W4） | 変えない。`Unconfirmed` のときの要求の失敗（`engine_unconfirmed`）と Job の割り当ての失敗の扱いは、**F1a-1 でも安全のための変更なので、個別の承認が要る**（互換の契約 D-13） |
+| **F1b-0**（旧 F1a-2。J-14）actor と持ち主の移行 | actor・受信箱・reader / writer のスレッド（3.1、4.1、4.5、4.7。宿題は PRE-F1b-12）。入口の一覧（4.6）を、確かめられる単位で順に移す：(1) 主のコマンド (2) 配信ミックス（第2接続）(3) 機器のスキャン (4) warmup・frontend_bootstrap (5) 更新・移行・一時利用 (6) スケジューラ・トレイ・ショートカット・OBS・配信セット。各単位ごとに互換の試験を通す | 各単位の互換試験、既存の Rust 試験、W3、B25〜B28、B36〜B42 | **受付と実行の順（K11）、停止の優先、`busy_overloaded`、書き込みの5秒での隔離を変える。D-9・D-10 の承認とともに入れる**（J-12・J-14） |
 | **F1b** 新しい契約 | `RequestId`・`AttemptId`・確定点（5.2）、タイムアウトの後始末（5.3）、終了の確定（7章）、`audio-session`・`get_audio_session`、履歴、`clientRequestId`、`PersistPolicy`、`MeterCell`、子の `attempt_id` の echo・`Error` の世代・`StreamState`・能力の確認。`SnapshotCell` による読み取り | 合格の条件の表の F1b の行 | **安全のための変更を、互換の契約の 8.2 の表（D-1〜D-14）の単位で、個別に承認して入れる。** 「受付順を記録すること」（F1a-0 で済み）と「その順序で利用者から見た勝ち負けを変えること（`Superseded` など）」は、別の差分として扱う |
 | **R1** 自動の再開の制限 | 12章の `RecoveryAuthority`、`recover`、フロントの再開の切り替え。再開の待ち時間の予約（2秒・4秒・6秒）は、フロントに残す。親へ移すのは、権限と実行 | 再開の順序の行 | 旧の再開が、手動の操作と競合したとき、拒否される。通常の再開は同じに動く |
 | **F2** 確認のセッション（声と音楽） | 11章。セットアップを移す。#806 の完成。到達の判定を Rust へ。**最小の `audioSession` の購読（9章の版・`seq`・回復）をここで入れ、F3 でそのまま使い回す** | 確認の順序の行、フロントの試験、ブラウザ試験、画面の合格の条件（合格の条件の表の U 群） | セットアップだけが変わる |
@@ -894,6 +894,7 @@ ID は、レビュー文書の見出しの順に付けた。
 - **J-11（利用者の決定）：** F2 までは必ず行う。F3 は、競合の害が利用者に見えるもの（稼働表示、クラッシュ画面と VST の一覧、メーター）だけを移す F3-min に縮める。そこで UI の構成を分岐させ、GPUI を別のブランチで試す。問題がなければ移り、問題が出たら Tauri の構成に戻って F3-rest と F4 を続ける。13章、13.2。
 - **J-12（利用者の決定、2026-11-21）：** PRE-F1a1-4（D-10）。writer のスレッドの分離は F1a-1 に入れ、**5秒での隔離は F1b まで延ばす**。あわせて、`busy_overloaded` の拒否と、停止を受付の順を越えて先に実行することも、F1b で D-9・D-10 の承認とともに有効にする。18.3。
 - **J-13（利用者の決定、2026-11-21）：** PRE-F1a1-8。`engine_unconfirmed` を3回続けて返したら、「音声エンジンを終了できません。Auralyn を終了して、起動し直してください」を返す。18.3。
+- **J-14（統括の決定、2026-11-21）：** F1a-1 を「プロセスの寿命」だけに絞る（作成と同時の Job、reaper、`Unconfirmed`、EOF の後の隔離、作り直しの条件）。actor・受信箱のレーン・writer のスレッド・入口の持ち主の移行（旧 F1a-2）は、受付と実行の順を変えるため、D-9・D-10 の承認と一緒に F1b-0 で入れる。J-9 の復帰の表示も F1b へ移す。独立レビュー（`44b9b837` への BLOCK）による。18.3.0。
 - **D-13（決定）：** 承認する。**承認の条件は、Windows の実プロセスでの確認**（Job の作成・割り当て・待ちの失敗、EOF だけが来る場合、遅れた終了の確認。W1〜W4、14.4）。確認の結果を見てから、F1a-1 のマージを承認する。
 
 ### 16.2 新しく出た、利用者の判断が要る点
@@ -937,84 +938,76 @@ ID は、レビュー文書の見出しの順に付けた。
 
 F1a-0 のマージ（`f2ae2c9d`）の後に決めた。【事実】はコードで確かめたこと、【設計】は F1a-1 で作るもの。
 
-#### PRE-F1a1-1 子の寿命：reaper・作り直しの条件・Job の割り当て
+#### 18.3.0 F1a-1 の範囲を「プロセスの寿命」に絞る（J-14）
 
-【事実】
-- 音声の接続の子は2種類。主（`spawn_engine_process`、`audio.rs:700-724`）と、配信ミックス（同じ関数で `--post-mix-worker`）。
-- Job の割り当ては、子を作った後に行い、結果を `let _ =` で捨てている（`audio.rs:776-780`）。作り直しの判断は `try_wait()` で、`Ok(Some)` と `Err` のどちらでも作り直す（`audio.rs:735-763`）。
-- 子は、起動してから最初の命令を読むまで、`Engine::new()` と `run_loop()` に入るだけで、機器を開く処理や子プロセスの生成は、命令を受けてから行う（`bin/audio_engine.rs:252-265`。`--scan` の孫は `devices.rs:128` で、命令を受けてから作る）。**F1a-1 の最初の試験で、この前提を固定する**（最初の命令までに子プロセスを作らないこと）。
-- 音声の接続以外にも、子を作って Job の割り当ての結果を捨てる箇所がある（`child_process.rs:56-64` のスキャナー、`temporary_session.rs`、エディタの環境の確認）。**F1a-1 の範囲外**。同じ穴なので、別の Issue に記録する。
+第1案（`44b9b837`）は、F1a-1 に actor・受信箱のレーン・writer のスレッドを入れていた。独立レビューで、次の理由により、それらは F1a の「挙動を変えない」と両立しないと分かった。
+
+- 受付番号の順に実行するだけで、今のロックの取得の順（K11 の B→A）と勝ち負けが変わる。
+- 通知を reader から受信箱へ移すと、満杯のときの間引き・後送りで、旧の通知（`audio-loudness`、`audio-processing-health` など）の数と順が変わる。直接 `emit` を保つなら、レーンで分ける意味が薄い。
+- 書き込みの失敗と応答の優先（今は書き込みの失敗が先）、`ReplySlot` の契約、停止の合流は、actor に移すと変わる。
+
+そこで、**F1a-1 は今の `Mutex` と実行の経路を保ったまま、子のプロセスの寿命だけを直す**。actor・受信箱・レーン・writer のスレッド・入口の持ち主の移行（旧 F1a-2）は、受付と実行の順を変える承認（D-9・D-10）と一緒に、**F1b の最初の段（F1b-0）**で入れる。その宿題は PRE-F1b-12（18.2）に移した。
+
+F1a-1 で変えないもの：`Mutex<AudioHost>` と `AudioControl` の入口、reader からの旧の通知の直接の `emit`（`audio-level` を含む）、`ReplySlot`、書き込みの失敗が応答より優先すること、応答の期限（書き込みと flush の後から10秒）、`engine_generation` の更新点、`interrupt_restore`、`quit_app` の `app.exit(0)`。
+
+#### PRE-F1a1-1 子の寿命：生成・終了の観測・作り直しの条件
+
+【事実】（コードで確かめた）
+- 音声の接続の子は、主と配信ミックスの2種類。どちらも `spawn_engine_process`（`audio.rs:696-724`）で作り、配信ミックスだけ `--post-mix-worker` を付ける。配信ミックスは別の `AudioHost` が持つ。
+- Job の割り当ては子を作った後で、結果を `let _ =` で捨てる（`audio.rs:776-780`）。作り直しの判断は `try_wait()` で、`Ok(Some)` と `Err` のどちらでも作り直す（`audio.rs:735-763`）。
+- 子は、最初の命令までに機器を開かず、孫も作らない（`Engine::new()` はストリームを `None` で初期化するだけ。`core.rs:464`。`--scan` の孫は `begin_scan` から。`devices.rs:124`）。起動のログは stdout に出る。
+- **EOF の後、子が生きている場合**：reader は待ち手に `Engine Crashed/Exited` を渡し、`reader_active` を下ろす（`audio.rs:1058`）。次の命令は、送る前に `reader_active` の検査で失敗する。`try_wait()` は `Ok(None)`（生きている）を返すので、作り直しも起きない。`restart_audio_engine` で明示に作り直すまで、操作できない。
+- 一時利用の再起動（`temporary_session.rs:328`）と、エディタの環境の試験（`editor_environment.rs:244`）は、Job の割り当てそのものを行わない（一時利用の子は、親の終了を待って起動を続ける設計）。スキャナー（`child_process.rs:51-64`）は割り当ての結果を捨てる。**どれも F1a-1 の範囲外**。スキャナーの件だけ、別の Issue に記録する。
 
 【設計】
-1. **reaper はすべての分岐で起動する。** `Spawn` は、子を作った直後に、**ほかの何よりも先に** reaper を起動し、`Child` を渡す。Job の作成の失敗、割り当ての失敗、stdin・stdout の取り出しの失敗、reader・writer の起動の失敗の、どの分岐でも、reaper が先に動いている。reaper のスレッドを作れなかった場合だけは、その場で `kill` と上限2秒の `wait` を同期で行い、確かめられなければ `Unconfirmed` にする。
-2. **作り直しの条件は、終了の証拠があることだけ。** 証拠は、reaper が同じ `Child` から得た終了の状態（`Reaped`）だけ。`Unconfirmed`、`wait()` の失敗、EOF は、証拠ではない。今の `try_wait()` の `Err` での作り直しは、F1a-1 でやめる（D-13 の範囲）。
-3. **EOF だけが来て、子が生きている場合は隔離する。** `comm = Detached` にし、`Teardown`（意図 = `quarantine_eof_alive`）へ進む。`Reaped` を観測するまで、同じ役割の子を作らない（W2a〜W2c）。今は、`try_wait()` が `Ok(None)` を返すので、閉じた stdout の子へ命令を送り続け、応答の期限で失敗する。
-4. **待つのに失敗したら、もう一度確かめる。** reaper は、`wait()` が失敗したら `ReapFailed{conn}` を積み（`Unconfirmed` のまま。履歴は1回だけ）、2秒後に `wait()` をやり直す。actor は、2秒ごとの `TerminateProcess` の再実行（4.4）を続ける。
-5. **Job の割り当ての方式：作った直後、最初の命令の前に割り当てる。** 割り当てに成功するまで、その接続の stdin へ何も書かない（writer を起動しない）。失敗したら、その子を `kill` し、reaper の `Reaped` を待って、`Spawn` を失敗にする（「開始していません」。D-13）。Job の作成に失敗した場合も同じ。
-   - 停止の状態で作って再開する方式と、作成と同時に Job へ入れる方式（`PROC_THREAD_ATTRIBUTE_JOB_LIST`）は、どちらも、std の `Command` ではなく、自前の `CreateProcessW` が要る。子が最初の命令まで孫を作らないので、作った直後の割り当てで、孫まで Job に入る。この前提が崩れたら（子が起動時に孫を作るように変わったら）、方式を見直す。
-   - 残る窓：作ってから割り当てるまでの間に、親が強制終了された場合、子は Job に入らず残る。子は stdin の EOF で終わる（`run_loop` が stdin を読めなくなる）ので、残り続けはしない。W4b で確かめる。
+1. **作成と同時に Job へ入れる。** 子は `CreateProcessW` に `STARTUPINFOEXW` を渡し、`PROC_THREAD_ATTRIBUTE_JOB_LIST`（Windows 10 以降。対象は Windows 11）で、作成の時点で kill-on-close の Job に入れる。stdin・stdout の匿名パイプは、子の側の端だけを `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` で継承させる。Rust 1.99.1 の stable の `Command` では、属性つきの作成も、停止の状態からの再開（主スレッドのハンドル）も使えないため、自前で作る（`process_job.rs` の隣に置く）。
+   - Job の作成・属性の設定・プロセスの作成の、どれかが失敗したら、**子は存在しない**（作成と割り当てが1回の呼び出し）。起動を失敗にする（「開始していません」。D-13）。Job に入らない子は作らない。
+   - 作った後の割り当ての窓はない。親が強制終了されても、Job の kill-on-close が子と孫を回収する（W4b）。
+2. **持ち物と所有権。** 親は `EngineProcess { conn: ConnId, process: OwnedHandle, job: Job, stdin, stdout }` を持つ。std の `Child` は使わない。終了の確認と強制終了は、自前のハンドルで行う（`WaitForSingleObject`・`GetExitCodeProcess`・`TerminateProcess`）。
+   - **reaper：** 作成に成功したら、プロセスのハンドルを `DuplicateHandle`（`SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION`）で複製し、reaper のスレッドへ渡す。reaper は待つだけ（`WaitForSingleObject(INFINITE)` → `GetExitCodeProcess`）で、結果を接続ごとの `ProcessCell`（`Mutex<ProcessState>` と `Condvar`。葉のロック）に書く。親は終わらせるだけで、待たない。
+   - stdin・stdout は、作成の時点で親が持つので、reaper に渡すものとの取り合いは起きない。
+   - **reaper のスレッドを作れなかった場合：** その場で `TerminateProcess` し、`WaitForSingleObject(2秒)` で待つ。終われば `Terminated`、終わらなければ `Unconfirmed`。以後の確認は、親が操作のたびに `WaitForSingleObject(0)` で行う（観測の役を親が引き継ぐ）。
+   - **待つことの失敗（`WAIT_FAILED`）：** reaper は `Unconfirmed` のまま、記録を1回だけ残し、2秒後に待ち直す。
+3. **状態。** `ProcessState = Running | Terminated(code) | Unconfirmed { since }`。`Terminated` は**直接の子**の終了の証拠。孫の回収は、Job の破棄で行い、W4 で別に観測する。通信の状態は、今の `reader_active` のまま。
+4. **作り直しの条件は `Terminated` だけ。**
+   - `ensure`（今の `audio.rs:735-763`）は、`ProcessState` を見る。`Terminated` なら作り直す。`Unconfirmed` や待つことの失敗では作り直さない（今の `Err` での作り直しをやめる。D-13）。
+   - **EOF の後で子が生きている**（`reader_active = false` かつ `Running`）場合は、**次に子が要る操作の時点で**隔離する：`TerminateProcess`、Job の破棄、`ProcessCell` で最大2秒待つ。`Terminated` になれば作り直して続ける（今は `restart_audio_engine` まで操作できない。D-13 の範囲）。旧の EOF の通知と待ち手の解放は、今のまま reader が行う（変えない）。
+   - 明示の終了（`kill_primary_engine`、`audio.rs:2802`）・再起動・`Drop` も同じ：`TerminateProcess` → Job の破棄 → 最大2秒待つ。`Drop` は、待てなくてもそのまま終える（Job が回収する）。
+5. **`Unconfirmed` の間の要求（J-9、D-13）。** 子が要る要求は、ロックを持ったまま、`ProcessCell` の条件変数で最大10秒待つ。待つ間、2秒ごとに `TerminateProcess` を再実行する。10秒の起点は、**その要求が子の終了を待ち始めた時点**（ロックを取った後）。解けなければ `engine_unconfirmed` で失敗する。遅れて `Terminated` になっても、失敗した要求は復活しない。今も、子の応答の待ちはロックを持ったまま行うので、ロックの持ち方の性質は変わらない（待つ時間の上限が10秒で決まる）。
+6. **`stream_generation` の前半（`engine_generation`）は、今の更新点を保つ。** 子を登録したとき（`audio.rs:783-789`）と `kill_primary_engine()`（`audio.rs:2802`）の両方で進む。`ConnId`（`AudioControl` が採る、役割をまたいで一意の番号）は、照合のためだけに使い、表示には出さない。試験：(a) 明示の再起動で 1→3、(b) 自然な終了の後の作り直しで 1→2、(c) 配信ミックスを挟んでも、主の数が配信ミックスの影響を受けない。いずれも、旧の通知の形が変わらない。
 
-#### PRE-F1a1-2 受信箱のレーンと、満杯のときの配送
+#### PRE-F1a1-2・3・4（受信箱のレーン、照合のキー、書き込みの詰まり）
 
-順序の制約：reader が読んだ `Response`・`Event`・`Eof`・`ReaderDone` は、**同じ接続の中で、子の出力の順を保つ**（4.1 の順序の固定 1）。したがって、`Response` と `Event` を別のレーンに分けない。
+actor と一緒に F1b-0 へ移した（J-14）。宿題は PRE-F1b-12。F1a-1 では、`ConnId` の型だけを入れる（PRE-F1a1-1 の 6）。書き込みは今のまま同期で行う（J-12 の「5秒での隔離は F1b」とも一致する）。
 
-【設計】レーンは4つ。
+#### PRE-F1a1-5 実プロセスの試験の手順書と、失敗の起こし方
 
-| レーン | 入力 | 上限と満杯のとき |
+F1a-1 の PR で `TESTING.md` の「実sidecarのプロセス境界と実機試験」に、次の手順を足す。D-13 の承認の条件なので、結果を PR に記録し、それを見てからマージする。
+
+| 行 | 子の状態の作り方 | 観測する値 |
 |---|---|---|
-| **接続ごとの wire**（接続ごとに1本） | `Response`、`Event`、`Eof`、`ReaderDone` | 有界（接続ごとに 1024 件）。**重要でない `Event`**（`audio-loudness`、`voice-check-envelope`、`audio-processing-health`、`audio-channel-scan` の途中経過）は、reader の側で種類ごとに最新の1件だけを持ち、レーンに空きがあるときに積む（畳む）。**それ以外**（`Response`、`Started`、`Stopped`、`Error`、障害、mixing の失敗、エディタの開閉、`Eof`、`ReaderDone`）は、空きを待って積む（reader が待つ。actor は wire を常に読むので、待ちは解ける）。`LevelMeter` は積まない（10章） |
-| **寿命**（1本） | `Reaped`、`ReapFailed`、`WriteDone`、`PersistDone`、`Deadline`、`ReaderAbandoned`、`Shutdown` | 上限を設けない。**生産者の側で数が有界であることを、型と試験で保証する**：`Reaped`・`ReaderAbandoned` は接続ごとに1件、`WriteDone` は writer の列（8件）以下、`Deadline` は生きている段のトークンの数以下、`PersistDone` は保存のワーカーの列以下、`Shutdown` は1件 |
-| **停止**（1枠） | 停止系の `Command`（`StopAll`、`StopForMaintenance`、アプリの終了） | 列ではなく、1つの枠。続けて来た停止は、`latest_stop_seq` を進め、返信先を枠の中のリストに足す（畳む）。1回の停止の実行の結果を、枠の中のすべての返信先へ1回ずつ返す。溢れない |
-| **通常**（1本） | その他の `Command` | 4.7 の全体の上限（256件）に数える |
+| W1a Job の作成の失敗 | 試験の継ぎ目（`#[cfg(test)]`）で、Job の作成を失敗させる | 子が作られない。起動の失敗。次の操作で作り直せる |
+| W1b 作成と同時の割り当ての失敗 | 試験の継ぎ目で、`JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1` の Job に、先に別のプロセスを入れておき、それを渡す（作成が `ERROR_NOT_ENOUGH_QUOTA` などで失敗する。ネストの Job では、既に別の Job に属することは失敗の条件にならない） | 子が作られない。起動の失敗 |
+| W1c 待つことの失敗 | 試験の継ぎ目で、reaper の待ちを1回だけ失敗させる | `Unconfirmed` のまま、2秒後に待ち直して `Terminated` になる |
+| W2a〜W2c | 子の stdout だけを閉じる（子は生き続ける）。W2b は10秒以内に終わらせ、W2c は終わらせない | 次の操作での隔離、`Terminated` の後の作り直し、`engine_unconfirmed` と遅れた確認 |
+| W4a | アプリの通常の終了 | 子と孫が残らない |
+| W4b | 親のプロセスを強制終了 | Job の kill-on-close が、子と孫を回収する |
 
-actor が読む順：`Shutdown` → 寿命 → wire（接続の間は順番に回す）→ 停止の枠 → `held` → 通常。
-
-**公平性：** 停止を1回実行した後、`held` か通常に命令があれば、次の停止を実行する前に、その1件を実行する。停止は畳まれるので、停止の連打で通常の命令が止まり続けることはない。停止より古い開始は、S0 の照合で `Superseded` になるので、この1件はすぐ終わる（F1b から。F1a は下の注を参照）。
-
-**満杯のときの保証（模擬の試験で固定する）：** 通常のレーンが上限まで埋まり、wire に重要でない `Event` が集中している状態で、(a) 停止が実行されて結果を返す、(b) `Eof`・`Reaped` が届いて接続の終了が確定する、(c) `Shutdown` で2つの受信箱と `held` と停止の枠の要求が、すべて1回ずつ完了する。
-
-**F1a での適用の範囲（D-10 の決定に合わせる。J-12）：** レーンの型と配送は F1a-1 で作り、試験で固定する。ただし、利用者から見た結果を変える次の2つは、**F1b で D-9・D-10 の承認とともに有効にする**：通常のレーンの上限を超えたときの `busy_overloaded` の拒否、停止を先に実行すること（受付の順を越えて停止を勝たせること）。F1a の間は、上限は数えて記録するだけで拒否せず、命令は受付の順に実行する。
-
-#### PRE-F1a1-3 照合のキーの型
-
-【設計】
-```rust
-struct ConnId(u64);           // AudioControl が採る。役割をまたいで一意で、使い回さない
-enum Role { Main, PostMix }
-struct ConnKey { role: Role, conn: ConnId }
-struct ReaderEpoch(u32);      // 接続ごと。ReaderAbandoned で1つ進める
-struct StageToken(u64);       // 段ごとに採る。actor の中で一意
-struct DeadlineToken { stage: StageToken, kind: DeadlineKind }
-```
-- reader が積む入力は、すべて `(ConnKey, ReaderEpoch)` を持つ。actor は、接続の今の `ReaderEpoch` と違う入力を、状態に作用させずに捨てる（履歴に1回だけ残す）。打ち切りの後に、詰まっていた旧 reader が遅れて積んだ行は、これで無効になる。
-- `WriteDone` は `(ConnKey, StageToken)`、`Deadline` は `DeadlineToken` で照合する（4.1）。
-- **`label_gen` との対応：** 今の `engine_generation`（`audio.rs:789`）は、`stream_generation` の表示の `"{engine}:{child}"` の前半として、旧の通知に出ている（F1a-0 で固定済み）。F1a-1 では、名前を `label_gen` に変え、**主の接続を作るたびに1つ進める**（今と同じ）。`ConnId` は配信ミックスでも進むので、`label_gen` とは別の数にする。試験：主→配信ミックス→主の順に作ったとき、`ConnId` は 1・2・3、`label_gen` は 1・1・2 で、旧の通知の `stream_generation` の形が変わらない。
-
-#### PRE-F1a1-4 書き込みの詰まり（D-10。J-12 で決定）
-
-【設計】F1a-1 では、writer のスレッドを分けるが、**挙動は今と同じ（書き込みの詰まりに上限を設けず、接続を隔離しない）**。
-- actor は writer へ `try_send` する。writer の列（8件）が満杯なら、その行を actor の側の接続ごとの待ちの列に置き、`WriteDone` を受けるたびに1件ずつ writer へ送る。actor はブロックしない。この待ちの列は、4.7 の全体の上限（数えるだけ）に含まれる。
-- 応答の期限（今の10秒など）は、**`WriteDone(Ok)` を受けてから**数える。今も、書き込みと flush が終わってから期限の待ちに入る（互換の契約 D-10 の「基準」）。したがって、詰まった子に対する命令は、今と同じく終わらない。actor 自体は止まらないので、他の接続（配信ミックス）と、寿命の入力の処理は続く。
-- 5秒での隔離（`quarantine_write_stall`）は、F1b で D-10 の承認とともに入れる。
-- 合格の表：W3 は「F1a-1：actor がブロックしない。他の接続と `Shutdown` が処理される。隔離はしない」、B27 は「F1a-1：`try_send` の失敗で actor の側の列に置く。隔離はしない」に合わせる。
-
-#### PRE-F1a1-5 実プロセスの試験の手順書
-
-F1a-1 の PR で `TESTING.md` の「実sidecarのプロセス境界と実機試験」に、W1・W2a・W2b・W2c・W3・W4a・W4b の手順を足す。それぞれ、(1) 子の状態の作り方（Job への割り当ての失敗は、子を先に別の Job へ入れて作る、など）、(2) 観測する値（`Reaped` の有無、子と孫の PID の生死、履歴）、(3) 合否、を書く。D-13 の承認の条件なので、F1a-1 のマージの前に、結果を PR に記録する。
+W3（書き込みの詰まり）は F1b-0 へ移した（J-14）。
 
 #### PRE-F1a1-6
 
-済み（18.1）。
+済み（18.1）。F1a-1 の範囲の変更に合わせ、合格の表の F1a-1 の行（B18、D7、W 群）を F1a-1 の PR で見直す。
 
 #### PRE-F1a1-7 値の測り方
 
-F1a-1 の模擬の試験と、W 群の実測で、次を記録する。終わっていない要求の数の最大、`held` の待ち時間の最大、wire のレーンの深さの最大（接続ごと）、寿命のレーンの深さの最大、`Unconfirmed` が解けるまでの時間。値の見直しは F1b の前に行う（F1a の間は、上限で拒否しないため）。
+F1a-1 では、`Unconfirmed` が解けるまでの時間と、隔離の2秒の待ちの実測を記録する。受付の容量・保留・期限（4.7）の値は、actor と一緒に F1b-0 で測る。
 
-#### PRE-F1a1-8 繰り返しの案内（J-9 の補足。J-13 で決定）
+#### PRE-F1a1-8 繰り返しの案内（J-13）と、復帰の表示
 
-- `engine_unconfirmed` を**3回続けて**返したら、3回目の文言を次にする。日本語：「音声エンジンを終了できません。Auralyn を終了して、起動し直してください」。英語：「The audio engine could not be stopped. Quit Auralyn and open it again.」
-- 回数は、プロセスごとに数える。終了を確かめられたら（`process_confirmed`）、0 に戻す。4回目以降も、同じ文言を返す。
-- 1・2回目は今の文言（「音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください」）のまま。
+- `engine_unconfirmed` を**3回続けて**返したら、3回目以降の文言を次にする。日本語：「音声エンジンを終了できません。Auralyn を終了して、起動し直してください」。英語：「The audio engine could not be stopped. Quit Auralyn and open it again.」。1・2回目は今の文言のまま。
+- 数え方：同じ子（`ConnId`）について、`engine_unconfirmed` を返した要求の数。F1a-1 では要求は `Mutex` で1つずつ実行されるので、「同時に3件」は、続けて3件として数える。フロントの自動の再開による要求も数える（利用者の操作と区別しない）。`Terminated` を確かめたら、0 に戻す。
+- **復帰の表示（J-9 の「操作できる状態に戻りました」）は F1b へ移す**（J-14）。表示には、履歴と購読（F1b）が要る。F1a-1 では、`Terminated` を確かめたときにログへ残し、`audio-conditions-changed` を1回出す（今もある通知で、画面が状態を読み直す）。新しい通知は足さない。
 - 文言は `COPY_GUIDELINES` に従い、日英の両方を F1a-1 の PR で足す。
 
 ### 18.2 F1b の前に解く（PRE-F1b-n）
@@ -1031,4 +1024,5 @@ F1a-1 の模擬の試験と、W 群の実測で、次を記録する。終わっ
 | PRE-F1b-8 | メーターと終了の原因 | — | F14（少しの非ゼロの間に長い無通知をはさんだ場合、連続を切る間隔を決めるか、期待値を明示して承認）、F7（100ms は測定の目標か合格の上限かを統一）、D10（最初に受け付けた要求が拒まれ、後の操作だけが実際に音声を止める場合。原因の ID は、終わらせる操作を許した時点で記録） |
 | PRE-F1b-9 | D-1〜D-14 の判断 | D-1（約32秒は `Reaped` を確かめられた場合）、D-2・D-8（既存の待ちを外す変更と、新しい `get_audio_session` を区別）、D-10・D-13 を互換の契約に反映 | D-3・D-4（タイマーの起点、`BestEffort`／`Required` の結果の固定）。D-5・D-6・D-11・D-12（atomic の印だけで元の可変長のエラーの詳細をログに残す方法。旧の通知からの再開と、複数の障害が重なるときの保持）。D-9（通常の Start A → 手動の Start B でも A を失効させるなら、停止との競合とは別の挙動として明記）。D-14（D-5 と重なる世代・side と、処理設定の適用の期限を分ける。適用の期限は、子が実際に値を反映する時点で効いてはじめて、遅れた適用を防げる） |
 | PRE-F1b-10 | J-2：起動の設定 | 決定を 16.1 に記載 | F2 を終える前に、H20 で、再起動の後にどの値を使うかを固定する（保存のファイルと画面の設定が違う場合、既定以外の入力の場合、処理設定の保存先を含む） |
+| PRE-F1b-12 | actor と受信箱（F1b-0。J-14 で F1a-1 から移した） | 第1案のレーン（接続ごとの wire・寿命・停止の枠・通常）と、独立レビューの指摘 | (1) 旧の通知の互換：F1b-0 でも、reader が各行で旧の通知を直接 `emit` し、先行する通知を出し終えてから応答・EOF を actor へ渡す。間引き・畳み・後送りは、旧の通知を廃止する段（F4／GPUI）まで行わない。`audio-level` も旧のまま。(2) 進行の保証：actor が各レーンを読む件数・時間の上限、終了のときに reader の送信の待ちを解く手順、接続ごとの失敗の通知の合流、未消費の完了（`WriteDone`・`Deadline`・`ReapFailed`）を含む予約の枠か上限。`Deadline` と、期限の前に届いていた応答の勝敗。`ReaderDone` と打ち切りを別の入力にし、旧の epoch の reader の直接の `emit` も止める境界。(3) 実行の順：受付の順で実行すると K11 の勝敗が変わる。停止の合流は `Stop → Start → Stop` の後ろの停止を消しうる。`StopForMaintenance` は通常の停止と結果を共有できない。返信先のリストの上限。これらを D-9 の承認の範囲として決める。(4) 書き込み：期限の起点は `WriteDone(Ok)` に載せた flush の完了の時刻。書き込みの失敗と応答の優先（今は書き込みの失敗が先。応答は書き込みの成功の後に採る）、`ReplySlot` の契約、`Shutdown` で詰まった writer の後ろに処理を積まない手順とアプリが待つ上限。別の接続の新しい要求を実行するかどうか（今は同じロック）。(5) `get_saved_audio_config` が、今は先行する操作のロックを待つ境界（3.2）。(6) 4.7 の値（256件・60秒・90／120秒）を有効にする時期 |
 | PRE-F1b-11 | R1 の契約の一本化 | `recover { authority_id }` に一本化、12.3 を直し、G4・G5 を合わせた | — |
