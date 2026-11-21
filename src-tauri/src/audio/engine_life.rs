@@ -39,12 +39,8 @@ const SHUTDOWN: Duration = Duration::from_secs(2);
 
 pub(crate) const UNCONFIRMED_JA: &str =
     "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください";
-pub(crate) const UNCONFIRMED_EN: &str =
-    "The audio engine could not be confirmed as stopped. Please try again in a moment.";
 pub(crate) const REPEATED_JA: &str =
     "音声エンジンを終了できません。Auralyn を終了して、起動し直してください";
-pub(crate) const REPEATED_EN: &str =
-    "The audio engine could not be stopped. Quit Auralyn and open it again.";
 /// Job の失敗を、OS のエラー文言（マイクの権限の案内へ写る語を含みうる）なしで伝える。
 pub(super) const LAUNCH_FAILED: &str =
     "音声エンジンの起動を完了できませんでした。音声を開始していません";
@@ -58,9 +54,9 @@ pub(crate) struct EngineUnconfirmed {
 impl EngineUnconfirmed {
     pub(crate) fn text(repeated: bool) -> String {
         if repeated {
-            format!("{REPEATED_JA}\n{REPEATED_EN}")
+            REPEATED_JA.to_owned()
         } else {
-            format!("{UNCONFIRMED_JA}\n{UNCONFIRMED_EN}")
+            UNCONFIRMED_JA.to_owned()
         }
     }
 }

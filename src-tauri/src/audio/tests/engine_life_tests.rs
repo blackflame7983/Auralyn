@@ -7,8 +7,10 @@ use super::*;
 use std::os::windows::io::AsRawHandle;
 use std::time::Duration;
 
-const JA_REPEATED_FINAL: &str = "音声エンジンを終了できません。Auralyn を終了して、起動し直してください\nThe audio engine could not be stopped. Quit Auralyn and open it again.";
-const JA_FIRST_FINAL: &str = "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください\nThe audio engine could not be confirmed as stopped. Please try again in a moment.";
+const JA_REPEATED_FINAL: &str =
+    "音声エンジンを終了できません。Auralyn を終了して、起動し直してください";
+const JA_FIRST_FINAL: &str =
+    "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください";
 
 fn finish(host: AudioHost, observer: Observer) {
     drop(host);

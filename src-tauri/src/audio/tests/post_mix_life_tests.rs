@@ -4,7 +4,8 @@ use super::*;
 use crate::audio::compat_support::*;
 use crate::audio::engine_life::{seam, EngineUnconfirmed, Role};
 
-const FIRST_FINAL: &str = "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください\nThe audio engine could not be confirmed as stopped. Please try again in a moment.";
+const FIRST_FINAL: &str =
+    "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください";
 
 struct Rig {
     host: AudioHost,
