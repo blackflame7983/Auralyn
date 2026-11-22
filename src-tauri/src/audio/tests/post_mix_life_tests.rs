@@ -711,6 +711,122 @@ fn p2_public_operations_keep_enabled_after_a_disconnect() {
     }
 }
 
+// F1b-0a-2 の T2：配信ミックスの子が応答しなくなったときの C3。公開の操作（共通のエラー処理の境界）から起こす。
+// 子は回収されて外れ、`enabled` と保存した設定は残る。主の子・オケの入力・主の通知には触れない。
+#[test]
+fn t2_c3_a_post_mix_child_that_stops_answering_is_retired_and_the_primary_is_untouched() {
+    use crate::audio_engine::mixing::Start;
+    let mut rig = Rig::new([("GetPluginRack", vec![Step::WaitGate("never".into())])]);
+    rig.host.ensure_engine_running().unwrap();
+    rig.host.post_attached = true;
+    rig.host.mixing.selected = Some(Start {
+        config: mixing_config("wasapi:one"),
+        target: None,
+    });
+    rig.primary.recorder.clear();
+    crate::audio::writer::set_limits_for_test(None, Some(std::time::Duration::from_millis(400)));
+    let request = save_request(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    crate::audio::writer::set_limits_for_test(None, None);
+    let state = &rig.host.post_mix;
+    assert!(error.to_string().contains("応答しない"), "{error}");
+    assert!(state.child.is_none(), "子は外れている");
+    assert!(!state.restored && !state.running);
+    assert!(state.enabled, "enabled は残す");
+    assert!(state.error.is_none(), "保存状態の読み直しは求めない");
+    assert!(rig.host.post_attached);
+    assert!(rig.host.mixing.selected.is_some(), "オケの入力の選択は残る");
+    assert!(!rig.primary.probe(0).exited(), "主の子は残る");
+    assert!(
+        rig.post.probe(0).wait_exit(5000),
+        "配信ミックスの子は回収される"
+    );
+    assert!(
+        !rig.primary
+            .recorder
+            .names()
+            .iter()
+            .any(|name| name == "audio-error"),
+        "主の audio-error は出さない"
+    );
+    let snapshot = rig.host.post_mix(Request::Snapshot).unwrap();
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました"),
+        "続く snapshot に切断が表示される"
+    );
+    assert!(snapshot.enabled && !snapshot.restored);
+    rig.finish();
+}
+
+// F1b-0a-2 の T8：起動の確認（J-24）の期限は A の10秒のまま。確認の間の C3 は、主の子だけを回収し、
+// 配信ミックスの子・`enabled`・オケの入力を残し、`audio-error` を出さず、`kill_primary_engine` を二重に呼ばない。
+// 起動の失敗か、終了を確かめられなければ `engine_unconfirmed`。
+#[test]
+fn t8_c3_during_the_start_confirmation_recovers_only_the_primary_child() {
+    use crate::audio_engine::mixing::Start;
+    assert_eq!(
+        crate::audio::writer::reply_limit(&IpcCommand::StartIdentityCapability),
+        std::time::Duration::from_secs(10)
+    );
+    for confirmed in [true, false] {
+        let mut rig = Rig::new([]);
+        rig.host.mixing.selected = Some(Start {
+            config: mixing_config("wasapi:one"),
+            target: None,
+        });
+        let generation = rig.host.engine_generation;
+        crate::audio::writer::set_limits_for_test(
+            None,
+            Some(std::time::Duration::from_millis(500)),
+        );
+        seam::set_resume(seam::Resume::ExternalSuspend(None));
+        if !confirmed {
+            seam::set_wait(seam::Wait::Stuck);
+        }
+        let error = rig.host.ensure_engine_running().unwrap_err();
+        seam::set_resume(seam::Resume::Real);
+        crate::audio::writer::set_limits_for_test(None, None);
+        let label = format!("confirmed={confirmed}: {error}");
+        if confirmed {
+            assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED, "{label}");
+        } else {
+            assert!(
+                error.downcast_ref::<EngineUnconfirmed>().is_some(),
+                "{label}"
+            );
+            seam::set_wait(seam::Wait::Real);
+        }
+        assert_eq!(
+            rig.host.link.cause(),
+            Some(CloseCause::ReplyTimeout),
+            "{label}"
+        );
+        assert!(rig.host.child.is_none(), "{label}: 主の子は回収されている");
+        assert!(rig.host.post_mix.child.is_some(), "{label}");
+        assert!(
+            rig.host.post_mix.restored && rig.host.post_mix.enabled,
+            "{label}"
+        );
+        assert!(rig.host.mixing.selected.is_some(), "{label}");
+        assert!(!rig.post.probe(0).exited(), "{label}");
+        assert!(
+            !rig.primary
+                .recorder
+                .names()
+                .iter()
+                .any(|name| name == "audio-error"),
+            "{label}: audio-error は出さない"
+        );
+        assert_eq!(
+            rig.host.engine_generation,
+            generation + 2,
+            "{label}: 起動で1、回収で1（二重に回収しない）"
+        );
+        rig.finish();
+    }
+}
+
 // P2 3：通常の失敗（切断ではない）は、今のとおり `enabled` を下ろして保存状態の読み直しを求める。
 #[test]
 fn p2_a_non_disconnect_failure_still_discards_the_child_and_disables() {

@@ -11,8 +11,6 @@ use std::time::Instant;
 
 /// 通常の命令が書き込みの完了を待つ上限（C2）。
 const WRITE_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
-/// 応答の期限。書き込みが戻った時刻から数える。F1b-0a-1 では今の10秒のまま。
-const REPLY_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[cfg(test)]
 thread_local! {
@@ -28,15 +26,16 @@ pub(super) fn write_limit() -> std::time::Duration {
     WRITE_LIMIT
 }
 
-pub(super) fn reply_limit() -> std::time::Duration {
+/// 応答の期限。書き込みが戻った時刻（モード VST は送った時点）から数える。命令の種類で決まる。
+pub(super) fn reply_limit(command: &Command) -> std::time::Duration {
     #[cfg(test)]
     if let Some(limit) = LIMITS.with(|limits| limits.get().1) {
         return limit;
     }
-    REPLY_LIMIT
+    super::deadline::reply_deadline(command)
 }
 
-/// 試験のスレッドだけで、期限を短くする。
+/// 試験のスレッドだけで、期限を短くする。応答の期限は、命令の種類によらず指定の値になる。
 #[cfg(test)]
 pub(super) fn set_limits_for_test(
     write: Option<std::time::Duration>,
