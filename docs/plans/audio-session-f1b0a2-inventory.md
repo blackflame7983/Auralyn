@@ -162,10 +162,10 @@ P-i の除外表（呼んでも失効させない命令）：`PeakProtection{Non
 
 | # | 待ちの箇所 | 入口 | 実装 | 待つ命令 |
 |---|---|---|---|---|
-| W1 | 通常の同期 | `execute_running_command_inner`（`audio.rs:1060-1073`）。`execute_command`（`:999-1039`）・`execute_command_if_running`（`audio/engine_exit.rs:214-236`）・`post_mix_stopped`（`audio/post_mix.rs:961-975`）ほか、`execute_running_command(` の呼び出しは `audio.rs` に約78か所 | `await_reply`（`audio.rs:1089-1131`） | 全命令（`GetFrameTimingTrace` は `execute_command` が `ensure_engine_running` を通さずに直接呼ぶ。`:1014-1016`） |
+| W1 | 通常の同期 | `execute_running_command_inner`（`audio.rs:1060-1073`）。`execute_command`（`:999-1039`）・`execute_command_if_running`（`audio/engine_exit.rs:214-236`）・`post_mix_stopped`（`audio/post_mix.rs:961-975`）ほか、`execute_command(`・`execute_running_command(` などの呼び出しと定義は `audio.rs` にあわせて78か所（テスト以外のパターン合計） | `await_reply`（`audio.rs:1089-1131`） | 全命令（`GetFrameTimingTrace` は `execute_command` が `ensure_engine_running` を通さずに直接呼ぶ。`:1014-1016`） |
 | W2 | モード VST | `poll_mode_vst`（10 ms ごと。`control.rs:231-240`） | `mode_vst.rs:535-602` と `send_mode_command`（`:687-711`） | `ConfigureLiveModes`・`LiveMode`・`GetPluginRack`・`GetPluginState`・`BuiltinEffects`・`ModeSilence`・`UnloadPlugin`・`RestorePlugin`・`ModeMonitor`・`LiveOutput`（`mode_vst.rs:902-1007`） |
 | W3 | 起動の確認（J-24） | `ensure_engine_running`（`audio.rs:945-971`） | W1 と同じ `await_reply`。`confirming_start` を立てる（`:951-953`） | `StartIdentityCapability`（A） |
-| W4 | 配信ミックスの子 | `post_mix::State::exec_child`（`audio/post_mix.rs:429-456`） | 子の `AudioHost` の `execute_running_command`＝W1 | `GetPluginRack`・`LoadPlugin`・`UnloadPlugin`・`ReorderPlugins`・`SetBypass`・`SetMute`・`SetGain`・`OpenEditor`・`RestorePlugin`・`PostMixStart`・`Stop`・`ProcessingState`・`CaptureBundleState`（`post_mix.rs:494`・`:552`・`:584`・`:821`・`:861`・`:891`・`:1052-1090` ほか） |
+| W4 | 配信ミックスの子 | `post_mix::State::exec_child`（`audio/post_mix.rs:429-456`） | 子の `AudioHost` の `execute_running_command`＝W1 | `GetPluginRack`・`LoadPlugin`・`UnloadPlugin`・`ReorderPlugins`・`SetBypass`・`SetMute`・`SetGain`・`OpenEditor`・`RestorePlugin`・`PostMixStart`・`Stop`・`ProcessingState`・`GetPluginState`（保存のためのラックの前後の確認を含む。`post_mix.rs:494`・`:552`・`:584`・`:637`・`:647`・`:666`・`:821`・`:861`・`:891`・`:1052-1090` ほか） |
 | W5 | 書き込みの完了 | `await_reply` の前半（`audio.rs:1095`）、モード VST の `WriteDone`（`mode_vst.rs:537-567`） | W1・W2 の一部 | 全命令 |
 
 「応答を待つ別の機構」はない。2本の実装に、起動の確認と配信ミックスが乗る形。
@@ -244,7 +244,7 @@ P-i の除外表（呼んでも失効させない命令）：`PeakProtection{Non
 |---|---|---|
 | `commands/audio/compat_tests.rs` `timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request` | `:642-661` | 子が12秒眠る `Start` に対し、10秒以上で `Timeout or disconnect…`（包みつき）、`Stop` を送らない、次の要求（`get_engine_runtime_stats`）が `前の音声操作の応答待ちです…` で失敗する。**実時間で10秒かかる**。次の要求は `Stop` ではない |
 | `audio/replies.rs` `timed_out_response_cannot_complete_a_later_request` | `:110-123` | 受け側を捨てた後も `begin` は失敗し、遅い応答の `deliver` が待ちを `Idle` にして、次の `begin` が通る |
-| `audio/replies.rs` `exit_and_send_failure_release_the_waiter`・`a_closed_slot_refuses_begin_and_releases_the_waiter_exactly_once`・`dropping_the_extracted_sender_disconnects_the_waiter`・`closing_an_idle_slot_still_closes_it` | `:125-169` | `cancel`・`close` の挙動（閉じた状態の `begin` の拒否、送り側の取り出し、捨てた送り側は `Disconnected`） |
+| `audio/replies.rs` `exit_and_send_failure_release_the_waiter`・`a_closed_slot_refuses_begin_and_releases_the_waiter_exactly_once`・`dropping_the_extracted_sender_disconnects_the_waiter`・`closing_an_idle_slot_still_closes_it` | `:126-169` | `cancel`・`close` の挙動（閉じた状態の `begin` の拒否、送り側の取り出し、捨てた送り側は `Disconnected`） |
 | `audio/tests/link_tests.rs` `t3_the_reply_deadline_counts_from_flushed_at_not_from_when_the_done_is_received` | `:219-250` | 期限は `flushed_at` から数える（9.8秒前の `flushed_at` で残り約0.2秒）。**期限切れの後も `begin` が失敗する（`:236`）**。受け取りが早ければ期限内の応答は採る |
 | `audio/engine_exit.rs` `failed_start_does_not_settle_and_timed_out_start_remains_opening_until_response`・`success_error_and_timeout_clear_the_in_flight_record`・`late_load_response_updates_identity_without_reactivating_the_record` | `:499`・`:561`・`:679` | `Operations::timeout` の記録の扱い |
 
@@ -374,7 +374,7 @@ R＝読む、W＝書く（状態を進める）、CAS＝勝ち負けのある閉
 | 起動の確認の EOF・拒否、確認が要る条件、通常の起動に確認がない | `engine_life_tests.rs` | `:656`・`:671`・`:691` |
 | 起動の確認の書き込みの失敗・期限切れで配信ミックスとオケを残す | `post_mix_life_tests.rs` P2 | `:998-1036` |
 | モード VST：判定の順、`Aborted` は同じ10秒の中で EOF を待つ（11秒前の `sent` は `VST切替の応答が不明です`）、EOF で復旧の経路 | `mode_vst.rs` T11 系 | `audio/mode_vst.rs:2290`・`:2311`・`:2326-2350`・`:2354`・`:2368`・`:2381` |
-| モード VST：書き込みの詰まりの間も停止が即時、旧い結果を採らない | `mode_vst.rs` | `:2125`・`:2168`・`:2099` |
+| モード VST：書き込みの詰まりの間も停止が即時、取り消した遷移を再開しない | `mode_vst.rs` | `:2125`・`:2168`・`:2099` |
 | モード VST：応答が曖昧なとき、ロールバックせず・ミュートを解除しない（`fail_mode_transaction` の直接の呼び出し） | `ambiguous_response_never_rolls_back_or_unmutes` | `:1635-1647` |
 | モード VST：回収の間 reader が `emit` で止まっていても回収 | T6 | `:2490` |
 | `Operations::timeout` などの記録 | `engine_exit.rs` | `:499`・`:561`・`:679` |
@@ -388,7 +388,7 @@ R＝読む、W＝書く（状態を進める）、CAS＝勝ち負けのある閉
 - **命令の種類ごとの期限**。応答の期限を差し替える継ぎ目は、スレッドごとに全命令共通の1つ（`writer.rs:17-46`）。
 - **期限の後に届いた応答の `received_at` による扱い**（設計 2.1 の案。`ReplyOutcome` にまだ `received_at` がない。`replies.rs:11-15`）。
 - **`ProbeLoopback` の録音の時間の上限**。
-- **配信ミックスの子の応答の期限切れ**（`Timeout`）が、`discard_child` で `enabled = false` になること。`post_mix_life_tests.rs` の `p2_a_non_disconnect_failure_still_discards_the_child_and_disables`（`:716`）は存在するが、応答の期限切れを使うかは未確認（推測：別の失敗を使う）。
+- **配信ミックスの子の応答の期限切れ**（`Timeout`）が、`discard_child` で `enabled = false` になること。`post_mix_life_tests.rs` の `p2_a_non_disconnect_failure_still_discards_the_child_and_disables`（`:716-724`）は、子の `Error` 応答（`rack refused`）で `enabled = false` を確かめていて、応答の期限切れは使っていない。
 - **モード VST の `切替が時間内に完了しませんでした`（120秒）**と、**書き込み待ちが10秒を超える `VST切替の送信結果が不明です`**。試験で文言が使われていない（`mode_vst.rs:532`・`:564` 以外に出現しない）。
 - **モード VST の応答の期限切れ（10秒、`pending.receiver` が空）の実際の判定**。`:2344-2349` は書き込みが `Aborted` のとき。受け側が空のまま10秒超を `poll_mode_vst` が判定する直接の試験は見当たらない（`:599` の文言は `:2349` だけ）。
 - 期限切れで、**ロックを持った時間の上限**（書き込み5秒＋応答10秒＋終了の確認2秒）。T1 は書き込みの期限を試験で短くした実測だけ（`link_tests.rs:88-148`）。
