@@ -85,6 +85,23 @@ pub(super) fn operation_awaiting(host: &AudioHost) -> bool {
     host.vst_operations.awaiting_for_test()
 }
 
+/// 今の接続の操作の記録への参照。接続を作り直した後も、旧い接続の記録を読める。
+pub(super) struct OperationRecord(Arc<engine_exit::Operations>);
+
+impl OperationRecord {
+    pub(super) fn plugin_count(&self) -> usize {
+        self.0.plugin_count_for_test()
+    }
+
+    pub(super) fn is_same_record(&self, other: &OperationRecord) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+pub(super) fn operation_record(host: &AudioHost) -> OperationRecord {
+    OperationRecord(host.vst_operations.clone())
+}
+
 /// 読み込み済みの VST として記録している件数。
 pub(super) fn plugin_records(host: &AudioHost) -> usize {
     host.vst_operations.plugin_count_for_test()

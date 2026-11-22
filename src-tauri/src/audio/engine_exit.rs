@@ -768,9 +768,16 @@ mod tests {
         link_seam::register_sent_operation(&host, &Command::OpenEditor { id: "id-a".into() });
         assert_eq!(link_seam::plugin_records(&host), 1);
         let old_link = host.link.clone();
+        let old_record = link_seam::operation_record(&host);
         host.reset_engine_reader();
         assert!(!Arc::ptr_eq(&old_link, &host.link));
         assert!(!old_link.close(super::super::link::CloseCause::Eof));
+        assert!(!old_record.is_same_record(&link_seam::operation_record(&host)));
+        assert_eq!(
+            old_record.plugin_count(),
+            1,
+            "旧い接続の記録は、作り直しで消えない"
+        );
         assert_eq!(link_seam::plugin_records(&host), 0);
         assert_eq!(link_seam::take_exit(&host)["cause"], "unknown");
     }
