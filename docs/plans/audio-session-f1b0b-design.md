@@ -127,8 +127,9 @@
 |---|---|---|
 | `begin_request(&AudioHost, Option<&Command>) -> Result<Receiver<ReplyOutcome>>` | `pending_reply_tx.begin()`、続けて `vst_operations.begin(cmd)`（`audio.rs:1075-1076` と同じ順） | `link.begin(cmd)` |
 | `deliver(&AudioHost, Response)`・`deliver_at(…, Instant)` | `pending_reply_tx.deliver*` | `link.deliver*` |
-| `win_eof(&AudioHost) -> Option<Sender<ReplyOutcome>>` | `link.close(Eof)` が勝てば、`pending_reply_tx.close()` を返す（reader の勝ちの真似） | `link.close_eof()` の `waiter`（`exit` は捨てる） |
-| `take_exit(&AudioHost) -> ExitPayload` | `vst_operations.take_exit()` | `close_eof()` の `exit`、または試験専用の取り出し |
+| `win_eof(&AudioHost) -> Option<Sender<ReplyOutcome>>` | `link.close(Eof)` が勝てば、`pending_reply_tx.close()` を返す（reader の勝ちの真似） | `link.close_eof()` の `waiter`（`exit` は**捨てる**。原因を見ない試験だけが使う） |
+| `cas_eof(&AudioHost) -> bool`・`take_exit(&AudioHost) -> ExitPayload`（S5 専用の組） | `cas_eof` は `link.close(Eof)` だけ（送り側にも記録にも触れない）。`take_exit` は `vst_operations.take_exit()`（後から、`cut_off` の後に採る） | `cas_eof` は `link.close_eof()` を呼び、返った `EofWin` を窓口が保持する。`take_exit` は、**保持した `exit`（`close_eof` が返した原因）**を返す。S5 はこの原因を検査する |
+| `finish_eof(&AudioHost, epoch) -> JoinHandle` | `reader_for(…).finish()` を別スレッドで走らせる（通知の列を出し切り、待ち手へ `Eof` を送るところまで進める） | 同じ（`mark_notified()` も呼ばれる） |
 | `register_sent_operation(&AudioHost, &Command)` | `vst_operations.begin(cmd)` | `begin` の後に `mark_sent` |
 | `reader_for(&AudioHost, epoch) -> Reader` | `Reader { link, operations, replies, … }` を組む（`link_tests.rs:30-41`、`reply_deadline_tests.rs:56-69` の2つを1つにする） | `Reader { link, … }` |
 | `cancel(&AudioHost)` | `pending_reply_tx.cancel()` | `link.cancel()` |
@@ -145,11 +146,11 @@ ID は 8章の中だけで使う（`S1`〜`S9`）。「今」の挙動を固定�
 | S2 | `s2_today_an_eof_right_after_settle_drops_enabled` | `post_mix_life_tests.rs` | 新しい継ぎ目 `after_failure_settle`（`post_mix.rs` の `State` に `#[cfg(test)]` で足す。`post_mix.rs:1155` の `state.settle()` と `:1156` の `detached` の比較の間で呼ぶ。`after_exec_check`（`post_mix.rs:312,451-454`）と同じ型）。子は台本つきで `LoadPlugin` に `Error` を返す | 公開の操作 `Request::Add` が、切断ではない理由で失敗する。継ぎ目で子の `link.close(Eof)` を挟むと、`enabled == false`・`error` が立つ・`disconnected` が空（切断として数えられない）。競合2 |
 | S3 | `s3_today_the_c3_loser_returns_before_the_eof_notices` | `reply_deadline_tests.rs` | `paused_eof_reader`（`reply_deadline_tests.rs:56-69` を窓口の `reader_for` に置き換える）、`await_reply`（`WriteDone` を12秒前にして期限切れを作る。`:161-170` と同じ形） | 負けた `reply_timed_out`（`audio.rs:1155`）は、reader を止めたまま `Engine Crashed/Exited` で戻る。戻った時点で記録された通知に `audio-engine-exited` が無い。解放後に3つの通知が出る。競合3 (a) |
 | S4 | `s4_today_a_host_close_drops_the_waiter_before_the_eof_notices` | `link_tests.rs` | `Reader::pause`、`link_seam::begin_request`、`host.drop_connection(Intentional)`（`audio.rs:718`。試験から呼べる）。tick の待ち手を真似て `rx.try_recv()` を使う | reader が CAS に勝って止まっている間に、別の入口が `drop_connection` する。`rx.try_recv()` は `Disconnected`（`Eof` ではない）。このとき通知は未発行。競合3 (b) |
-| S5 | `s5_today_cut_off_clears_the_operation_even_when_eof_won` | `link_tests.rs` | `link_seam::register_sent_operation(LoadPlugin)`、`win_eof`（CAS だけ勝つ）、`await_reply` に `broken_pipe()`（`link_tests.rs:55-60`）の `WriteDone`、`link_seam::take_exit` | EOF が先に勝っていても、`cut_off`（`audio.rs:1180-1183`）が `vst_operations.response(Error)` を CAS の前に呼ぶので、続く `take_exit()` の `cause == "unknown"`（本当の VST が消える）。`reply_timed_out` は同じ状況で `vst_operations` に触れない（`reply_deadline_tests.rs:189` の T13 が固定済み）ので、2つの経路の違いを並べて固定する |
+| S5 | `s5_today_cut_off_clears_the_operation_even_when_eof_won` | `link_tests.rs` | `link_seam::register_sent_operation(LoadPlugin)`、`link_seam::cas_eof`（**今の段では CAS だけで止める**。共通の `win_eof` は原因を捨てるので使わない）、`await_reply` に `broken_pipe()`（`link_tests.rs:55-60`）の `WriteDone`、`link_seam::take_exit` | EOF が先に勝っていても、`cut_off`（`audio.rs:1180-1183`）が `vst_operations.response(Error)` を CAS の前に呼ぶので、続く `take_exit()` の `cause == "unknown"`（本当の VST が消える）。`reply_timed_out` は同じ状況で `vst_operations` に触れない（`reply_deadline_tests.rs:189` の T13 が固定済み）ので、2つの経路の違いを並べて固定する |
 | S6 | `s6_today_a_closed_reader_can_still_raise_voice_activity` | `link_tests.rs` | `reader_for`、`reader.handle_event(EngineEvent::VoiceCheckState{…})`（`reader.rs:64`）。`host.link.close(Intentional)`、`host.voice_activity.store(false)`（`kill_primary_engine` の `audio.rs:2819` の真似） | 閉じた接続の reader が、検査を通過していた1行で `voice_activity` を `true` に戻す（`reader.rs:191-199`）。F1b-0b-1 では変えない。期待値を変えるのは F1b-0b-4（7.3） |
 | S7 | `s7_start_is_cut_off_at_its_deadline_retired_and_no_stop_is_sent` | `reply_deadline_tests.rs` | `silent_host` と同じ形で `("Start", [WaitGate("never")])`。`set_limits_for_test(None, Some(SHORT))`。`Start` は `frontend_bootstrap.rs:497` の組み立てに倣う | F1b-0a-2 設計 9章の1点目。`Start`（B）で `execute_command` が `REPLY_TIMED_OUT`、`link.cause() == ReplyTimeout`、子が回収される、`Stop` が送られない（`observer.sent()`）、`audio-error` が1回、`confirming_start` が偽、次の `execute_command` で作り直し（`spawn_count == 2`）。`Start` の `device_open` の記録が `timeout()` で残る（`engine_exit.rs:329-342`）ことが、作り直した接続へ持ち越されない（新しい接続の原因が `unknown`）。10秒の互換の試験（`commands/audio/compat_tests.rs:645`）は `SetChannelScan`（A。`:646`）のまま |
 | S8 | `s8_t2_c3_keeps_the_saved_post_mix_settings_in_memory_and_on_disk` | `post_mix_life_tests.rs` | `t2_…`（`post_mix_life_tests.rs:717`）と同じ `Rig`。保存した設定は `Request::Save` で作る（`save_request`、`:728`）。`rig.host.post_mix.file_checkpoint()`（`post_mix.rs:424`）と `std::fs::read` | F1b-0a-2 設計 9章の2点目。期限切れの前後で、`state.saved`・`state.raw`・`post-mix.json` の中身が変わらない（`enabled` が残るだけでなく、保存した中身が残る） |
-| S9 | 既存の `t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_loses`（`reply_deadline_tests.rs:266`）の拡張 | `reply_deadline_tests.rs` | `engine_life::seam::on_stage`（`engine_life.rs:569`）に `Stage::Retired(Role)` を足し、`retire_child`（`engine_life.rs:243-261`）の2つの出口（確認できた `:247-248` と、記録へ移す `:251-260`）の直後に呼ぶ。フックは cutter のスレッドで設定する（`seam` はスレッドごと） | F1b-0a-2 設計 9章の3点目。`f.recorder.release()`（`:312`）の前に、回収の完了の印が立っていること（今は `wait_exit`＝子の終了だけで、回収の完了ではない）。勝ち・負けの両方 |
+| S9 | 既存の `t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_loses`（`reply_deadline_tests.rs:266`）の拡張 | `reply_deadline_tests.rs` | `engine_life::seam::on_stage`（`engine_life.rs:569`）に `Stage::Retired(Role)` を足し、`retire_child`（`engine_life.rs:243-261`）の2つの出口（確認できた `:247-248` と、記録へ移す `:251-260`）の直後に呼ぶ。フックは cutter のスレッドで設定する（`seam` はスレッドごと）。**`eof_wins` の疑似 EOF（`:305` の `link.close(Eof)`）は、CAS で止めず、`link_seam::finish_eof` で通知の列を出し切るところまで進める**（通知は止めた記録器に塞がれるので、`f.recorder.release()` の後に完了する。完了してから `JoinHandle` を `join` する） | F1b-0a-2 設計 9章の3点目。`f.recorder.release()`（`:312`）の前に、回収の完了の印が立っていること（今は `wait_exit`＝子の終了だけで、回収の完了ではない）。勝ち・負けの両方。`eof_wins` では、解放の後に EOF の通知3件が出て、`finish_eof` が戻り、cutter が `ENGINE_EXITED` で戻る |
 
 補足：
 - S1・S3・S4 は、reader を止める継ぎ目が `Reader::pause` に限られる（`finish` の直後で止める）。`reader_for` の `Reader` を直接 `finish` させる形で、実プロセスは使わない。
@@ -202,18 +203,20 @@ ID は 8章の中だけで使う（`S1`〜`S9`）。「今」の挙動を固定�
 
 ```text
 LinkCell
-  inner: Mutex<Inner>           // 状態の正本。すべての遷移はここ
-  phase: AtomicU8               // 開閉の鏡。遷移のたびに、ロックの中で書く（読み取り専用）
+  inner: Mutex<Inner>           // 状態の正本。すべての遷移と勝ち負けの判断はここ
+  notified: Condvar             // `inner` の Mutex と組む。「EOF の通知済み」を知らせる（9.5）
+  phase: AtomicU8               // 開閉の鏡。遷移のたびに、ロックの中で `Release` で書く
 
 Inner
   state: Idle | Registered(Sender<ReplyOutcome>) | InFlight(Sender<ReplyOutcome>) | Closed(CloseCause)
+  eof_notified: bool            // 勝った reader が、EOF の通知の列を出し終えたら立てる（`Closed(Eof)` のときだけ意味を持つ）
   log:   engine_exit::OperationLog      // 今の `Operations` の `State`（in_flight・awaiting・settling・plugins）
-                                         // InFlight 項目に `sent: bool` を足す
+                                         // InFlight 項目に `sent: bool` を足す。`Stop` の「`settling` を消す」印も持つ（E1・E4）
 ```
 
 **`Operations` の中身は丸ごと `Inner.log` へ移す**（原因の部分＝`in_flight`・`settling` だけでなく、`awaiting`・`plugins` も）。`begin`・`response`・`timeout`・`exit` が互いに同じ項目を読み書きしており（`engine_exit.rs:53-189`）、分けると新しい競合の窓ができるため。`State` の各メソッドは `&mut self` で、既に1つのロックの下にある（`engine_exit.rs:316-355` の `Operations` は薄い包み）。`State` を `pub(super)` の `OperationLog` にして、包みを外す。
 
-**鏡 `phase`**：`is_open()`・`cause()` は、ロックを取らずに `phase` を読む（`Acquire`）。理由は、`Notifier::chain_if` が通知の列のロック（`order`）を持ったまま `link.is_open()` を呼ぶ（`reader.rs:28`、`emit.rs:110-123`）が、`order` を持つ間はほかのロックを取れない決まり（`emit.rs:61-63`）だから。`Closed` は終端なので、鏡が古いときの誤りは「開いていると見える」側だけ（閉じたと見えることはない）。**判断が要る場面（`begin`・`mark_sent`・`close`・`close_eof`）は鏡を使わず、ロックの下で行う。**
+**鏡 `phase`（10章の U6）**：`is_open()`・`cause()` は、**ロックを持たずに** `phase` を `Acquire` で読む。書くのは `LinkCell` のロックの中だけで、`Release` で書く。読む場所は、reader の行ごとの確認（`reader.rs:33`）、通知の列の直前の確認（`chain_if`。`reader.rs:28`、`emit.rs:110-123`）、Host・tick の `is_open()`・`cause()`・`connection_lost()`。`chain_if` が使うのは、通知の列のロック（`order`）を持つ間は、ほかのロックを取れない決まり（`emit.rs:61-63`）だから。`Closed` は終端なので、鏡が古いときの誤りは「開いていると見える」側だけ（閉じたと見えることはない）。**勝ち負け・登録・「送った」の判断（`begin`・`mark_sent`・`close`・`close_eof`）は、鏡を使わず、正本の `LinkCell` のロックの下で行う。** エラーの文字列を作る処理（`anyhow!`・`format!`）は、ロックの外に置く（ロックの中では、エラーの種類を表す値だけを返す）。
 
 #### 状態（4つ。`Closed` の原因は5種）
 
@@ -230,28 +233,31 @@ Inner
 
 | # | 遷移 | 呼ぶ者 | 状態の変化 | 同じ区間で行うこと | 戻り値 |
 |---|---|---|---|---|---|
-| E1 | `begin(Option<&Command>)` | 呼び出し側（`audio.rs:1075-1076`）・tick（`mode_vst.rs:701`） | `Idle → Registered` | 受け側を作る。`Some(cmd)` なら `log.begin(cmd)`（`sent = false`） | `Ok(rx)` |
-| E2 | `begin` | 同 | `Registered`/`InFlight`：変えない | — | `Err`（今の「前の音声操作の応答待ちです」） |
-| E3 | `begin` | 同 | `Closed`：変えない | — | `Err(CLOSED)`（`replies.rs:9`） |
-| E4 | `mark_sent()` | writer（書き込みの直前。`writer.rs:190-199`） | `Registered → InFlight` | `log.in_flight.sent = true` | `true`（書いてよい） |
+| E1 | `begin(Option<&Command>)` | 呼び出し側（`audio.rs:1075-1076`）・tick（`mode_vst.rs:701`） | `Idle → Registered` | 受け側を作る。`Some(cmd)` なら `log.begin(cmd)`（`sent = false`）。**`Stop` の `settling` の消去（今の `engine_exit.rs:77-80`）は、ここではしない。** `Stop` だという印だけを `log` に残す（E4 で消す） | `Ok(rx)` |
+| E2 | `begin` | 同 | `Registered`/`InFlight`：変えない | — | `Err(Busy)`。ロックの外で、今の文言「前の音声操作の応答待ちです。しばらく待つか、エンジンを再起動してください。」（`replies.rs:43-45`）にする |
+| E3 | `begin` | 同 | `Closed`：変えない | — | `Err(Closed)`。ロックの外で `CLOSED`（`replies.rs:9`）にする |
+| E3b | `begin` | 同 | `Mutex` が poison：変えない | — | `Err(Poisoned)`。ロックの外で、今の文言「IPC応答の状態を取得できません」（`replies.rs:41`）にする。**`begin` だけは、今の挙動を残す**（`into_inner` で進めない）。ほかの遷移は、今と同じく poison を `into_inner` で進む（`replies.rs:100-103` と同じ。今の `Operations` の `if let Ok` は、何もせず戻る） |
+| E4 | `mark_sent()` | writer（書き込みの直前。`writer.rs:190-199`） | `Registered → InFlight` | `log.in_flight.sent = true`。`Stop` の印があれば、**ここで** `log.settling = None`（利用者が止めた後の終了を、開始直後の障害と取り違えない。`engine_exit.rs:77-80` の消去をここへ移す） | `true`（書いてよい） |
 | E5 | `mark_sent` | 同 | `Idle`/`InFlight`：変えない | — | `true`（登録なしの書き込み・試験の writer は今どおり書く） |
 | E6 | `mark_sent` | 同 | `Closed`：変えない | — | `false`（`Aborted`） |
 | E7 | `deliver_at(resp, at)` | reader（`reader.rs:45-50`） | `Registered`/`InFlight → Idle` | `log.response(&resp)`、続けて送り側へ `Response{resp, received_at}` を送る（`mpsc` の送信は待たない） | `true` |
 | E8 | `deliver_at` | 同 | `Idle`：変えない | `log.response(&resp)` だけ（今の `operations.response` が先に走る挙動を保つ） | `false`（ログ「no one is waiting」） |
 | E9 | `deliver_at` | 同 | `Closed`：変えない | 何もしない | `false` |
-| E10 | `close_eof()` | reader の終端（`reader.rs:280-306`） | `Idle`/`Registered`/`InFlight → Closed(Eof)` | 送り側を取り出す（`Idle` は無し）。`log.exit(now)` で原因を採る（**`sent == false` の登録は原因にしない**）。`phase` を更新 | `Some(EofWin{waiter, exit})`（勝ち） |
+| E10 | `close_eof()` | reader の終端（`reader.rs:280-306`） | `Idle`/`Registered`/`InFlight → Closed(Eof)` | 送り側を取り出す（`Idle` は無し）。`log.exit(now)` で原因を採る。**原因の選び方は今の `exit()`（`engine_exit.rs:169-189`）と同じ順で、`in_flight` は `sent == true` のものだけを候補にする。** `sent == false` の登録は候補から外し、**無条件に `unknown` にはしない**：次の候補は、起動の直後の `settling`（`DEVICE_OPEN_SETTLING` の内のもの）で、それも無ければ `unknown`。`phase` を `Release` で更新 | `Some(EofWin{waiter, exit})`（勝ち） |
 | E11 | `close_eof` | 同 | `Closed`：変えない | 何もしない（送り側は閉じた者が処理済み） | `None`（負け） |
 | E12 | `close(cause)` | Host（`close_connection`・`reply_timed_out`・`cut_off`・`fail_mode_deadline`・差し替え。`audio.rs:710,1156,1183`・`mode_vst.rs:693`・`audio.rs:1060`） | `Idle`/`Registered`/`InFlight → Closed(cause)` | 送り側を取り出して**捨てる**（待ち手は `Disconnected`）。原因ごとに記録を片づける：`WriteFailed`・`WriteTimeout` は `log.response(Error(文言))`（今の `cut_off` の `audio.rs:1181-1182`）、`ReplyTimeout` は `log.timeout()`（今の `audio.rs:1157-1159`）、`Intentional` は何もしない | `true`（勝ち） |
 | E13 | `close(cause)` | 同 | `Closed`：変えない | **何もしない。送り側にも記録にも触れない**（今の `cut_off` の「CAS の前の `response`」と、`close_connection` の「負けても送り側を取る」を、やめる） | `false`（負け） |
 | E14 | `cancel()` | tick（`mode_vst.rs:703,716`） | `Registered`/`InFlight → Idle` | 送り側を捨てる。`log` は変えない（モード VST は操作の記録を持たない） | — |
 | E15 | `set_open_for_test(bool)` | 試験 | 直接決める | `Idle` か `Closed(Intentional)` | — |
+| E16 | `mark_notified()` | reader（EOF の通知の列を出し終え、**通知の列のロック（`order`）を放した後**） | `Closed(Eof)`：変えない | `eof_notified = true`。`Condvar::notify_all` | — |
+| E17 | `wait_notified(deadline)` | EOF に負けた呼び出し側（9.5） | 変えない | 絶対期限まで `Condvar::wait_timeout` で待つ。待つ間はロックを放し、起きるたびに `eof_notified` と期限を確かめ直す | `true`（通知済み）／`false`（期限） |
 
 **状態の数の確認**：状態は `Idle`・`Registered`・`InFlight`・`Closed` の4つ。今は `LinkState`（開閉と原因）×`ReplySlot`（3つ）×`in_flight`（有無）の組から、整合しない組（`Closed` なのに待ちが `Waiting` のまま、など）が出る。`LinkCell` はその組を作れない。
 
 #### 公開の窓口（`AudioHost` の側）
 
 - `is_open()`・`cause()`・`close(cause) -> bool` は、`LinkState` と同じ名前・戻り値で残す。`Writer::start(sink, host.link.clone())`・`rack_pin: Option<Arc<LinkCell>>`（`post_mix.rs:310`）の `Arc::ptr_eq`（`:575`）も、型だけが変わる。
-- `close_eof()`・`mark_sent()`・`begin()`・`deliver_at()`・`cancel()` は新設・改名。
+- `close_eof()`・`mark_sent()`・`begin()`・`deliver_at()`・`cancel()`・`mark_notified()`・`wait_notified()` は新設・改名。
 
 ### 9.2 7.1 の3つの競合が、どの遷移で閉じるか（窓ごと）
 
@@ -259,9 +265,10 @@ Inner
 
 | 窓 | 今の順 | 直した後の順 |
 |---|---|---|
-| 1a. reader の CAS の後に、`begin` が通る | R：`link.close(Eof)`（CAS、`reader.rs:282`）→（止まる）→ H：`is_open()` が真だった後に `pending_reply_tx.begin()`（`audio.rs:1068,1075`）・`vst_operations.begin(&cmd)`（`audio.rs:1076`）→ R：`take_exit()`（`reader.rs:294`）が未送信の `LoadPlugin` を原因にする。writer は `Aborted`（`writer.rs:190-199`） | H の `begin`（E1）と R の `close_eof`（E10）は同じロックの区間で、**どちらかが先**。(i) `begin` が先：`Registered`。`close_eof` が送り側を取り、`log.exit()` は `sent == false` の登録を無視して `unknown`。writer の `mark_sent`（E6）は `false`（`Aborted`）。待ち手は `Eof` で解放（`Engine Crashed/Exited`）。(ii) `close_eof` が先：`begin` は `Err(CLOSED)`（E3）。登録は起きない |
+| 1a. reader の CAS の後に、`begin` が通る | R：`link.close(Eof)`（CAS、`reader.rs:282`）→（止まる）→ H：`is_open()` が真だった後に `pending_reply_tx.begin()`（`audio.rs:1068,1075`）・`vst_operations.begin(&cmd)`（`audio.rs:1076`）→ R：`take_exit()`（`reader.rs:294`）が未送信の `LoadPlugin` を原因にする。writer は `Aborted`（`writer.rs:190-199`） | H の `begin`（E1）と R の `close_eof`（E10）は同じロックの区間で、**どちらかが先**。(i) `begin` が先：`Registered`。`close_eof` が送り側を取り、`log.exit()` は `sent == false` の登録を候補から外し、次の候補（有効な起動直後の `settling`、無ければ `unknown`）を採る。writer の `mark_sent`（E6）は `false`（`Aborted`）。待ち手は `Eof` で解放（`Engine Crashed/Exited`）。(ii) `close_eof` が先：`begin` は `Err(CLOSED)`（E3）。登録は起きない |
 | 1b. `begin` の後、writer が書く前に閉じる | 上と同じ（`Aborted` でも記録が残る） | 1a (i) と同じ |
 | 1c. 書き込みを始めた後に閉じる | `vst_operations` に載る（これは正しい） | `mark_sent`（E4）で `InFlight`。`close_eof` が `sent == true` の操作を原因にする（同じ結果） |
+| 1e. 未送信の `Stop` と `settling` | 今は `begin` が `Stop` の `settling` を先に消す（`engine_exit.rs:77-80`）。`Stop` を登録しただけで書かずに閉じても、`settling`（起動直後の障害の候補）が消えている | `settling` の消去は `mark_sent`（E4）へ移す。`Stop` が書かれなかったとき（`Aborted`）は `settling` が残り、`close_eof` が `settling` を原因の候補にできる（main と同じ。「利用者が止めた後」という事実が無いため） |
 | 1d. `cut_off` の順 | H：`vst_operations.response(Error)`（`audio.rs:1181-1182`）→ `link.close(cause)`（`:1183`）。EOF が先に勝っていても、`response` が `in_flight` を先に消す（洗い出し 6.1） | H：`close(cause)`（E12）。勝ったときだけ同じ区間で `log.response(Error)`。負けたとき（E13）は `log` に触れず、reader の `exit()` が本当の原因を採る |
 
 #### 競合2：`settle()` の直後の EOF で `enabled` が落ちる
@@ -276,18 +283,18 @@ Inner
 
 | 窓 | 今の順 | 直した後の順 |
 |---|---|---|
-| 3a. 期限切れの負け（`reply_timed_out`） | H：`link.close(ReplyTimeout)` に負ける（`audio.rs:1156`）→ `kill_engine` → `drop_connection` → `ReplySlot::close()` が送り側を取って捨てる（`audio.rs:712`）→ `Ok(Error(ENGINE_EXITED))` を返す（`:1167-1169`）。reader の通知3件より前 | `close(ReplyTimeout)` に負ける（E13。送り側には触れない）。子を回収する（I3。通知を待たない）。その後、**`LinkCell` と通知の列のロックを持たずに、`rx` で `Eof` を待つ**（9.5）。`Eof` が来てから（＝reader が3つの通知を出し終えてから）`Ok(Error(ENGINE_EXITED))` を返す |
-| 3b. 別の入口の回収が送り側を横取りする（tick が待ち手） | reader が CAS に勝って止まっている間に、別の入口の `kill_engine`／停止が `drop_connection`（`audio.rs:718-725`）→ `close_connection` が `ReplySlot::close()` で送り側を捨てる（`:712`）。tick の `try_recv` は `Disconnected`（`mode_vst.rs:596`）。通知より前に待ち手が解放される | `close(Intentional)` が負ける（E13）ので、送り側は reader の `EofWin` に残る。tick の `try_recv` は `Empty` のまま、reader が通知3件を出し終えて `Eof` を送るまで続く。回収（`writer = None`・`child.take()`・`retire_child`）は無条件に進む。（`close(Intentional)` が**勝った**ときは、EOF は競りに負けるので EOF の通知自体が出ない。K13 の対象外で、今と同じ） |
+| 3a. 期限切れの負け（`reply_timed_out`） | H：`link.close(ReplyTimeout)` に負ける（`audio.rs:1156`）→ `kill_engine` → `drop_connection` → `ReplySlot::close()` が送り側を取って捨てる（`audio.rs:712`）→ `Ok(Error(ENGINE_EXITED))` を返す（`:1167-1169`）。reader の通知3件より前 | `close(ReplyTimeout)` に負ける（E13。送り側には触れない）。子を回収する（I3。通知を待たない）。回収の**前**に、対象の接続（`Arc<LinkCell>`）を保持しておく。回収の後、**負けた原因が `Eof` のときだけ**、同じ接続の「通知済み」（E16・E17）を、`LinkCell` と通知の列のロックを持たずに、絶対期限つきで待つ（9.5）。通知済みになってから（＝reader が3つの通知を出し終え、`order` を放してから）`Ok(Error(ENGINE_EXITED))` を返す。`Eof` 以外の負け方（`WriteFailed` など）では待たない |
+| 3b. 別の入口の回収が送り側を横取りする（tick が待ち手） | reader が CAS に勝って止まっている間に、別の入口の `kill_engine`／停止が `drop_connection`（`audio.rs:718-725`）→ `close_connection` が `ReplySlot::close()` で送り側を捨てる（`:712`）。tick の `try_recv` は `Disconnected`（`mode_vst.rs:596`）。通知より前に待ち手が解放される | **閉じるのは送り側の横取りだけ。** `close(Intentional)` が負ける（E13）ので、送り側は reader の `EofWin` に残る。tick の `try_recv` は、reader が `Eof` を送るまで `Empty` になる。tick は「EOF まで待つ」のではない：`Empty` のあいだ次の tick へ戻る（`mode_vst.rs:600-604`）が、`pending.sent.elapsed()` が `pending.limit` に達すれば、今のとおり `fail_mode_deadline`（`ReplyTimeout`・文言「VST切替の応答が不明です」。`mode_vst.rs:605-607`）で失敗する。**期限の処理と文言は変えない。** 通知より前に失敗しうることは、通知の順だけの既存の例外として残す（9.10 の (g)）。回収（`writer = None`・`child.take()`・`retire_child`）は無条件に進む。（`close(Intentional)` が**勝った**ときは、EOF は競りに負けるので EOF の通知自体が出ない。K13 の対象外で、今と同じ） |
 
 ### 9.3 ロックの規則
 
-**共通：** `LinkCell` のロックは**葉**。持つ間は、メモリの更新と、待たない `mpsc` の `Sender::send`・`drop` だけをする。`emit`・I/O・ホストのロック・`order`（通知の列）・`emitter`・`Store.slots`・`held_notices`・ほかの `LinkCell`・`Conditions` の更新・`kill`・`sleep`・`recv`・`join` をしない。ロックの順は **ホスト → `order` → `LinkCell`（鏡の読み取りだけ）** で、`LinkCell` のロックから外へは出ない。`Mutex` の poison は `into_inner` で進む（`emit.rs:86-107` と同じ。`begin` の「IPC応答の状態を取得できません」の分岐はなくなる）。
+**共通：** `LinkCell` のロックは**葉**。持つ間は、メモリの更新と、待たない `mpsc` の `Sender::send`・`drop` だけをする。`emit`・I/O・ホストのロック・`order`（通知の列）・`emitter`・`Store.slots`・`held_notices`・ほかの `LinkCell`・`Conditions` の更新・`kill`・`sleep`・`recv`・`join`・エラーの文字列を作る処理をしない。**例外は `Condvar::wait_timeout`（E17）だけ**で、待つ間はロックを放し、起きたら条件を確かめ直す。ロックの順は **ホスト → `order` → 鏡の読み取り（ロックを持たない）** で、`order` を持つ間は `LinkCell` のロックを取らない。`LinkCell` のロックから外へは出ない。鏡は `Release` で書き `Acquire` で読む（9.1）。`Mutex` の poison は、`begin` 以外は `into_inner` で進む（`emit.rs:86-107` と同じ）。**`begin` は、今の「IPC応答の状態を取得できません」（`replies.rs:41`）を残す**（E3b。K13 の文言を変えない。T1・T10 で固定する）。
 
 | 役者 | 使い方 |
 |---|---|
-| reader | 行ごとの `is_open()`（`reader.rs:33`）・`chain_if` の確認（`reader.rs:28`）は鏡だけ。応答は `deliver_at`（E7〜E9）。終端は `close_eof()`（E10・E11）を1回呼び、**ロックを放してから**、`conditions.engine_event`・通知の列・`waiter.send(Eof)` を今の順で行う（`reader.rs:293-305` の順を保つ：先に通知、後で解放）。`Reader::pause` は `close_eof()` の戻りの直後（`reader.rs:289-292` の位置）に置く |
+| reader | 行ごとの `is_open()`（`reader.rs:33`）・`chain_if` の確認（`reader.rs:28`）は鏡だけ。応答は `deliver_at`（E7〜E9）。終端は `close_eof()`（E10・E11）を1回呼び、**ロックを放してから**、`conditions.engine_event`・通知の列・`waiter.send(Eof)` を今の順で行う（`reader.rs:293-305` の順を保つ：先に通知、後で解放）。通知の列を出し終えて `order` を放した後に `mark_notified()`（E16）を呼び、その後に `waiter.send(Eof)`。`Reader::pause` は `close_eof()` の戻りの直後（`reader.rs:289-292` の位置）に置く |
 | writer | 書き込みの直前に `mark_sent()` を1回（E4〜E6）。書き込み（`write_payload`）はロックの外。`Aborted` は `false` のとき |
-| 呼び出し側（ホストのロックを持つ H・tick） | `begin`（E1〜E3）→ 提出 → `await_reply` → 失敗なら `close(cause)`（E12・E13）。`await_reply` の `recv_timeout`・`Eof` の待ちは、`LinkCell` のロックを持たずに行う（9.5）。`is_open()`・`cause()`・`connection_lost()` は鏡 |
+| 呼び出し側（ホストのロックを持つ H・tick） | `begin`（E1〜E3）→ 提出 → `await_reply` → 失敗なら `close(cause)`（E12・E13）。`await_reply` の `recv_timeout` と、EOF に負けた後の「通知済み」の待ち（E17）は、`LinkCell` のロックを持たずに行う（待つ間は `Condvar` がロックを放す。9.5）。`is_open()`・`cause()`・`connection_lost()` は鏡 |
 | 回収（`drop_connection`・`kill_engine`・`release_engine`・`Drop`） | `close(Intentional)`（E12）を1回。その後に `writer = None`・`child.take()`・`retire_child`（`kill`・確認の最大2秒）を行う。`retire_child` の間は `LinkCell` のロックを持たない（`close` はもう戻っている） |
 | 配信ミックスの失敗の処理（`post_mix.rs:1151-1163`） | `child.link.close(Intentional)` を1回呼び、戻り値で `discard_child` か `detach_with` に分ける（9.2 の 2a）。戻った後に子の回収（`kill_engine`・`release_engine`）をする |
 
@@ -296,17 +303,27 @@ Inner
 - `writer::run`（`writer.rs:190-199`）は、今は `link.is_open()` を読んで書くか `Aborted` にする。これを `link.mark_sent()`（E4〜E6）に置き換える。`mark_sent` は同じロックの区間で、「開いているか」と「登録した操作を `sent` に上げる」を行う。**書く判断と記録の更新が1つの区間**なので、「`Aborted` の操作が原因に載る」ことも「`sent` なのに書かなかった」ことも起きない。
 - `Writer::start`・`start_with` の引数は `Arc<LinkState>` から `Arc<LinkCell>` に変わる（`writer.rs:133,145`）。`Job` には操作の識別を持たせない（接続は直列で、登録は同時に1つ。E2）。
 - 書き込みの失敗（`Err`）・5秒の期限切れの後は、`sent == true` の操作が `InFlight` に残る。`cut_off` の `close(WriteFailed/WriteTimeout)` が勝てば `log.response(Error)` で片づく（E12）。EOF に負ければ、`close_eof` が `sent == true` の操作を原因にする。
+- `mark_sent` は、`Stop` の `settling` の消去も担う（E4）。書かれなかった `Stop`（`Aborted`）は `settling` を消さない。
 - モード VST の tick は操作の記録を持たない（`begin(None)`）。`mark_sent` は `Registered → InFlight` の遷移だけを行い、`log` は変えない。
 - 試験の継ぎ目：`mark_sent` の直前で止める `before_mark_sent`（`#[cfg(test)]`、`writer.rs`）。T3 で使う。
 
-### 9.5 7.1 の競合3 (a)：負けたら、ロックを持たずに `Eof` を待つ
+### 9.5 7.1 の競合3 (a)：EOF に負けたら、ロックを持たずに「通知済み」を待つ（10章の U3・U4）
 
-- `await_reply` は、期限切れ（`Timeout`、または `received_at` が期限の後の応答）のとき、`rx` を渡して `reply_timed_out(rx)` を呼ぶ（`audio.rs:1141-1143`）。
-- `reply_timed_out` の順：`close(ReplyTimeout)` → 子の回収（`kill_engine`／`kill_primary_engine`。今のまま）→ **負けたとき（`won == false`）だけ**、`rx.recv_timeout(EOF_WAIT)` を行う。この待ちは、`LinkCell` のロックを持たず、`order` も持たない。ホストのロックだけは、今の待ちと同じく持つ。
-- 結果は3通り：`Eof`（reader が通知を出し終えた）／`Disconnected`（送り側が捨てられた。たとえば、勝った者が reader ではなく試験のヘルパー、または `Response` を受け取り済みで送り側が残っていない）／`Timeout`。**どれも `Ok(Error(ENGINE_EXITED))` を返す**（結果の文言は変えない。違うのは順序の保証だけ）。
-- **上限 `EOF_WAIT`（案：2秒。`CONFIRM`＝2秒、`engine_life.rs:30` と同じ）。** reader が `emit` の途中で止まっていると、`Eof` は来ない。`Timeout` になったら、通知の前に `ENGINE_EXITED` を返す（今と同じ結果。ログに `warn` を残す）。ホストのロックを持つ最長の延びは `EOF_WAIT`。通常は、通知3件の発行だけ（ミリ秒）。値は未決（9.9-U3）。
-- I3（回収は通知を待たない）は保つ：待ちは回収の**後**。回収の中の `hold_notices` が `order` を待つ既知の範囲（F1b-0a-1 設計 3.3）は変わらない。
-- 経路 (b)（tick）は待たない：tick の `try_recv`（`mode_vst.rs:569-609`）が `Empty` のあいだ次の tick へ戻る（今の構造のまま）。
+`rx`（応答の受け側）では待たない。遅い応答を受け取り済みの待ち手は、送り側がもう無く `rx` では待てないため、接続の側の「通知済み」を待つ。
+
+1. **回収の前に、対象の接続を保持する。** `reply_timed_out` の先頭で `let link = self.link.clone()`（`audio.rs:1155` の先頭）。回収の後に `self.link` が差し替わっても、待つのは同じ接続。
+2. `link.close(ReplyTimeout)`（E12）。勝てば、今のとおり（`audio-error`・`REPLY_TIMED_OUT`）。
+3. 子の回収（`kill_engine`／`kill_primary_engine`。今のまま。I3：回収は通知を待たない）。
+4. **負けたときだけ、かつ負けた原因（`link.cause()`）が `Eof` のときだけ**、`link.wait_notified(deadline)`（E17）を呼ぶ。`deadline` は、回収が終わった時点の `Instant::now() + EOF_WAIT` の**絶対期限**。`Condvar::wait_timeout` で待ち、待つ間は `LinkCell` のロックを放す。起きるたびに `eof_notified` と期限を確かめ直す（偽の起床・早い起床に備える）。`WriteFailed`・`WriteTimeout`・`Intentional` に負けたときは、通知の列が出ないので、待たない。
+5. **reader は、通知の列を出し終え、`order` を放した後に**、`mark_notified()`（E16）で `eof_notified` を立てて `notify_all` し、その後に `waiter.send(Eof)`。待ち手は `order` を持たない。
+6. 結果は、`true`（通知済み）でも `false`（期限）でも `Ok(Error(ENGINE_EXITED))`（今の結果と文言。順序の保証だけが違う）。
+
+**上限 `EOF_WAIT`（案：2秒）：**
+- 2秒は、「待ちに足される分」の上限。**手順 3 の回収の後に、`hold_notices` の保持した通知を出すとき `order` を待つ時間（F1b-0a-1 設計 3.3 の既知の範囲）は含まない。** その待ちは今のまま、上限なしの既存の範囲に残る。
+- `false`（期限）になったら、待たずに今の `Ok(Error(ENGINE_EXITED))` を返し、**警告を1回だけ**ログに残す。通知の前に返りうる（9.10 の (c)）。上限のあとも reader は通知の列を1列だけ出す（二重には出ない：列は `close_eof` の勝ちを持つ reader だけが出す）。
+- ホストのロックを持つ時間の延びは、通常は通知3件の発行だけ（ミリ秒）。reader が `emit` の途中で止まっているときは、最大で `EOF_WAIT` が足される。値は2秒で始め、実装の試験で見直す。
+
+- 経路 (b)（tick）は待たない：tick の `try_recv`（`mode_vst.rs:569-609`）が `Empty` のあいだ次の tick へ戻る（今の構造のまま。期限の処理と文言は変えない）。
 
 ### 9.6 変える箇所の一覧（`ファイル:関数`）
 
@@ -316,7 +333,7 @@ Inner
 |---|---|---|
 | `audio/link.rs:45-84` | `LinkState` | `LinkCell` に置き換える（9.1 の E1〜E15）。`CloseCause`（`:6-18`）は残す。単体試験（`:86-`）を書き直す |
 | `audio/replies.rs:28-109` | `ReplySlot` | 削除。`CLOSED`（`:9`）・`ReplyOutcome`（`:12-20`）は `link.rs`（または残す）。単体試験（`:111-`）は `LinkCell` の遷移の試験へ移す |
-| `audio/engine_exit.rs:36-190,316-355` | `State`・`Operations` | `State` を `pub(super) OperationLog` にし、`InFlight` に `sent` を足す。`exit()`（`:169-189`）は `sent == false` の `in_flight` を原因にしない。`Operations` の包み（`:316-355`）を削除 |
+| `audio/engine_exit.rs:36-190,316-355` | `State`・`Operations` | `State` を `pub(super) OperationLog` にし、`InFlight` に `sent` を足す。`exit()`（`:169-189`）は `sent == false` の `in_flight` を候補から外し、次の候補（`settling`、無ければ `unknown`）へ進む。`begin`（`:77-80`）の `Stop` の `settling` の消去は `mark_sent` へ移す。`Operations` の包み（`:316-355`）を削除 |
 | `audio.rs:292,293,298` | `AudioHost` の項目 | 3つ（`link`・`vst_operations`・`pending_reply_tx`）を `link: Arc<LinkCell>` の1つに |
 | `audio.rs:567-571` | `AudioHost::with_retired` 相当の初期化 | `LinkCell::closed()` |
 | `audio.rs:610-619` | `attach_stdin_for_test`・`set_link_for_test` | `LinkCell` の型へ。`reopen_for_test` の呼び出しをなくす |
@@ -325,12 +342,12 @@ Inner
 | `audio.rs:932-945` | `ensure_engine_running` の writer・reader の組み立て | `Writer::start(stdin, self.link.clone())`・`Reader { link, … }`（`operations`・`replies` を除く） |
 | `audio.rs:1058-1064` | `reset_engine_reader` | 新しい `LinkCell::open()` 1つ |
 | `audio.rs:1066-1080` | `execute_running_command_inner` | `ensure!(is_open)`（`:1068`）と、`begin`・`vst_operations.begin`（`:1075-1076`）を `self.link.begin(Some(&cmd))` 1つに。`before_begin_hook::run()`（`:1070-1071`）は `begin` の直前のまま |
-| `audio.rs:1097-1149` | `await_reply` | `reply_timed_out(rx)` に `rx` を渡す。期限切れ・遅い応答の2つの分岐（`:1141-1143`） |
-| `audio.rs:1155-1177` | `reply_timed_out` | `close(ReplyTimeout)` の中で `log.timeout()` を行う（`:1157-1159` を削除）。負けたときの `Eof` の待ち（9.5）を足す |
+| `audio.rs:1097-1149` | `await_reply` | `rx` は渡さず、`reply_timed_out()` を呼ぶ形のまま（`:1141-1143`）。`Disconnected` の分岐（`:1145`）も変えない |
+| `audio.rs:1155-1177` | `reply_timed_out` | 先頭で `self.link.clone()` を保持。`close(ReplyTimeout)` の中で `log.timeout()` を行う（`:1157-1159` を削除）。回収の後、負けた原因が `Eof` のときだけ `wait_notified(deadline)`（9.5）。上限で警告を1回 |
 | `audio.rs:1180-1201` | `cut_off` | `vst_operations.response(Error)`（`:1181-1182`）を削除（`close` の勝ちの側へ移る） |
 | `audio/reader.rs:8-19` | `Reader` | `operations`・`replies` を除く |
 | `audio/reader.rs:43-50` | `run`（応答の行） | `operations.response`＋`replies.deliver_at` を `link.deliver_at` 1つに |
-| `audio/reader.rs:280-306` | `finish` | `close_eof()` 1回。負け（`None`）は何もせず戻る（`:282-286` の `replies.close()` を削除）。勝ちは `waiter`・`exit` を取り、通知の後に `Eof` を送る |
+| `audio/reader.rs:280-306` | `finish` | `close_eof()` 1回。負け（`None`）は何もせず戻る（`:282-286` の `replies.close()` を削除）。勝ちは `waiter`・`exit` を取り、通知の列の後に `mark_notified()`、その後に `Eof` を送る |
 | `audio/writer.rs:133-199` | `Writer::start`・`start_with`・`run` | `Arc<LinkCell>`。`run` は `mark_sent()` |
 | `audio/mode_vst.rs:693,698,701-716` | `fail_mode_deadline`・`connection_lost`・`send_mode_command` | `close(ReplyTimeout)`・鏡の `is_open()`・`begin(None)`・`cancel()`。tick の判定の順（`:537-615`）は変えない |
 | `audio/post_mix.rs:310,551-575` | `rack_pin`・ラックの読み取り | 型を `Arc<LinkCell>` に |
@@ -349,17 +366,17 @@ ID（`T1`〜）は 9章の中だけで使う。
 
 | # | 確かめること | 形 |
 |---|---|---|
-| T1 | `LinkCell` の遷移の表（E1〜E15）。各行の「状態の変化・同じ区間で行うこと・戻り値」。`Closed` からは戻らない。`close` の負けは何もしない（E13）。`close_eof` の勝ちが送り側と原因を1度だけ渡す（E10・E11）。poison でも panic しない | 単体（`link.rs`） |
-| T2 | 競合1（1a・1b）：`begin` と `close_eof` を、両方の順で衝突させる。(i) `begin` が先：`mark_sent` は `false`、`audio-engine-exited` の `cause == "unknown"`、待ち手は `Eof`。(ii) `close_eof` が先：`begin` は `CLOSED`。多数回の競り（`link.rs` の `exactly_one_of_many_racing_closers_wins` に倣う）で、未送信の操作が原因に載ることが一度もない | 単体＋継ぎ目（`Reader::pause`、`begin` の直前の `before_begin_hook`） |
-| T3 | 競合1（1c）：`mark_sent` の直前で止める（`before_mark_sent`）。止めたまま `close_eof` を通すと原因に載らない。`mark_sent` を通した後に `close_eof` を通すと、その操作が載る | 継ぎ目（`writer.rs` の新設） |
+| T1 | `LinkCell` の遷移の表（E1〜E15）。各行の「状態の変化・同じ区間で行うこと・戻り値」。`Closed` からは戻らない。`close` の負けは何もしない（E13）。`close_eof` の勝ちが送り側と原因を1度だけ渡す（E10・E11）。`mark_notified`・`wait_notified`（E16・E17）：通知済みで起きる、絶対期限で `false`、偽の起床で確かめ直す、待つ間に別スレッドの `is_open()`・`begin()` が返る。**poison：`begin` は「IPC応答の状態を取得できません」を返し（E3b）、`close`・`close_eof`・`deliver_at` は panic せず進む。** 原因の選び方：`sent == true` の操作 → 有効な `settling` → `unknown` の順 | 単体（`link.rs`） |
+| T2 | 競合1（1a・1b）：`begin` と `close_eof` を、両方の順で衝突させる。(i) `begin` が先：`mark_sent` は `false`、`audio-engine-exited` の `cause == "unknown"`（有効な `settling` が無いとき。ある場合は T3 の (i)）、待ち手は `Eof`。(ii) `close_eof` が先：`begin` は `CLOSED`。多数回の競り（`link.rs` の `exactly_one_of_many_racing_closers_wins` に倣う）で、未送信の操作が原因に載ることが一度もない | 単体＋継ぎ目（`Reader::pause`、`begin` の直前の `before_begin_hook`） |
+| T3 | 競合1（1c）：`mark_sent` の直前で止める（`before_mark_sent`）。止めたまま `close_eof` を通すと原因に載らない。`mark_sent` を通した後に `close_eof` を通すと、その操作が載る。**2つの場合を足す：** (i) `Start` の応答の直後（`log.settling` が有効）に、未送信の `LoadPlugin` を登録して `close_eof` を通すと、原因は `unknown` ではなく `settling` の `device_open`（`phase == "settling"`）。有効期間（`DEVICE_OPEN_SETTLING`）を過ぎていれば `unknown`。(ii) `settling` が有効なときに未送信の `Stop` を登録して `mark_sent` の前に閉じると、`settling` は消えず、原因の候補になる。`mark_sent` を通した後に閉じると、`settling` は消えており `unknown` | 継ぎ目（`writer.rs` の新設） |
 | T4 | 競合1（1d）：EOF が先に勝っていても、`cut_off` は `log` に触れず、reader の `exit()` が本当の VST を採る。`cut_off` が勝つときは `log.response(Error)` が効く | 継ぎ目 |
 | T5 | 競合2：継ぎ目 `after_failure_settle`（失敗の処理の決定の直前）で子の `link.close(Eof)` を挟む。`enabled` が残る・`disconnected` が立つ・`error` が立たない。挟まない通常の失敗は、今どおり `enabled == false`・`error` が立つ（`discard_child`） | 継ぎ目（配信ミックス） |
-| T6 | 競合3 (a)：reader を `close_eof` の直後で止める。`reply_timed_out` は子を回収した後に `Eof` を待ち、止めている間は戻らない。別スレッドで解放すると、通知3件が出てから `Ok(Error(ENGINE_EXITED))` が返る（順は `[CC, "audio-engine-exited", "audio-error"]` の後で解放）。待っている間、別のスレッドが `link.is_open()`・`link.begin()`・`Notifier::emit` を呼んで、ブロックしない（`LinkCell` と `order` を持っていない）。上限：reader を解放しないと、`EOF_WAIT` の後に `ENGINE_EXITED` で戻る（`set_limits_for_test` に足す継ぎ目で短くする）。回収は待ちの前に終わっている（S9 の `Stage::Retired`） | 継ぎ目（`Reader::pause`） |
-| T7 | 競合3 (b)：reader を `close_eof` の直後で止め、別の入口が `drop_connection(Intentional)` する。tick 役の `rx.try_recv()` は `Empty`。解放後に `Eof`。回収は進む（`child` が外れ、`writer` が `None`）。`close(Intentional)` が勝つ側（reader より先）では、通知は出ず `Disconnected`（今と同じ） | 継ぎ目 |
+| T6 | 競合3 (a)：reader を `close_eof` の直後で止める。`reply_timed_out` は子を回収した後に「通知済み」を待ち、止めている間は戻らない。別スレッドで解放すると、通知3件が出てから `Ok(Error(ENGINE_EXITED))` が返る（順は `[CC, "audio-engine-exited", "audio-error"]` の後で解放）。待っている間、別のスレッドが `link.is_open()`・`link.begin()`・`Notifier::emit` を呼んで、ブロックしない（`LinkCell` と `order` を持っていない）。回収は待ちの前に終わっている（S9 の `Stage::Retired`）。**足す場合：** (i) **期限のあとの応答を受け取り済み**：`received_at` が期限の後の応答を `deliver_at` で渡して `await_reply` が `reply_timed_out` へ進み、その後に EOF に負ける。送り側が無い待ち手でも、「通知済み」を待ち、通知3件の後に戻る（`rx` では待てない場合）。(ii) **上限**：reader を解放しないと、`EOF_WAIT`（`set_limits_for_test` に足す継ぎ目で短くする）の後に `ENGINE_EXITED` で戻り、警告が**1回だけ**ログに出る。そのあとで reader を解放すると、**通知は1列だけ**出る（3件が二重にならない）。待ちに足された時間は `EOF_WAIT` の近くに収まる（回収の後の通知の列の待ちは含まない）。(iii) `Eof` 以外（`WriteFailed`）に負けたときは待たない（即座に戻る）。(iv) 絶対期限：偽の起床を挟んでも、期限を延ばさない | 継ぎ目（`Reader::pause`） |
+| T7 | 競合3 (b)：reader を `close_eof` の直後で止め、別の入口が `drop_connection(Intentional)` する。tick 役の `rx.try_recv()` は、`pending.limit` の**期限の中**では `Empty`（送り側を横取りされない）。解放後に `Eof`。回収は進む（`child` が外れ、`writer` が `None`）。**期限の処理は変えない：** reader を解放しないまま `pending.sent.elapsed()` が `limit` に達すると、tick は今のとおり `fail_mode_deadline`（`ReplyTimeout`・文言「VST切替の応答が不明です」。`mode_vst.rs:605-607`）で失敗する（通知より前でもよい。9.10 の (g)）。`close(Intentional)` が勝つ側（reader より先）では、通知は出ず `Disconnected`（今と同じ） | 継ぎ目 |
 | T8 | ロックの規則：reader を `emit` の途中で止める（`Recorder::block_after`）。その間に、別のスレッドの `begin`・`close(Intentional)`・`cancel`・`mark_sent` が返る（`LinkCell` のロックを `emit` をまたいで持っていない）。`close_eof` の戻りの後は `LinkCell` を持たずに通知を出す | 継ぎ目（`Recorder`） |
 | T9 | 鏡：試験専用のヘルパーで `LinkCell` のロックを持ったまま、別のスレッドの `is_open()`・`cause()` と `Notifier::chain_if` が返る（`order` を持つ間に `LinkCell` のロックを取らない）。遷移の直後の鏡が `Closed` を示す | 継ぎ目 |
-| T10 | 互換：K 群（`compat_tests`・`commands/audio/compat_tests.rs`）・`control_tests`・`engine_life_tests`・`post_mix_life_tests`・`link_tests`・`reply_deadline_tests`・モード VST の試験が通る。**期待値を変えるのは 9.8 の表だけ** | 既存 |
-| T11 | 壊して確かめる（一時的な改変）：(a) `begin` と `close_eof` を別のロックに戻す → T2 が失敗。(b) `mark_sent` を `is_open()` に戻す → T3。(c) `close` の勝ち側の記録の片づけを CAS の前に戻す → T4。(d) 失敗の処理を `settle()`＋`detached` の比較に戻す → T5。(e) 負けの側の `Eof` の待ちを外す → T6。(f) `close` が負けても送り側を取る → T7。(g) `LinkCell` のロックを持ったまま `send` 以外（通知）を呼ぶ → T8 | 一時的な改変 |
+| T10 | 互換：K 群（`compat_tests`・`commands/audio/compat_tests.rs`）・`control_tests`・`engine_life_tests`・`post_mix_life_tests`・`link_tests`・`reply_deadline_tests`・モード VST の試験が通る。K13（EOF の通知3件の名前・中身・順、待ち手の解放が通知より先）・`engine_generation` の更新点・書き込みと応答の期限の起点（`flushed_at`）が変わらない。**poison のときの `begin` のエラー文言「IPC応答の状態を取得できません」（今の `replies.rs:41`）が変わらない**（E3b）。**期待値を変えるのは 9.8 の表の S1〜S5 だけ**（S6〜S9 は変えない） | 既存 |
+| T11 | 壊して確かめる（一時的な改変）：(a) `begin` と `close_eof` を別のロックに戻す → T2 が失敗。(b) `mark_sent` を `is_open()` に戻す → T3。(c) `close` の勝ち側の記録の片づけを CAS の前に戻す → T4。(d) 失敗の処理を `settle()`＋`detached` の比較に戻す → T5。(e) 負けの側の「通知済み」の待ちを外す → T6。(e2) `Stop` の `settling` の消去を `begin` に戻す → T3。(e3) `mark_notified` を `order` を持ったまま呼ぶ、または待ちの期限を相対期限（起床のたびに延びる）にする → T6。(f) `close` が負けても送り側を取る → T7。(g) `LinkCell` のロックを持ったまま `send` 以外（通知）を呼ぶ → T8 | 一時的な改変 |
 | T12 | `voice_activity`（S6）と `engine_event` の epoch の窓は、**この段では変えない**（F1b-0b-4）。S6 が今の挙動のまま通る | 既存（S6） |
 | T13 | W5：旧の通知とコマンドの応答の到着順を、対応する release の子で測り直す（`docs/TESTING.md:42-110`。reader の通知の順を変えていないことの確認。手動） | 手動 |
 
@@ -367,11 +384,11 @@ ID（`T1`〜）は 9章の中だけで使う。
 
 | ID | 試験 | 今の期待値 | F1b-0b-1 の期待値（直った） |
 |---|---|---|---|
-| S1 | `s1_today_an_unsent_vst_operation_is_named_as_the_exit_cause` → `an_unsent_vst_operation_is_not_named_as_the_exit_cause` | `begin_request` が通り、`cause == "vst_operation"`・`op == "load"` | `begin_request` が `CLOSED`（reader が先のとき）。`begin` が先のときは `cause == "unknown"`（T2 の (i)・(ii) の両方） |
+| S1 | `s1_today_an_unsent_vst_operation_is_named_as_the_exit_cause` → `an_unsent_vst_operation_is_not_named_as_the_exit_cause` | `begin_request` が通り、`cause == "vst_operation"`・`op == "load"` | `begin_request` が `CLOSED`（reader が先のとき）。`begin` が先のときは、有効な `settling` が無ければ `cause == "unknown"`（あれば `settling` の `device_open`。T3 の (i)）（T2 の (i)・(ii) の両方） |
 | S2 | `s2_today_an_eof_right_after_settle_drops_enabled` → `an_eof_right_after_settle_keeps_enabled` | `enabled == false`・`error` が立つ・`disconnected` が空 | `enabled == true`・`disconnected` が立つ・`error` が空・子は外れて回収済み |
 | S3 | `s3_today_the_c3_loser_returns_before_the_eof_notices` → `the_c3_loser_waits_for_the_eof_notices` | reader を止めたまま `await_reply` が戻る。戻った時点で `audio-engine-exited` が無い | reader を止めている間は戻らない。解放後、通知3件が出てから戻る。上限で戻る場合も `ENGINE_EXITED`（T6） |
 | S4 | `s4_today_a_host_close_drops_the_waiter_before_the_eof_notices` → `a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter` | `rx.try_recv()` が `Disconnected`・通知は未発行 | `Empty`。解放後、通知3件の後に `Eof` |
-| S5 | `s5_today_cut_off_clears_the_operation_even_when_eof_won` → `cut_off_leaves_the_operation_as_the_exit_cause_when_eof_won` | `take_exit` の `cause == "unknown"` | `cause == "vst_operation"`・`op == "load"` |
+| S5 | `s5_today_cut_off_clears_the_operation_even_when_eof_won` → `cut_off_leaves_the_operation_as_the_exit_cause_when_eof_won` | `cas_eof` だけで止め、`take_exit` の `cause == "unknown"` | `cas_eof` が呼んだ `close_eof` が返した原因（窓口が保持）を検査する：`cause == "vst_operation"`・`op == "load"`。`cut_off` の `close(WriteFailed)` は負けて `log` に触れない（E13） |
 | S6 | `s6_today_a_closed_reader_can_still_raise_voice_activity` | `voice_activity == true` | **変えない**（F1b-0b-4 で `false` に） |
 | S7 | `s7_start_is_cut_off_…` | — | 変えない |
 | S8 | `s8_t2_c3_keeps_…` | — | 変えない |
@@ -382,22 +399,23 @@ ID（`T1`〜）は 9章の中だけで使う。
 
 - **U1：7.4 の4ファイルの外の試験。** `audio/mode_vst.rs` の試験部（約50行。`pending_reply_tx`・`link.close(Eof)`・`Writer::start(…link.clone())`）、`engine_exit.rs` の試験部（26行）、`output_bundle.rs`（`:177,247`）・`session_rack.rs`（`:347`）は、F1b-0b-1 でコンパイルできなくなる。F1b-0b-0 の継ぎ目（`link_seam.rs`）に寄せる範囲へ入れるか、F1b-0b-1 で型と一緒に直すか。推奨は、`mode_vst.rs`・`output_bundle.rs`・`session_rack.rs` の `pending_reply_tx` の呼び出しだけを `link_seam` 経由にする（約30行。期待値は変えない）。`engine_exit.rs`・`replies.rs`・`link.rs`・`writer.rs` の単体は、型そのものの試験なので F1b-0b-1 で直す。
 - **U2：`config_storage_tests.rs:155,866,976`。** 3か所が `host.pending_reply_tx.clone()` を取って `deliver` する。7.4 の「触らない」を守ると、F1b-0b-1 でコンパイルできない。(a) `AudioHost` に試験専用の `reply_slot_for_test()`（戻り値は `Arc<LinkCell>`、`deliver` を残す）を足し、この3行だけを F1b-0b-0 で書き換える。(b) 項目名 `pending_reply_tx` を残す（`Arc<LinkCell>` の別名の項目）。(a) を推奨するが、7.4 を変える。
-- **U3：`EOF_WAIT` の値と上限後の振る舞い。** 案は2秒・上限後は `ENGINE_EXITED` を返す（順序の保証を諦める）。ホストのロックを持つ最長の延びになる。値の根拠は測っていない。
-- **U4：負けた側が待つ手段。** 7.1 は「reader が通知の後に送る `Eof` を待つ」。案は `rx`（9.5）。ただし、遅い応答を受け取り済みの待ち手は、送り側が残っておらず `Disconnected` で即座に戻る（9.10 の (b)）。`LinkCell` に条件変数を持たせて「通知の終了」を待つ形なら、この残りは消えるが、`LinkCell` のロックを待ちの間に放す設計（`Condvar::wait`）が要り、9.3 の「葉」の規則に例外ができる。どちらにするか。
+- **U3：`EOF_WAIT` の値と上限後の振る舞い。** 10章で決定済み。2秒で始め、上限後は `ENGINE_EXITED` を返して警告を1回だけ出す。2秒は待ちに足される分の上限で、回収の後の既存の通知の列の待ちを含まない（9.5）。
+- **U4：負けた側が待つ手段。** 10章で決定済み。`rx` ではなく、`LinkCell` の条件変数で「通知済み」を待つ（9.5。E16・E17）。9.3 の「葉」の規則の例外は `Condvar::wait_timeout` だけ。
 - **U5：reaper で壊れる試験の寄せ。** 7.4 は、`LinkCell` と reaper の両方で壊れる試験を F1b-0b-0 で寄せるとした。`engine_life_tests`（内部参照44。`.retired`・`.child`・`engine_life::seam`）と `post_mix_life_tests` の `retired` まわりは、`LinkCell` では壊れない（8.3）。reaper（F1b-0b-3）の寄せを、F1b-0b-0 に含めるか、F1b-0b-3 の前の段にするか。この文書は前者を含めていない。
-- **U6：鏡（`phase: AtomicU8`）。** 7.1 は「1つの `Mutex`」だが、`chain_if` が `order` を持って `is_open()` を呼ぶ（`emit.rs:61-63` の規則）ので、ロックを取らない読み取りが要る。鏡を足す案にした。許してよいか。許さない場合は、`chain_if` の確認を `order` の外へ出す必要があり、N2 の窓が広がる。
+- **U6：鏡（`phase: AtomicU8`）。** 10章で決定済み（書き方は 9.1 にそろえた）。正本は `LinkCell`。鏡は `LinkCell` のロックの中で `Release` で書き、ロックを持たずに `Acquire` で読む（reader の行ごとの確認・`chain_if`・Host の `is_open()`／`cause()`）。勝ち負けは正本で決める。
 - **U7：`Operations` の全体を `LinkCell` へ入れる範囲。** 依頼は「`vst_operations` の終了の原因の部分」。`awaiting`・`plugins`（読み込んだ VST の一覧。`engine_exit.rs:42-47`）も、`begin`・`response` が同じ項目を触るので一緒に移した（9.1）。`plugins` を別のロックに残す案は、`response` の中で2つのロックを取ることになり、規則（9.3）に反する。
 - **U8：`voice_activity` と epoch の窓の時期。** 7.3 は「`LinkCell` の閉鎖と `retire_engine` にそろえて閉じる」とだけ書き、段は F1b-0b-4 とある。この文書は F1b-0b-1 では変えないとした（T12・S6）。確認したい。
 - **U9：書き込みの失敗の通知の規則（E12）。** `close` が負けたときに、`log` にも送り側にも触れない（E13）ことで、今の `close_connection` の「負けても送り側を取って捨てる」（`audio.rs:712`）が変わる。reader が先に EOF に勝つ場合、送り側は reader が持つので問題ないが、**試験専用の `link.close(Eof)`（reader なしで CAS だけ勝つ）は、送り側を捨てるだけになる**（E12 の勝ち）。そのため、reader の勝ちを真似る試験は `win_eof`（8.1）へ寄せる必要がある（寄せた）。製品のコードに影響はない。
 
 ### 9.10 既知の狭い競合として残るもの
 
-- **(a) 「送った」の後の閉鎖。** `mark_sent` で `sent` を立てた後、`write` が子に読まれる前に子が終わると、読まれていない操作が原因に載る。パイプの書き込みの成功は、子の受け取りを意味しない（今も同じ。区別できない）。
-- **(b) 受け取り済みの待ち手が負けたとき。** 遅い応答（`received_at` が期限の後）を受け取った後に `reply_timed_out` が負ける場合、送り側は応答を送った時点で使い終わっており、`Eof` は来ない（`Disconnected` で即座に戻る）。通知の前に `ENGINE_EXITED` を返しうる。未決 U4 で条件変数にすれば消える。
-- **(c) `EOF_WAIT` の上限後。** reader が `emit` で止まっているとき、通知の前に戻る（9.5）。
+- **(a) `mark_sent` の後から、子が読むまでの間の原因の推定。** `mark_sent` で `sent` を立てた後、書き込みは成功しても、子が読む前に終わると、子が受け取っていない操作が原因に載る。パイプの書き込みの成功は、子の受け取りを意味しない（今も同じ。区別できない）。`Aborted`（書かなかった）の操作は載らない（競合1で閉じた）。
+- **(b)（欠番）** 受け取り済みの待ち手が負けたときの残りは、U4 の決定（条件変数）で消えた。
+- **(c) `EOF_WAIT` の上限のあとの通知の順。** reader が `emit` の途中で止まっていて、「通知済み」が上限（2秒）までに立たないとき、待ち手は通知の前に `ENGINE_EXITED` を返す（結果は同じで、通知との順だけが崩れる）。警告は1回。そのあとの通知の列は1列だけ出る（9.5）。
 - **(d) 鏡の読み取り。** reader が行の先頭で `is_open()` を読んだ後に閉じると、1つの列が出うる（通知の列の直前の確認の後に閉じる窓。F1b-0a-1 設計 3.4 と同じ）。完全な形は F1b-0b-4（7.3）。
 - **(e) `voice_activity.store(true)`・epoch の古い `engine_event`。** 変えない（F1b-0b-4）。S6 が固定する。
 - **(f) 配信ミックスの `settle_with`（`post_mix.rs:450,845,1018`）の読み取り。** 開いていると読んだ後の EOF は、その操作の中では何も外さず、次の呼び出しで外れる。結果は切断として失敗するだけで、`enabled` は落ちない（`discard_child` を呼ぶ判断は 2a だけ）。
+- **(g) tick が待ち手のときの、期限と通知の順（競合3 (b)）。** 閉じるのは送り側の横取りだけ。tick は `pending.limit` に達すれば、今のとおり `fail_mode_deadline`（`ReplyTimeout`）で失敗する。通知3件より前に失敗しうる。期限の処理と文言は変えない。通知の順だけの既存の例外として残す。
 
 ## 10. 未決 U1〜U9 の決定（統括、2026-11-23）
 
@@ -405,10 +423,10 @@ ID（`T1`〜）は 9章の中だけで使う。
 |---|---|
 | U1 | `LinkCell` で壊れる試験は、7.4 の4ファイルの外（`mode_vst.rs`・`engine_exit.rs`・`output_bundle.rs`・`session_rack.rs` の試験部）も含めて、F1b-0b-0 で `audio/tests/link_seam.rs` の窓口へ寄せる。範囲は「`LinkCell` で壊れる参照のすべて」とし、7.4 の表の F1b-0b-0 の行をこの意味に読み替える。期待値は変えない |
 | U2 | `config_storage_tests` は、壊れる3か所（`:155`・`:866`・`:976`）だけを窓口へ寄せる。それ以外は触らない |
-| U3 | `EOF_WAIT` は2秒の案で始め、実装の試験で見直す。上限を過ぎたら、待たずに `Engine Crashed/Exited` を返し、ログに1回残す（結果は同じで、通知との順だけが崩れる。9.10 の既知の狭い競合に入れる） |
-| U4 | 負けた側の待ちは、`rx` ではなく `LinkCell` の条件変数にする。reader が EOF の通知の列を出し終えたら「通知済み」を立てて知らせる。遅い応答を受け取り済みの待ち手も、同じ条件変数で待てる |
+| U3 | `EOF_WAIT` は2秒の案で始め、実装の試験で見直す。**2秒は、待ちに足される分の上限**で、回収の後の既存の通知の列の待ち（`hold_notices` が `order` を待つ範囲）までを含む上限ではない。上限を過ぎたら、待たずに `Engine Crashed/Exited` を返し、警告を1回だけ出す（結果は同じで、通知との順だけが崩れる。9.10 の (c)）。待つのは EOF に負けたときだけで、期限は絶対期限（9.5） |
+| U4 | 負けた側の待ちは、`rx` ではなく `LinkCell` の条件変数にする。回収の前に対象の接続を保持し、回収の後、EOF に負けた場合だけ、同じ接続の「通知済み」を待つ。待つ間はロックを放し、起きたら条件を確かめ直す。reader は、通知の列のロックを放してから「通知済み」を立てる。EOF 以外の負け方では待たない。遅い応答を受け取り済みの待ち手も、同じ条件変数で待てる（9.5。E16・E17） |
 | U5 | reaper で壊れる試験の寄せは、F1b-0b-3 の段に含める（F1b-0b-0 には入れない） |
-| U6 | 鏡（`AtomicU8`）を許す。正本は `LinkCell` で、鏡は `LinkCell` のロックの中でだけ書き、通知の列のロックの中の読み取りにだけ使う |
+| U6 | 鏡（`AtomicU8`）を許す。正本は `LinkCell` で、勝ち負けは正本で決める。鏡は `LinkCell` のロックの中でだけ `Release` で書き、ロックを持たずに `Acquire` で読む（読む場所は、通知の列の直前の確認だけでなく、reader の行ごとの確認と、Host・tick の `is_open()`／`cause()` を含む。9.1）。エラーの文字列を作る処理は、ロックの外に置く |
 | U7 | `Operations` の全体（`awaiting`・`plugins` を含む）を `LinkCell` に移す。`LinkCell` のロックの区間では I/O と `emit` をしない規則を守る |
 | U8 | `voice_activity` と epoch の窓は F1b-0b-4 で直す |
 | U9 | 試験専用の `link.close(Eof)` は `win_eof` に寄せる（9章のとおり） |
