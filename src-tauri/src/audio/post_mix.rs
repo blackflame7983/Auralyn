@@ -670,7 +670,7 @@ impl State {
             IpcResponse::Error(error) => anyhow::bail!(error),
             _ => anyhow::bail!("配信VSTの一覧を確認できません"),
         };
-        // 最後の IPC の後で、接続を確定する（`ReplySlot` だけが閉じていても切断。保存へ進ませない）。
+        // 最後の IPC の後で、接続を確定する（接続が閉じていれば切断。保存へ進ませない）。
         if self.settle() {
             anyhow::bail!(ENGINE_EXITED);
         }
@@ -1151,7 +1151,7 @@ impl AudioHost {
         if let Err(error) = result {
             // 切断（C2・EOF）のときは、子の回収と `restored`・`running` の更新が済んでいる。
             // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
-            // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（nabled を残す）を通す。
+            // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（`enabled` を残す）を通す。
             state.settle();
             if state.detached == detached_before {
                 state.discard_child();

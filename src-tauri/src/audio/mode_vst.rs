@@ -601,7 +601,7 @@ impl AudioHost {
                 }
             }
         }
-        // 接続を失っていたら、次のIPCもロールバックも始めない（応答の待ちだけが先に閉じた場合も）。
+        // 接続を失っていたら、次のIPCもロールバックも始めない（応答を採る時点・次の段へ進む時点のどちらでも。接続の開閉は `LinkState` だけで決まる）。
         if self.connection_lost() {
             self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
             return;
@@ -2558,7 +2558,7 @@ mod tests {
         assert!(rolled.rollback);
     }
 
-    // P1 2（新しい順）：reader は先に `LinkState` を閉じ、`ReplySlot` はその後に閉じる。その間（接続は閉じ、
+    // P1 2（今の順）：reader は先に `LinkState` を閉じ、`ReplySlot` はその後に閉じる。その間（接続は閉じ、
     // 待ちはまだ開いている）に当たっても、次の送信へ進まず、文言は切断にそろえる。
     #[test]
     fn p1_a_closed_link_with_an_open_slot_reports_engine_exited_without_sending() {

@@ -224,7 +224,7 @@ impl Store {
         self.lock()[role.index()].len()
     }
 
-    /// いまの記録から作る ngine_unconfirmed（J-13 の数え方を含む）。
+    /// いまの記録から作る `engine_unconfirmed`（J-13 の数え方を含む）。
     pub(super) fn unconfirmed_error(&self) -> EngineUnconfirmed {
         Self::error(&self.lock())
     }

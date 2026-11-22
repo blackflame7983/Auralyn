@@ -76,9 +76,11 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 1. `LinkState::close(Eof)` を試す。「閉じた」は `LinkState` だけで決まる（10章）。
 2. **勝ったら**：`ReplySlot::close()` で送り側を取り出す（以後の `begin` を締め出す）→ 原因を採取 → 今の EOF の通知（`audio-conditions-changed` → `audio-engine-exited` → `audio-error`）→ 取り出した送り側へ `Eof` を送る。通知が待ち手の解放より先（今の `compat_tests.rs:106` の順）。
 3. **負けたら**：`ReplySlot::close()` で送り側を取り出して捨てる（待ち手は `Disconnected` で解放）。通知は出さない。
+4. 呼び出し側は `Eof` を今の `Response::Error("Engine Crashed/Exited")` と同じ結果に写す（文言を変えない）。
+
 - `LinkState` が閉じてから `ReplySlot` が閉じるまでの間に `begin()` が通っても、writer は閉じた接続では書き込みを始めず `Aborted` を返し、呼び出し側は EOF の結果を待つ。reader の `close()` がその送り側を取り出して `Eof` を送るので、待ち手は取り残されない。
 - Host が接続を閉じるのは、意図した終了（`kill_engine` など）と書き込みの期限切れ・失敗（C2）だけ。EOF の競りに勝つ前に、Host が別の理由で閉じて EOF の通知を消すことはない。
-3. 呼び出し側は `Eof` を今の `Response::Error("Engine Crashed/Exited")` と同じ結果に写す（文言を変えない）。
+- **例外（前からの挙動）：** `ensure_engine_running` が `try_wait` で子の終了を確かめた場合は、reader の EOF より先に Host が `LinkState` を閉じる（意図した終了として）。そのとき EOF の通知は出さない（今の `reader_active` を偽にする挙動と同じ）。
 
 ### 2.5 書き込みの失敗と早い応答
 
@@ -137,7 +139,7 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 
 ## 4. 変えないことと、意図して変える互換（F1b-0a-1）
 
-**変えない：** 旧の通知の名前・中身・順（K 群、K13、EOF の通知が待ち手の解放より先）。書き込みの失敗の経路と文言。応答の期限（10秒）とその後の待ちの残り方（`timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request` もそのまま通る）。ホストのロックの持ち方、K2・K10・K11。`engine_generation` の更新点。モード VST の期限。
+**変えない：** 旧の通知の名前・中身・順（K 群、K13、EOF の通知が待ち手の解放より先。**既知の例外：** 11章の指摘3）。書き込みの失敗の経路と文言。応答の期限（10秒）とその後の待ちの残り方（`timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request` もそのまま通る）。ホストのロックの持ち方、K2・K10・K11。`engine_generation` の更新点。モード VST の期限。
 
 **意図して変える（J-17 の範囲）：** C2（書き込み5秒で切り離し）、C5（主）。モード VST で接続を失ったときの文言（今の「音声エンジンの世代または接続が変わりました」→ `Engine Crashed/Exited`。3.2）。
 
@@ -210,5 +212,13 @@ F1b-0a-1 のマージの後に、別の設計の節として詳細を書く。�
 ## 10. 実装のレビューでの変更（EOF の閉じる順）
 
 - 第2〜6回の独立レビューで、reader が「ReplySlot を閉じる → LinkState を閉じる」の二段で閉じる間の窓が、競合を繰り返し生んだ。各所で ReplySlot を別に見て窓を塞ぐと、別の競合（回収・巻き戻しの誤作動）が生まれた。
-- そこで 2.4 を変え、先に LinkState を閉じる順にした。「閉じた」を LinkState の1本で決め、窓の間に通った egin() は Aborted と reader の Eof で解放する。
+- そこで 2.4 を変え、先に LinkState を閉じる順にした。「閉じた」を LinkState の1本で決め、窓の間に通った `begin()` は `Aborted` と reader の `Eof` で解放する。
 - 切断の判定は LinkState に戻し、配信ミックスの公開の操作の失敗の処理は、接続が閉じていれば必ず切断の後処理を通す。
+
+## 11. 既知の狭い競合（F1b-0b の合格の条件）
+
+判断の基準：F1b-0a-1 で直すのは、次の4つのどれかに当たるものだけとする。(1) 退行、(2) 保存したデータの破損・喪失、(3) 固まる・回復できない、(4) main では起きない誤った情報が残り続ける。第7回のレビューの指摘1〜3は、どれにも当たらない（利用者から見た結果は、今の通常の失敗と同じか、順序だけの違い）ので、F1b-0b の合格の条件へ送る。
+
+1. **指摘1：未送信の VST の操作が終了の原因に載る。** 窓：`vst_operations.begin()` の後、writer が `Aborted` を返す前に EOF が来る。結果：EOF の原因（`audio-engine-exited` の `cause`）に、まだ送っていない VST の操作が載る。今の通常の失敗（`unknown` でない原因）と同じ形の通知。再現の継ぎ目：`before_begin_hook` の後に接続を閉じる。F1b-0b の試験（仮）：`an_unsent_vst_operation_is_not_named_as_the_exit_cause`。
+2. **指摘2：`settle()` の直後の EOF で `enabled` が落ちる。** 窓：配信ミックスの `settle()` が接続を開いていると見た直後、公開の操作の失敗の処理に入る前に EOF が来る。結果：切断として数えられず、`discard_child()` で `enabled` が落ちる（今の通常の失敗と同じ扱い）。再現の継ぎ目：`after_exec_check`。F1b-0b の試験（仮）：`an_eof_right_after_settle_keeps_enabled`。
+3. **指摘3：K13 で、通知の前に `Disconnected` になる。** 窓：reader が EOF の競りに勝つ前に、Host が `ensure_engine_running` の `try_wait` などで意図して `LinkState` を閉じる（2.4 の例外）。結果：待ち手は通知なしで `Disconnected` になり、`Engine Crashed/Exited` に写る（今の `reader_active` の挙動と同じ）。4章の「EOF の通知が待ち手の解放より先」の、既知の例外。再現の継ぎ目：`ReplySlot` を持つ待ち手と、`Reader::pause`（`LinkState` を閉じた直後で止める）。F1b-0b の試験（仮）：`a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter`。

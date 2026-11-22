@@ -1056,7 +1056,7 @@ fn p2_a_closed_link_with_an_open_slot_is_a_disconnect_for_the_post_mix() {
     assert!(rig.host.post_mix.enabled);
     rig.finish();
 
-    // 変更を送るとき（ラックを読んだ後で待ちだけが閉じる）：失敗にして、`enabled` を残す。
+    // 変更を送るとき（ラックを読んだ後で接続が閉じる）：失敗にして、`enabled` を残す。
     let mut rig = Rig::with_primary(
         stopped_primary(),
         [("GetPluginRack", vec![rack_with_a_plugin()])],
@@ -1090,7 +1090,7 @@ fn empty_rack() -> Step {
 // P1（5回目）：最後の `GetPluginRack` の応答の後に接続が閉じたら、切断済みの取得結果で
 // 保存せず、保存のファイルは変わらない（`enabled` は残る）。
 #[test]
-fn p1_save_never_overwrites_the_saved_file_after_a_late_slot_close() {
+fn p1_save_never_overwrites_the_saved_file_after_a_late_link_close() {
     let mut rig = Rig::new([("GetPluginRack", vec![empty_rack()])]);
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = calls.clone();
