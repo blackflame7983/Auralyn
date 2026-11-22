@@ -759,6 +759,86 @@ fn t2_c3_a_post_mix_child_that_stops_answering_is_retired_and_the_primary_is_unt
     rig.finish();
 }
 
+// S2（今の挙動の固定。F1b-0b-1 で、期待値を `an_eof_right_after_settle_keeps_enabled`
+// 「`enabled` が残り、`disconnected` が立ち、`error` が空」へ反転する。設計 9.8）：
+// 切断ではない理由で公開の操作が失敗し、`settle()` が開いた接続を読んだ直後に EOF が来ると、
+// 切断として数えられず、`enabled` が落ちて保存状態の読み直しを求める。
+#[test]
+fn s2_today_an_eof_right_after_settle_drops_enabled() {
+    let mut rig = Rig::with_primary(
+        stopped_primary(),
+        [
+            ("GetPluginRack", vec![rack_with_a_plugin()]),
+            ("LoadPlugin", vec![error_line("load refused")]),
+        ],
+    );
+    rig.host.post_mix.after_failure_settle = Some(Box::new(|child| {
+        assert!(child.link.close(CloseCause::Eof));
+    }));
+    let request = Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: "new.vst3".into(),
+        class_id: None,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_ne!(error.to_string(), EXITED, "切断ではない理由の失敗");
+    let state = &rig.host.post_mix;
+    assert!(!state.enabled && !state.restored && state.child.is_none());
+    assert!(state.error.is_some(), "保存状態の読み直しを求める");
+    assert!(state.disconnected.is_none() && state.detached == 0);
+    rig.finish();
+}
+
+// S8（F1b-0a-2 設計 9章の2点目）：C3 で配信ミックスの子を切り離しても、保存した設定は、メモリ（`saved`・`raw`）にも
+// 保存のファイルにも、そのまま残る。
+#[test]
+fn s8_t2_c3_keeps_the_saved_post_mix_settings_in_memory_and_on_disk() {
+    use crate::audio_engine::mixing::Start;
+    let mut post_script = stopped_primary();
+    post_script.push(("GetPluginRack", vec![empty_rack()]));
+    let mut rig = Rig::new(post_script);
+    rig.host.ensure_engine_running().unwrap();
+    rig.host.post_attached = true;
+    rig.host.mixing.selected = Some(Start {
+        config: mixing_config("wasapi:one"),
+        target: None,
+    });
+    let request = save_request(&rig);
+    rig.host.post_mix(request).unwrap();
+    let path = rig.host.post_mix.path.clone();
+    let saved_before = serde_json::to_value(&rig.host.post_mix.saved).unwrap();
+    let raw_before = rig.host.post_mix.raw.clone();
+    let file_before = std::fs::read(&path).unwrap();
+    assert!(raw_before.is_some() && saved_before.is_object());
+    assert_eq!(raw_before.as_deref(), Some(file_before.as_slice()));
+
+    let (mut silent, silent_observer) =
+        scripted_parts([("GetPluginRack", vec![Step::WaitGate("never".into())])]);
+    silent.post_role = true;
+    silent.retired = rig.host.retired.clone();
+    silent.ensure_engine_running().unwrap();
+    rig.host.post_mix.child = Some(Box::new(silent));
+    rig.host.post_mix.restored = true;
+    crate::audio::writer::set_limits_for_test(None, Some(std::time::Duration::from_millis(400)));
+    let request = save_request(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    crate::audio::writer::set_limits_for_test(None, None);
+    assert!(error.to_string().contains("応答しない"), "{error}");
+    let state = &rig.host.post_mix;
+    assert!(state.child.is_none(), "子は外れている");
+    assert!(state.enabled, "enabled は残す");
+    assert_eq!(serde_json::to_value(&state.saved).unwrap(), saved_before);
+    assert_eq!(state.raw, raw_before);
+    assert_eq!(std::fs::read(&path).unwrap(), file_before);
+    assert!(
+        silent_observer.probe(0).wait_exit(5000),
+        "配信ミックスの子は回収される"
+    );
+    let _ = std::fs::remove_dir_all(&silent_observer.dir);
+    rig.finish();
+}
+
 // F1b-0a-2 の T8：起動の確認（J-24）の期限は A の10秒のまま。確認の間の C3 は、主の子だけを回収し、
 // 配信ミックスの子・`enabled`・オケの入力を残し、`audio-error` を出さず、`kill_primary_engine` を二重に呼ばない。
 // 起動の失敗か、終了を確かめられなければ `engine_unconfirmed`。

@@ -152,7 +152,7 @@ fn obs_reach_ack_captures_own_stop_but_old_cleanup_never_stops_new_tone_or_user_
     let stdout = child.stdout.take().unwrap();
     host.child = Some(child);
     host.set_link_for_test(true);
-    let slot = host.pending_reply_tx.clone();
+    let slot = link_seam::reply_slot(&host);
     let commands = Arc::new(Mutex::new(Vec::new()));
     let recorded = commands.clone();
     let fail_start = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -863,7 +863,7 @@ fn existing_background_reads_keep_values_and_only_gain_initialize_invalidates_wi
     host.child = Some(child);
     host.set_link_for_test(true);
     host.live_modes.needs_sync = false;
-    let slot = host.pending_reply_tx.clone();
+    let slot = link_seam::reply_slot(&host);
     let worker = std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         for _ in 0..6 {
@@ -973,7 +973,7 @@ fn remove_plugin_on_live_child_with_stopped_audio_sends_unload_and_invalidates_w
     host.voice_activity.store(false, Ordering::Release);
     host.conditions.lifecycle(true);
     let witness = host.conditions.snapshot().unwrap();
-    let reply = host.pending_reply_tx.clone();
+    let reply = link_seam::reply_slot(&host);
     let worker = std::thread::spawn(move || {
         let mut line = String::new();
         BufReader::new(stdout).read_line(&mut line).unwrap();

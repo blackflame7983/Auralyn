@@ -3141,6 +3141,10 @@ mod engine_life_tests;
 mod control_tests;
 
 #[cfg(test)]
+#[path = "audio/tests/link_seam.rs"]
+mod link_seam;
+
+#[cfg(test)]
 #[path = "audio/tests/link_tests.rs"]
 mod link_tests;
 
