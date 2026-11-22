@@ -9,6 +9,15 @@ type Saved = crate::bundle::mixing_configuration::PostMixPreset;
 const CHILD_ENDED: &str = "配信VSTのEngineが終了しました";
 #[cfg(test)]
 type ExecCheck = Box<dyn Fn(&AudioHost) + Send>;
+/// 応答は受け取ったが、その直後に接続が閉じていた。状態を前提にした続きの操作を中断させる。
+#[derive(Debug)]
+struct LostAfterReply;
+impl std::fmt::Display for LostAfterReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(ENGINE_EXITED)
+    }
+}
+impl std::error::Error for LostAfterReply {}
 /// 子への命令の結果と、その命令の前後で接続が閉じていたか。
 struct Exec {
     result: Result<IpcResponse>,
@@ -424,7 +433,13 @@ impl State {
             };
         }
         let result = child.execute_running_command(cmd);
-        let lost = self.settle();
+        // 終了を確かめられなかった理由（C2）は、外した後も `snapshot` まで引き継ぐ。
+        let unconfirmed = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<engine_life::EngineUnconfirmed>())
+            .map(ToString::to_string);
+        let lost = self.settle_with(unconfirmed);
         #[cfg(test)]
         if let (Some(hook), Some(child)) = (&self.after_exec_check, &self.child) {
             hook(child);
@@ -433,20 +448,27 @@ impl State {
     }
     /// 子の接続が閉じていれば後始末をして `true`。状態を書き戻す直前にも呼ぶ。
     fn settle(&mut self) -> bool {
+        self.settle_with(None)
+    }
+    fn settle_with(&mut self, reason: Option<String>) -> bool {
         let closed = self.child.as_ref().is_some_and(|c| !c.link.is_open());
         if closed {
-            self.detach_closed_child();
+            self.detach_with(reason);
         }
         closed
     }
-    /// 閉じた接続の子を外す。EOF は reader が回収しないので、ここで回収する。`enabled` と保存した設定は残す。
     fn detach_closed_child(&mut self) {
+        self.detach_with(None);
+    }
+    /// 閉じた接続の子を外す。EOF は reader が回収しないので、ここで回収する。`enabled` と保存した設定は残す。
+    /// 理由は、終了を確かめられなかったときの文言（なければ、今の EOF の説明）。
+    fn detach_with(&mut self, reason: Option<String>) {
         if let Some(mut child) = self.child.take() {
             child.release_engine();
         }
         self.restored = false;
         self.running = false;
-        self.disconnected = Some(CHILD_ENDED.into());
+        self.disconnected = Some(reason.unwrap_or_else(|| CHILD_ENDED.into()));
         self.detached += 1;
     }
     /// 復元は同じ接続に固定する。接続が外れていたら、別の子を起動せず、その場で中断する。
@@ -518,7 +540,11 @@ impl State {
             self.detach_closed_child();
             anyhow::bail!("配信VSTのEngineが終了しました。保存設定を選び直してください");
         }
-        match self.exec_child(IpcCommand::GetPluginRack).result? {
+        let exec = self.exec_child(IpcCommand::GetPluginRack);
+        // 応答の後に閉じていたら、切断済みのラックを返さない（続きを別の子で行わせない）。
+        let lost = self.settle() || exec.lost;
+        match exec.result? {
+            IpcResponse::PluginRack { .. } if lost => Err(LostAfterReply.into()),
             IpcResponse::PluginRack { plugins, .. } => Ok(plugins),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("配信VSTの状態を確認できません")),
@@ -859,7 +885,11 @@ impl State {
             self.running = false;
             self.error = Some(note);
         }
-        let plugins = rack?;
+        // 応答の後に閉じていたときは、切断済みのラックを返さず、理由つきの成功として返す。
+        let plugins = match rack {
+            Err(error) if error.downcast_ref::<LostAfterReply>().is_some() => Vec::new(),
+            other => other?,
+        };
         Ok(Snapshot {
             epoch: self.epoch.clone(),
             revision: self.revision.to_string(),

@@ -297,7 +297,7 @@ pub(super) fn contain_and_resume(
     store: &Store,
     role: Role,
     child: Child,
-) -> anyhow::Result<(Child, Option<JobHandle>)> {
+) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
     #[cfg(test)]
     seam::stage(seam::Stage::Spawned(child.id()));
     let Some(job) = new_job() else {
@@ -323,7 +323,8 @@ pub(super) fn contain_and_resume(
     if resumed > 1 {
         log::warn!("音声エンジンの主スレッドに、外の停止が重なっていました（再開の前の停止の数 {resumed}）。外の停止が解かれると動き出します");
     }
-    Ok((child, Some(job)))
+    // 外の停止が重なった子は、解かれるまで動かない。最初の応答が来るまでを起動の確認にする（呼び出し側）。
+    Ok((child, Some(job), resumed > 1))
 }
 
 #[cfg(not(windows))]
@@ -331,8 +332,8 @@ pub(super) fn contain_and_resume(
     _store: &Store,
     _role: Role,
     child: Child,
-) -> anyhow::Result<(Child, Option<JobHandle>)> {
-    Ok((child, None))
+) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
+    Ok((child, None, false))
 }
 
 #[cfg(windows)]
@@ -367,13 +368,23 @@ fn resume(child: &Child) -> u32 {
             let _ = resume_main_thread(child);
         }
         // 外の停止を1回重ねてから、本来の再開を呼ぶ（戻り値は `2`。子は外の停止が解かれるまで止まる）。
-        seam::Resume::ExternalSuspend => {
+        seam::Resume::ExternalSuspend(release_after) => {
             use std::os::windows::io::AsRawHandle;
             use std::os::windows::process::ChildExt;
             let thread =
                 windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
             // SAFETY: `child` が生きているあいだ、主スレッドのハンドルは有効で、呼び出しの間だけ借りる。
             let _ = unsafe { windows::Win32::System::Threading::SuspendThread(thread) };
+            if let Some(delay) = release_after {
+                // 外の停止が解かれる時刻。子（のハンドル）は、解かれるまで呼び出し側が持ち続ける。
+                let raw = thread.0 as usize;
+                std::thread::spawn(move || {
+                    std::thread::sleep(delay);
+                    let thread = windows::Win32::Foundation::HANDLE(raw as *mut std::ffi::c_void);
+                    // SAFETY: 試験が子を持つあいだだけ有効なハンドル（解く前に子が終わっても、失敗するだけ）。
+                    let _ = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
+                });
+            }
         }
     }
     resume_main_thread(child)
@@ -420,8 +431,8 @@ pub(crate) mod seam {
         Returns(u32),
         /// 先に実際に再開してから、本来の再開を呼ぶ（戻り値は `0`。子は動いている）。
         ResumedEarly,
-        /// 本来の再開の前に、外の停止を1回重ねる（戻り値は `2`）。
-        ExternalSuspend,
+        /// 本来の再開の前に、外の停止を1回重ねる（戻り値は `2`）。`Some` なら、その時間の後に外の停止を解く。
+        ExternalSuspend(Option<Duration>),
     }
 
     pub(crate) enum Stage {

@@ -141,42 +141,69 @@ fn release_external_suspend(child: &Child) {
 
 // W1c（J-24）：外の停止が重なって戻り値が `2` でも、私たちの再開は効いている。起動は成功し、
 // 外の停止が解かれるまで子は動かず、解かれたら動き出す。健全な子を終わらせない。
+// 戻り値が2以上の起動は、最初の応答が来るまでを起動の確認とする（外の停止が解かれるのを待つ）。
 #[test]
 fn w1c_a_resume_result_of_two_succeeds_and_the_child_runs_once_the_external_suspend_is_released() {
     let (mut host, observer) = scripted_parts([]);
-    seam::set_resume(seam::Resume::ExternalSuspend);
+    seam::set_resume(seam::Resume::ExternalSuspend(Some(Duration::from_millis(
+        400,
+    ))));
+    let started = Instant::now();
     host.ensure_engine_running().unwrap();
     seam::set_resume(seam::Resume::Real);
-    assert_eq!(observer.spawn_count(), 1);
-    assert!(!observer.probe(0).exited(), "子は終わっていない");
-    let thread = {
-        use std::os::windows::io::AsRawHandle;
-        use std::os::windows::process::ChildExt;
-        host.child
-            .as_ref()
-            .unwrap()
-            .main_thread_handle()
-            .as_raw_handle() as usize
-    };
-    let started = Instant::now();
-    let release = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(400));
-        let thread = windows::Win32::Foundation::HANDLE(thread as *mut std::ffi::c_void);
-        // SAFETY: 子を持つ `host` が、この試験の終わりまで生きている。
-        let _ = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
-    });
-    // 外の停止が解かれるまで、子は命令を読まない。解かれたら応答する。
-    host.execute_running_command(IpcCommand::GetDevices)
-        .unwrap();
     assert!(
         started.elapsed() >= Duration::from_millis(300),
-        "外の停止が解かれるまで動かなかった: {:?}",
+        "最初の応答（外の停止が解かれた後）まで、起動の確認で待った: {:?}",
         started.elapsed()
     );
-    release.join().unwrap();
+    assert_eq!(observer.spawn_count(), 1);
+    assert!(!observer.probe(0).exited(), "子は終わっていない");
+    host.execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
     finish(host, observer);
 }
 
+// J-24：外の停止が解かれないまま続く子は、最初の応答が来ないので、期限で切り離して回収し、
+// 今の起動の失敗と同じ文言で失敗にする。終了を確かめられなければ `engine_unconfirmed`。次の操作で作り直せる。
+#[test]
+fn w1c_a_child_whose_external_suspend_is_never_released_is_retired_and_the_start_fails() {
+    for confirmed in [true, false] {
+        let (mut host, observer) = scripted_parts([]);
+        crate::audio::writer::set_limits_for_test(None, Some(Duration::from_millis(500)));
+        seam::set_resume(seam::Resume::ExternalSuspend(None));
+        if !confirmed {
+            seam::set_wait(seam::Wait::Stuck);
+        }
+        let error = host.ensure_engine_running().unwrap_err();
+        seam::set_resume(seam::Resume::Real);
+        crate::audio::writer::set_limits_for_test(None, None);
+        assert!(host.child.is_none(), "切り離している");
+        if confirmed {
+            assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
+            assert!(observer.probe(0).wait_exit(5000), "子が回収されている");
+            assert_eq!(host.retired.pending(Role::Primary), 0);
+        } else {
+            assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
+            assert_eq!(host.retired.pending(Role::Primary), 1);
+            seam::set_wait(seam::Wait::Real);
+        }
+        // 次の操作で作り直せる（確かめられなかった場合は、終了を確かめた後）。
+        assert!(observer.probe(0).wait_exit(5000));
+        host.ensure_engine_running().unwrap();
+        assert_eq!(observer.spawn_count(), 2);
+        finish(host, observer);
+    }
+}
+
+// 戻り値が1の通常の起動は、確認の命令を足さない（挙動を変えない）。
+#[test]
+fn a_normal_start_sends_no_confirmation_command() {
+    let (mut host, observer) = scripted_parts([]);
+    host.ensure_engine_running().unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(observer.sent().is_empty());
+    finish(host, observer);
+}
 // 製品の生成（``spawn_engine_process`` が呼ぶ `spawn_engine_binary`）が、子を停止の状態で作る。
 // 試験の launcher は別の組み立てなので、製品のフラグを外しても W1・W4 の試験は気づかない。この試験が気づく。
 #[test]
@@ -188,22 +215,26 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     // 作った直後から預け、ハンドルの取得や再開が失敗しても、停止したままの子を残さない。
     let guard = ChildGuard::new(host.spawn_engine_binary(cmd).unwrap());
     let probe = ProcessProbe::open(guard.id()).unwrap();
-    let (child, job) =
+    let (child, job, suspended) =
         engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
     let guard = ChildGuard::new(child);
     assert!(job.is_some(), "停止の状態だったので、再開の戻り値が1");
+    assert!(!suspended);
     drop(guard);
     assert!(probe.wait_exit(5000));
 
     // 外の停止が重なって戻り値が 2 でも、製品の経路は成功し、解かれた子は動く（J-24）。
-    seam::set_resume(seam::Resume::ExternalSuspend);
+    seam::set_resume(seam::Resume::ExternalSuspend(None));
     let guard = ChildGuard::new(host.spawn_engine_binary(cmd_exe()).unwrap());
     let probe = ProcessProbe::open(guard.id()).unwrap();
-    let (child, job) =
+    let (child, job, suspended) =
         engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
     seam::set_resume(seam::Resume::Real);
     let guard = ChildGuard::new(child);
-    assert!(job.is_some());
+    assert!(
+        job.is_some() && suspended,
+        "戻り値が2なので、外の停止の確認が要る"
+    );
     release_external_suspend(guard.child());
     assert!(!probe.wait_exit(500), "外の停止が解かれた子は、動き続ける");
     drop(guard);

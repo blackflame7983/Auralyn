@@ -763,3 +763,90 @@ fn p2_snapshot_settles_the_link_after_its_last_ipc() {
     assert!(rig.host.post_mix.child.is_none());
     rig.finish();
 }
+
+// P1：`Add` で、ラックの応答の直後に子が閉じたら、既存のラックを欠いたまま別の子で続けない。
+// 子を作り直さず、復元済みにならず、保存した設定も変わらない。
+#[test]
+fn p1_add_aborts_when_the_rack_reply_is_followed_by_eof() {
+    let existing = crate::ipc::RackPlugin {
+        id: "existing".into(),
+        path: "post.vst3".into(),
+        name: "post".into(),
+        enabled: true,
+        muted: false,
+        gain: 1.0,
+        class_id: None,
+        channel_layout: crate::ipc::ChannelLayout::Stereo,
+    };
+    let rack = response_line(&IpcResponse::PluginRack {
+        plugins: vec![existing],
+        restore_eligible: true,
+        revision: 1,
+        running: false,
+    });
+    let mut rig = Rig::with_primary(stopped_primary(), [("GetPluginRack", vec![rack])]);
+    let (second, second_observer) = scripted_parts([]);
+    let mut second = second;
+    second.post_role = true;
+    second.retired = rig.host.retired.clone();
+    rig.host.post_mix.test_children = vec![Box::new(second)];
+    rig.host.post_mix.saved = Some(Saved {
+        schema_version: 1,
+        role: "post_mix".into(),
+        enabled: true,
+        plugins: vec![plugin()],
+    });
+    let saved_before = serde_json::to_value(&rig.host.post_mix.saved).unwrap();
+    let raw_before = rig.host.post_mix.raw.clone();
+    rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    let request = Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: "new.vst3".into(),
+        class_id: None,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), EXITED);
+    let state = &rig.host.post_mix;
+    assert_eq!(state.test_children.len(), 1, "子を作り直していない");
+    assert_eq!(second_observer.spawn_count(), 0);
+    assert!(state.child.is_none() && !state.restored);
+    assert_eq!(serde_json::to_value(&state.saved).unwrap(), saved_before);
+    assert_eq!(state.raw, raw_before, "保存した設定は変わらない");
+    rig.finish();
+}
+
+// P2：C2 で終了を確かめられなかったとき、その理由（`engine_unconfirmed`）を `snapshot` まで引き継ぐ。
+#[test]
+fn p2_an_unconfirmed_c2_reason_is_carried_to_the_next_snapshot() {
+    let mut rig = Rig::new([]);
+    let gate = crate::audio::writer::sinks::Gated::default();
+    {
+        let child = rig.host.post_mix.child.as_mut().unwrap();
+        child.writer = Some(crate::audio::writer::Writer::start(
+            gate.clone(),
+            child.link.clone(),
+        ));
+    }
+    crate::audio::writer::set_limits_for_test(Some(std::time::Duration::from_millis(200)), None);
+    seam::set_wait(seam::Wait::Stuck);
+    let request = save_request(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    crate::audio::writer::set_limits_for_test(None, None);
+    seam::set_wait(seam::Wait::Real);
+    gate.open();
+    assert_eq!(
+        error.downcast_ref::<EngineUnconfirmed>().copied(),
+        Some(EngineUnconfirmed { repeated: false })
+    );
+    assert!(rig.host.post_mix.enabled && rig.host.post_mix.child.is_none());
+    let snapshot = rig.host.post_mix(Request::Snapshot).unwrap();
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some(engine_life::UNCONFIRMED_JA),
+        "「終了しました」に変えない"
+    );
+    rig.finish();
+}

@@ -561,13 +561,13 @@ impl AudioHost {
             match pending.receiver.try_recv() {
                 Ok(ReplyOutcome::Response(response)) => {
                     // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
-                    if !self.link.is_open() {
+                    if self.connection_lost() {
                         self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
                         return;
                     }
                     if let Err(error) = self.mode_step_response(&mut tx, *response) {
                         // 拒否の応答の直後に閉じていた場合も、ロールバックの対象にしない。
-                        let lost = !self.link.is_open();
+                        let lost = self.connection_lost();
                         let message = if lost {
                             ENGINE_EXITED.into()
                         } else {
@@ -666,6 +666,11 @@ impl AudioHost {
                 self.fail_mode_transaction(tx, message, true);
             }
         }
+    }
+    /// 接続を失ったか。reader の EOF の処理は、応答の待ちを閉じてから接続を閉じるので、
+    /// その間に当たっても喪失として扱う。
+    fn connection_lost(&self) -> bool {
+        !self.link.is_open() || self.pending_reply_tx.is_closed()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
         let receiver = self.pending_reply_tx.begin()?;
@@ -2547,5 +2552,24 @@ mod tests {
         assert!(host.link.is_open());
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
+    }
+
+    // P2：reader の EOF の処理は応答の待ちを閉じてから接続を閉じる。その間に拒否の応答を処理しても、
+    // 接続の喪失として扱い、巻き戻しを予約しない。
+    #[test]
+    fn p2_a_rejected_reply_between_the_slot_close_and_the_link_close_is_a_loss() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host
+            .pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into())));
+        // 待ちは閉じたが、接続はまだ開いている。
+        drop(host.pending_reply_tx.close());
+        assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.transaction.is_none());
     }
 }

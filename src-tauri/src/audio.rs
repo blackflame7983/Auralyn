@@ -895,7 +895,7 @@ impl AudioHost {
         let condition_epoch = self.conditions.new_engine();
         self.notify_conditions_changed();
         let launched = self.spawn_engine_process()?;
-        let (mut child, job) =
+        let (mut child, job, externally_suspended) =
             engine_life::contain_and_resume(&self.retired, self.role(), launched)?;
         self.engine_job = job;
 
@@ -923,6 +923,22 @@ impl AudioHost {
             engine_generation: self.engine_generation,
         }
         .spawn(stdout);
+
+        // 外の停止が重なっていた子は、解かれないまま続くと、最初の応答が来ない。最初の応答が来るまでを
+        // 起動の確認とし、期限（10秒）までに来なければ、切り離して回収し、起動の失敗にする（J-24）。
+        // 戻り値が1の通常の起動には、この確認を足さない。
+        if externally_suspended
+            && self
+                .execute_running_command(IpcCommand::StartIdentityCapability)
+                .is_err()
+        {
+            let recorded = self.retired.pending(self.role());
+            self.kill_engine();
+            if self.retired.pending(self.role()) > recorded {
+                return Err(self.retired.unconfirmed_error().into());
+            }
+            return Err(anyhow!(engine_life::LAUNCH_FAILED));
+        }
 
         if let Some(config) = self.peak_intent {
             let result = self.execute_running_command(IpcCommand::PeakProtection {
