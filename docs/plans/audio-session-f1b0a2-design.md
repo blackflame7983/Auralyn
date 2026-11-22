@@ -116,7 +116,7 @@
 | T12 | I3：reader を `emit` の途中で止めたまま、C3 の CAS の勝ち・負けの両方で `retire_child` が完了する | 継ぎ目（`Reader::pause`・`emit` を止める） |
 | T13 | 3.2 の負け：`vst_operations` を書き換えず、`audio-engine-exited` の原因が reader の採った本当の VST になる | 継ぎ目 |
 | T9 | 文言：確認済みと未確認（J-13 の数え方を含む） | 既存の C2 の試験に倣う |
-| T10 | 互換：K 群・`engine_life`・F1b-0a-1 の試験が通る。書き換えるのは 4章の2件だけ | 既存 |
+| T10 | 互換：K 群・`engine_life`・F1b-0a-1 の試験が通る。書き換えるのは 4章の3件だけ（10秒の互換の試験、`replies.rs` の単体、`link_tests.rs` の T3） | 既存 |
 | T11 | 壊して確かめる：期限の分類、3.2 の勝ち負け、`received_at` の判定、配信ミックスの主を残すこと、を外すと、それぞれ T5・T3・T4・T2 が失敗する | 一時的な改変 |
 
 ## 6. 既知の狭い競合
@@ -178,3 +178,9 @@ F1b-0a-1 の 11章の3つは、この段でもそのまま残る（F1b-0b の合
 - 応答の期限：`audio.rs:1097`（`await_reply`）、C3 は `audio.rs:1155`（`reply_timed_out`）。期限の値は `audio/writer.rs` の `reply_limit(&Command)`。
 - `received_at` は reader が行を読んだ直後に打つ（`audio/reader.rs`）。`ReplyOutcome::Response { resp, received_at }`（`audio/replies.rs`）。
 - モード VST：`Pending.limit`（`audio/mode_vst.rs:193`）、`send_mode_command`（`:700`）が命令の種類で決める。期限の後の処理は `fail_mode_deadline`（`:692`）で、理由は `ReplyTimeout`、巻き戻しはしない。
+
+## 9. 実装のレビュー（Sol、PASS with nits）で F1b-0b へ送ったもの
+
+- 10秒の互換の試験は `SetChannelScan`（A）に差し替えたので、`Start`（B）に固有の失敗の処理（短い期限での失敗、回収、`Stop` を送らないこと）を別に確かめる。
+- T2 に保存した設定を用意し、期限切れの前後で、メモリ上の設定とファイルの中身が変わらないことを確かめる。
+- T12 で、回収が終わったことを、通知を再開する前に試験用のフックで確かめる（今は、子の終了から回収の完了までの間に通知の待ちを入れても通りうる）。
