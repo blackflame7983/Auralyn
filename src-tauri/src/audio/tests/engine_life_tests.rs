@@ -334,7 +334,11 @@ fn wait_for_file(path: &std::path::Path) -> String {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    panic!("{} が現れない", path.display());
+    let panic = path
+        .parent()
+        .and_then(|dir| std::fs::read_to_string(dir.join("parent-panic.txt")).ok())
+        .unwrap_or_default();
+    panic!("{} が現れない（親の panic: {panic}）", path.display());
 }
 
 fn publish(dir: &std::path::Path, name: &str, text: &str) {
@@ -346,6 +350,11 @@ fn publish(dir: &std::path::Path, name: &str, text: &str) {
 /// 親の側。`mode` は `exit`・`drop`・`wait`（再開の後）、`before_assign`・`before_resume`。
 fn run_parent(plan: ParentPlan) {
     let dir = plan.dir;
+    // 親が panic で消えたとき、待つ側が原因を読めるように残す。
+    let panic_dir = dir.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = std::fs::write(panic_dir.join("parent-panic.txt"), info.to_string());
+    }));
     let grandchild = parent_file(&dir, "grandchild.pid");
     let (mut host, _observer) = scripted_parts([(
         "GetDevices",
@@ -370,7 +379,18 @@ fn run_parent(plan: ParentPlan) {
         }),
         _ => {}
     }
-    host.ensure_engine_running().unwrap();
+    // 起動の失敗（LAUNCH_FAILED）は、再開の戻り値が1でないとき（外部の道具が主スレッドを一時的に止めた
+    // 場合など、負荷のもとで起きる）にも返る。その子は終了を確かめて回収済みなので、起動し直す。
+    let mut attempts = 0;
+    loop {
+        match host.ensure_engine_running() {
+            Ok(()) => break,
+            Err(error) if error.to_string() == engine_life::LAUNCH_FAILED && attempts < 50 => {
+                attempts += 1;
+            }
+            Err(error) => panic!("親の子の起動に失敗: {error}"),
+        }
+    }
     host.execute_running_command(IpcCommand::GetDevices)
         .unwrap();
     let child = host.child.as_ref().unwrap().id();

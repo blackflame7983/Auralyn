@@ -560,8 +560,20 @@ impl AudioHost {
             }
             match pending.receiver.try_recv() {
                 Ok(ReplyOutcome::Response(response)) => {
+                    // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
+                    if !self.link.is_open() {
+                        self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+                        return;
+                    }
                     if let Err(error) = self.mode_step_response(&mut tx, *response) {
-                        self.fail_mode_transaction(tx, error.to_string(), false);
+                        // 拒否の応答の直後に閉じていた場合も、ロールバックの対象にしない。
+                        let lost = !self.link.is_open();
+                        let message = if lost {
+                            ENGINE_EXITED.into()
+                        } else {
+                            error.to_string()
+                        };
+                        self.fail_mode_transaction(tx, message, lost);
                         return;
                     }
                 }
@@ -643,7 +655,16 @@ impl AudioHost {
                 self.mode_vst.transaction = Some(tx);
                 self.update_mode_status(phase, None, false);
             }
-            Err(error) => self.fail_mode_transaction(tx, error.to_string(), true),
+            Err(error) => {
+                // EOF の処理の途中（応答の待ちが閉じ、接続の開閉はこれから）に当たっても、文言を切断にそろえる。
+                let lost = !self.link.is_open() || error.to_string() == replies::CLOSED;
+                let message = if lost {
+                    ENGINE_EXITED.into()
+                } else {
+                    error.to_string()
+                };
+                self.fail_mode_transaction(tx, message, true);
+            }
         }
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
@@ -2485,5 +2506,46 @@ mod tests {
             drop(host);
             let _ = std::fs::remove_dir_all(&observer.dir);
         }
+    }
+
+    // P1 2：拒否の応答がそろった tick の時点で接続が閉じていたら、巻き戻しを予約せず、復旧の経路へ進む。
+    #[test]
+    fn p1_a_rejected_reply_followed_by_eof_goes_to_recovery_not_rollback() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host
+            .pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into())));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(
+            host.mode_vst.transaction.is_none(),
+            "巻き戻しの取引は残らない"
+        );
+        // 接続が開いたままなら、今のとおり巻き戻しを始める。
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        host.pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into()));
+        host.poll_mode_vst();
+        let rolled = host.mode_vst.transaction.as_ref().unwrap();
+        assert!(rolled.rollback);
+    }
+
+    // P1 2：次の送信の直前に EOF の処理が入り、待ちの登録が拒否されたときも、文言は切断にそろえる。
+    #[test]
+    fn p1_a_refused_begin_during_eof_reports_engine_exited() {
+        let mut host = open_link_host();
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        // reader の EOF の処理は、待ちを閉じてから接続を閉じる。その間に当たった場合。
+        drop(host.pending_reply_tx.close());
+        assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
     }
 }

@@ -295,8 +295,13 @@ pub(super) struct State {
     error: Option<String>,
     /// 子の切断を処理して外した後も残す説明。次の `snapshot` が今の EOF の説明として出す。
     disconnected: Option<String>,
+    /// 切断を処理して子を外した回数。公開の操作が、失敗の原因が切断かを見分ける。
+    detached: u64,
     #[cfg(test)]
     after_exec_check: Option<ExecCheck>,
+    /// 試験の継ぎ目：次に `child()` が作る子として使う、台本つきの子（先頭から）。
+    #[cfg(test)]
+    test_children: Vec<Box<AudioHost>>,
 }
 impl State {
     pub(super) fn new(root: &Path, retired: Arc<engine_life::Store>) -> Self {
@@ -318,8 +323,11 @@ impl State {
             running: false,
             error,
             disconnected: None,
+            detached: 0,
             #[cfg(test)]
             after_exec_check: None,
+            #[cfg(test)]
+            test_children: Vec::new(),
         }
     }
     pub(super) fn enabled(&self) -> bool {
@@ -439,35 +447,43 @@ impl State {
         self.restored = false;
         self.running = false;
         self.disconnected = Some(CHILD_ENDED.into());
+        self.detached += 1;
     }
+    /// 復元は同じ接続に固定する。接続が外れていたら、別の子を起動せず、その場で中断する。
     fn restore_one(&mut self, plugin: &PresetPlugin) -> Result<()> {
-        let child = self.child()?;
+        let child = self
+            .child
+            .as_mut()
+            .ok_or_else(|| anyhow!(replies::CLOSED))?;
         child.next_restore_operation = child
             .next_restore_operation
             .checked_add(1)
             .ok_or_else(|| anyhow!("復元操作IDの上限です"))?;
         let id = child.next_restore_operation;
         let generation = child.engine_generation;
-        let response = self
-            .exec_child(IpcCommand::RestorePlugin {
-                request: crate::ipc::RestorePluginRequest {
-                    path: plugin.path.clone(),
-                    state: plugin.state.clone(),
-                    bypassed: !plugin.enabled,
-                    muted: plugin.muted,
-                    gain: plugin.gain,
-                    class_id: plugin.class_id.clone(),
-                },
-                operation_id: id,
-                expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8000),
-            })
-            .result?;
+        let exec = self.exec_child(IpcCommand::RestorePlugin {
+            request: crate::ipc::RestorePluginRequest {
+                path: plugin.path.clone(),
+                state: plugin.state.clone(),
+                bypassed: !plugin.enabled,
+                muted: plugin.muted,
+                gain: plugin.gain,
+                class_id: plugin.class_id.clone(),
+            },
+            operation_id: id,
+            expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8000),
+        });
+        let response = exec.result?;
         // EOF で外した子の世代は変わらない。外れていても、子の応答（Error）をそのまま返す。
         let current = self
             .child
             .as_ref()
             .map_or(generation, |child| child.engine_generation);
         validate_restore_response(generation, current, id, response)?;
+        // 成功の応答の直後に閉じていたら、続きを別の子で行わない（今の EOF の失敗と同じ文言）。
+        // 状態を書き戻す前の最後の確認。
+        let lost = self.settle() || exec.lost;
+        anyhow::ensure!(!lost, ENGINE_EXITED);
         Ok(())
     }
     fn child(&mut self) -> Result<&mut AudioHost> {
@@ -478,10 +494,17 @@ impl State {
                 .parent()
                 .ok_or_else(|| anyhow!("保存先がありません"))?
                 .join("post-mix-runtime");
-            self.child = Some(Box::new(super::control::post_mix_child_host(
+            let built = Box::new(super::control::post_mix_child_host(
                 root,
                 self.retired.clone(),
-            )));
+            ));
+            #[cfg(test)]
+            let built = if self.test_children.is_empty() {
+                built
+            } else {
+                self.test_children.remove(0)
+            };
+            self.child = Some(built);
         }
         let child = self.child.as_mut().expect("子Hostは作成済み");
         child.ensure_engine_running()?;
@@ -827,13 +850,16 @@ impl State {
             }
             None => {}
         }
+        // 最後の IPC の後で、接続と終了の理由を確定してから返す。
+        let rack = self.rack();
+        self.settle();
         // 別の操作が切断を処理して外した子の説明を、今の EOF の説明として出す。
         if let Some(note) = self.disconnected.take() {
             self.restored = false;
             self.running = false;
             self.error = Some(note);
         }
-        let plugins = self.rack()?;
+        let plugins = rack?;
         Ok(Snapshot {
             epoch: self.epoch.clone(),
             revision: self.revision.to_string(),
@@ -908,6 +934,7 @@ impl AudioHost {
             );
         }
         let state = &mut self.post_mix;
+        let detached_before = state.detached;
         let result: Result<()> = (|| {
             match request {
                 Request::Snapshot => return Ok(()),
@@ -1046,9 +1073,14 @@ impl AudioHost {
             Ok(())
         })();
         if let Err(error) = result {
-            state.discard_child();
-            state.error =
-                Some("配信VSTの操作を完了できませんでした。保存状態を読み直してください".into());
+            // 切断（C2・EOF）のときは、子の回収と `restored`・`running` の更新が済んでいる。
+            // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
+            if state.detached == detached_before {
+                state.discard_child();
+                state.error = Some(
+                    "配信VSTの操作を完了できませんでした。保存状態を読み直してください".into(),
+                );
+            }
             return Err(error);
         }
         let mut snapshot = state.snapshot()?;

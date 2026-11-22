@@ -509,7 +509,10 @@ fn t9_a_chain_that_waited_for_the_order_lock_is_dropped_when_the_connection_clos
                     stream_generation: Some(1),
                 });
             });
-            std::thread::sleep(Duration::from_millis(150));
+            // 待つ側が、順序のロックを取る直前（接続の確認の前）に着いたことを確かめる。
+            wait_until("列が順序のロックの前に着く", || {
+                notifier.arrivals_for_test() == 1
+            });
             assert!(host.link.close(CloseCause::Intentional));
             // 列のロックを放した後に、待っていた列の確認が走る。
             drop(waiting);
@@ -567,13 +570,26 @@ fn t13_drop_returns_within_the_shared_window_even_when_the_writer_is_stuck() {
     wait_until("writer が書き込みで止まる", || {
         probe.serialized.load(Ordering::Acquire)
     });
+    // 失敗しても門を開けて、writer のスレッドが残らないようにする。
+    struct OpenOnDrop(sinks::Gated);
+    impl Drop for OpenOnDrop {
+        fn drop(&mut self) {
+            self.0.open();
+        }
+    }
+    let _release = OpenOnDrop(gate.clone());
+    // Drop の終わりを、別のスレッドから期限つきで受け取る。
+    let (finished, finished_signal) = mpsc::channel();
     let started = Instant::now();
-    drop(host);
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "writer を待たない: {:?}",
-        started.elapsed()
-    );
+    let dropper = std::thread::spawn(move || {
+        drop(host);
+        let _ = finished.send(());
+    });
+    finished_signal
+        .recv_timeout(Duration::from_secs(5))
+        .expect("writer を待たずに、Drop が終わる");
+    dropper.join().unwrap();
+    assert!(started.elapsed() < Duration::from_secs(5));
     assert!(observer.probe(0).wait_exit(5000), "子は終わっている");
     assert!(
         !probe.finished.load(Ordering::Acquire),
@@ -603,4 +619,45 @@ fn a_writer_that_shares_the_link_aborts_once_the_host_closes_it() {
         .unwrap();
     assert!(matches!(done.result, WriteResult::Aborted));
     assert!(recording.text().is_empty());
+}
+
+// P2 4：C2 の文言。子の終了を確かめられたときだけ「終了しました」。確かめられなければ `engine_unconfirmed`。
+#[test]
+fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
+    use super::engine_life::{seam, EngineUnconfirmed, Role};
+    for confirmed in [true, false] {
+        let (mut host, observer) = scripted_parts([]);
+        host.ensure_engine_running().unwrap();
+        let gate = sinks::Gated::default();
+        host.writer = Some(writer::Writer::start(gate.clone(), host.link.clone()));
+        writer::set_limits_for_test(Some(Duration::from_millis(200)), None);
+        if !confirmed {
+            seam::set_wait(seam::Wait::Stuck);
+        }
+        let error = host
+            .execute_running_command(IpcCommand::GetDevices)
+            .unwrap_err();
+        gate.open();
+        if confirmed {
+            assert_eq!(error.to_string(), WRITE_TIMED_OUT);
+            assert!(error.downcast_ref::<EngineUnconfirmed>().is_none());
+            assert_eq!(host.retired.pending(Role::Primary), 0);
+        } else {
+            assert_eq!(
+                error.downcast_ref::<EngineUnconfirmed>().copied(),
+                Some(EngineUnconfirmed { repeated: false })
+            );
+            assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
+            assert_eq!(host.retired.pending(Role::Primary), 1);
+            // J-13：作り直しの要求が確かめられない回数を、同じ記録で数える。
+            for _ in 0..3 {
+                host.ensure_engine_running().unwrap_err();
+            }
+            assert!(host.retired.unconfirmed_error().repeated);
+            seam::set_wait(seam::Wait::Real);
+        }
+        writer::set_limits_for_test(None, None);
+        drop(host);
+        let _ = std::fs::remove_dir_all(&observer.dir);
+    }
 }

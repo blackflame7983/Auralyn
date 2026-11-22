@@ -219,9 +219,14 @@ impl Store {
             .collect()
     }
 
-    #[cfg(test)]
+    /// 終了を確かめられず、記録に残っている子の数。
     pub(super) fn pending(&self, role: Role) -> usize {
         self.lock()[role.index()].len()
+    }
+
+    /// いまの記録から作る ngine_unconfirmed（J-13 の数え方を含む）。
+    pub(super) fn unconfirmed_error(&self) -> EngineUnconfirmed {
+        Self::error(&self.lock())
     }
 
     #[cfg(test)]

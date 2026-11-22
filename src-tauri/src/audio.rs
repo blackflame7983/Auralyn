@@ -1090,10 +1090,16 @@ impl AudioHost {
         self.vst_operations
             .response(&IpcResponse::Error(error.to_string()));
         let won = self.link.close(cause);
+        let recorded = self.retired.pending(self.role());
         self.kill_engine();
+        let unconfirmed = self.retired.pending(self.role()) > recorded;
         // 終了の通知を出すのは競りに勝った側だけ。EOF が先なら reader が出している。
         if won {
             self.notice("audio-error", "音声エンジンとの通信が切れました");
+        }
+        // 「終了しました」と言えるのは、子の終了を確かめられたときだけ。
+        if cause == CloseCause::WriteTimeout && unconfirmed {
+            return anyhow::Error::new(self.retired.unconfirmed_error());
         }
         error.into()
     }

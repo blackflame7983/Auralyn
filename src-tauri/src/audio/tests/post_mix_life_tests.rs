@@ -15,7 +15,14 @@ struct Rig {
 
 impl Rig {
     fn new(post_overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>) -> Self {
-        let (mut host, primary) = scripted_parts([]);
+        Self::with_primary([], post_overrides)
+    }
+
+    fn with_primary(
+        primary_overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>,
+        post_overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>,
+    ) -> Self {
+        let (mut host, primary) = scripted_parts(primary_overrides);
         let (mut child, post) = scripted_parts(post_overrides);
         child.post_role = true;
         child.retired = host.retired.clone();
@@ -490,13 +497,22 @@ fn t10_an_eof_between_the_check_and_the_state_update_never_leaves_running_set() 
     rig.finish();
 
     // `snapshot` の成功の応答の後に閉じても、`running` を立てない。
-    let mut rig = Rig::new([(
-        "ProcessingState",
-        vec![response_line(&IpcResponse::ProcessingState {
-            present: true,
-            failed: false,
-        })],
-    )]);
+    let rack = response_line(&IpcResponse::PluginRack {
+        plugins: Vec::new(),
+        restore_eligible: true,
+        revision: 0,
+        running: false,
+    });
+    let mut rig = Rig::new([
+        ("GetPluginRack", vec![rack]),
+        (
+            "ProcessingState",
+            vec![response_line(&IpcResponse::ProcessingState {
+                present: true,
+                failed: false,
+            })],
+        ),
+    ]);
     rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
         child.link.close(CloseCause::Eof);
     }));
@@ -517,5 +533,233 @@ fn t10_start_after_a_detached_child_requires_an_explicit_restore() {
     run(&mut rig, "rack").unwrap_err();
     let error = rig.host.post_mix.validate_start().unwrap_err().to_string();
     assert!(error.contains("明示的に復元"), "{error}");
+    rig.finish();
+}
+
+// ---- 指摘への対応（P1 1・P2 3）。公開の入口から、復元と失敗の直後の状態を確かめる ----
+
+fn restored_step(operation_id: u64) -> Step {
+    response_line(&IpcResponse::PluginRestored {
+        operation_id,
+        plugin: crate::ipc::RestoredPlugin {
+            id: format!("id-{operation_id}"),
+            name: "post".into(),
+            class_id: None,
+            prepared: false,
+            legacy_class_ambiguous: false,
+            channel_layout: crate::ipc::ChannelLayout::Stereo,
+        },
+    })
+}
+
+fn stopped_primary() -> Vec<(&'static str, Vec<Step>)> {
+    vec![(
+        "ProcessingState",
+        vec![response_line(&IpcResponse::ProcessingState {
+            present: false,
+            failed: false,
+        })],
+    )]
+}
+
+/// 復元の途中で、成功の応答の直後に子が閉じる。続きに使える別の子も用意しておく。
+struct RestoreRig {
+    rig: Rig,
+    second: Observer,
+}
+
+fn restore_rig(plugins: usize) -> RestoreRig {
+    let mut rig = Rig::with_primary(stopped_primary(), []);
+    // 作り直した子として、最初の `child()` が受け取る子（応答の直後に EOF を挟む）と、別の子。
+    rig.host.post_mix.child = None;
+    rig.host.post_mix.restored = false;
+    rig.host.post_mix.enabled = false;
+    let steps = vec![("RestorePlugin", vec![restored_step(1)])];
+    let (first, _) = scripted_parts(steps);
+    let (second, second_observer) = scripted_parts([]);
+    let mut first = first;
+    first.post_role = true;
+    first.retired = rig.host.retired.clone();
+    let mut second = second;
+    second.post_role = true;
+    second.retired = rig.host.retired.clone();
+    rig.host.post_mix.test_children = vec![Box::new(first), Box::new(second)];
+    rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    rig.host.post_mix.saved = Some(Saved {
+        schema_version: 1,
+        role: "post_mix".into(),
+        enabled: true,
+        plugins: (0..plugins).map(|_| plugin()).collect(),
+    });
+    RestoreRig {
+        rig,
+        second: second_observer,
+    }
+}
+
+// P1 1：`RestoreSaved` の最初のプラグインの成功の直後に子が閉じたら、別の子で続きを復元せず、
+// 今の EOF の失敗で中断する。`restored` は立たない。
+#[test]
+fn p1_restore_saved_aborts_when_the_child_closes_right_after_a_success() {
+    let RestoreRig { mut rig, second } = restore_rig(2);
+    let request = Request::RestoreSaved {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), EXITED);
+    let state = &rig.host.post_mix;
+    assert!(!state.restored && !state.running && state.child.is_none());
+    assert_eq!(state.test_children.len(), 1, "別の子は使われていない");
+    assert_eq!(second.spawn_count(), 0);
+    assert!(
+        state.error.is_none(),
+        "切断では、保存状態の読み直しを求めない"
+    );
+    rig.finish();
+}
+
+// P1 1：`restore_bundle` で、最後のプラグインの成功の直後に子を失っても、保存済みの設定が
+// 実際のラックとの照合を通らない。
+#[test]
+fn p1_restore_bundle_fails_when_the_last_plugin_is_followed_by_a_lost_child() {
+    let RestoreRig { mut rig, second } = restore_rig(1);
+    let preset = Saved {
+        schema_version: 1,
+        role: "post_mix".into(),
+        enabled: true,
+        plugins: vec![plugin()],
+    };
+    let error = rig
+        .host
+        .post_mix
+        .restore_bundle(&preset)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(error, EXITED);
+    let state = &rig.host.post_mix;
+    assert!(!state.restored && state.child.is_none());
+    assert!(state.error.is_some(), "復元の失敗は今のとおり");
+    assert_eq!(second.spawn_count(), 0);
+    rig.finish();
+}
+
+fn save_request(rig: &Rig) -> Request {
+    Request::Save {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+    }
+}
+
+// P2 3：公開の操作（`post_mix`）が切断（EOF・書き込みの失敗・C2）で失敗した直後も、`enabled` を残し、
+// 子は外れ、`restored`・`running` は下り、保存状態の読み直しは求めない。`snapshot` はその理由を出す。
+#[test]
+fn p2_public_operations_keep_enabled_after_a_disconnect() {
+    for when in ["before", "during", "write", "c2"] {
+        let mut rig = Rig::new(if when == "during" {
+            vec![("GetPluginRack", vec![Step::Exit])]
+        } else {
+            Vec::new()
+        });
+        rig.host.ensure_engine_running().unwrap();
+        rig.host.post_attached = true;
+        let gate = crate::audio::writer::sinks::Gated::default();
+        {
+            let child = rig.host.post_mix.child.as_mut().unwrap();
+            match when {
+                "before" => assert!(child.link.close(CloseCause::Eof)),
+                "write" => child.fail_writes_for_test(),
+                "c2" => {
+                    child.writer = Some(crate::audio::writer::Writer::start(
+                        gate.clone(),
+                        child.link.clone(),
+                    ));
+                    crate::audio::writer::set_limits_for_test(
+                        Some(std::time::Duration::from_millis(200)),
+                        None,
+                    );
+                }
+                _ => {}
+            }
+        }
+        let request = save_request(&rig);
+        let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+        let label = format!("{when}: {error}");
+        let state = &rig.host.post_mix;
+        assert!(state.child.is_none(), "{label}");
+        assert!(!state.restored && !state.running, "{label}");
+        assert!(state.enabled, "{label}: enabled は残す");
+        assert!(state.error.is_none(), "{label}");
+        assert!(rig.host.post_attached, "{label}");
+        assert!(!rig.primary.probe(0).exited(), "{label}");
+        if when == "c2" {
+            assert!(error.to_string().contains("応答しない"), "{label}");
+            crate::audio::writer::set_limits_for_test(None, None);
+        }
+        gate.open();
+        // 次の `snapshot` が、今の EOF の説明を出す。
+        let snapshot = rig.host.post_mix(Request::Snapshot).unwrap();
+        assert_eq!(
+            snapshot.error.as_deref(),
+            Some("配信VSTのEngineが終了しました"),
+            "{label}"
+        );
+        assert!(snapshot.enabled && !snapshot.restored, "{label}");
+        rig.finish();
+    }
+}
+
+// P2 3：通常の失敗（切断ではない）は、今のとおり `enabled` を下ろして保存状態の読み直しを求める。
+#[test]
+fn p2_a_non_disconnect_failure_still_discards_the_child_and_disables() {
+    let mut rig = Rig::new([("GetPluginRack", vec![error_line("rack refused")])]);
+    let request = save_request(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), "rack refused");
+    let state = &rig.host.post_mix;
+    assert!(!state.enabled && !state.restored && state.child.is_none());
+    assert!(state.error.is_some());
+    rig.finish();
+}
+
+// P2 3：`snapshot` の最後の IPC（`rack`）の後に閉じても、接続と理由を確定してから返す。
+#[test]
+fn p2_snapshot_settles_the_link_after_its_last_ipc() {
+    let rack = response_line(&IpcResponse::PluginRack {
+        plugins: Vec::new(),
+        restore_eligible: true,
+        revision: 0,
+        running: false,
+    });
+    let mut rig = Rig::new([
+        ("GetPluginRack", vec![rack]),
+        (
+            "ProcessingState",
+            vec![response_line(&IpcResponse::ProcessingState {
+                present: true,
+                failed: false,
+            })],
+        ),
+    ]);
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = calls.clone();
+    // 1回目（ProcessingState）の後は何もせず、2回目（最後の IPC の GetPluginRack）の後に閉じる。
+    rig.host.post_mix.after_exec_check = Some(Box::new(move |child| {
+        if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+            child.link.close(CloseCause::Eof);
+        }
+    }));
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert!(
+        !snapshot.running && !snapshot.restored,
+        "閉じた接続を動作中と返さない"
+    );
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    assert!(rig.host.post_mix.child.is_none());
     rig.finish();
 }

@@ -65,6 +65,9 @@ impl AudioEmitter {
 pub(crate) struct Notifier {
     emitter: std::sync::Mutex<Option<AudioEmitter>>,
     order: std::sync::Mutex<()>,
+    /// 試験用：chain_if が順序のロックを取る直前に着いた回数。
+    #[cfg(test)]
+    arrivals: std::sync::atomic::AtomicUsize,
 }
 
 /// 列の途中で通知を出す手。`Notifier::chain` の中でだけ得られる。
@@ -105,6 +108,9 @@ impl Notifier {
 
     /// 列の直前に接続を確かめる。閉じていれば、列の全体を出さない。
     pub(crate) fn chain_if(&self, open: impl Fn() -> bool, f: impl FnOnce(&Chain<'_>)) -> bool {
+        #[cfg(test)]
+        self.arrivals
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let _order = self
             .order
             .lock()
@@ -114,6 +120,12 @@ impl Notifier {
         }
         f(&Chain(self));
         true
+    }
+
+    /// 試験用：chain_if が順序のロックを取る直前に着いた回数。
+    #[cfg(test)]
+    pub(crate) fn arrivals_for_test(&self) -> usize {
+        self.arrivals.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// 1件だけの通知。
