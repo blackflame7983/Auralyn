@@ -2,6 +2,7 @@ pub(crate) mod conditions;
 pub(crate) mod control;
 pub(crate) mod emit;
 pub use control::{AudioControl, Entry, EntryKind};
+mod deadline;
 mod engine_exit;
 pub(crate) mod engine_life;
 pub(crate) mod frontend_bootstrap;
@@ -37,6 +38,8 @@ use tauri::AppHandle;
 const ENGINE_EXITED: &str = "Engine Crashed/Exited";
 /// 書き込みが期限（5秒）内に終わらず、接続を切り離したときの文言（C2）。
 const WRITE_TIMED_OUT: &str = "音声エンジンが応答しないため、終了しました。もう一度お試しください";
+/// 応答が期限内に来ず、接続を切り離したときの文言（C3）。
+const REPLY_TIMED_OUT: &str = WRITE_TIMED_OUT;
 
 fn writer_gone() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Stdin not available")
@@ -959,7 +962,10 @@ impl AudioHost {
                         .copied()
                 });
                 // 配信ミックスの子とオケの入力の選択は残す。起動を試みた主の子だけを回収する。
-                self.kill_primary_engine();
+                // 応答の期限切れ（C3）と書き込みの失敗は、`await_reply` の中で回収を終えている。
+                if self.child.is_some() {
+                    self.kill_primary_engine();
+                }
                 if let Some(unconfirmed) = unconfirmed {
                     return Err(unconfirmed.into());
                 }
@@ -1068,8 +1074,9 @@ impl AudioHost {
         // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
         let rx = self.pending_reply_tx.begin()?;
         self.vst_operations.begin(&cmd);
+        let limit = writer::reply_limit(&cmd);
         let submitted = self.submit_write(writer::Payload::Json(json));
-        self.await_reply(submitted, rx)
+        self.await_reply(submitted, rx, limit)
     }
 
     fn submit_write(
@@ -1082,14 +1089,16 @@ impl AudioHost {
         }
     }
 
-    /// 書き込みの完了（5秒）と応答（書き込みが戻ってから10秒）を待つ。
+    /// 書き込みの完了（5秒）と応答（書き込みが戻ってから `limit`。命令の種類で決まる）を待つ。
     ///
     /// 実際の書き込みの失敗と書き込みの期限切れは、応答の受け側を読まずに接続を切り離す。
     /// `Aborted`（EOF などで閉じていたので書かなかった）は、書き込みの失敗にせず EOF の結果を待つ。
+    /// 応答の期限切れも接続を切り離す（C3。`reply_timed_out`）。
     fn await_reply(
         &mut self,
         submitted: std::io::Result<std::sync::mpsc::Receiver<writer::WriteDone>>,
         rx: std::sync::mpsc::Receiver<ReplyOutcome>,
+        limit: std::time::Duration,
     ) -> Result<IpcResponse> {
         let done = match submitted {
             Ok(done) => match done.recv_timeout(writer::write_limit()) {
@@ -1106,28 +1115,65 @@ impl AudioHost {
             },
             Err(error) => return Err(self.cut_off(CloseCause::WriteFailed, error)),
         };
-        let wait = match done.result {
-            writer::WriteResult::Ok => {
-                (done.flushed_at + writer::reply_limit()).saturating_duration_since(Instant::now())
-            }
-            writer::WriteResult::Aborted => writer::reply_limit(),
+        let deadline = match done.result {
+            writer::WriteResult::Ok => done.flushed_at + limit,
+            writer::WriteResult::Aborted => Instant::now() + limit,
             writer::WriteResult::Err(error) => {
                 return Err(self.cut_off(CloseCause::WriteFailed, error));
             }
         };
-        match rx.recv_timeout(wait) {
-            Ok(ReplyOutcome::Response(response)) => Ok(*response),
+        // 期限を過ぎていても、受け側は必ず1回読む。期限の内に着いた応答は `received_at` で採る。
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let outcome = if remaining.is_zero() {
+            rx.try_recv().map_err(|error| match error {
+                std::sync::mpsc::TryRecvError::Empty => std::sync::mpsc::RecvTimeoutError::Timeout,
+                std::sync::mpsc::TryRecvError::Disconnected => {
+                    std::sync::mpsc::RecvTimeoutError::Disconnected
+                }
+            })
+        } else {
+            rx.recv_timeout(remaining)
+        };
+        match outcome {
+            Ok(ReplyOutcome::Response { resp, received_at }) if received_at <= deadline => {
+                Ok(*resp)
+            }
+            Ok(ReplyOutcome::Response { .. }) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                self.reply_timed_out()
+            }
             // EOF の通知は出し終えている。切断で解放された場合も、今の EOF と同じ結果にする。
             Ok(ReplyOutcome::Eof) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 Ok(IpcResponse::Error(ENGINE_EXITED.to_string()))
             }
-            Err(error) => {
-                self.vst_operations.timeout();
-                Err(anyhow!(
-                    "Timeout or disconnect waiting for engine response: {error}"
-                ))
-            }
         }
+    }
+
+    /// 応答の期限切れで接続を切り離す（C3、2.3 と同じ後始末）。
+    ///
+    /// 先に `LinkState` を閉じる競りに出る。勝てば Host が通知を出し、負ければ reader の EOF として扱い
+    /// （`vst_operations` には触れず、原因は reader の採取に任せる）、どちらも子は必ず回収する。
+    fn reply_timed_out(&mut self) -> Result<IpcResponse> {
+        let won = self.link.close(CloseCause::ReplyTimeout);
+        if won {
+            self.vst_operations.timeout();
+        }
+        let recorded = self.retired.pending(self.role());
+        // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
+        if self.confirming_start {
+            self.kill_primary_engine();
+        } else {
+            self.kill_engine();
+        }
+        if !won {
+            return Ok(IpcResponse::Error(ENGINE_EXITED.to_string()));
+        }
+        if !self.post_role && !self.confirming_start {
+            self.notice("audio-error", "音声エンジンとの通信が切れました");
+        }
+        if self.retired.pending(self.role()) > recorded {
+            return Err(anyhow::Error::new(self.retired.unconfirmed_error()));
+        }
+        Err(anyhow!(REPLY_TIMED_OUT))
     }
 
     /// 書き込みの失敗・期限切れで接続を切り離す（2.3）。書きかけのJSONや遅い応答が残る接続を再利用しない。
@@ -2556,7 +2602,7 @@ impl AudioHost {
     ) -> Result<LoopbackProbeResult> {
         match self.execute_command(IpcCommand::ProbeLoopback {
             input_device,
-            duration_ms,
+            duration_ms: deadline::probe_duration_ms(duration_ms),
             freq_hz,
         })? {
             IpcResponse::LoopbackProbe {
@@ -3097,3 +3143,7 @@ mod control_tests;
 #[cfg(test)]
 #[path = "audio/tests/link_tests.rs"]
 mod link_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/reply_deadline_tests.rs"]
+mod reply_deadline_tests;

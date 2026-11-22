@@ -116,7 +116,7 @@
 | T12 | I3：reader を `emit` の途中で止めたまま、C3 の CAS の勝ち・負けの両方で `retire_child` が完了する | 継ぎ目（`Reader::pause`・`emit` を止める） |
 | T13 | 3.2 の負け：`vst_operations` を書き換えず、`audio-engine-exited` の原因が reader の採った本当の VST になる | 継ぎ目 |
 | T9 | 文言：確認済みと未確認（J-13 の数え方を含む） | 既存の C2 の試験に倣う |
-| T10 | 互換：K 群・`engine_life`・F1b-0a-1 の試験が通る。書き換えるのは 4章の2件だけ | 既存 |
+| T10 | 互換：K 群・`engine_life`・F1b-0a-1 の試験が通る。書き換えるのは 4章の3件だけ（10秒の互換の試験、`replies.rs` の単体、`link_tests.rs` の T3） | 既存 |
 | T11 | 壊して確かめる：期限の分類、3.2 の勝ち負け、`received_at` の判定、配信ミックスの主を残すこと、を外すと、それぞれ T5・T3・T4・T2 が失敗する | 一時的な改変 |
 
 ## 6. 既知の狭い競合
@@ -137,3 +137,50 @@ F1b-0a-1 の 11章の3つは、この段でもそのまま残る（F1b-0b の合
 | 推奨：期限の後の空読みの禁止、モード VST の `received_at` | 3.3、T4、T7 |
 | 軽微：要求の中身の列挙型、`LiveMode`・`ModeSilence` の例示 | 2.2 |
 | F1b-0b へ：A の命令の分類のずれを検出する単体の検査 | F1b-0b の合格の条件に足す |
+
+## 付録 A. 命令の分類の根拠（実装：`src-tauri/src/audio/deadline.rs`）
+
+実装は `reply_deadline`（`deadline.rs:24`）。`_` を使わない `match` で、`Command` の全65バリアントと、要求の中身の列挙型を分ける。`ファイル:行` は `src-tauri/src/` を基準にし、洗い出し 1.3 で読んだ位置を、実装の時点（`a958945a`）で照らし直したもの。
+
+### A.1 基準の当てはめ
+
+2.1 の基準を、共通の前処理・後処理まで含めて当てはめた。
+
+- 前処理 P-h（`audio_engine/core/commands.rs:210-239`）：19命令で `voice_preview.invalidate_candidate()`（試聴のストリームを Drop。WASAPI の Drop はスレッドを `join` する）。
+- 前処理 P-i（`audio_engine/core/commands.rs:240`、除外表 `audio_engine/core/auto_gain_commands.rs:6-46`）：除外表にない命令は `gain_preview = None`（`auto_gain_commands.rs:101`）。
+- 除外表にある命令と要求は、本体が B の行為をしない限り A。除外表にない命令は、試聴の破棄の前処理を持つので B（J-25）。
+- 除外表にあっても、本体が試聴の破棄をするものは B：`SetOutputGain`（`auto_gain_commands.rs:63`）、`LiveMode` の `SingingOn`・`TalkOn`（`audio_engine/core.rs:1776`・`:1782`、要求の分岐は `audio_engine/core/commands.rs:513-518`）。
+
+### A.2 結果
+
+| 区分 | 命令（要求の中身） | 根拠 |
+|---|---|---|
+| A（15命令、全部） | `ProcessingState`・`PostMixStatus`・`GetPluginRack`・`GetDevices`・`ConfigureLiveModes`・`BeginDeviceScan`・`PollDeviceScan`・`CancelDeviceScan`・`StartIdentityCapability`・`ProcessInputCapability`・`SetLoudnessMeasurement`・`SetChannelScan`・`GetFrameTimingTrace`・`StopVoiceCheckRecording`・`StopVoiceCheckPlayback` | 除外表（`auto_gain_commands.rs:7-46`）にあり、本体はメモリ・atomics・キャッシュの読み取り・実行中の列への投入だけ（洗い出し 1.3 の #1・5・11・13・15〜20・44・48・50・55・57）。`GetDevices` はキャッシュ（`audio_engine/devices.rs:116-122`）。 |
+| 要求で分ける（A・B） | `ModeMonitor`：`Snapshot`・`Restore` は A | 除外表。`Restore` は係数の準備（`audio_engine/split_monitor.rs:406-431`）で、I/O・VST・ストリームはない。 |
+| | `ModeSilence`：`Snapshot`・`Finish` は A、`Begin` は B | `Begin` は出力のフェードの確認を最大100 ms 待つ（`audio_engine/mode_silence.rs:168-170` の `fade_and_wait`）。`Snapshot`・`Finish` は確認だけ（`:175-214`）。 |
+| | `LiveMode`：`Snapshot`・`Save`・`BindProfile`・`Recover`・`Arm`・`Disarm` は A、`SingingOn`・`TalkOn` は B | A.1 のとおり（`audio_engine/core/commands.rs:477-531`）。 |
+| | `Mixing`：`Snapshot` は A、`Configure`・`Levels` は B | `Snapshot` だけ除外表（`auto_gain_commands.rs:32-34`）。ほかは P-i。 |
+| | `NoiseMeasurement`：`Snapshot` は A、`Start`・`Cancel`・`Invalidate`・`Approve` は B | `Snapshot` だけ除外表（`:23-25`）。 |
+| | `BuiltinEffects`：`Snapshot` は A、`Apply`・`ApplyProposal`・`Undo`・`Redo` は B | `Snapshot` だけ除外表（`:43-45`）。 |
+| | `LiveOutput`・`PeakProtection`・`BroadcastTruePeak`：`config: None` は A、`Some` は B | `None` だけ除外表（`:9-11`）。`Some` は P-i。 |
+| B（40命令。上の分けるもの以外の39と `AutoGain`） | `CaptureMixingBundleState`・`PostMixPrepare`・`PostMixClear`・`PostMixStart`・`RestoreSessionPlugin`・`Start`・`Stop`・`LoadPlugin`・`RestorePlugin`・`UnloadPlugin`・`ReorderPlugins`・`OpenEditor`・`SetBypass`・`SetMute`・`SetGain`・`ResumePlugin`・`SetGlobalMute`・`SetInputGain`・`SetNoiseReduction`・`StartNoiseLearning`・`CancelNoiseLearning`・`SetNoiseControlConfig`・`SetBuiltInEffects`・`SetOutputGain`・`SetGlobalBypass`・`SetInputChannels`・`GetRuntimeStats`・`GetPluginState`・`CaptureBundleState`・`SetPluginState`・`StartVoiceCheckRecording`・`PlayVoiceCheck`・`VoiceCheckPreview`・`ExportVoiceCheck`・`PlayTestTone`・`StopTestTone`・`MeasureRoundTrip`・`CancelMeasurement`・`GetRoundTripMeasurement`、`AutoGain`（全11要求） | 本体で VST・ストリーム・共有メモリ・ファイル・`sleep`／`join` を行う（`Start`・`Stop`・`LoadPlugin` など。洗い出し 1.3）、または除外表になく P-i で試聴を破棄しうる（`SetMute`・`SetGain`・`ResumePlugin`・`SetNoiseReduction` など ★ の24命令。洗い出し 1.4）。`AutoGain` は機器の列挙・試聴ストリームの作成・破棄（`auto_gain_commands.rs:249`・`:255`・`:386-392`）。 |
+| C（1命令） | `ProbeLoopback` | 録音の `sleep`（`audio_engine/core.rs:1114`、`audio_engine/loopback_probe.rs:58-59`）。期限は、丸めた録音の時間＋10秒。 |
+
+件数：命令は A 15、要求で分ける 9（`ModeMonitor` は全要求が A）、B 40（`AutoGain` を含む）、C 1。合計65。要求の中身の列挙型は `_` を使わずに全バリアントを書く（`auto_gain::Request` の11、`live_modes::Request` の8、`builtin::Request`・`noise_learning::Request` の各5など）。
+
+### A.3 `ProbeLoopback` の録音の時間の上限
+
+- 呼び出し元：`commands/audio.rs:1187-1209` の Tauri コマンド `probe_loopback` の `duration_ms: Option<u32>`。画面（`src/api/audio.ts:326-331`）は値をそのまま渡し、既存の画面の呼び出し（`TroubleshootModal.tsx:346`）は1500 ms だが、WebView からの `invoke` は任意の `u32` を渡せる。
+- 結論：10秒を超える値が来うるので、**断らず、10秒に丸める**。`AudioHost::probe_loopback`（`audio.rs:2605`）が送る前に `deadline::probe_duration_ms` で丸め、`reply_deadline` も同じ丸めを使う（丸めた時間＋10秒。最大20秒）。
+
+### A.4 実装の位置
+
+- 応答の期限：`audio.rs:1097`（`await_reply`）、C3 は `audio.rs:1155`（`reply_timed_out`）。期限の値は `audio/writer.rs` の `reply_limit(&Command)`。
+- `received_at` は reader が行を読んだ直後に打つ（`audio/reader.rs`）。`ReplyOutcome::Response { resp, received_at }`（`audio/replies.rs`）。
+- モード VST：`Pending.limit`（`audio/mode_vst.rs:193`）、`send_mode_command`（`:700`）が命令の種類で決める。期限の後の処理は `fail_mode_deadline`（`:692`）で、理由は `ReplyTimeout`、巻き戻しはしない。
+
+## 9. 実装のレビュー（Sol、PASS with nits）で F1b-0b へ送ったもの
+
+- 10秒の互換の試験は `SetChannelScan`（A）に差し替えたので、`Start`（B）に固有の失敗の処理（短い期限での失敗、回収、`Stop` を送らないこと）を別に確かめる。
+- T2 に保存した設定を用意し、期限切れの前後で、メモリ上の設定とファイルの中身が変わらないことを確かめる。
+- T12 で、回収が終わったことを、通知を再開する前に試験用のフックで確かめる（今は、子の終了から回収の完了までの間に通知の待ちを入れても通りうる）。

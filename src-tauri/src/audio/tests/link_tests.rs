@@ -47,6 +47,11 @@ fn done_with(result: WriteResult, flushed_at: Instant) -> mpsc::Receiver<WriteDo
     receiver
 }
 
+/// A の命令（ProcessingState）の応答の期限。試験の継ぎ目の指定があれば、その値。
+fn a_limit() -> Duration {
+    writer::reply_limit(&IpcCommand::ProcessingState)
+}
+
 fn broken_pipe() -> WriteResult {
     WriteResult::Err(std::io::Error::new(
         std::io::ErrorKind::BrokenPipe,
@@ -154,7 +159,7 @@ fn t2_a_write_failure_wins_over_an_early_response() {
     let rx = host.pending_reply_tx.begin().unwrap();
     assert!(host.pending_reply_tx.deliver(IpcResponse::Success));
     let error = host
-        .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx)
+        .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
         .unwrap_err();
     assert!(error.to_string().contains("broken pipe"));
     assert_eq!(host.link.cause(), Some(CloseCause::WriteFailed));
@@ -168,7 +173,7 @@ fn t2_when_eof_won_the_close_a_write_failure_still_decides_the_result_but_stays_
     let rx = host.pending_reply_tx.begin().unwrap();
     assert!(host.link.close(CloseCause::Eof));
     let error = host
-        .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx)
+        .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
         .unwrap_err();
     assert!(error.to_string().contains("broken pipe"));
     assert_eq!(host.link.cause(), Some(CloseCause::Eof));
@@ -181,7 +186,7 @@ fn t2_when_the_write_failure_won_the_close_the_late_eof_emits_nothing() {
     let (mut host, recorder) = open_host();
     let reader = reader_for(&host, 0);
     let rx = host.pending_reply_tx.begin().unwrap();
-    host.await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx)
+    host.await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
         .unwrap_err();
     recorder.clear();
     reader.finish();
@@ -205,7 +210,11 @@ fn t2_aborted_is_not_a_write_failure_and_waits_for_the_eof_result() {
             }
         });
         let response = host
-            .await_reply(Ok(done_with(WriteResult::Aborted, Instant::now())), rx)
+            .await_reply(
+                Ok(done_with(WriteResult::Aborted, Instant::now())),
+                rx,
+                a_limit(),
+            )
             .unwrap();
         release.join().unwrap();
         assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
@@ -222,18 +231,20 @@ fn t3_the_reply_deadline_counts_from_flushed_at_not_from_when_the_done_is_receiv
     let flushed_at = Instant::now() - Duration::from_millis(9_800);
     let started = Instant::now();
     let error = host
-        .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx)
+        .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, a_limit())
         .unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("Timeout or disconnect waiting for engine response"));
+    assert_eq!(error.to_string(), REPLY_TIMED_OUT);
     assert!(
         started.elapsed() < Duration::from_secs(2),
         "残りは約0.2秒: {:?}",
         started.elapsed()
     );
-    // 期限の後も待ちが残る今の契約（F1b-0a-1 では変えない）。
-    assert!(host.pending_reply_tx.begin().is_err());
+    // 期限切れ（C3）で接続を閉じる。待ちは残らず、閉じた接続が新しい要求を断る。
+    assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    assert_eq!(
+        host.pending_reply_tx.begin().unwrap_err().to_string(),
+        replies::CLOSED
+    );
     // 受け取りが早ければ、期限の中の応答は採る。
     let (mut host, _) = open_host();
     let rx = host.pending_reply_tx.begin().unwrap();
@@ -243,7 +254,11 @@ fn t3_the_reply_deadline_counts_from_flushed_at_not_from_when_the_done_is_receiv
         slot.deliver(IpcResponse::Success)
     });
     let response = host
-        .await_reply(Ok(done_with(WriteResult::Ok, Instant::now())), rx)
+        .await_reply(
+            Ok(done_with(WriteResult::Ok, Instant::now())),
+            rx,
+            a_limit(),
+        )
         .unwrap();
     assert!(late.join().unwrap());
     assert!(matches!(response, IpcResponse::Success));
@@ -346,7 +361,11 @@ fn t5_an_eof_that_lost_the_close_emits_nothing_and_the_waiter_maps_to_engine_exi
     assert!(host.link.close(CloseCause::Intentional));
     drop(host.pending_reply_tx.close());
     let response = host
-        .await_reply(Ok(done_with(WriteResult::Aborted, Instant::now())), rx)
+        .await_reply(
+            Ok(done_with(WriteResult::Aborted, Instant::now())),
+            rx,
+            a_limit(),
+        )
         .unwrap();
     assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
 }
@@ -698,7 +717,11 @@ fn t4_a_reader_stopped_just_after_closing_the_link_still_releases_the_waiter_and
     let rx = host.pending_reply_tx.begin().expect("待ちはまだ開いている");
     pause.release();
     let response = host
-        .await_reply(Ok(done_with(WriteResult::Aborted, Instant::now())), rx)
+        .await_reply(
+            Ok(done_with(WriteResult::Aborted, Instant::now())),
+            rx,
+            a_limit(),
+        )
         .unwrap();
     finishing.join().unwrap();
     assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
