@@ -108,13 +108,13 @@ fn w1b_prime_a_job_that_refuses_the_child_leaves_no_unmanaged_process() {
     finish(host, observer);
 }
 
-// W1c：`ResumeThread` の戻り値が `1` 以外（`0`・失敗・`2` 以上）は失敗。実際に先に再開した子も同じ。
+// W1c（J-24）：`ResumeThread` の戻り値が `0`（私たちの停止がすでになかった）と失敗（`u32::MAX`）は失敗。
+// 実際に先に再開した子も同じ（戻り値は `0`）。`2` 以上は成功（下の試験）。
 #[test]
-fn w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start() {
+fn w1c_a_resume_result_of_zero_or_failure_ends_the_child_and_fails_the_start() {
     for mode in [
         seam::Resume::Returns(0),
         seam::Resume::Returns(u32::MAX),
-        seam::Resume::Returns(2),
         seam::Resume::ResumedEarly,
     ] {
         let (mut host, observer) = scripted_parts([]);
@@ -130,7 +130,54 @@ fn w1c_a_resume_result_other_than_one_ends_the_child_and_fails_the_start() {
     }
 }
 
-// 製品の生成（`spawn_engine_process` が呼ぶ `spawn_engine_binary`）が、子を停止の状態で作る。
+/// 子の主スレッドの停止を1回解く（外の停止が解かれた状態を作る）。
+fn release_external_suspend(child: &Child) {
+    use std::os::windows::io::AsRawHandle;
+    use std::os::windows::process::ChildExt;
+    let thread = windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
+    // SAFETY: `child` が生きているあいだ、主スレッドのハンドルは有効。
+    let _ = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
+}
+
+// W1c（J-24）：外の停止が重なって戻り値が `2` でも、私たちの再開は効いている。起動は成功し、
+// 外の停止が解かれるまで子は動かず、解かれたら動き出す。健全な子を終わらせない。
+#[test]
+fn w1c_a_resume_result_of_two_succeeds_and_the_child_runs_once_the_external_suspend_is_released() {
+    let (mut host, observer) = scripted_parts([]);
+    seam::set_resume(seam::Resume::ExternalSuspend);
+    host.ensure_engine_running().unwrap();
+    seam::set_resume(seam::Resume::Real);
+    assert_eq!(observer.spawn_count(), 1);
+    assert!(!observer.probe(0).exited(), "子は終わっていない");
+    let thread = {
+        use std::os::windows::io::AsRawHandle;
+        use std::os::windows::process::ChildExt;
+        host.child
+            .as_ref()
+            .unwrap()
+            .main_thread_handle()
+            .as_raw_handle() as usize
+    };
+    let started = Instant::now();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        let thread = windows::Win32::Foundation::HANDLE(thread as *mut std::ffi::c_void);
+        // SAFETY: 子を持つ `host` が、この試験の終わりまで生きている。
+        let _ = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
+    });
+    // 外の停止が解かれるまで、子は命令を読まない。解かれたら応答する。
+    host.execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
+    assert!(
+        started.elapsed() >= Duration::from_millis(300),
+        "外の停止が解かれるまで動かなかった: {:?}",
+        started.elapsed()
+    );
+    release.join().unwrap();
+    finish(host, observer);
+}
+
+// 製品の生成（``spawn_engine_process`` が呼ぶ `spawn_engine_binary`）が、子を停止の状態で作る。
 // 試験の launcher は別の組み立てなので、製品のフラグを外しても W1・W4 の試験は気づかない。この試験が気づく。
 #[test]
 fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
@@ -147,6 +194,26 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     assert!(job.is_some(), "停止の状態だったので、再開の戻り値が1");
     drop(guard);
     assert!(probe.wait_exit(5000));
+
+    // 外の停止が重なって戻り値が 2 でも、製品の経路は成功し、解かれた子は動く（J-24）。
+    seam::set_resume(seam::Resume::ExternalSuspend);
+    let guard = ChildGuard::new(host.spawn_engine_binary(cmd_exe()).unwrap());
+    let probe = ProcessProbe::open(guard.id()).unwrap();
+    let (child, job) =
+        engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+    seam::set_resume(seam::Resume::Real);
+    let guard = ChildGuard::new(child);
+    assert!(job.is_some());
+    release_external_suspend(guard.child());
+    assert!(!probe.wait_exit(500), "外の停止が解かれた子は、動き続ける");
+    drop(guard);
+    assert!(probe.wait_exit(5000));
+}
+
+fn cmd_exe() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+        .join("System32")
+        .join("cmd.exe")
 }
 
 // Job の失敗が、マイクの権限の案内（フロントの判定と `localize_audio_error`）に写らない。
@@ -379,18 +446,7 @@ fn run_parent(plan: ParentPlan) {
         }),
         _ => {}
     }
-    // 起動の失敗（LAUNCH_FAILED）は、再開の戻り値が1でないとき（外部の道具が主スレッドを一時的に止めた
-    // 場合など、負荷のもとで起きる）にも返る。その子は終了を確かめて回収済みなので、起動し直す。
-    let mut attempts = 0;
-    loop {
-        match host.ensure_engine_running() {
-            Ok(()) => break,
-            Err(error) if error.to_string() == engine_life::LAUNCH_FAILED && attempts < 50 => {
-                attempts += 1;
-            }
-            Err(error) => panic!("親の子の起動に失敗: {error}"),
-        }
-    }
+    host.ensure_engine_running().unwrap();
     host.execute_running_command(IpcCommand::GetDevices)
         .unwrap();
     let child = host.child.as_ref().unwrap().id();
