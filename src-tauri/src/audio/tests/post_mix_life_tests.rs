@@ -672,7 +672,7 @@ fn p2_public_operations_keep_enabled_after_a_disconnect() {
                 "before" => assert!(child.link.close(CloseCause::Eof)),
                 "write" => child.fail_writes_for_test(),
                 "c2" => {
-                    child.writer = Some(crate::audio::writer::Writer::start(
+                    child.replace_writer_for_test(crate::audio::writer::Writer::start(
                         gate.clone(),
                         child.link.clone(),
                     ));
@@ -825,7 +825,7 @@ fn p2_an_unconfirmed_c2_reason_is_carried_to_the_next_snapshot() {
     let gate = crate::audio::writer::sinks::Gated::default();
     {
         let child = rig.host.post_mix.child.as_mut().unwrap();
-        child.writer = Some(crate::audio::writer::Writer::start(
+        child.replace_writer_for_test(crate::audio::writer::Writer::start(
             gate.clone(),
             child.link.clone(),
         ));
@@ -848,5 +848,146 @@ fn p2_an_unconfirmed_c2_reason_is_carried_to_the_next_snapshot() {
         Some(engine_life::UNCONFIRMED_JA),
         "「終了しました」に変えない"
     );
+    rig.finish();
+}
+
+fn rack_with_a_plugin() -> Step {
+    response_line(&IpcResponse::PluginRack {
+        plugins: vec![crate::ipc::RackPlugin {
+            id: "existing".into(),
+            path: "post.vst3".into(),
+            name: "post".into(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            class_id: None,
+            channel_layout: crate::ipc::ChannelLayout::Stereo,
+        }],
+        restore_eligible: true,
+        revision: 1,
+        running: false,
+    })
+}
+
+// P1（3回目）：`rack()` の最後の確認を通った後、`command()` の前に子が終わっても、空の子を起動して
+// 変更を送らない。ラックを読んだ接続へだけ送り、違えば `Engine Crashed/Exited`。
+#[test]
+fn p1_a_child_ending_after_the_rack_check_never_gets_replaced_for_the_change() {
+    let mut rig = Rig::with_primary(
+        stopped_primary(),
+        [("GetPluginRack", vec![rack_with_a_plugin()])],
+    );
+    let (second, second_observer) = scripted_parts([]);
+    let mut second = second;
+    second.post_role = true;
+    second.retired = rig.host.retired.clone();
+    rig.host.post_mix.test_children = vec![Box::new(second)];
+    rig.host.post_mix.saved = Some(Saved {
+        schema_version: 1,
+        role: "post_mix".into(),
+        enabled: true,
+        plugins: vec![plugin()],
+    });
+    let saved_before = serde_json::to_value(&rig.host.post_mix.saved).unwrap();
+    // `command()` が送る直前（`rack()` の確認の後）に、子が終わる。
+    rig.host.post_mix.between_ops = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    let request = Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: "new.vst3".into(),
+        class_id: None,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), EXITED);
+    let state = &rig.host.post_mix;
+    assert_eq!(state.test_children.len(), 1, "子を作り直していない");
+    assert_eq!(second_observer.spawn_count(), 0);
+    assert!(state.child.is_none() && !state.restored);
+    assert_eq!(serde_json::to_value(&state.saved).unwrap(), saved_before);
+    assert!(rig.primary.sent().iter().all(|name| name != "LoadPlugin"));
+    rig.finish();
+}
+
+// P1（3回目）：ラックを読んだ後に子がいなくなっても（接続が違う場合を含む）、同じく失敗にする。
+#[test]
+fn p1_a_missing_or_different_child_after_the_rack_fails_without_a_start() {
+    for replaced in [false, true] {
+        let mut rig = Rig::new([("GetPluginRack", vec![rack_with_a_plugin()])]);
+        let (spare, spare_observer) = scripted_parts([]);
+        let mut spare = spare;
+        spare.post_role = true;
+        spare.retired = rig.host.retired.clone();
+        rig.host.post_mix.test_children = vec![Box::new(spare)];
+        assert_eq!(rig.host.post_mix.rack().unwrap().len(), 1);
+        if replaced {
+            // 別の接続（別の子）に入れ替わった。
+            let (mut other, _other_observer) = scripted_parts([]);
+            other.post_role = true;
+            other.retired = rig.host.retired.clone();
+            other.ensure_engine_running().unwrap();
+            rig.host.post_mix.child = Some(Box::new(other));
+        } else {
+            rig.host.post_mix.child = None;
+        }
+        let error = rig
+            .host
+            .post_mix
+            .command(IpcCommand::GetPluginRack)
+            .unwrap_err();
+        assert_eq!(error.to_string(), EXITED);
+        assert_eq!(rig.host.post_mix.test_children.len(), 1, "起動していない");
+        assert_eq!(spare_observer.spawn_count(), 0);
+        rig.finish();
+    }
+}
+
+// P2（3回目）：`snapshot()` の最後の確認で切断を見たら、VST が入ったラックも載せない。
+#[test]
+fn p2_snapshot_drops_a_rack_with_plugins_when_the_last_check_sees_a_disconnect() {
+    let mut rig = Rig::new([
+        ("GetPluginRack", vec![rack_with_a_plugin()]),
+        (
+            "ProcessingState",
+            vec![response_line(&IpcResponse::ProcessingState {
+                present: true,
+                failed: false,
+            })],
+        ),
+    ]);
+    rig.host.post_mix.between_ops = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert!(snapshot.plugins.is_empty(), "切断済みのラックを載せない");
+    assert!(!snapshot.running && !snapshot.restored);
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    rig.finish();
+}
+
+// P2（3回目）：外の停止の確認が失敗しても、回収するのは起動を試みた主の子だけ。
+// 配信ミックスの子と、オケの入力の選択は残る。
+#[test]
+fn p2_a_failed_start_confirmation_keeps_the_post_mix_child_and_the_mixing_selection() {
+    use crate::audio_engine::mixing::Start;
+    let mut rig = Rig::new([]);
+    rig.host.mixing.selected = Some(Start {
+        config: mixing_config("wasapi:one"),
+        target: None,
+    });
+    crate::audio::writer::set_limits_for_test(None, Some(std::time::Duration::from_millis(500)));
+    seam::set_resume(seam::Resume::ExternalSuspend(None));
+    let error = rig.host.ensure_engine_running().unwrap_err();
+    seam::set_resume(seam::Resume::Real);
+    crate::audio::writer::set_limits_for_test(None, None);
+    assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
+    assert!(rig.host.child.is_none(), "主の子は回収されている");
+    assert!(rig.host.post_mix.child.is_some(), "配信ミックスの子は残る");
+    assert!(rig.host.mixing.selected.is_some(), "オケの入力の選択は残る");
+    assert!(!rig.post.probe(0).exited());
     rig.finish();
 }

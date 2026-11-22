@@ -195,15 +195,6 @@ fn w1c_a_child_whose_external_suspend_is_never_released_is_retired_and_the_start
     }
 }
 
-// 戻り値が1の通常の起動は、確認の命令を足さない（挙動を変えない）。
-#[test]
-fn a_normal_start_sends_no_confirmation_command() {
-    let (mut host, observer) = scripted_parts([]);
-    host.ensure_engine_running().unwrap();
-    std::thread::sleep(Duration::from_millis(200));
-    assert!(observer.sent().is_empty());
-    finish(host, observer);
-}
 // 製品の生成（``spawn_engine_process`` が呼ぶ `spawn_engine_binary`）が、子を停止の状態で作る。
 // 試験の launcher は別の組み立てなので、製品のフラグを外しても W1・W4 の試験は気づかない。この試験が気づく。
 #[test]
@@ -218,8 +209,9 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     let (child, job, suspended) =
         engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
     let guard = ChildGuard::new(child);
-    assert!(job.is_some(), "停止の状態だったので、再開の戻り値が1");
-    assert!(!suspended);
+    // 停止の状態で作ったので、再開の戻り値は1以上（外の停止が重なっていれば2以上）。
+    assert!(job.is_some());
+    let _ = suspended;
     drop(guard);
     assert!(probe.wait_exit(5000));
 
@@ -566,7 +558,8 @@ impl Parent {
             windows::Win32::Foundation::HANDLE(guard.child().main_thread_handle().as_raw_handle());
         // SAFETY: 親の child が生きているあいだ、主スレッドのハンドルは有効。
         let resumed = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
-        assert_eq!(resumed, 1);
+        // 外の停止が重なっていれば2以上（J-24）。0 と失敗だけが異常。
+        assert!(resumed >= 1 && resumed != u32::MAX);
         Ok(Self {
             child: guard.release(),
             dir,
@@ -656,4 +649,39 @@ fn w4b_forced_exit_before_assignment_leaves_the_suspended_child_which_the_test_t
     assert!(!child.wait_exit(1500), "停止したままの子が残る（J-15）");
     child.terminate();
     assert!(child.wait_exit(5000), "試験のハンドルで片付けた");
+}
+
+// 戻り値が1の通常の起動は、外の停止の確認を足さない（挙動を変えない）。確認が要るのは2以上のときだけ。
+#[test]
+fn only_a_resume_result_of_two_or_more_asks_for_the_start_confirmation() {
+    let host = AudioHost::new(std::env::temp_dir().join("auralyn-confirm-flag"));
+    for (result, confirmation) in [(1, false), (2, true), (3, true)] {
+        seam::set_resume(seam::Resume::Returns(result));
+        let guard = ChildGuard::new(host.spawn_engine_binary(cmd_exe()).unwrap());
+        let (child, _job, suspended) =
+            engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+        seam::set_resume(seam::Resume::Real);
+        assert_eq!(suspended, confirmation, "戻り値 {result}");
+        // 実際には再開していない（戻り値だけの差し替え）。停止したままの子を残さない。
+        drop(ChildGuard::new(child));
+    }
+}
+// J-24：確認の命令への応答が EOF・拒否のときは、成功にしない（起動の失敗）。
+#[test]
+fn w1c_an_eof_or_a_rejection_during_the_start_confirmation_is_a_failed_start() {
+    for (label, steps) in [
+        ("eof", vec![Step::Exit]),
+        ("rejected", vec![error_line("unknown command")]),
+    ] {
+        let (mut host, observer) = scripted_parts([("StartIdentityCapability", steps)]);
+        seam::set_resume(seam::Resume::ExternalSuspend(Some(Duration::from_millis(
+            100,
+        ))));
+        let error = host.ensure_engine_running().unwrap_err();
+        seam::set_resume(seam::Resume::Real);
+        assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED, "{label}");
+        assert!(host.child.is_none(), "{label}");
+        assert!(observer.probe(0).wait_exit(5000), "{label}: 回収されている");
+        finish(host, observer);
+    }
 }

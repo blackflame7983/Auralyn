@@ -593,8 +593,8 @@ impl AudioHost {
                 }
             }
         }
-        // 接続を失っていたら、次のIPCもロールバックも始めない。
-        if !self.link.is_open() {
+        // 接続を失っていたら、次のIPCもロールバックも始めない（応答の待ちだけが先に閉じた場合も）。
+        if self.connection_lost() {
             self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
             return;
         }
@@ -608,6 +608,11 @@ impl AudioHost {
                 self.fail_mode_transaction(tx, error.to_string(), false);
                 return;
             }
+        }
+        // 次の段へ進む直前と、完了を確定して復旧の記録を消す直前にも、同じ判定を使う。
+        if self.connection_lost() {
+            self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+            return;
         }
         // 完了後のjournal消去まで失敗を隠さない。
         if matches!(tx.step, Step::ReleasePoll)
@@ -2571,5 +2576,29 @@ mod tests {
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.transaction.is_none());
+    }
+
+    // P2（3回目）：reader が `ReplySlot` を閉じたところで止まっている間に、`Commit` の書き込みの完了を
+    // 受け取っても、完了を確定せず、復旧の記録を消さない。
+    #[test]
+    fn p2_a_commit_completion_never_deletes_the_journal_while_the_reply_slot_is_closed() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        drop(host.pending_reply_tx.close());
+        assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
     }
 }

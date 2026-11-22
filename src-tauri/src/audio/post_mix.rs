@@ -306,8 +306,13 @@ pub(super) struct State {
     disconnected: Option<String>,
     /// 切断を処理して子を外した回数。公開の操作が、失敗の原因が切断かを見分ける。
     detached: u64,
+    /// 直前に `rack()` が読んだ接続。次の `command()` が、その接続へだけ送る。
+    rack_pin: Option<Arc<LinkState>>,
     #[cfg(test)]
     after_exec_check: Option<ExecCheck>,
+    /// 試験の継ぎ目：`command()` の送る前と、`snapshot` の最後の確認の前に呼ばれる。
+    #[cfg(test)]
+    between_ops: Option<ExecCheck>,
     /// 試験の継ぎ目：次に `child()` が作る子として使う、台本つきの子（先頭から）。
     #[cfg(test)]
     test_children: Vec<Box<AudioHost>>,
@@ -333,8 +338,11 @@ impl State {
             error,
             disconnected: None,
             detached: 0,
+            rack_pin: None,
             #[cfg(test)]
             after_exec_check: None,
+            #[cfg(test)]
+            between_ops: None,
             #[cfg(test)]
             test_children: Vec::new(),
         }
@@ -540,18 +548,39 @@ impl State {
             self.detach_closed_child();
             anyhow::bail!("配信VSTのEngineが終了しました。保存設定を選び直してください");
         }
+        let pin = child.link.clone();
         let exec = self.exec_child(IpcCommand::GetPluginRack);
         // 応答の後に閉じていたら、切断済みのラックを返さない（続きを別の子で行わせない）。
         let lost = self.settle() || exec.lost;
         match exec.result? {
             IpcResponse::PluginRack { .. } if lost => Err(LostAfterReply.into()),
-            IpcResponse::PluginRack { plugins, .. } => Ok(plugins),
+            IpcResponse::PluginRack { plugins, .. } => {
+                // 次の変更は、このラックを読んだ接続へだけ送る。
+                self.rack_pin = Some(pin);
+                Ok(plugins)
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("配信VSTの状態を確認できません")),
         }
     }
     fn command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
-        self.child()?;
+        // ラックを読んだ接続があれば、その接続へだけ送る。起動を伴わず、子がいない・接続が違う・
+        // 閉じていれば失敗にする（空の子を起動して、既存のラックを欠いたまま変更しない）。
+        if let Some(pin) = self.rack_pin.take() {
+            #[cfg(test)]
+            if let (Some(hook), Some(child)) = (&self.between_ops, &self.child) {
+                hook(child);
+            }
+            match self.child.as_ref() {
+                Some(child) if Arc::ptr_eq(&child.link, &pin) && child.link.is_open() => {}
+                _ => {
+                    self.settle();
+                    anyhow::bail!(ENGINE_EXITED);
+                }
+            }
+        } else {
+            self.child()?;
+        }
         match self.exec_child(cmd).result? {
             IpcResponse::Error(e) => Err(anyhow!(e)),
             other => Ok(other),
@@ -878,7 +907,11 @@ impl State {
         }
         // 最後の IPC の後で、接続と終了の理由を確定してから返す。
         let rack = self.rack();
-        self.settle();
+        #[cfg(test)]
+        if let (Some(hook), Some(child)) = (&self.between_ops, &self.child) {
+            hook(child);
+        }
+        let closed_after_rack = self.settle();
         // 別の操作が切断を処理して外した子の説明を、今の EOF の説明として出す。
         if let Some(note) = self.disconnected.take() {
             self.restored = false;
@@ -888,6 +921,8 @@ impl State {
         // 応答の後に閉じていたときは、切断済みのラックを返さず、理由つきの成功として返す。
         let plugins = match rack {
             Err(error) if error.downcast_ref::<LostAfterReply>().is_some() => Vec::new(),
+            // 最後の確認で切断を見たら、読んだラックも載せない。
+            Ok(_) if closed_after_rack => Vec::new(),
             other => other?,
         };
         Ok(Snapshot {
@@ -964,6 +999,7 @@ impl AudioHost {
             );
         }
         let state = &mut self.post_mix;
+        state.rack_pin = None;
         let detached_before = state.detached;
         let result: Result<()> = (|| {
             match request {

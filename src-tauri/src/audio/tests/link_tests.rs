@@ -283,7 +283,7 @@ fn t4_eof_between_the_link_check_and_begin_fails_the_waiter_at_once() {
         started.elapsed()
     );
     assert_eq!(
-        f.sent(),
+        f.sent_after_start(),
         ["SetInputChannels"],
         "待ち手の登録で失敗し、書き込みへ進んでいない"
     );
@@ -414,7 +414,7 @@ fn t7_the_connection_keeps_working_after_a_normal_reply() {
         ));
     }
     assert_eq!(f.spawn_count(), 1);
-    assert_eq!(f.sent(), ["GetDevices"; 3]);
+    assert_eq!(f.sent_after_start(), ["GetDevices"; 3]);
 }
 
 // T8：C5（主だけ）。子は生きていて stdout だけが閉じた。停止・読み取り・起動を禁じる操作では作り直さず、
@@ -559,7 +559,7 @@ fn t13_drop_returns_within_the_shared_window_even_when_the_writer_is_stuck() {
     let (mut host, observer) = scripted_parts([]);
     host.ensure_engine_running().unwrap();
     let gate = sinks::Gated::default();
-    host.writer = Some(writer::Writer::start(gate.clone(), host.link.clone()));
+    host.replace_writer_for_test(writer::Writer::start(gate.clone(), host.link.clone()));
     let probe = writer::Probe::default();
     let _done = host
         .writer
@@ -629,7 +629,7 @@ fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
         let (mut host, observer) = scripted_parts([]);
         host.ensure_engine_running().unwrap();
         let gate = sinks::Gated::default();
-        host.writer = Some(writer::Writer::start(gate.clone(), host.link.clone()));
+        host.replace_writer_for_test(writer::Writer::start(gate.clone(), host.link.clone()));
         writer::set_limits_for_test(Some(Duration::from_millis(200)), None);
         if !confirmed {
             seam::set_wait(seam::Wait::Stuck);

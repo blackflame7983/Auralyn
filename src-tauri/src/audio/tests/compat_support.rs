@@ -394,6 +394,19 @@ impl Observer {
             .collect()
     }
 
+    /// 先頭の起動の確認（外の停止が重なった子だけが受ける StartIdentityCapability、J-24）を除く。
+    /// 負荷のもとでだけ入るので、命令の列を比べる試験が使う。
+    pub(crate) fn sent_after_start(&self) -> Vec<String> {
+        let mut sent = self.sent();
+        if sent
+            .first()
+            .is_some_and(|name| name == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
     pub(crate) fn sent_json(&self) -> Vec<serde_json::Value> {
         std::fs::read_to_string(&self.log)
             .unwrap_or_default()
@@ -452,10 +465,19 @@ pub(crate) fn scripted_parts(
         error: None,
         transaction: None,
     }));
-    let mut steps: BTreeMap<String, Vec<Step>> = BTreeMap::from([(
-        "ConfigureLiveModes".to_owned(),
-        vec![response_line(&live_modes)],
-    )]);
+    // `StartIdentityCapability` は、外の停止が重なった子の起動の確認（J-24）が使う。実際の子と同じ応答を返す。
+    let mut steps: BTreeMap<String, Vec<Step>> = BTreeMap::from([
+        (
+            "ConfigureLiveModes".to_owned(),
+            vec![response_line(&live_modes)],
+        ),
+        (
+            "StartIdentityCapability".to_owned(),
+            vec![response_line(&IpcResponse::StartIdentityCapability {
+                version: 2,
+            })],
+        ),
+    ]);
     steps.extend(
         overrides
             .into_iter()

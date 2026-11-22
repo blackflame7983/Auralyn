@@ -296,6 +296,9 @@ pub struct AudioHost {
     emitter: Arc<emit::Notifier>,
     /// 子の回収の前に生まれた通知を、回収の後まで保持する。
     held_notices: Mutex<HeldNotices>,
+    /// 試験で差し替えた旧い writer。子の stdin を閉じて子を終わらせないように、Drop まで持つ。
+    #[cfg(test)]
+    kept_writers: Vec<writer::Writer>,
     #[cfg(test)]
     test_engine_launcher: Option<Arc<dyn Fn() -> Result<Child> + Send + Sync>>,
     cached_devices: Option<AudioDeviceList>,
@@ -564,6 +567,8 @@ impl AudioHost {
             emitter: Arc::new(emit::Notifier::default()),
             held_notices: Mutex::new(HeldNotices::default()),
             #[cfg(test)]
+            kept_writers: Vec::new(),
+            #[cfg(test)]
             test_engine_launcher: None,
             cached_devices: None,
             engine_generation: 0,
@@ -606,6 +611,14 @@ impl AudioHost {
         self.link.set_open_for_test(open);
         if open {
             self.pending_reply_tx.reopen_for_test();
+        }
+    }
+
+    /// 試験で、writer を差し替える。旧い writer は持ち続け、子の stdin を閉じない（子が先に終わる競りを避ける）。
+    #[cfg(test)]
+    fn replace_writer_for_test(&mut self, writer: writer::Writer) {
+        if let Some(old) = self.writer.replace(writer) {
+            self.kept_writers.push(old);
         }
     }
 
@@ -925,21 +938,30 @@ impl AudioHost {
         .spawn(stdout);
 
         // 外の停止が重なっていた子は、解かれないまま続くと、最初の応答が来ない。最初の応答が来るまでを
-        // 起動の確認とし、期限（10秒）までに来なければ、切り離して回収し、起動の失敗にする（J-24）。
-        // 戻り値が1の通常の起動には、この確認を足さない。
-        if externally_suspended
-            && self
-                .execute_running_command(IpcCommand::StartIdentityCapability)
-                .is_err()
-        {
+        // 起動の確認とし、期限（10秒）までに期待した応答が来なければ、主の子だけを切り離して回収し、
+        // 起動の失敗にする（J-24）。戻り値が1の通常の起動には、この確認を足さない。
+        if externally_suspended {
+            // 記録の数は、確認を始める前に控える（確認の中の C2 で記録された子も数える）。
             let recorded = self.retired.pending(self.role());
-            self.kill_engine();
-            if self.retired.pending(self.role()) > recorded {
-                return Err(self.retired.unconfirmed_error().into());
+            let outcome = self.execute_running_command(IpcCommand::StartIdentityCapability);
+            if !matches!(outcome, Ok(IpcResponse::StartIdentityCapability { .. })) {
+                // EOF（`Engine Crashed/Exited`）・拒否・期限切れは、どれも起動の失敗。
+                let unconfirmed = outcome.err().and_then(|error| {
+                    error
+                        .downcast_ref::<engine_life::EngineUnconfirmed>()
+                        .copied()
+                });
+                // 配信ミックスの子とオケの入力の選択は残す。起動を試みた主の子だけを回収する。
+                self.kill_primary_engine();
+                if let Some(unconfirmed) = unconfirmed {
+                    return Err(unconfirmed.into());
+                }
+                if self.retired.pending(self.role()) > recorded {
+                    return Err(self.retired.unconfirmed_error().into());
+                }
+                return Err(anyhow!(engine_life::LAUNCH_FAILED));
             }
-            return Err(anyhow!(engine_life::LAUNCH_FAILED));
         }
-
         if let Some(config) = self.peak_intent {
             let result = self.execute_running_command(IpcCommand::PeakProtection {
                 config: Some(config),

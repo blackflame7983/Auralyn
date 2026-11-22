@@ -365,7 +365,13 @@ fn resume(child: &Child) -> u32 {
         seam::Resume::Real => {}
         seam::Resume::Returns(value) => return value,
         seam::Resume::ResumedEarly => {
-            let _ = resume_main_thread(child);
+            // 外の停止が重なっていても、停止の数が0になるまで先に再開する（その後の本来の再開は 0 を返す）。
+            loop {
+                let before = resume_main_thread(child);
+                if before <= 1 || before == u32::MAX {
+                    break;
+                }
+            }
         }
         // 外の停止を1回重ねてから、本来の再開を呼ぶ（戻り値は `2`。子は外の停止が解かれるまで止まる）。
         seam::Resume::ExternalSuspend(release_after) => {
@@ -375,14 +381,15 @@ fn resume(child: &Child) -> u32 {
                 windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
             // SAFETY: `child` が生きているあいだ、主スレッドのハンドルは有効で、呼び出しの間だけ借りる。
             let _ = unsafe { windows::Win32::System::Threading::SuspendThread(thread) };
-            if let Some(delay) = release_after {
-                // 外の停止が解かれる時刻。子（のハンドル）は、解かれるまで呼び出し側が持ち続ける。
-                let raw = thread.0 as usize;
+            if let (Some(delay), Some(owned)) =
+                (release_after, seam::OwnedThread::duplicate(thread))
+            {
+                // 外の停止が解かれる時刻。解く側は、自分で複製したハンドルを持つ。
                 std::thread::spawn(move || {
+                    let owned = owned;
                     std::thread::sleep(delay);
-                    let thread = windows::Win32::Foundation::HANDLE(raw as *mut std::ffi::c_void);
-                    // SAFETY: 試験が子を持つあいだだけ有効なハンドル（解く前に子が終わっても、失敗するだけ）。
-                    let _ = unsafe { windows::Win32::System::Threading::ResumeThread(thread) };
+                    // SAFETY: 複製したハンドルは、このスレッドだけが持ち、`Drop` で一度だけ閉じる。
+                    let _ = unsafe { windows::Win32::System::Threading::ResumeThread(owned.0) };
                 });
             }
         }
@@ -404,6 +411,42 @@ fn resume_main_thread(child: &Child) -> u32 {
 pub(crate) mod seam {
     use super::{Duration, Instant, JobHandle};
     use std::cell::RefCell;
+
+    /// 試験のスレッドへ渡す、複製したスレッドのハンドル。
+    pub(super) struct OwnedThread(pub(super) windows::Win32::Foundation::HANDLE);
+
+    // SAFETY: 複製したハンドルは所有者だけが使い、`Drop` で一度だけ閉じる。
+    unsafe impl Send for OwnedThread {}
+
+    impl OwnedThread {
+        pub(super) fn duplicate(thread: windows::Win32::Foundation::HANDLE) -> Option<Self> {
+            use windows::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE};
+            use windows::Win32::System::Threading::GetCurrentProcess;
+            let mut copy = HANDLE::default();
+            // SAFETY: `thread` は呼び出しの間だけ借りる有効なハンドルで、複製は呼び出し側が所有する。
+            unsafe {
+                let process = GetCurrentProcess();
+                DuplicateHandle(
+                    process,
+                    thread,
+                    process,
+                    &mut copy,
+                    0,
+                    false,
+                    DUPLICATE_SAME_ACCESS,
+                )
+            }
+            .ok()
+            .map(|()| Self(copy))
+        }
+    }
+
+    impl Drop for OwnedThread {
+        fn drop(&mut self) {
+            // SAFETY: この複製を所有するのは自分だけで、ここで一度だけ閉じる。
+            let _ = unsafe { windows::Win32::Foundation::CloseHandle(self.0) };
+        }
+    }
 
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub(crate) enum Wait {
