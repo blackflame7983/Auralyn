@@ -1,4 +1,4 @@
-# F1b-0a 接続の部品の設計（第4版）
+# F1b-0a 接続の部品の設計（第5版）
 
 状態：設計（統括の案、第4版。第3版 `02f6cf7e` への独立レビューの指摘を 7章で反映）。第1版（`402d64a8`）・第2版（`46dabd08`）への独立レビュー（2回 BLOCK）のあと、Gemini 4 Neon の助言と、利用者の決定 J-22・J-23 を受けて直した。
 
@@ -97,12 +97,16 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 ### 3.2 モード VST
 
 - 今の「`stdin` を `take` して使い捨てのスレッドへ渡し、tick で戻す」をやめ、同じ writer の列に送り、`WriteDone` と応答を tick の `try_recv` で受け取る。
+- **判定の順（tick）：** (1) 取消済み・世代違いの結果は捨てる。(2) 同じ世代の保留中の IPC は、書き込みの結果（`Ok`・`Err`・`Aborted`）と期限を、接続の切断の検出より**先に**判定する。(3) `Err` は今の書き込みの失敗。`Aborted` は応答の受け側の EOF を待つ。(4) EOF（`Eof` か `Disconnected`）は、表示の文言を `Engine Crashed/Exited` に写し、**接続の喪失として復旧の経路に進む**（切断した接続でロールバックを始めない）。
+- **期限：** モード VST では、書き込みと応答の両方に、今の「送ってから10秒」を1つだけ使う（書き込みの5秒は通常の命令だけに使う）。`Aborted` の後の EOF の待ちも、同じ10秒の中に入る。命令ごとの期限にそろえるのは F1b-0a-2。
 - **F1b-0a-1 では期限を変えない**：今の「送ってから10秒」の判定、書き込みの結果を応答より先に判定、停止・緊急のミュート・世代の変更の後の旧い結果を採らない、結果が分からないときのジャーナルと復旧が要る状態、JSON 化をロックの外で行う、をすべて保つ。10秒の起点は「書き込みのスレッドを起こした後」から「writer の列に送った後」になる（差はスレッドの生成の時間だけ）。
 
 ### 3.3 通知をロックの外で出す（Neon の指摘）
 
 - `AudioEmitter` は `Clone`（`emit.rs:40`）なので、`emitter` のロックを短く取って `Option<AudioEmitter>` を `clone()` し、**ロックを放してから** `emit` する共通の関数を1つ作り、今の20か所の `emitter.lock().unwrap().as_ref()` → `emit` を置き換える。poison は `into_inner` で中身を使う。
 - 通知の内容と順は変えない。**同じ出来事の通知の列（`audio-conditions-changed` と `audio-started`・`audio-stopped`・`audio-stream-error`・`mixing-*`、EOF の3つ）は、間に別のスレッドの通知が入らないように、通知の列のロック（`emit_order`。`emitter` の中身の `Mutex` とは別）を列の全体で持って出す。** 子の回収の経路は、このロックを取らない（2.3 の 5。通知は回収の後）。
+- **`emit_order` を持つ間の禁止事項：** ホストのロック・ショートカットの `gate`・`emitter` 以外のロックを取らない。IPC・応答の待ちをしない。通知の関数へ再び入らない。`Conditions::dispatch` の前と後の通知は、それぞれ単独の列として通す（IPC をまたいで持たない）。
+- **保証の範囲：** 通知が進む場合、C2 の後の読み取りは「書き込みの5秒＋回収」で返る（T1）。通知そのもの（`emit`）が止まっている場合に保証するのは、子の回収だけ（T6）。そのとき、回収の後に通知を出す呼び出し側は、`emit_order` で待ち続けうる（ホストのロックを持ったまま）。通知の止まりからも読み取りを返す境界は F1b-0b で扱う。
 - `kill_primary_engine`（`audio.rs:2796`）は、2.3 の順に並べ替える：接続を閉じて子を回収してから、`cancel_mode_vst` と `notify_conditions_changed` の通知を出す。状態の変更（`post_attached`、`live_modes.needs_sync`、`conditions.retire_engine()`、`engine_generation` など）の順は今のまま、通知だけを後ろに回す。
 - `Conditions::dispatch` の IPC の前の通知は、切り離しの経路ではないので、この段では変えない（IPC の開始前に通知で待つことはありうる。F1b-0b で扱う）。
 
@@ -115,6 +119,7 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 
 - `post_mix::State` に、子へ命令を送る唯一のメソッド `exec_child` を作る。今 `child.execute_running_command` を直接呼んでいる箇所（`rack`・`command`・`capture_bundle`・`restore_bundle`・`stop`・`start`・`snapshot`・`RestoreSaved`）は、すべてここを通す。
 - **送る前に閉じていた場合と、送っている間に閉じた場合で、同じ後始末を使う**：子の `LinkState` が閉じていれば（C2・書き込みの失敗・EOF）、戻る前に、子のハンドルが残っていれば `release_engine` で回収し（EOF は reader が回収しないため）、`self.child = None`、`restored = false`、`running = false`。`enabled` と保存した設定は残す。
+- `exec_child` は、切断の有無を結果と一緒に返す。呼び出し側は、成功の応答から `running`・`restored` を再設定する**前に**切断を確かめる（成功の直後の EOF で `running = true` に戻さない）。切断の説明は、子を外した後も `State` に引き継ぎ、次の `snapshot` で今の EOF の説明として出す。
 - 呼び出し側（`rack`・`command`・`capture_bundle`・`restore_bundle`・`start`・`stop`・`snapshot`・`RestoreSaved`）は、その結果を**今の戻り値・文言に写す**（例：`stop` の拒否は `配信VSTを停止できませんでした`、`start` の拒否は子が返した文言、事前の EOF の後の `snapshot` はエラーの情報つきの成功。今の W2 の試験 `post_mix_life_tests.rs:57` が固定）。`exec_child` の失敗をそのまま上へ返さない。
 - 主の `post_attached` と転送：**今の配信ミックスの EOF と同じ扱いにし、解除する位置を変えない**。主が稼働中は `PostMixClear` が拒否されるため、失敗の直後には送らない。今のコードで転送を実際に外す位置（主の停止の経路、`cancel_prepared_post_start`、次の `prepare_post_mix_start`。配信 VST が有効で未復元のときは `validate_start` が先に失敗することを含む）は、実装の最初に洗い出して T10 で固定する。
 - 配信ミックスの子の切り離しでは、主の `audio-error` を出さない。
@@ -147,8 +152,8 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 | T7 | 正常な応答の後も、同じ接続で次の命令が通る | scripted child |
 | T8 | C5（主）：stdout だけ閉じた子 → 旧の PID が回収され、次の開始で作り直し（`engine_generation` が進む）。停止・読み取り・起動禁止の操作では作らない | 実プロセス |
 | T9 | N2：列の直前の確認で、閉じた接続の列が出ない（列は全部か無し）。ロックを待つ間に旧い接続になった場合も。列の途中で別のスレッドの通知が入らない（K13） | 継ぎ目 |
-| T10 | 配信ミックス：`exec_child` を通る全経路（`rack`・`command`・`snapshot`・`capture_bundle`・`restore_bundle`・`start`・`stop`・`RestoreSaved`）で、送る前に閉じていた場合と送っている間に閉じた場合の両方について、C2・書き込みの失敗・EOF の後に、失敗が戻った**直後**の `enabled`/`restored`/`running`・`child`・主の PID・主の `audio-error` が出ないこと・`post_attached`（主が稼働中・停止中）を確かめる | scripted child（配信ミックス） |
-| T11 | モード VST：writer の列を通る書き込み、書き込みの詰まりの間の停止、旧い結果を採らない（既存の `mode_vst.rs:2082`・`2123` を移植し、期限が今のままであること） | 既存の試験の移植 |
+| T10 | 配信ミックス（成功の応答の直後の EOF、別の操作で切断を処理した後の `snapshot` を含む）：`exec_child` を通る全経路（`rack`・`command`・`snapshot`・`capture_bundle`・`restore_bundle`・`start`・`stop`・`RestoreSaved`）で、送る前に閉じていた場合と送っている間に閉じた場合の両方について、C2・書き込みの失敗・EOF の後に、失敗が戻った**直後**の `enabled`/`restored`/`running`・`child`・主の PID・主の `audio-error` が出ないこと・`post_attached`（主が稼働中・停止中）を確かめる | scripted child（配信ミックス） |
+| T11 | モード VST：tick の判定の順（取消・世代違い → 書き込みの結果と期限 → 切断）、EOF が先に見えても書き込みの失敗・`Aborted` を判定すること、EOF で切断した接続でロールバックを始めないこと、writer の列を通る書き込み、書き込みの詰まりの間の停止、旧い結果を採らない（既存の `mode_vst.rs:2082`・`2123` を移植し、期限が今のままであること） | 既存の試験の移植 |
 | T12 | `emitter` の poison：後続が panic しない。通知の内容と順が変わらない | 継ぎ目＋既存 |
 | T13 | `Drop`：writer が詰まっていても、共通の2秒（F1a-1）で終わり、writer を join しない | 継ぎ目 |
 | T14 | 互換：K 群・`engine_life`・`replies.rs` の単体試験・既存の Rust 試験がすべて通る。**期待値を変える試験はない** | 既存 |
@@ -163,8 +168,8 @@ F1b-0a-1 のマージの後に、別の設計の節として詳細を書く。�
 
 | 分類 | 応答の期限 | 対象 |
 |---|---|---|
-| A 通常の操作・状態の読み取り | 10秒 | メモリの操作・RT の列への投入・スナップショットの読み取りだけの命令（ゲイン・ミュート・統計・`PostMixStatus`・`PollDeviceScan` など） |
-| B VST・音声機器・ファイル・共有メモリをその場で呼ぶ命令（基準：命令の処理の中で、VST の呼び出し、音声機器のストリームの作成・破棄、Windows の共有メモリの作成・解放、ファイルの I/O のどれかを同期に行う。共通の前処理で試聴を破棄する命令を含む） | 30秒 | `SetBypass`・`GetRuntimeStats`・`StartVoiceCheckRecording`・`PostMixPrepare`・`PostMixClear`・`LoadPlugin`・`RestorePlugin`・`RestoreSessionPlugin`・`GetPluginState`・`SetPluginState`・`CaptureBundleState`・`CaptureMixingBundleState`・`OpenEditor`・`UnloadPlugin`・`PostMixStart`・`Start`・**`Stop`**・`GetDevices`・`AutoGain`（試聴の開閉を含む要求）・`VoiceCheckPreview`（別の出力の試聴の開閉を含む要求）・`ExportVoiceCheck` |
+| A 通常の操作・状態の読み取り | 10秒 | 共通の前処理を含めて、メモリの操作・RT の列への投入・スナップショットやキャッシュの読み取りだけの命令（`SetGlobalMute`・`SetOutputGain`・`PostMixStatus`・`PollDeviceScan`・`GetDevices`（キャッシュの読み取り）など。分類は実装で命令ごとに共通の前処理まで確かめて決める） |
+| B VST・音声機器・ファイル・共有メモリをその場で呼ぶ命令（基準：命令の処理の中で、VST の呼び出し、音声機器のストリームの作成・破棄、Windows の共有メモリの作成・解放、ファイルの I/O のどれかを同期に行う。共通の前処理で試聴を破棄する命令を含む） | 30秒 | `SetBypass`・`GetRuntimeStats`・`StartVoiceCheckRecording`・`PostMixPrepare`・`PostMixClear`・`LoadPlugin`・`RestorePlugin`・`RestoreSessionPlugin`・`GetPluginState`・`SetPluginState`・`CaptureBundleState`・`CaptureMixingBundleState`・`OpenEditor`・`UnloadPlugin`・`PostMixStart`・`Start`・**`Stop`**・`SetInputGain`（共通の前処理で試聴を破棄する）・`AutoGain`（試聴の開閉を含む要求）・`VoiceCheckPreview`（別の出力の試聴の開閉を含む要求）・`ExportVoiceCheck` |
 | C 長さが変わる同期の計測 | 録音の時間＋10秒 | `ProbeLoopback`。録音の時間を最大10秒に制限する |
 
 - 分類は、Rust で命令の型に対する網羅の `match`（`_` を使わない）で決め、命令を足したときに分類の漏れがコンパイルで分かるようにする。
@@ -181,3 +186,12 @@ F1b-0a-1 のマージの後に、別の設計の節として詳細を書く。�
 | P1 通知の列 | 3.3・3.4：`emit_order` で列を直列化。確認は列の直前だけ（全部か無し）。回収の経路は取らない |
 | P1 配信ミックス | 3.5：送る前・送っている間で同じ後始末、`release_engine` で回収、呼び出し側が今の戻り値に写す。転送の解除の位置は変えず、実装の最初に洗い出す |
 | J-23 の漏れ | 6章：基準を書き、`SetBypass`・`GetRuntimeStats`・`StartVoiceCheckRecording`・`PostMixPrepare`・`PostMixClear` を B に足した |
+
+## 8. 第4版のレビューへの対応
+
+| 指摘 | 対応 |
+|---|---|
+| P1 回収の後の `emit_order` の待ち | 3.3：禁止事項と保証の範囲（通知が進む場合の T1、止まる場合は回収だけ T6）を明記 |
+| P1 モード VST の判定の順 | 3.2：tick の判定の順、EOF は接続の喪失として復旧へ、期限は送ってから10秒を1つ |
+| P2 配信ミックスの成功と EOF の競合 | 3.5：切断の有無を返し、再設定の前に確かめる。説明を引き継ぐ |
+| P2 J-23 の食い違い | 6章：`GetDevices` を A、`SetInputGain` を B。共通の前処理まで確かめて分類 |
