@@ -296,6 +296,8 @@ pub struct AudioHost {
     emitter: Arc<emit::Notifier>,
     /// 子の回収の前に生まれた通知を、回収の後まで保持する。
     held_notices: Mutex<HeldNotices>,
+    /// 外の停止が重なった子の起動の確認の間だけ真。書き込みの失敗・期限切れの回収を、主の子だけにする。
+    confirming_start: bool,
     /// 試験で差し替えた旧い writer。子の stdin を閉じて子を終わらせないように、Drop まで持つ。
     #[cfg(test)]
     kept_writers: Vec<writer::Writer>,
@@ -566,6 +568,7 @@ impl AudioHost {
             pending_reply_tx: Arc::new(ReplySlot::default()),
             emitter: Arc::new(emit::Notifier::default()),
             held_notices: Mutex::new(HeldNotices::default()),
+            confirming_start: false,
             #[cfg(test)]
             kept_writers: Vec::new(),
             #[cfg(test)]
@@ -943,7 +946,9 @@ impl AudioHost {
         if externally_suspended {
             // 記録の数は、確認を始める前に控える（確認の中の C2 で記録された子も数える）。
             let recorded = self.retired.pending(self.role());
+            self.confirming_start = true;
             let outcome = self.execute_running_command(IpcCommand::StartIdentityCapability);
+            self.confirming_start = false;
             if !matches!(outcome, Ok(IpcResponse::StartIdentityCapability { .. })) {
                 // EOF（`Engine Crashed/Exited`）・拒否・期限切れは、どれも起動の失敗。
                 let unconfirmed = outcome.err().and_then(|error| {
@@ -1129,7 +1134,12 @@ impl AudioHost {
             .response(&IpcResponse::Error(error.to_string()));
         let won = self.link.close(cause);
         let recorded = self.retired.pending(self.role());
-        self.kill_engine();
+        if self.confirming_start {
+            // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
+            self.kill_primary_engine();
+        } else {
+            self.kill_engine();
+        }
         let unconfirmed = self.retired.pending(self.role()) > recorded;
         // 終了の通知を出すのは競りに勝った側だけ。EOF が先なら reader が出している。
         if won {

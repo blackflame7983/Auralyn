@@ -991,3 +991,92 @@ fn p2_a_failed_start_confirmation_keeps_the_post_mix_child_and_the_mixing_select
     assert!(!rig.post.probe(0).exited());
     rig.finish();
 }
+
+// P2（4回目）：外の停止の起動の確認の中で、stdin の書き込みが失敗しても期限切れになっても、
+// 回収するのは主の子だけ。配信ミックスの子（ラック）とオケの入力の選択は残る。
+#[test]
+fn p2_a_write_failure_or_timeout_during_the_start_confirmation_keeps_the_post_mix_and_mixing() {
+    use crate::audio::writer::{override_next_sink_for_test, sinks::Gated, SinkOverride};
+    use crate::audio_engine::mixing::Start;
+    for stall in [false, true] {
+        let mut rig = Rig::new([]);
+        rig.host.mixing.selected = Some(Start {
+            config: mixing_config("wasapi:one"),
+            target: None,
+        });
+        let gate = Gated::default();
+        override_next_sink_for_test(if stall {
+            SinkOverride::Stall(gate.clone())
+        } else {
+            SinkOverride::Fail
+        });
+        crate::audio::writer::set_limits_for_test(
+            Some(std::time::Duration::from_millis(200)),
+            Some(std::time::Duration::from_millis(500)),
+        );
+        seam::set_resume(seam::Resume::ExternalSuspend(None));
+        let error = rig.host.ensure_engine_running().unwrap_err();
+        seam::set_resume(seam::Resume::Real);
+        crate::audio::writer::set_limits_for_test(None, None);
+        gate.open();
+        let label = format!("stall={stall}: {error}");
+        assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED, "{label}");
+        assert!(rig.host.child.is_none(), "{label}: 主の子は回収されている");
+        assert!(
+            rig.host.post_mix.child.is_some(),
+            "{label}: 配信ミックスの子"
+        );
+        assert!(
+            rig.host.post_mix.restored && rig.host.post_mix.enabled,
+            "{label}: 配信ミックスのラック"
+        );
+        assert!(rig.host.mixing.selected.is_some(), "{label}: オケの入力");
+        rig.finish();
+    }
+}
+
+// P2（4回目）：`ReplySlot` だけが閉じた間も、配信ミックスは切断として扱う（`LinkState` が開いたままでも）。
+#[test]
+fn p2_a_closed_reply_slot_alone_is_a_disconnect_for_the_post_mix() {
+    // `snapshot`：理由つきの成功。
+    let mut rig = Rig::new([]);
+    drop(
+        rig.host
+            .post_mix
+            .child
+            .as_ref()
+            .unwrap()
+            .pending_reply_tx
+            .close(),
+    );
+    assert!(rig.host.post_mix.child.as_ref().unwrap().link.is_open());
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    assert!(!snapshot.restored && rig.host.post_mix.child.is_none());
+    assert!(rig.host.post_mix.enabled);
+    rig.finish();
+
+    // 変更を送るとき（ラックを読んだ後で待ちだけが閉じる）：失敗にして、`enabled` を残す。
+    let mut rig = Rig::with_primary(
+        stopped_primary(),
+        [("GetPluginRack", vec![rack_with_a_plugin()])],
+    );
+    rig.host.post_mix.between_ops = Some(Box::new(|child| {
+        drop(child.pending_reply_tx.close());
+    }));
+    let request = Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: "new.vst3".into(),
+        class_id: None,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), EXITED);
+    let state = &rig.host.post_mix;
+    assert!(state.enabled && !state.restored && state.child.is_none());
+    assert!(state.error.is_none(), "切断として扱う");
+    rig.finish();
+}

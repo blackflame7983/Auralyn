@@ -364,6 +364,13 @@ fn resume(child: &Child) -> u32 {
     match seam::resume() {
         seam::Resume::Real => {}
         seam::Resume::Returns(value) => return value,
+        // 外の停止が重なっていても、停止の数が0になるまで再開し、通常の起動と同じ `1` を返す。
+        seam::Resume::Normalized => loop {
+            let before = resume_main_thread(child);
+            if before <= 1 || before == u32::MAX {
+                return before;
+            }
+        },
         seam::Resume::ResumedEarly => {
             // 外の停止が重なっていても、停止の数が0になるまで先に再開する（その後の本来の再開は 0 を返す）。
             loop {
@@ -476,6 +483,8 @@ pub(crate) mod seam {
         ResumedEarly,
         /// 本来の再開の前に、外の停止を1回重ねる（戻り値は `2`）。`Some` なら、その時間の後に外の停止を解く。
         ExternalSuspend(Option<Duration>),
+        /// 負荷で外の停止が重なっても、戻り値が 1 の通常の起動にそろえる。
+        Normalized,
     }
 
     pub(crate) enum Stage {

@@ -355,7 +355,7 @@ impl State {
             && self
                 .child
                 .as_ref()
-                .is_some_and(|c| c.child.is_some() && c.link.is_open())
+                .is_some_and(|c| c.child.is_some() && !c.connection_lost())
     }
     /// 破損や未復元の有効な保存設定を、無効扱いで黙って通さない。
     pub(super) fn validate_start(&self) -> Result<()> {
@@ -376,7 +376,7 @@ impl State {
                 && self
                     .child
                     .as_ref()
-                    .is_some_and(|c| c.link.is_open() && c.child.is_some()))
+                    .is_some_and(|c| !c.connection_lost() && c.child.is_some()))
     }
     fn unchanged(&self) -> Result<()> {
         anyhow::ensure!(
@@ -433,7 +433,7 @@ impl State {
                 lost: false,
             };
         };
-        if !child.link.is_open() {
+        if child.connection_lost() {
             self.detach_closed_child();
             return Exec {
                 result: Err(anyhow!(replies::CLOSED)),
@@ -459,7 +459,7 @@ impl State {
         self.settle_with(None)
     }
     fn settle_with(&mut self, reason: Option<String>) -> bool {
-        let closed = self.child.as_ref().is_some_and(|c| !c.link.is_open());
+        let closed = self.child.as_ref().is_some_and(|c| c.connection_lost());
         if closed {
             self.detach_with(reason);
         }
@@ -544,7 +544,7 @@ impl State {
         let Some(child) = self.child.as_ref() else {
             return Ok(Vec::new());
         };
-        if !(child.link.is_open() && child.child.is_some()) {
+        if child.connection_lost() || child.child.is_none() {
             self.detach_closed_child();
             anyhow::bail!("配信VSTのEngineが終了しました。保存設定を選び直してください");
         }
@@ -572,7 +572,7 @@ impl State {
                 hook(child);
             }
             match self.child.as_ref() {
-                Some(child) if Arc::ptr_eq(&child.link, &pin) && child.link.is_open() => {}
+                Some(child) if Arc::ptr_eq(&child.link, &pin) && !child.connection_lost() => {}
                 _ => {
                     self.settle();
                     anyhow::bail!(ENGINE_EXITED);
@@ -630,7 +630,7 @@ impl State {
             .child
             .as_ref()
             .ok_or_else(|| anyhow!("配信VSTの状態を確認できません"))?;
-        if !(child.link.is_open() && child.child.is_some()) {
+        if child.connection_lost() || child.child.is_none() {
             self.detach_closed_child();
             anyhow::bail!("配信VSTの接続が終了しました");
         }
@@ -806,7 +806,7 @@ impl State {
         let connection = self
             .child
             .as_ref()
-            .map(|child| (child.link.is_open(), child.child.is_some()));
+            .map(|child| (!child.connection_lost(), child.child.is_some()));
         match connection {
             Some((true, _)) => {
                 if !matches!(
@@ -878,7 +878,7 @@ impl State {
         }
     }
     fn snapshot(&mut self) -> Result<Snapshot> {
-        match self.child.as_ref().map(|child| child.link.is_open()) {
+        match self.child.as_ref().map(|child| !child.connection_lost()) {
             Some(true) => {
                 let exec = self.exec_child(IpcCommand::ProcessingState);
                 match exec.result? {
@@ -1162,7 +1162,7 @@ impl State {
             && self
                 .child
                 .as_ref()
-                .is_some_and(|c| c.link.is_open() && c.child.is_some())
+                .is_some_and(|c| !c.connection_lost() && c.child.is_some())
     }
     fn require_id(&mut self, id: &str) -> Result<()> {
         anyhow::ensure!(

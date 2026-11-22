@@ -69,6 +69,8 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 
 これで、reader が `emit` の途中で止まっていても、子の回収は止まらない。
 
+**例外（J-24 の起動の確認の間）：** 外の停止が重なった子の起動の確認の中で、stdin の書き込みが失敗した場合と期限切れになった場合の切り離しも、起動を試みた**主の子だけ**を回収する（`kill_engine` ではなく、配信ミックスの子とオケの入力の選択を残す経路）。確認の外の C2・書き込みの失敗は、今までどおり `kill_engine`。
+
 ### 2.4 EOF の順（reader）
 
 1. `ReplySlot::close()` で送り側を取り出す（以後の `begin` を締め出す。窓がなくなる）。
@@ -123,6 +125,7 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 - 呼び出し側（`rack`・`command`・`capture_bundle`・`restore_bundle`・`start`・`stop`・`snapshot`・`RestoreSaved`）は、その結果を**今の戻り値・文言に写す**（例：`stop` の拒否は `配信VSTを停止できませんでした`、`start` の拒否は子が返した文言、事前の EOF の後の `snapshot` はエラーの情報つきの成功。今の W2 の試験 `post_mix_life_tests.rs:57` が固定）。`exec_child` の失敗をそのまま上へ返さない。
 - 主の `post_attached` と転送：**今の配信ミックスの EOF と同じ扱いにし、解除する位置を変えない**。主が稼働中は `PostMixClear` が拒否されるため、失敗の直後には送らない。今のコードで転送を実際に外す位置（主の停止の経路、`cancel_prepared_post_start`、次の `prepare_post_mix_start`。配信 VST が有効で未復元のときは `validate_start` が先に失敗することを含む）は、実装の最初に洗い出して T10 で固定する。
 - 配信ミックスの子の切り離しでは、主の `audio-error` を出さない。
+- 配信ミックスの切断の判定は、モード VST と同じく「`LinkState` か `ReplySlot` が閉じていれば喪失」とする（reader の EOF の処理は、待ちを閉じてから接続を閉じるため）。対象は、事前の確認、`exec_child` の後の確認、`snapshot` の最後の確認、ラックを読んだ接続への送信、公開の操作の失敗の処理（`enabled` を残す）。
 - 復元の途中で外側が `enabled` を下ろす場合（`discard_child`）や、配信セット全体の巻き戻しで `State` を作り直す場合は、今の挙動のまま（`exec_child` の整合の後に、外側の処理がさらに上書きする）。
 
 ### 3.6 C5（主だけ）

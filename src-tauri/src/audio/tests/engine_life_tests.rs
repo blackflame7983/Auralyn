@@ -685,3 +685,20 @@ fn w1c_an_eof_or_a_rejection_during_the_start_confirmation_is_a_failed_start() {
         finish(host, observer);
     }
 }
+
+// 通常の起動（戻り値が1）の後、子へ最初に届く命令は確認の命令ではない（呼び出し側から確かめる）。
+#[test]
+fn a_normal_start_sends_no_confirmation_command_to_the_child() {
+    let (mut host, observer) = scripted_parts([]);
+    seam::set_resume(seam::Resume::Normalized);
+    host.ensure_engine_running().unwrap();
+    seam::set_resume(seam::Resume::Real);
+    host.execute_running_command(IpcCommand::GetDevices)
+        .unwrap();
+    assert_eq!(
+        observer.sent().first().map(String::as_str),
+        Some("GetDevices"),
+        "先頭に StartIdentityCapability がない"
+    );
+    finish(host, observer);
+}

@@ -38,6 +38,9 @@ impl Journal {
     }
 }
 
+#[cfg(test)]
+type DiskHook = Box<dyn Fn(&AudioHost) + Send>;
+
 pub(super) struct State {
     path: PathBuf,
     journal: Option<Journal>,
@@ -48,6 +51,9 @@ pub(super) struct State {
     orphan_disk: Option<DiskJob>,
     #[cfg(test)]
     writer_probe: writer::Probe,
+    /// 試験の継ぎ目：ディスクの結果を取り込んだ直後に呼ばれる。
+    #[cfg(test)]
+    after_disk_adopted: Option<DiskHook>,
 }
 impl State {
     pub(super) fn new(root: &std::path::Path) -> Self {
@@ -85,6 +91,8 @@ impl State {
             orphan_disk: None,
             #[cfg(test)]
             writer_probe: writer::Probe::default(),
+            #[cfg(test)]
+            after_disk_adopted: None,
         }
     }
     pub(super) fn blocked(&self) -> bool {
@@ -674,7 +682,7 @@ impl AudioHost {
     }
     /// 接続を失ったか。reader の EOF の処理は、応答の待ちを閉じてから接続を閉じるので、
     /// その間に当たっても喪失として扱う。
-    fn connection_lost(&self) -> bool {
+    pub(super) fn connection_lost(&self) -> bool {
         !self.link.is_open() || self.pending_reply_tx.is_closed()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
@@ -751,6 +759,10 @@ impl AudioHost {
                             tx.step = Step::Finish;
                         }
                     }
+                }
+                #[cfg(test)]
+                if let Some(hook) = &self.mode_vst.after_disk_adopted {
+                    hook(&*self);
                 }
                 Ok(false)
             }
@@ -2596,6 +2608,32 @@ mod tests {
         host.mode_vst.transaction = Some(transaction);
         drop(host.pending_reply_tx.close());
         assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
+    }
+
+    // 検出力（4回目）：ディスクの結果を取り込んだ**後**に `ReplySlot` が閉じても、完了を確定せず、
+    // 復旧の記録を消さない（poll に入る前は閉じていない）。
+    #[test]
+    fn p2_a_slot_closed_after_the_disk_result_is_adopted_never_completes() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        host.mode_vst.after_disk_adopted = Some(Box::new(|host| {
+            drop(host.pending_reply_tx.close());
+        }));
+        assert!(!host.pending_reply_tx.is_closed() && host.link.is_open());
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.path.exists(), "復旧の記録は残る");

@@ -96,8 +96,54 @@ pub(super) struct Writer {
     queue: mpsc::SyncSender<Job>,
 }
 
+/// 試験の継ぎ目：次に作る writer の出力先を差し替える（試験のスレッドごと）。本来の stdin は持ち続け、
+/// 子の stdin を閉じて子を終わらせない。
+#[cfg(test)]
+pub(super) enum SinkOverride {
+    Fail,
+    Stall(sinks::Gated),
+}
+
+#[cfg(test)]
+thread_local! {
+    static NEXT_SINK: std::cell::RefCell<Option<SinkOverride>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn override_next_sink_for_test(value: SinkOverride) {
+    NEXT_SINK.with(|slot| *slot.borrow_mut() = Some(value));
+}
+
+#[cfg(test)]
+struct Held<W> {
+    _keep: W,
+    via: Box<dyn Write + Send>,
+}
+
+#[cfg(test)]
+impl<W> Write for Held<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.via.write(bytes)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.via.flush()
+    }
+}
+
 impl Writer {
     pub(super) fn start<W: Write + Send + 'static>(sink: W, link: Arc<LinkState>) -> Self {
+        #[cfg(test)]
+        if let Some(over) = NEXT_SINK.with(|slot| slot.borrow_mut().take()) {
+            let via: Box<dyn Write + Send> = match over {
+                SinkOverride::Fail => Box::new(sinks::Failing("injected write failure")),
+                SinkOverride::Stall(gate) => Box::new(gate),
+            };
+            return Self::start_with(Held { _keep: sink, via }, link);
+        }
+        Self::start_with(sink, link)
+    }
+
+    fn start_with<W: Write + Send + 'static>(sink: W, link: Arc<LinkState>) -> Self {
         let (queue, jobs) = mpsc::sync_channel::<Job>(1);
         let mut sink = BufWriter::new(sink);
         // 起動に失敗すると、受け側が捨てられて、送るときに書き込みの失敗になる。

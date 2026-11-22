@@ -394,6 +394,18 @@ impl Observer {
             .collect()
     }
 
+    /// sent_after_start と同じく先頭の起動の確認を除いた、命令の本体（添字で読む試験用）。
+    pub(crate) fn sent_json_after_start(&self) -> Vec<serde_json::Value> {
+        let mut sent = self.sent_json();
+        if sent
+            .first()
+            .is_some_and(|value| value["type"] == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
     /// 先頭の起動の確認（外の停止が重なった子だけが受ける StartIdentityCapability、J-24）を除く。
     /// 負荷のもとでだけ入るので、命令の列を比べる試験が使う。
     pub(crate) fn sent_after_start(&self) -> Vec<String> {
