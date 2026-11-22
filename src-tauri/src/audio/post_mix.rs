@@ -5,6 +5,24 @@ use crate::vst_host::presets::PresetPlugin;
 use std::path::{Path, PathBuf};
 
 type Saved = crate::bundle::mixing_configuration::PostMixPreset;
+/// 子の切断を処理した後に、次の `snapshot` が出す説明（今の EOF の説明と同じ）。
+const CHILD_ENDED: &str = "配信VSTのEngineが終了しました";
+#[cfg(test)]
+type ExecCheck = Box<dyn Fn(&AudioHost) + Send>;
+/// 応答は受け取ったが、その直後に接続が閉じていた。状態を前提にした続きの操作を中断させる。
+#[derive(Debug)]
+struct LostAfterReply;
+impl std::fmt::Display for LostAfterReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(ENGINE_EXITED)
+    }
+}
+impl std::error::Error for LostAfterReply {}
+/// 子への命令の結果と、その命令の前後で接続が閉じていたか。
+struct Exec {
+    result: Result<IpcResponse>,
+    lost: bool,
+}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SavedPlugin {
@@ -284,6 +302,20 @@ pub(super) struct State {
     restored: bool,
     running: bool,
     error: Option<String>,
+    /// 子の切断を処理して外した後も残す説明。次の `snapshot` が今の EOF の説明として出す。
+    disconnected: Option<String>,
+    /// 切断を処理して子を外した回数。公開の操作が、失敗の原因が切断かを見分ける。
+    detached: u64,
+    /// 直前に `rack()` が読んだ接続。次の `command()` が、その接続へだけ送る。
+    rack_pin: Option<Arc<LinkState>>,
+    #[cfg(test)]
+    after_exec_check: Option<ExecCheck>,
+    /// 試験の継ぎ目：`command()` の送る前と、`snapshot` の最後の確認の前に呼ばれる。
+    #[cfg(test)]
+    between_ops: Option<ExecCheck>,
+    /// 試験の継ぎ目：次に `child()` が作る子として使う、台本つきの子（先頭から）。
+    #[cfg(test)]
+    test_children: Vec<Box<AudioHost>>,
 }
 impl State {
     pub(super) fn new(root: &Path, retired: Arc<engine_life::Store>) -> Self {
@@ -304,6 +336,15 @@ impl State {
             restored: false,
             running: false,
             error,
+            disconnected: None,
+            detached: 0,
+            rack_pin: None,
+            #[cfg(test)]
+            after_exec_check: None,
+            #[cfg(test)]
+            between_ops: None,
+            #[cfg(test)]
+            test_children: Vec::new(),
         }
     }
     pub(super) fn enabled(&self) -> bool {
@@ -314,7 +355,7 @@ impl State {
             && self
                 .child
                 .as_ref()
-                .is_some_and(|c| c.child.is_some() && c.reader_active.load(Ordering::Acquire))
+                .is_some_and(|c| c.child.is_some() && !c.connection_lost())
     }
     /// 破損や未復元の有効な保存設定を、無効扱いで黙って通さない。
     pub(super) fn validate_start(&self) -> Result<()> {
@@ -335,7 +376,7 @@ impl State {
                 && self
                     .child
                     .as_ref()
-                    .is_some_and(|c| c.reader_active.load(Ordering::Acquire) && c.child.is_some()))
+                    .is_some_and(|c| !c.connection_lost() && c.child.is_some()))
     }
     fn unchanged(&self) -> Result<()> {
         anyhow::ensure!(
@@ -383,39 +424,164 @@ impl State {
     pub(super) fn file_checkpoint(&self) -> (PathBuf, Option<Vec<u8>>) {
         (self.path.clone(), self.raw.clone())
     }
+    /// 子へ命令を1つ送る唯一の口。送る前に閉じていた場合も、送っている間に閉じた場合も、
+    /// 同じ後始末（子を回収して外し、`restored`・`running` を下ろす）をして、切断の有無を返す。
+    fn exec_child(&mut self, cmd: IpcCommand) -> Exec {
+        let Some(child) = self.child.as_mut() else {
+            return Exec {
+                result: Err(anyhow!(replies::CLOSED)),
+                lost: false,
+            };
+        };
+        if child.connection_lost() {
+            self.detach_closed_child();
+            return Exec {
+                result: Err(anyhow!(replies::CLOSED)),
+                lost: true,
+            };
+        }
+        let result = child.execute_running_command(cmd);
+        // 終了を確かめられなかった理由（C2）は、外した後も `snapshot` まで引き継ぐ。
+        let unconfirmed = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<engine_life::EngineUnconfirmed>())
+            .map(ToString::to_string);
+        let lost = self.settle_with(unconfirmed);
+        #[cfg(test)]
+        if let (Some(hook), Some(child)) = (&self.after_exec_check, &self.child) {
+            hook(child);
+        }
+        Exec { result, lost }
+    }
+    /// 子の接続が閉じていれば後始末をして `true`。状態を書き戻す直前にも呼ぶ。
+    fn settle(&mut self) -> bool {
+        self.settle_with(None)
+    }
+    fn settle_with(&mut self, reason: Option<String>) -> bool {
+        let closed = self.child.as_ref().is_some_and(|c| c.connection_lost());
+        if closed {
+            self.detach_with(reason);
+        }
+        closed
+    }
+    fn detach_closed_child(&mut self) {
+        self.detach_with(None);
+    }
+    /// 閉じた接続の子を外す。EOF は reader が回収しないので、ここで回収する。`enabled` と保存した設定は残す。
+    /// 理由は、終了を確かめられなかったときの文言（なければ、今の EOF の説明）。
+    fn detach_with(&mut self, reason: Option<String>) {
+        if let Some(mut child) = self.child.take() {
+            child.release_engine();
+        }
+        self.restored = false;
+        self.running = false;
+        self.disconnected = Some(reason.unwrap_or_else(|| CHILD_ENDED.into()));
+        self.detached += 1;
+    }
+    /// 復元は同じ接続に固定する。接続が外れていたら、別の子を起動せず、その場で中断する。
+    fn restore_one(&mut self, plugin: &PresetPlugin) -> Result<()> {
+        let child = self
+            .child
+            .as_mut()
+            .ok_or_else(|| anyhow!(replies::CLOSED))?;
+        child.next_restore_operation = child
+            .next_restore_operation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("復元操作IDの上限です"))?;
+        let id = child.next_restore_operation;
+        let generation = child.engine_generation;
+        let exec = self.exec_child(IpcCommand::RestorePlugin {
+            request: crate::ipc::RestorePluginRequest {
+                path: plugin.path.clone(),
+                state: plugin.state.clone(),
+                bypassed: !plugin.enabled,
+                muted: plugin.muted,
+                gain: plugin.gain,
+                class_id: plugin.class_id.clone(),
+            },
+            operation_id: id,
+            expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8000),
+        });
+        let response = exec.result?;
+        // EOF で外した子の世代は変わらない。外れていても、子の応答（Error）をそのまま返す。
+        let current = self
+            .child
+            .as_ref()
+            .map_or(generation, |child| child.engine_generation);
+        validate_restore_response(generation, current, id, response)?;
+        // 成功の応答の直後に閉じていたら、続きを別の子で行わない（今の EOF の失敗と同じ文言）。
+        // 状態を書き戻す前の最後の確認。
+        let lost = self.settle() || exec.lost;
+        anyhow::ensure!(!lost, ENGINE_EXITED);
+        Ok(())
+    }
     fn child(&mut self) -> Result<&mut AudioHost> {
         if self.child.is_none() {
+            self.disconnected = None;
             let root = self
                 .path
                 .parent()
                 .ok_or_else(|| anyhow!("保存先がありません"))?
                 .join("post-mix-runtime");
-            self.child = Some(Box::new(super::control::post_mix_child_host(
+            let built = Box::new(super::control::post_mix_child_host(
                 root,
                 self.retired.clone(),
-            )));
+            ));
+            #[cfg(test)]
+            let built = if self.test_children.is_empty() {
+                built
+            } else {
+                self.test_children.remove(0)
+            };
+            self.child = Some(built);
         }
         let child = self.child.as_mut().expect("子Hostは作成済み");
         child.ensure_engine_running()?;
         Ok(child)
     }
     fn rack(&mut self) -> Result<Vec<RackPlugin>> {
-        let Some(child) = self.child.as_mut() else {
+        let Some(child) = self.child.as_ref() else {
             return Ok(Vec::new());
         };
-        anyhow::ensure!(
-            child.reader_active.load(Ordering::Acquire) && child.child.is_some(),
-            "配信VSTのEngineが終了しました。保存設定を選び直してください"
-        );
-        match child.execute_running_command(IpcCommand::GetPluginRack)? {
-            IpcResponse::PluginRack { plugins, .. } => Ok(plugins),
+        if child.connection_lost() || child.child.is_none() {
+            self.detach_closed_child();
+            anyhow::bail!("配信VSTのEngineが終了しました。保存設定を選び直してください");
+        }
+        let pin = child.link.clone();
+        let exec = self.exec_child(IpcCommand::GetPluginRack);
+        // 応答の後に閉じていたら、切断済みのラックを返さない（続きを別の子で行わせない）。
+        let lost = self.settle() || exec.lost;
+        match exec.result? {
+            IpcResponse::PluginRack { .. } if lost => Err(LostAfterReply.into()),
+            IpcResponse::PluginRack { plugins, .. } => {
+                // 次の変更は、このラックを読んだ接続へだけ送る。
+                self.rack_pin = Some(pin);
+                Ok(plugins)
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("配信VSTの状態を確認できません")),
         }
     }
     fn command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
-        let child = self.child()?;
-        match child.execute_running_command(cmd)? {
+        // ラックを読んだ接続があれば、その接続へだけ送る。起動を伴わず、子がいない・接続が違う・
+        // 閉じていれば失敗にする（空の子を起動して、既存のラックを欠いたまま変更しない）。
+        if let Some(pin) = self.rack_pin.take() {
+            #[cfg(test)]
+            if let (Some(hook), Some(child)) = (&self.between_ops, &self.child) {
+                hook(child);
+            }
+            match self.child.as_ref() {
+                Some(child) if Arc::ptr_eq(&child.link, &pin) && !child.connection_lost() => {}
+                _ => {
+                    self.settle();
+                    anyhow::bail!(ENGINE_EXITED);
+                }
+            }
+        } else {
+            self.child()?;
+        }
+        match self.exec_child(cmd).result? {
             IpcResponse::Error(e) => Err(anyhow!(e)),
             other => Ok(other),
         }
@@ -435,7 +601,7 @@ impl State {
                 format!(
                     "{}:{}:{}",
                     c.engine_generation,
-                    c.reader_active.load(Ordering::Acquire),
+                    !c.connection_lost(),
                     c.child.is_some()
                 )
             })
@@ -462,13 +628,13 @@ impl State {
         let witness = self.bundle_revision();
         let child = self
             .child
-            .as_mut()
+            .as_ref()
             .ok_or_else(|| anyhow!("配信VSTの状態を確認できません"))?;
-        anyhow::ensure!(
-            child.reader_active.load(Ordering::Acquire) && child.child.is_some(),
-            "配信VSTの接続が終了しました"
-        );
-        let (before, revision) = match child.execute_running_command(IpcCommand::GetPluginRack)? {
+        if child.connection_lost() || child.child.is_none() {
+            self.detach_closed_child();
+            anyhow::bail!("配信VSTの接続が終了しました");
+        }
+        let (before, revision) = match self.exec_child(IpcCommand::GetPluginRack).result? {
             IpcResponse::PluginRack {
                 plugins, revision, ..
             } => (plugins, revision),
@@ -477,8 +643,9 @@ impl State {
         };
         let mut plugins = Vec::new();
         for p in &before {
-            let data = match child
-                .execute_running_command(IpcCommand::GetPluginState { id: p.id.clone() })?
+            let data = match self
+                .exec_child(IpcCommand::GetPluginState { id: p.id.clone() })
+                .result?
             {
                 IpcResponse::PluginState { state, .. } => state,
                 IpcResponse::Error(error) => anyhow::bail!(error),
@@ -496,14 +663,17 @@ impl State {
                 class_id: p.class_id.clone(),
             });
         }
-        let (after, end_revision) =
-            match child.execute_running_command(IpcCommand::GetPluginRack)? {
-                IpcResponse::PluginRack {
-                    plugins, revision, ..
-                } => (plugins, revision),
-                IpcResponse::Error(error) => anyhow::bail!(error),
-                _ => anyhow::bail!("配信VSTの一覧を確認できません"),
-            };
+        let (after, end_revision) = match self.exec_child(IpcCommand::GetPluginRack).result? {
+            IpcResponse::PluginRack {
+                plugins, revision, ..
+            } => (plugins, revision),
+            IpcResponse::Error(error) => anyhow::bail!(error),
+            _ => anyhow::bail!("配信VSTの一覧を確認できません"),
+        };
+        // 最後の IPC の後で、接続を確定する（接続が閉じていれば切断。保存へ進ませない）。
+        if self.settle() {
+            anyhow::bail!(ENGINE_EXITED);
+        }
         anyhow::ensure!(
             revision == end_revision
                 && before
@@ -580,26 +750,7 @@ impl State {
         let result: Result<()> = (|| {
             self.child()?;
             for plugin in &preset.plugins {
-                let child = self.child()?;
-                child.next_restore_operation = child
-                    .next_restore_operation
-                    .checked_add(1)
-                    .ok_or_else(|| anyhow!("復元操作IDの上限です"))?;
-                let id = child.next_restore_operation;
-                let generation = child.engine_generation;
-                let response = child.execute_running_command(IpcCommand::RestorePlugin {
-                    request: crate::ipc::RestorePluginRequest {
-                        path: plugin.path.clone(),
-                        state: plugin.state.clone(),
-                        bypassed: !plugin.enabled,
-                        muted: plugin.muted,
-                        gain: plugin.gain,
-                        class_id: plugin.class_id.clone(),
-                    },
-                    operation_id: id,
-                    expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8000),
-                })?;
-                validate_restore_response(generation, child.engine_generation, id, response)?;
+                self.restore_one(plugin)?;
             }
             self.restored = true;
             self.enabled = preset.enabled;
@@ -652,25 +803,35 @@ impl State {
         self.running = false;
     }
     #[cfg(test)]
+    pub(super) fn has_child_for_test(&self) -> bool {
+        self.child.is_some()
+    }
+    #[cfg(test)]
     pub(super) fn adopt_child_for_test(&mut self, child: AudioHost) {
         self.child = Some(Box::new(child));
     }
     pub(super) fn stop(&mut self) -> Result<()> {
-        if let Some(child) = &mut self.child {
-            if child.reader_active.load(Ordering::Acquire) {
-                match child.execute_running_command(IpcCommand::Stop) {
-                    Ok(IpcResponse::Success) => {}
-                    _ => {
+        let connection = self
+            .child
+            .as_ref()
+            .map(|child| (!child.connection_lost(), child.child.is_some()));
+        match connection {
+            Some((true, _)) => {
+                if !matches!(
+                    self.exec_child(IpcCommand::Stop).result,
+                    Ok(IpcResponse::Success)
+                ) {
+                    if let Some(child) = self.child.as_mut() {
                         child.kill_engine();
-                        self.restored = false;
-                        self.running = false;
-                        anyhow::bail!("配信VSTを停止できませんでした");
                     }
+                    self.restored = false;
+                    self.running = false;
+                    anyhow::bail!("配信VSTを停止できませんでした");
                 }
-            } else if child.child.is_some() {
-                child.kill_engine();
-                self.restored = false;
             }
+            // 閉じていた。EOF は reader が回収しないので、ここで回収して外す。
+            Some((false, _)) => self.detach_closed_child(),
+            None => {}
         }
         self.running = false;
         Ok(())
@@ -680,6 +841,8 @@ impl State {
         rate: u32,
         descriptor: crate::audio_engine::post_mix::Descriptor,
     ) -> Result<()> {
+        // 閉じていた子は、確かめる前に後始末する（外れたら、保存設定の復元を求める）。
+        self.settle();
         anyhow::ensure!(
             self.enabled && self.ready(),
             "配信VSTの保存設定を明示的に復元してください"
@@ -694,50 +857,82 @@ impl State {
             anyhow::ensure!(self.ready(), "配信VSTを選び直してください");
         }
         // readyを確認後は新しい子を生成しない。
-        let child = self
-            .child
-            .as_mut()
-            .ok_or_else(|| anyhow!("配信VSTを選び直してください"))?;
-        match child.execute_running_command(IpcCommand::PostMixStart { descriptor }) {
-            Ok(IpcResponse::Success) => {
+        anyhow::ensure!(self.child.is_some(), "配信VSTを選び直してください");
+        let exec = self.exec_child(IpcCommand::PostMixStart { descriptor });
+        match exec.result {
+            // 成功の直後に閉じていたら、動いている状態に戻さない。
+            Ok(IpcResponse::Success) if !exec.lost => {
                 self.running = true;
+                // 書き戻す直前にも確かめる。
+                if self.settle() {
+                    anyhow::bail!("配信VSTを開始できません");
+                }
                 Ok(())
             }
             Ok(IpcResponse::Error(e)) => {
-                child.kill_engine();
+                if let Some(child) = self.child.as_mut() {
+                    child.kill_engine();
+                }
                 self.restored = false;
                 Err(anyhow!(e))
             }
             _ => {
-                child.kill_engine();
+                if let Some(child) = self.child.as_mut() {
+                    child.kill_engine();
+                }
                 self.restored = false;
                 Err(anyhow!("配信VSTを開始できません"))
             }
         }
     }
     fn snapshot(&mut self) -> Result<Snapshot> {
-        if let Some(child) = self.child.as_mut() {
-            if child.reader_active.load(Ordering::Acquire) {
-                match child.execute_running_command(IpcCommand::ProcessingState)? {
-                    IpcResponse::ProcessingState { present, failed } => {
+        match self.child.as_ref().map(|child| !child.connection_lost()) {
+            Some(true) => {
+                let exec = self.exec_child(IpcCommand::ProcessingState);
+                match exec.result? {
+                    IpcResponse::ProcessingState { present, failed } if !exec.lost => {
                         if self.running && (!present || failed) {
                             self.error = Some("配信VSTの処理が停止しました".into());
                         }
                         self.running = present;
+                        // 書き戻す直前にも確かめる。
+                        self.settle();
                     }
+                    IpcResponse::ProcessingState { .. } => {}
                     IpcResponse::Error(error) => return Err(anyhow!(error)),
                     _ => anyhow::bail!("配信VSTの状態を確認できません"),
                 }
-            } else {
+            }
+            Some(false) => {
                 self.restored = false;
                 self.running = false;
-                self.error = Some("配信VSTのEngineが終了しました".into());
+                self.error = Some(CHILD_ENDED.into());
                 if let Some(mut child) = self.child.take() {
                     child.release_engine();
                 }
             }
+            None => {}
         }
-        let plugins = self.rack()?;
+        // 最後の IPC の後で、接続と終了の理由を確定してから返す。
+        let rack = self.rack();
+        #[cfg(test)]
+        if let (Some(hook), Some(child)) = (&self.between_ops, &self.child) {
+            hook(child);
+        }
+        let closed_after_rack = self.settle();
+        // 別の操作が切断を処理して外した子の説明を、今の EOF の説明として出す。
+        if let Some(note) = self.disconnected.take() {
+            self.restored = false;
+            self.running = false;
+            self.error = Some(note);
+        }
+        // 応答の後に閉じていたときは、切断済みのラックを返さず、理由つきの成功として返す。
+        let plugins = match rack {
+            Err(error) if error.downcast_ref::<LostAfterReply>().is_some() => Vec::new(),
+            // 最後の確認で切断を見たら、読んだラックも載せない。
+            Ok(_) if closed_after_rack => Vec::new(),
+            other => other?,
+        };
         Ok(Snapshot {
             epoch: self.epoch.clone(),
             revision: self.revision.to_string(),
@@ -764,7 +959,7 @@ impl State {
 }
 impl AudioHost {
     fn post_mix_stopped(&mut self) -> Result<()> {
-        if self.reader_active.load(Ordering::Acquire) {
+        if !self.connection_lost() {
             match self.execute_running_command(IpcCommand::ProcessingState)? {
                 IpcResponse::ProcessingState { present: false, .. } => {}
                 IpcResponse::ProcessingState { .. } => {
@@ -812,11 +1007,15 @@ impl AudioHost {
             );
         }
         let state = &mut self.post_mix;
+        state.rack_pin = None;
+        let detached_before = state.detached;
         let result: Result<()> = (|| {
             match request {
                 Request::Snapshot => return Ok(()),
                 Request::Enable { enabled, .. } => {
                     if enabled {
+                        // 切断を見つけたら、後処理（子を外す・`enabled` を残す）を通してから失敗にする。
+                        state.settle();
                         anyhow::ensure!(
                             state.restored && state.ready_for_enable(),
                             "配信VSTを明示的に復元してください"
@@ -830,33 +1029,7 @@ impl AudioHost {
                     state.child()?;
                     if let Some(saved) = &saved {
                         for plugin in &saved.plugins {
-                            let child = state.child()?;
-                            child.next_restore_operation = child
-                                .next_restore_operation
-                                .checked_add(1)
-                                .ok_or_else(|| anyhow!("復元操作IDの上限です"))?;
-                            let id = child.next_restore_operation;
-                            let generation = child.engine_generation;
-                            let response =
-                                child.execute_running_command(IpcCommand::RestorePlugin {
-                                    request: crate::ipc::RestorePluginRequest {
-                                        path: plugin.path.clone(),
-                                        state: plugin.state.clone(),
-                                        bypassed: !plugin.enabled,
-                                        muted: plugin.muted,
-                                        gain: plugin.gain,
-                                        class_id: plugin.class_id.clone(),
-                                    },
-                                    operation_id: id,
-                                    expires_at_ms: crate::audio_engine::restoration::unix_ms()
-                                        .saturating_add(8000),
-                                })?;
-                            validate_restore_response(
-                                generation,
-                                child.engine_generation,
-                                id,
-                                response,
-                            )?;
+                            state.restore_one(plugin)?;
                         }
                     }
                     state.restored = true;
@@ -976,13 +1149,20 @@ impl AudioHost {
             Ok(())
         })();
         if let Err(error) = result {
-            state.discard_child();
-            state.error =
-                Some("配信VSTの操作を完了できませんでした。保存状態を読み直してください".into());
+            // 切断（C2・EOF）のときは、子の回収と `restored`・`running` の更新が済んでいる。
+            // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
+            // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（`enabled` を残す）を通す。
+            state.settle();
+            if state.detached == detached_before {
+                state.discard_child();
+                state.error = Some(
+                    "配信VSTの操作を完了できませんでした。保存状態を読み直してください".into(),
+                );
+            }
             return Err(error);
         }
         let mut snapshot = state.snapshot()?;
-        if self.reader_active.load(Ordering::Acquire) && self.post_mix.enabled() {
+        if !self.connection_lost() && self.post_mix.enabled() {
             snapshot.apply_status(self.execute_running_command(IpcCommand::PostMixStatus)?);
         }
         Ok(snapshot)
@@ -994,7 +1174,7 @@ impl State {
             && self
                 .child
                 .as_ref()
-                .is_some_and(|c| c.reader_active.load(Ordering::Acquire) && c.child.is_some())
+                .is_some_and(|c| !c.connection_lost() && c.child.is_some())
     }
     fn require_id(&mut self, id: &str) -> Result<()> {
         anyhow::ensure!(

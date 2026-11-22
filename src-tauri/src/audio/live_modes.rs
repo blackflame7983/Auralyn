@@ -139,17 +139,13 @@ impl AudioHost {
                 }
             }
             self.live_modes.intents = model::Intents::default();
-            if let Some(handle) = self.emitter.lock().unwrap().as_ref() {
-                let _ = handle.emit("live-modes-invalidated", ());
-            }
+            self.notice("live-modes-invalidated", ());
         }
         let was_armed = self.live_modes.armed;
         self.live_modes.armed = false;
         self.live_modes.bound = None;
         if was_armed {
-            if let Some(handle) = self.emitter.lock().unwrap().as_ref() {
-                let _ = handle.emit("live-modes-invalidated", ());
-            }
+            self.notice("live-modes-invalidated", ());
         }
     }
     pub(super) fn guard_live_command(&self, command: &IpcCommand) -> Result<()> {
@@ -162,7 +158,7 @@ impl AudioHost {
     }
     pub fn preflight_live_changes(&mut self) -> Result<()> {
         self.guard_mode_vst()?;
-        if !self.reader_active.load(Ordering::Acquire) {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         anyhow::ensure!(!self.live_modes.armed, model::PROTECTED);
@@ -265,7 +261,7 @@ impl AudioHost {
         Ok(token)
     }
     pub fn end_live_changes(&mut self, token: String) -> Result<()> {
-        if !self.reader_active.load(Ordering::Acquire) {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         anyhow::ensure!(
@@ -304,7 +300,7 @@ impl AudioHost {
             return self.recover_mode_vst(expected_epoch);
         }
         self.guard_mode_vst()?;
-        if !self.reader_active.load(Ordering::Acquire) {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         self.guard_live_reservation(&request)?;
@@ -337,11 +333,10 @@ impl AudioHost {
         if matches!(request, Request::Arm { .. }) {
             self.bind_live_protection()?;
         }
-        if matches!(request, Request::Disarm { .. }) && !self.reader_active.load(Ordering::Acquire)
-        {
+        if matches!(request, Request::Disarm { .. }) && self.connection_lost() {
             return self.live_modes(Request::Snapshot);
         }
-        if matches!(request, Request::Snapshot) && !self.reader_active.load(Ordering::Acquire) {
+        if matches!(request, Request::Snapshot) && self.connection_lost() {
             return Ok(Snapshot {
                 epoch: self.live_modes.epoch.clone(),
                 running: false,
@@ -604,7 +599,7 @@ mod tests {
         let next = host.begin_live_changes().unwrap();
         assert!(host.end_live_changes(token).is_err());
         host.end_live_changes(next).unwrap();
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         host.live_modes.armed = true;
         assert!(host.begin_live_changes().is_err());
     }
@@ -646,7 +641,7 @@ mod tests {
     #[test]
     fn live_modes_protected_profile_preflight_happens_before_backup_or_any_ipc() {
         let mut host = AudioHost::new(std::env::temp_dir().join("auralyn-live-readonly-preflight"));
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         host.live_modes.armed = true;
         let profile: crate::vst_host::presets::Preset =
             serde_json::from_str(r#"{"name":"profile","plugins":[]}"#).unwrap();

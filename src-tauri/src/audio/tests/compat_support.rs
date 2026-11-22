@@ -21,6 +21,10 @@ pub(crate) enum Step {
     Exit,
     /// 孫のプロセス（長く待つだけの試験の実行ファイル）を作り、そのプロセス番号を指定のファイルへ書く。
     SpawnGrandchild(PathBuf),
+    /// 標準入力を読むのをやめて、止まる（親の書き込みが詰まる）。標準出力は開いたまま。
+    StallStdin,
+    /// 標準出力だけを閉じる。子は生きていて、標準入力を読み続ける。
+    CloseStdout,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -163,6 +167,19 @@ fn run_scripted_child(script: Script) {
                     }
                 }
                 Step::Exit => std::process::exit(0),
+                Step::StallStdin => loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                },
+                Step::CloseStdout => {
+                    use std::os::windows::io::AsRawHandle;
+                    let handle = std::io::stdout().as_raw_handle();
+                    // SAFETY: 標準出力のハンドルはこの子の持ち物で、以後は書かない。
+                    let _ = unsafe {
+                        windows::Win32::Foundation::CloseHandle(windows::Win32::Foundation::HANDLE(
+                            handle,
+                        ))
+                    };
+                }
                 Step::SpawnGrandchild(pid_file) => {
                     grandchildren.push(spawn_idle_process());
                     let pid = grandchildren.last().unwrap().id();
@@ -377,6 +394,31 @@ impl Observer {
             .collect()
     }
 
+    /// sent_after_start と同じく先頭の起動の確認を除いた、命令の本体（添字で読む試験用）。
+    pub(crate) fn sent_json_after_start(&self) -> Vec<serde_json::Value> {
+        let mut sent = self.sent_json();
+        if sent
+            .first()
+            .is_some_and(|value| value["type"] == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
+    /// 先頭の起動の確認（外の停止が重なった子だけが受ける StartIdentityCapability、J-24）を除く。
+    /// 負荷のもとでだけ入るので、命令の列を比べる試験が使う。
+    pub(crate) fn sent_after_start(&self) -> Vec<String> {
+        let mut sent = self.sent();
+        if sent
+            .first()
+            .is_some_and(|name| name == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
     pub(crate) fn sent_json(&self) -> Vec<serde_json::Value> {
         std::fs::read_to_string(&self.log)
             .unwrap_or_default()
@@ -403,7 +445,7 @@ impl Observer {
     }
 }
 
-/// 試験から本番保護を有効にする。`reader_active`が真のあいだだけ保たれる（偽だと次の検査で解除される）。
+/// 試験から本番保護を有効にする。接続が開いているあいだだけ保たれる（閉じていると次の検査で解除される）。
 pub(crate) fn arm_live_protection(host: &mut AudioHost) {
     host.live_modes.armed = true;
 }
@@ -435,10 +477,19 @@ pub(crate) fn scripted_parts(
         error: None,
         transaction: None,
     }));
-    let mut steps: BTreeMap<String, Vec<Step>> = BTreeMap::from([(
-        "ConfigureLiveModes".to_owned(),
-        vec![response_line(&live_modes)],
-    )]);
+    // `StartIdentityCapability` は、外の停止が重なった子の起動の確認（J-24）が使う。実際の子と同じ応答を返す。
+    let mut steps: BTreeMap<String, Vec<Step>> = BTreeMap::from([
+        (
+            "ConfigureLiveModes".to_owned(),
+            vec![response_line(&live_modes)],
+        ),
+        (
+            "StartIdentityCapability".to_owned(),
+            vec![response_line(&IpcResponse::StartIdentityCapability {
+                version: 2,
+            })],
+        ),
+    ]);
     steps.extend(
         overrides
             .into_iter()
@@ -451,7 +502,7 @@ pub(crate) fn scripted_parts(
     let recorder = Arc::new(emit::Recorder::default());
     let spawned = Arc::new(AtomicU64::new(0));
     let fail_spawn = Arc::new(AtomicBool::new(false));
-    *host.emitter.lock().unwrap() = Some(recorder.emitter());
+    host.emitter.set(recorder.emitter());
     let probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>> = Arc::default();
     let (counter, fail, seen) = (spawned.clone(), fail_spawn.clone(), probes.clone());
     host.test_engine_launcher = Some(Arc::new(move || {

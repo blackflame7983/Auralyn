@@ -98,7 +98,7 @@ impl AudioHost {
         if !self.is_global_muted
             || self.bundle_output_override.is_some()
             || self.bundle_change_generation.is_none()
-            || !self.reader_active.load(Ordering::Acquire)
+            || self.connection_lost()
         {
             return Err("分離出力の復帰前に全体ミュートし、差分を取り直してください".into());
         }
@@ -170,10 +170,10 @@ mod tests {
             AudioHost::new(std::env::temp_dir().join("auralyn-output-initialize-fixture"));
         let mut child = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "while($null -ne ($line=[Console]::In.ReadLine())){[Console]::Out.WriteLine($line)}"])
             .creation_flags(0x0800_0000).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().unwrap();
-        host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+        host.attach_stdin_for_test(child.stdin.take().unwrap());
         let stdout = child.stdout.take().unwrap();
         host.child = Some(child);
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         let slot = host.pending_reply_tx.clone();
         let worker = std::thread::spawn(move || {
             let mut commands = Vec::new();
@@ -237,10 +237,10 @@ mod tests {
         let mut host = AudioHost::new(std::env::temp_dir().join("auralyn-output-stop-fixture"));
         let mut child = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "while($null -ne ($line=[Console]::In.ReadLine())){[Console]::Out.WriteLine($line)}"])
             .creation_flags(0x0800_0000).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().unwrap();
-        host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+        host.attach_stdin_for_test(child.stdin.take().unwrap());
         let stdout = child.stdout.take().unwrap();
         host.child = Some(child);
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         host.is_global_muted = true;
         host.bundle_change_generation = Some(host.engine_generation);
         host.bundle_interrupt = Some(host.conditions.restore_interrupt());
@@ -278,7 +278,7 @@ mod tests {
             });
         assert_eq!(result.unwrap_err(), "owned restore failure");
         assert!(host.child.is_none());
-        assert!(!host.reader_active.load(Ordering::Acquire));
+        assert!(!host.link.is_open());
         assert!(host.bundle_output_override.is_none());
         assert!(worker.join().unwrap());
     }

@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn stop_intent_invalidates_an_owned_restore_before_waiting_for_the_host_mutex() {
         let mut host = AudioHost::new(std::env::temp_dir().join("auralyn-mode-interrupt-fixture"));
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         let old = host.conditions.control_snapshot().unwrap();
         let conditions = host.conditions.clone();
         let error = host

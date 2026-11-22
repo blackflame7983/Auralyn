@@ -71,7 +71,10 @@ fn k1_k13_start_success_emits_conditions_then_started_before_the_result_returns(
         started.1,
         serde_json::json!({"sample_rate": 48000, "buffer_size": 512, "stream_generation": "1:1"})
     );
-    assert_eq!(f.sent(), ["ConfigureLiveModes", "SetGlobalMute", "Start"]);
+    assert_eq!(
+        f.sent_after_start(),
+        ["ConfigureLiveModes", "SetGlobalMute", "Start"]
+    );
 }
 
 // K13：開始の失敗。`Stopped`が先に出て、そのあとにエラーの応答。
@@ -218,10 +221,10 @@ fn k7_start_with_initial_controls_sends_no_global_mute_and_carries_controls_in_s
     )
     .unwrap();
     assert_eq!(
-        f.sent(),
+        f.sent_after_start(),
         ["ConfigureLiveModes", "StartIdentityCapability", "Start"]
     );
-    let start = &f.sent_json()[2]["payload"];
+    let start = &f.sent_json_after_start()[2]["payload"];
     assert_eq!(start["initial_controls"]["inputGain"], 0.5);
     assert_eq!(start["initial_controls"]["outputGain"], 0.25);
     assert_eq!(start["initial_controls"]["muted"], false);
@@ -263,7 +266,7 @@ fn k9b_prepare_update_with_a_child_stops_then_retires_the_connection() {
         [CC, CC, "audio-stopped", CC, "live-modes-invalidated", CC],
         "Stop の通知のあと、kill_engine が live-modes-invalidated と CC を出す"
     );
-    assert_eq!(&f.sent()[3..], ["AutoGain", "Stop"]);
+    assert_eq!(&f.sent_after_start()[3..], ["AutoGain", "Stop"]);
 }
 
 // K9c：主の`Stop`が失敗。先へ進まず、`maintenance`にならず、主の状態は変わらない。
@@ -280,7 +283,7 @@ fn k9c_prepare_update_stops_here_when_the_primary_stop_fails() {
     let error = host.prepare_update().unwrap_err().to_string();
     assert_eq!(error, "stop refused");
     assert!(!host.maintenance);
-    assert!(host.child.is_some() && host.reader_active.load(Ordering::Acquire));
+    assert!(host.child.is_some() && host.link.is_open());
     assert!(!names(&f).iter().any(|name| name == "audio-stopped"));
 }
 

@@ -13,7 +13,7 @@ F1b-0a を2つの PR に分ける。
 
 | PR | 入れるもの | 応答の期限の挙動 |
 |---|---|---|
-| **F1b-0a-1**（この設計の 1〜5章） | 接続の土台（writer のスレッド・`LinkState`・`ReplySlot` の閉じた状態・回収の分離）、C2、EOF と待ちの窓、通知をロックの外で出す、N2 の一部、C5（主）、配信ミックスの失敗の共通の境界 | **変えない**（今の10秒・期限の後に待ちが残る、のまま） |
+| **F1b-0a-1**（この設計の 1〜5章） | 接続の土台（writer のスレッド・`LinkState`・`ReplySlot` の閉じた状態・回収の分離）、C2、EOF と待ちの窓、通知をロックの外で出す、N2 の一部、C5（主）、配信ミックスの失敗の共通の境界 | **変えない**（今の10秒・期限の後に待ちが残る、のまま。10秒は stdin の書き込みの完了の後から数え、書き込みには別に最大5秒、切り離しの後の終了の確認に最大2秒） |
 | **F1b-0a-2**（6章） | C3（応答の期限で切り離す）、命令の種類ごとの期限（J-23）、モード VST の期限をそろえる、`ProbeLoopback` の上限 | 変える |
 
 F1b-0a-1 は応答の期限に触れないので、互換の試験の期待値を変えずに入れられる。
@@ -44,7 +44,7 @@ ReplyOutcome = Response { resp, received_at: Instant } | Eof
 
 - `begin()`：`Idle` なら `Waiting` にして受け側を返す。`Waiting` なら今の「前の音声操作の応答待ちです」。`Closed` なら今の「送る前の確認で失敗」と同じエラー。
 - `deliver_response(resp)`：`Waiting` のときだけ `Idle` にして送る（`received_at` は reader が打つ）。それ以外は今と同じくログだけ。
-- `close() -> Option<Sender>`：一度だけ `Closed` にし、保留中の送り側を取り出して返す。
+- `close() -> Option<Sender>`：一度だけ `Closed` にし、保留中の送り側を取り出して返す。EOF では、`LinkState` を閉じる競りに勝った reader が、閉じた後に呼ぶ（2.4）。`Closed` は「`LinkState` はすでに閉じている」ときだけ現れる。
 - **F1b-0a-1 では、応答の期限の後の扱いを今のまま保つ**：期限の後も `Waiting` のまま残り、遅い応答が来れば `Idle` に戻る（今の `replies.rs:50-62` の試験の契約）。C3 で変えるのは F1b-0a-2。
 
 ### 2.2 接続の終了の理由：`LinkState`（`AtomicU8`、一度だけの CAS）
@@ -69,20 +69,25 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 
 これで、reader が `emit` の途中で止まっていても、子の回収は止まらない。
 
+**例外（J-24 の起動の確認の間）：** 外の停止が重なった子の起動の確認の中で、stdin の書き込みが失敗した場合と期限切れになった場合の切り離しも、起動を試みた**主の子だけ**を回収する（`kill_engine` ではなく、配信ミックスの子とオケの入力の選択を残す経路）。確認の外の C2・書き込みの失敗は、今までどおり `kill_engine`。
+
 ### 2.4 EOF の順（reader）
 
-1. `ReplySlot::close()` で送り側を取り出す（以後の `begin` を締め出す。窓がなくなる）。
-2. `LinkState::close(Eof)` を試す。
-   - **負けたら**：取り出した送り側をその場で捨てる（待ち手は `Disconnected` で解放）。通知は出さない。
-   - **勝ったら**：原因を採取 → 今の EOF の通知（`audio-conditions-changed` → `audio-engine-exited` → `audio-error`）→ 取り出した送り側へ `Eof` を送る。通知が待ち手の解放より先（今の `compat_tests.rs:106` の順）。
-3. 呼び出し側は `Eof` を今の `Response::Error("Engine Crashed/Exited")` と同じ結果に写す（文言を変えない）。
+1. `LinkState::close(Eof)` を試す。「閉じた」は `LinkState` だけで決まる（10章）。
+2. **勝ったら**：`ReplySlot::close()` で送り側を取り出す（以後の `begin` を締め出す）→ 原因を採取 → 今の EOF の通知（`audio-conditions-changed` → `audio-engine-exited` → `audio-error`）→ 取り出した送り側へ `Eof` を送る。通知が待ち手の解放より先（今の `compat_tests.rs:106` の順）。
+3. **負けたら**：`ReplySlot::close()` で送り側を取り出して捨てる（待ち手は `Disconnected` で解放）。通知は出さない。
+4. 呼び出し側は `Eof` を今の `Response::Error("Engine Crashed/Exited")` と同じ結果に写す（文言を変えない）。
+
+- `LinkState` が閉じてから `ReplySlot` が閉じるまでの間に `begin()` が通っても、writer は閉じた接続では書き込みを始めず `Aborted` を返し、呼び出し側は EOF の結果を待つ。reader の `close()` がその送り側を取り出して `Eof` を送るので、待ち手は取り残されない。
+- Host が接続を閉じるのは、意図した終了（`kill_engine` など）と書き込みの期限切れ・失敗（C2）だけ。EOF の競りに勝つ前に、Host が別の理由で閉じて EOF の通知を消すことはない。
+- **例外（前からの挙動）：** `ensure_engine_running` が `try_wait` で子の終了を確かめた場合は、reader の EOF より先に Host が `LinkState` を閉じる（意図した終了として）。そのとき EOF の通知は出さない（今の `reader_active` を偽にする挙動と同じ）。
 
 ### 2.5 書き込みの失敗と早い応答
 
 - 呼び出し側は `WriteDone` を必ず5秒待つ。結果は3つ：`Ok`、`Err`（実際の書き込みの失敗）、`Aborted`（`LinkState` が閉じていたので、writer が書き込みを始めなかった）。
 - **優先の順：実際の書き込みの失敗・書き込みの期限切れ ＞ EOF。** `Err` か5秒を過ぎたら、応答の受け側を読まずに 2.3 へ進む（今と同じ）。`Aborted` は書き込みの失敗に**しない**：EOF で閉じたことによる中止なので、応答の受け側で EOF の結果（2.4。`Engine Crashed/Exited`）を待ち、今の EOF と同じ通知と結果にする。
 - 待ち手の受け側が `Disconnected` で終わった場合（2.4 で CAS に負けた EOF が送り側を捨てた）は、呼び出し側で今の EOF と同じ `Engine Crashed/Exited` に写す（今の「Timeout or disconnect…」やモード VST の「VST切替の応答が不明です」に化けさせない）。
-- `WriteDone(Ok)` の後に応答を待つ。期限（今の10秒）は writer が返す `flushed_at` から数える。
+- `WriteDone(Ok)` の後に応答を待つ。期限（今の10秒）は writer が返す `flushed_at`（stdin の書き込みの完了）から数える。書き込みの完了には別に最大5秒を待つ（C2）。期限を過ぎて接続を切り離すときの子の終了の確認は、さらに最大2秒（F1a-1 の `retire_child`）。したがって通常の命令が戻るまでの上限は、書き込みの5秒、応答の10秒、終了の確認の2秒を、それぞれの段で別に数える（合算した1つの期限ではない）。
 
 ## 3. 部品
 
@@ -123,6 +128,7 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 - 呼び出し側（`rack`・`command`・`capture_bundle`・`restore_bundle`・`start`・`stop`・`snapshot`・`RestoreSaved`）は、その結果を**今の戻り値・文言に写す**（例：`stop` の拒否は `配信VSTを停止できませんでした`、`start` の拒否は子が返した文言、事前の EOF の後の `snapshot` はエラーの情報つきの成功。今の W2 の試験 `post_mix_life_tests.rs:57` が固定）。`exec_child` の失敗をそのまま上へ返さない。
 - 主の `post_attached` と転送：**今の配信ミックスの EOF と同じ扱いにし、解除する位置を変えない**。主が稼働中は `PostMixClear` が拒否されるため、失敗の直後には送らない。今のコードで転送を実際に外す位置（主の停止の経路、`cancel_prepared_post_start`、次の `prepare_post_mix_start`。配信 VST が有効で未復元のときは `validate_start` が先に失敗することを含む）は、実装の最初に洗い出して T10 で固定する。
 - 配信ミックスの子の切り離しでは、主の `audio-error` を出さない。
+- 配信ミックスの切断の判定は、モード VST と同じく「`LinkState` が閉じていれば喪失」の1本とする（reader は先に `LinkState` を閉じるので、`ReplySlot` を別に見る必要がない。10章）。公開の操作の共通のエラー処理は、入口で子の接続が閉じていれば、`discard_child()` ではなく切断の後処理（`enabled` を残す）を通す。対象は、事前の確認、`exec_child` の後の確認、`snapshot` の最後の確認、ラックを読んだ接続への送信、公開の操作の失敗の処理（`enabled` を残す）。
 - 復元の途中で外側が `enabled` を下ろす場合（`discard_child`）や、配信セット全体の巻き戻しで `State` を作り直す場合は、今の挙動のまま（`exec_child` の整合の後に、外側の処理がさらに上書きする）。
 
 ### 3.6 C5（主だけ）
@@ -133,7 +139,7 @@ Host が接続を捨てる経路（書き込みの失敗・C2・C5・`kill_engin
 
 ## 4. 変えないことと、意図して変える互換（F1b-0a-1）
 
-**変えない：** 旧の通知の名前・中身・順（K 群、K13、EOF の通知が待ち手の解放より先）。書き込みの失敗の経路と文言。応答の期限（10秒）とその後の待ちの残り方（`timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request` もそのまま通る）。ホストのロックの持ち方、K2・K10・K11。`engine_generation` の更新点。モード VST の期限。
+**変えない：** 旧の通知の名前・中身・順（K 群、K13、EOF の通知が待ち手の解放より先。**既知の例外：** 11章の指摘3）。書き込みの失敗の経路と文言。応答の期限（10秒）とその後の待ちの残り方（`timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request` もそのまま通る）。ホストのロックの持ち方、K2・K10・K11。`engine_generation` の更新点。モード VST の期限。
 
 **意図して変える（J-17 の範囲）：** C2（書き込み5秒で切り離し）、C5（主）。モード VST で接続を失ったときの文言（今の「音声エンジンの世代または接続が変わりました」→ `Engine Crashed/Exited`。3.2）。
 
@@ -202,3 +208,17 @@ F1b-0a-1 のマージの後に、別の設計の節として詳細を書く。�
 2. モード VST：取消・世代違いを除いた後、書き込みの結果と送ってからの10秒を先に判定する。EOF を確かめた後は、次の IPC やロールバックへ進まないことを T11 に含める。接続の喪失のときの文言が、今の「音声エンジンの世代または接続が変わりました」から `Engine Crashed/Exited` に変わることを、4章（意図して変える互換）に書く。
 3. 配信ミックス：`exec_child` の切断の有無に加え、`running`・`restored` を反映した結果を返す直前にも、同じ接続の状態を確かめ、閉じていれば後始末する。T10 で、確認と状態の更新の間に EOF を挟み、次の `snapshot` に終了の理由が残ることを確かめる。
 4. J-23（F1b-0a-2）：`SetGlobalMute`・`SetOutputGain` は B に移した（6章）。
+
+## 10. 実装のレビューでの変更（EOF の閉じる順）
+
+- 第2〜6回の独立レビューで、reader が「ReplySlot を閉じる → LinkState を閉じる」の二段で閉じる間の窓が、競合を繰り返し生んだ。各所で ReplySlot を別に見て窓を塞ぐと、別の競合（回収・巻き戻しの誤作動）が生まれた。
+- そこで 2.4 を変え、先に LinkState を閉じる順にした。「閉じた」を LinkState の1本で決め、窓の間に通った `begin()` は `Aborted` と reader の `Eof` で解放する。
+- 切断の判定は LinkState に戻し、配信ミックスの公開の操作の失敗の処理は、接続が閉じていれば必ず切断の後処理を通す。
+
+## 11. 既知の狭い競合（F1b-0b の合格の条件）
+
+判断の基準：F1b-0a-1 で直すのは、次の4つのどれかに当たるものだけとする。(1) 退行、(2) 保存したデータの破損・喪失、(3) 固まる・回復できない、(4) main では起きない誤った情報が残り続ける。第7回のレビューの指摘1〜3は、どれにも当たらない（利用者から見た結果は、今の通常の失敗と同じか、順序だけの違い）ので、F1b-0b の合格の条件へ送る。
+
+1. **指摘1：未送信の VST の操作が終了の原因に載る。** 窓：reader が EOF の CAS に勝った直後（`take_exit()` の前）に止まっている間に、同期のコマンドが `ReplySlot::begin()` を通り、`vst_operations.begin(&cmd)` で操作を記録する。writer は閉じた接続なので `Aborted` を返して送らないが、reader が再開して `take_exit()` を呼ぶと、子が受け取っていない `LoadPlugin` などが `audio-engine-exited` の原因に載る。結果：画面はその VST をクラッシュした VST として記録しうるが、原因が `unknown` でも読み込み中の VST を記録する今の画面の扱い（`src/lib/audioEngineExit.ts`）と、利用者に見える結果はほぼ同じ。再現の継ぎ目：`Reader::pause`（CAS の直後で止める）と、実際のコマンドの入口・writer。F1b-0b の試験（仮）：`an_unsent_vst_operation_is_not_named_as_the_exit_cause`。
+2. **指摘2：`settle()` の直後の EOF で `enabled` が落ちる。** 窓：配信ミックスの公開の操作の共通のエラー処理で、`settle()` が開いた接続を読んだ直後に reader が EOF の CAS に勝つ（`detached` は更新されていない）。この経路は、切断ではない理由で操作がすでに失敗している場合だけ通る。結果：切断として数えられず、`discard_child()` で `enabled` が落ちる（今の通常の失敗と同じ扱い）。再現の継ぎ目：`after_exec_check`。F1b-0b の試験（仮）：`an_eof_right_after_settle_keeps_enabled`。
+3. **指摘3：K13 で、通知の前に `Disconnected` になる。** 窓：reader が EOF の CAS に勝った後、`ReplySlot::close()` で送り側を取り出す前に、Host の別の回収の経路が入る。Host は CAS に負けても `ReplySlot::close()` で送り側を取り出して捨てるので、待ち手は reader の通知の3件より前に `Disconnected` になりうる（通知の3件を出す権利は reader に残る）。結果：待ち手は `Disconnected` でも `Eof` と同じ `Engine Crashed/Exited` を受け取る。違うのは通知と結果の順だけ。4章の「EOF の通知が待ち手の解放より先」の、既知の例外。根治には `LinkState` と `ReplySlot` を1つの遷移にする必要がある（F1b-0b の本体）。再現の継ぎ目：`Reader::pause`（CAS の直後で止める）と、Host の回収の経路。F1b-0b の試験（仮）：`a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter`。

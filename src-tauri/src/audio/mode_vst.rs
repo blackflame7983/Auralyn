@@ -38,6 +38,9 @@ impl Journal {
     }
 }
 
+#[cfg(test)]
+type DiskHook = Box<dyn Fn(&AudioHost) + Send>;
+
 pub(super) struct State {
     path: PathBuf,
     journal: Option<Journal>,
@@ -47,9 +50,10 @@ pub(super) struct State {
     cached: Option<model::Snapshot>,
     orphan_disk: Option<DiskJob>,
     #[cfg(test)]
-    writer_serialized: Arc<AtomicBool>,
+    writer_probe: writer::Probe,
+    /// 試験の継ぎ目：ディスクの結果を取り込んだ直後に呼ばれる。
     #[cfg(test)]
-    writer_finished: Arc<AtomicBool>,
+    after_disk_adopted: Option<DiskHook>,
 }
 impl State {
     pub(super) fn new(root: &std::path::Path) -> Self {
@@ -86,9 +90,9 @@ impl State {
             cached: None,
             orphan_disk: None,
             #[cfg(test)]
-            writer_serialized: Arc::new(AtomicBool::new(false)),
+            writer_probe: writer::Probe::default(),
             #[cfg(test)]
-            writer_finished: Arc::new(AtomicBool::new(false)),
+            after_disk_adopted: None,
         }
     }
     pub(super) fn blocked(&self) -> bool {
@@ -181,10 +185,9 @@ enum Step {
     Finish,
     ReleasePoll,
 }
-type WriteResult = (BufWriter<ChildStdin>, std::io::Result<()>);
 struct Pending {
-    receiver: Receiver<IpcResponse>,
-    writer: Option<Receiver<WriteResult>>,
+    receiver: Receiver<ReplyOutcome>,
+    writer: Option<Receiver<writer::WriteDone>>,
     sent: Instant,
 }
 #[derive(Clone, Copy)]
@@ -271,7 +274,7 @@ impl AudioHost {
                 transaction: None,
             });
         snapshot.epoch = self.live_modes.epoch.clone();
-        snapshot.running &= self.reader_active.load(Ordering::Acquire);
+        snapshot.running &= !self.connection_lost();
         snapshot.definitions = self.live_modes.definitions.clone();
         snapshot.transaction = self.mode_vst.status.clone();
         snapshot
@@ -350,7 +353,7 @@ impl AudioHost {
             .config(mode)
             .map_err(|e| anyhow!(e))?;
         anyhow::ensure!(
-            self.reader_active.load(Ordering::Acquire) && self.child.is_some(),
+            !self.connection_lost() && self.child.is_some(),
             "音声を開始してからVST付きモードを切り替えてください"
         );
         let id = format!(
@@ -479,11 +482,7 @@ impl AudioHost {
             error,
             recovery_available: recovery,
         });
-        if let Ok(emitter) = self.emitter.lock() {
-            if let Some(handle) = emitter.as_ref() {
-                let _ = handle.emit("live-modes-invalidated", ());
-            }
-        }
+        self.notice("live-modes-invalidated", ());
     }
     pub(super) fn cancel_mode_vst(&mut self, message: &str) {
         let canceled = self.mode_vst.transaction.is_some();
@@ -499,11 +498,7 @@ impl AudioHost {
         if self.mode_vst.blocked {
             self.is_global_muted = true;
             self.require_explicit_start();
-            if let Ok(emitter) = self.emitter.lock() {
-                if let Some(handle) = emitter.as_ref() {
-                    let _ = handle.emit("global-mute-changed", true);
-                }
-            }
+            self.notice("global-mute-changed", true);
             self.update_mode_status(
                 "recovery_required",
                 Some(message.into()),
@@ -516,19 +511,16 @@ impl AudioHost {
             self.emit_mode_rack_event("session-rack-change-cancelled");
         }
     }
-    fn emit_mode_rack_event(&self, event: &str) {
-        if let Ok(emitter) = self.emitter.lock() {
-            if let Some(handle) = emitter.as_ref() {
-                let _ = handle.emit(event, ());
-            }
-        }
+    fn emit_mode_rack_event(&self, event: &'static str) {
+        self.notice(event, ());
     }
     pub(crate) fn poll_mode_vst(&mut self) {
         self.poll_orphan_mode_disk();
+        // 取消済みなら、ここに取引はない。
         let Some(mut tx) = self.mode_vst.transaction.take() else {
             return;
         };
-        if tx.generation != self.engine_generation || !self.reader_active.load(Ordering::Acquire) {
+        if tx.generation != self.engine_generation {
             self.fail_mode_transaction(
                 tx,
                 "音声エンジンの世代または接続が変わりました".into(),
@@ -541,45 +533,78 @@ impl AudioHost {
             return;
         }
         if let Some(mut pending) = tx.pending.take() {
-            if let Some(writer) = pending.writer.take() {
-                match writer.try_recv() {
-                    Ok((stdin, Ok(()))) => self.stdin = Some(stdin),
-                    Ok((_, Err(error))) => {
-                        self.pending_reply_tx.cancel();
+            // 同じ世代の保留中のIPCは、書き込みの結果と期限を、接続の切断の検出より先に判定する。
+            if let Some(done) = pending.writer.take() {
+                match done.try_recv() {
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Ok,
+                        ..
+                    }) => {}
+                    // 閉じていたので書かなかった。EOFの結果を、同じ期限の中で待つ。
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Aborted,
+                        ..
+                    }) => {}
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Err(error),
+                        ..
+                    }) => {
                         self.fail_mode_transaction(tx, error.to_string(), true);
                         return;
                     }
                     Err(TryRecvError::Empty)
                         if pending.sent.elapsed() < Duration::from_secs(10) =>
                     {
-                        pending.writer = Some(writer);
+                        pending.writer = Some(done);
                         tx.pending = Some(pending);
                         self.mode_vst.transaction = Some(tx);
                         return;
                     }
-                    _ => {
+                    Err(_) => {
                         self.fail_mode_transaction(tx, "VST切替の送信結果が不明です".into(), true);
                         return;
                     }
                 }
             }
             match pending.receiver.try_recv() {
-                Ok(response) => {
-                    if let Err(error) = self.mode_step_response(&mut tx, response) {
-                        self.fail_mode_transaction(tx, error.to_string(), false);
+                Ok(ReplyOutcome::Response(response)) => {
+                    // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
+                    if self.connection_lost() {
+                        self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
                         return;
                     }
+                    if let Err(error) = self.mode_step_response(&mut tx, *response) {
+                        // 拒否の応答の直後に閉じていた場合も、ロールバックの対象にしない。
+                        let lost = self.connection_lost();
+                        let message = if lost {
+                            ENGINE_EXITED.into()
+                        } else {
+                            error.to_string()
+                        };
+                        self.fail_mode_transaction(tx, message, lost);
+                        return;
+                    }
+                }
+                // 切断した接続は、復旧の経路へ進む（ロールバックを始めない）。
+                Ok(ReplyOutcome::Eof) | Err(TryRecvError::Disconnected) => {
+                    self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+                    return;
                 }
                 Err(TryRecvError::Empty) if pending.sent.elapsed() < Duration::from_secs(10) => {
                     tx.pending = Some(pending);
                     self.mode_vst.transaction = Some(tx);
                     return;
                 }
-                _ => {
+                Err(TryRecvError::Empty) => {
                     self.fail_mode_transaction(tx, "VST切替の応答が不明です".into(), true);
                     return;
                 }
             }
+        }
+        // 接続を失っていたら、次のIPCもロールバックも始めない（応答を採る時点・次の段へ進む時点のどちらでも。接続の開閉は `LinkState` だけで決まる）。
+        if self.connection_lost() {
+            self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+            return;
         }
         match self.poll_mode_disk(&mut tx) {
             Ok(true) => {
@@ -591,6 +616,11 @@ impl AudioHost {
                 self.fail_mode_transaction(tx, error.to_string(), false);
                 return;
             }
+        }
+        // 次の段へ進む直前と、完了を確定して復旧の記録を消す直前にも、同じ判定を使う。
+        if self.connection_lost() {
+            self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+            return;
         }
         // 完了後のjournal消去まで失敗を隠さない。
         if matches!(tx.step, Step::ReleasePoll)
@@ -638,36 +668,44 @@ impl AudioHost {
                 self.mode_vst.transaction = Some(tx);
                 self.update_mode_status(phase, None, false);
             }
-            Err(error) => self.fail_mode_transaction(tx, error.to_string(), true),
+            Err(error) => {
+                // EOF の処理の途中（応答の待ちが閉じ、接続の開閉はこれから）に当たっても、文言を切断にそろえる。
+                let lost = self.connection_lost();
+                let message = if lost {
+                    ENGINE_EXITED.into()
+                } else {
+                    error.to_string()
+                };
+                self.fail_mode_transaction(tx, message, true);
+            }
         }
+    }
+    /// 接続を失ったか。「閉じた」は LinkState だけで決まる（reader は先に LinkState を閉じる）。
+    pub(super) fn connection_lost(&self) -> bool {
+        !self.link.is_open()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
         let receiver = self.pending_reply_tx.begin()?;
-        let Some(mut stdin) = self.stdin.take() else {
+        let Some(writer) = self.writer.as_ref() else {
             self.pending_reply_tx.cancel();
             return Err(anyhow!("音声エンジン入力がありません"));
         };
-        let (sender, writer) = std::sync::mpsc::channel();
+        // 大きいVST stateのJSON化・pipe書込みもHost mutexの外（writerのスレッド）で行う。
+        let payload = writer::Payload::Command(Box::new(command));
         #[cfg(test)]
-        let serialized = self.mode_vst.writer_serialized.clone();
-        #[cfg(test)]
-        let finished = self.mode_vst.writer_finished.clone();
-        // 大きいVST stateのJSON化・pipe書込みもHost mutexの外で行う。
-        thread::spawn(move || {
-            let result = serde_json::to_string(&command)
-                .map_err(std::io::Error::other)
-                .and_then(|json| {
-                    #[cfg(test)]
-                    serialized.store(true, Ordering::Release);
-                    writeln!(stdin, "{json}").and_then(|()| stdin.flush())
-                });
-            #[cfg(test)]
-            finished.store(true, Ordering::Release);
-            let _ = sender.send((stdin, result));
-        });
+        let submitted = writer.submit_probed(payload, self.mode_vst.writer_probe.clone());
+        #[cfg(not(test))]
+        let submitted = writer.submit(payload);
+        let done = match submitted {
+            Ok(done) => done,
+            Err(error) => {
+                self.pending_reply_tx.cancel();
+                return Err(error.into());
+            }
+        };
         Ok(Pending {
             receiver,
-            writer: Some(writer),
+            writer: Some(done),
             sent: Instant::now(),
         })
     }
@@ -720,6 +758,10 @@ impl AudioHost {
                             tx.step = Step::Finish;
                         }
                     }
+                }
+                #[cfg(test)]
+                if let Some(hook) = &self.mode_vst.after_disk_adopted {
+                    hook(&*self);
                 }
                 Ok(false)
             }
@@ -792,20 +834,25 @@ impl AudioHost {
         }
         let journaled = tx.journaled;
         self.mode_vst.transaction = Some(tx);
-        self.cancel_mode_vst(&error);
-        if journaled || ambiguous {
-            self.kill_engine();
-        } else if !self.mode_vst.blocked {
-            // 取得・原本保存の確定失敗ではラックは未変更。cancelで消した旧IDを
-            // 実ラックから再照合し、稼働中のVSTを画面から操作できる状態へ戻す。
-            self.emit_mode_rack_event("session-rack-invalidated");
-        }
+        // 通知は、接続を捨てて子を回収した後に出す。
+        self.hold_notices(|host| {
+            host.cancel_mode_vst(&error);
+            if journaled || ambiguous {
+                host.kill_engine();
+            } else if !host.mode_vst.blocked {
+                // 取得・原本保存の確定失敗ではラックは未変更。cancelで消した旧IDを
+                // 実ラックから再照合し、稼働中のVSTを画面から操作できる状態へ戻す。
+                host.emit_mode_rack_event("session-rack-invalidated");
+            }
+        });
     }
     fn complete_mode_transaction(&mut self, mut tx: Transaction) {
         if let Err(error) = std::fs::remove_file(&self.mode_vst.path) {
             self.mode_vst.transaction = Some(tx);
-            self.cancel_mode_vst(&format!("復旧記録を消去できません: {error}"));
-            self.kill_engine();
+            self.hold_notices(|host| {
+                host.cancel_mode_vst(&format!("復旧記録を消去できません: {error}"));
+                host.kill_engine();
+            });
             return;
         }
         self.mode_vst.blocked = false;
@@ -843,12 +890,8 @@ impl AudioHost {
         drop(tx.condition_pending.take());
         self.conditions.lifecycle(!tx.recovery);
         self.notify_conditions_changed();
-        if let Ok(emitter) = self.emitter.lock() {
-            if let Some(handle) = emitter.as_ref() {
-                for event in ["live-modes-invalidated", "session-rack-invalidated"] {
-                    let _ = handle.emit(event, ());
-                }
-            }
+        for event in ["live-modes-invalidated", "session-rack-invalidated"] {
+            self.notice(event, ());
         }
     }
 }
@@ -1549,22 +1592,22 @@ mod tests {
         assert!(await_disk(&mut host, &mut transaction).is_err());
         assert!(!transaction.journaled);
         assert!(matches!(transaction.step, Step::SourceMonitor));
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         let generation = host.engine_generation;
         host.fail_mode_transaction(transaction, "journal write failed".into(), false);
         assert_eq!(host.engine_generation, generation);
-        assert!(host.reader_active.load(Ordering::Acquire));
+        assert!(host.link.is_open());
         assert!(!host.mode_vst.blocked());
         assert_eq!(host.mode_vst.status.as_ref().unwrap().phase, "failed");
     }
     #[test]
     fn known_source_state_failure_keeps_the_original_engine_available() {
         let mut host = host();
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         let generation = host.engine_generation;
         host.fail_mode_transaction(tx(Step::SourceState(0)), "state unavailable".into(), false);
         assert_eq!(host.engine_generation, generation);
-        assert!(host.reader_active.load(Ordering::Acquire));
+        assert!(host.link.is_open());
         assert!(!host.mode_vst.blocked());
         assert_eq!(host.mode_vst.status.as_ref().unwrap().phase, "failed");
     }
@@ -2082,7 +2125,7 @@ mod tests {
     fn blocked_writer_keeps_early_reply_pending_and_stop_remains_immediate() {
         for emergency in [false, true] {
             let mut host = host();
-            host.reader_active.store(true, Ordering::Release);
+            host.set_link_for_test(true);
             host.conditions.lifecycle(true);
             let witness = host.conditions.snapshot().unwrap();
             let mut transaction = tx(Step::Restore(0));
@@ -2116,7 +2159,7 @@ mod tests {
             }
             assert!(started.elapsed() < Duration::from_millis(500));
             assert!(host.mode_vst.blocked() && host.is_global_muted);
-            assert!(!host.mode_vst.busy() && host.stdin.is_none());
+            assert!(!host.mode_vst.busy() && host.writer.is_none());
             assert!(host.child.is_none());
         }
     }
@@ -2140,9 +2183,9 @@ mod tests {
                 .stderr(Stdio::null())
                 .spawn()
                 .expect("create isolated nonreading child");
-            host.stdin = Some(BufWriter::new(child.stdin.take().expect("child stdin")));
+            host.attach_stdin_for_test(child.stdin.take().expect("child stdin"));
             host.child = Some(child);
-            host.reader_active.store(true, Ordering::Release);
+            host.set_link_for_test(true);
             let mut transaction = tx(Step::Restore(0));
             transaction.journaled = true;
             transaction.pending = Some(
@@ -2162,13 +2205,18 @@ mod tests {
             );
             host.mode_vst.transaction = Some(transaction);
             let started = Instant::now();
-            while !host.mode_vst.writer_serialized.load(Ordering::Acquire) {
+            while !host
+                .mode_vst
+                .writer_probe
+                .serialized
+                .load(Ordering::Acquire)
+            {
                 assert!(started.elapsed() < Duration::from_secs(5));
                 thread::sleep(Duration::from_millis(1));
             }
             thread::sleep(Duration::from_millis(50));
             assert!(
-                !host.mode_vst.writer_finished.load(Ordering::Acquire),
+                !host.mode_vst.writer_probe.finished.load(Ordering::Acquire),
                 "payload must exceed the unread anonymous pipe capacity"
             );
             host.poll_mode_vst();
@@ -2180,14 +2228,418 @@ mod tests {
                 host.stop().unwrap();
             }
             assert!(started.elapsed() < Duration::from_secs(2));
-            assert!(host.child.is_none() && host.stdin.is_none());
+            assert!(host.child.is_none() && host.writer.is_none());
             assert!(host.mode_vst.blocked() && host.is_global_muted);
             let started = Instant::now();
-            while !host.mode_vst.writer_finished.load(Ordering::Acquire) {
+            while !host.mode_vst.writer_probe.finished.load(Ordering::Acquire) {
                 assert!(started.elapsed() < Duration::from_secs(2));
                 thread::sleep(Duration::from_millis(1));
             }
             assert!(!host.mode_vst.busy());
         }
+    }
+
+    // ---- F1b-0a-1（T6・T11）。接続の土台と、書き込み・応答・切断の判定の順 ----
+    use crate::audio::compat_support as script;
+    use crate::audio::link::CloseCause;
+    use crate::audio::writer::{sinks, WriteDone, WriteResult};
+
+    fn open_link_host() -> AudioHost {
+        let mut host = host();
+        host.set_link_for_test(true);
+        host
+    }
+
+    fn journaled(step: Step) -> Transaction {
+        let mut transaction = tx(step);
+        transaction.journaled = true;
+        transaction.silence_ready = true;
+        transaction
+    }
+
+    fn write_done(result: WriteResult) -> Receiver<WriteDone> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(WriteDone {
+                result,
+                flushed_at: Instant::now(),
+            })
+            .unwrap();
+        receiver
+    }
+
+    fn pending(host: &AudioHost, writer: Option<WriteResult>) -> Pending {
+        Pending {
+            receiver: host.pending_reply_tx.begin().unwrap(),
+            writer: writer.map(write_done),
+            sent: Instant::now(),
+        }
+    }
+
+    fn failed_with_recovery(host: &AudioHost, message: &str) {
+        assert!(!host.mode_vst.busy(), "取引は終わっている");
+        assert!(host.mode_vst.blocked(), "ロールバックせず、復旧の経路へ");
+        assert!(host.is_global_muted);
+        let status = host.mode_vst.status.as_ref().unwrap();
+        assert_eq!(status.phase, "recovery_required");
+        assert_eq!(status.error.as_deref(), Some(message));
+    }
+
+    // T11：切断した接続の応答（EOF・競りに負けた EOF の切断）は、`Engine Crashed/Exited` に写して復旧の経路へ進む。
+    #[test]
+    fn t11_an_eof_or_disconnected_reply_maps_to_engine_exited_and_never_rolls_back() {
+        for eof in [true, false] {
+            let mut host = open_link_host();
+            let mut transaction = journaled(Step::Restore(0));
+            transaction.pending = Some(pending(&host, None));
+            host.mode_vst.transaction = Some(transaction);
+            let sender = host.pending_reply_tx.close().unwrap();
+            if eof {
+                sender.send(ReplyOutcome::Eof).unwrap();
+            } else {
+                drop(sender);
+            }
+            host.link.close(CloseCause::Eof);
+            host.poll_mode_vst();
+            failed_with_recovery(&host, "Engine Crashed/Exited");
+            assert!(host.child.is_none());
+        }
+    }
+
+    // T11：書き込みの結果を、切断の検出より先に判定する。EOF が先に見えていても、書き込みの失敗が結果になる。
+    #[test]
+    fn t11_a_write_failure_is_judged_before_the_connection_loss() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(
+            &host,
+            Some(WriteResult::Err(std::io::Error::other("pipe broke"))),
+        ));
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "pipe broke");
+    }
+
+    // T11：`Aborted`（閉じていたので書かなかった）は書き込みの失敗にせず、EOF の結果を同じ10秒の中で待つ。
+    #[test]
+    fn t11_aborted_waits_for_the_eof_result_within_the_same_ten_seconds() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Aborted)));
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        assert!(host.mode_vst.busy(), "EOF の結果が届くまで待つ");
+        let waiting = host.mode_vst.transaction.as_ref().unwrap();
+        assert!(waiting.pending.as_ref().unwrap().writer.is_none());
+        let sender = host.pending_reply_tx.close().unwrap();
+        sender.send(ReplyOutcome::Eof).unwrap();
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        // 期限を過ぎても EOF の結果が来なければ、今の「応答が不明」で復旧の経路へ。
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        let mut expired = pending(&host, Some(WriteResult::Aborted));
+        expired.sent = Instant::now() - Duration::from_secs(11);
+        transaction.pending = Some(expired);
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+    }
+
+    // T11：EOF を確かめた後は、次のIPCもロールバックも始めない（保留がない段でも）。
+    #[test]
+    fn t11_a_lost_connection_between_steps_starts_no_next_ipc() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(recording.text().is_empty(), "何も書いていない");
+    }
+
+    // T11：世代が違う取引は、今の文言で復旧の経路へ。
+    #[test]
+    fn t11_a_stale_generation_is_not_adopted() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.generation = host.engine_generation + 1;
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        host.pending_reply_tx.deliver(IpcResponse::Success);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "音声エンジンの世代または接続が変わりました");
+    }
+
+    // T11：モード VST の書き込みは、通常の命令と同じ writer の列を通る。
+    #[test]
+    fn t11_mode_commands_and_normal_commands_share_the_same_writer() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        let mut mode = host.send_mode_command(IpcCommand::GetPluginRack).unwrap();
+        let written = mode.writer.take().unwrap();
+        assert!(matches!(
+            written.recv_timeout(Duration::from_secs(5)).unwrap().result,
+            WriteResult::Ok
+        ));
+        host.pending_reply_tx.deliver(IpcResponse::Success);
+        let outcome = mode.receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(outcome, ReplyOutcome::Response(r) if matches!(*r, IpcResponse::Success)));
+        let slot = host.pending_reply_tx.clone();
+        let observed = recording.clone();
+        let reply = std::thread::spawn(move || {
+            let started = Instant::now();
+            while observed.text().lines().count() < 2 {
+                assert!(started.elapsed() < Duration::from_secs(5));
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            slot.deliver(IpcResponse::Success)
+        });
+        host.execute_running_command_inner(IpcCommand::GetDevices)
+            .unwrap();
+        assert!(reply.join().unwrap());
+        let types: Vec<String> = recording
+            .text()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<serde_json::Value>(line).unwrap()["type"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(types, ["GetPluginRack", "GetDevices"]);
+    }
+
+    /// 子の reader が、列の途中の `emit` で止まっている主の `AudioHost`。
+    fn host_with_reader_stuck_mid_chain() -> (AudioHost, script::Observer) {
+        let (mut host, observer) = script::scripted_parts([(
+            "GetDevices",
+            vec![
+                script::response_line(&IpcResponse::Devices(Vec::new())),
+                script::event_line(&script::started_event(1)),
+            ],
+        )]);
+        host.ensure_engine_running().unwrap();
+        observer.recorder.clear();
+        observer.recorder.block_after(1);
+        host.execute_running_command(IpcCommand::GetDevices)
+            .unwrap();
+        let started = Instant::now();
+        while observer.recorder.blocked_emits() != 1 {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        (host, observer)
+    }
+
+    /// 止まっていない場合に、同じ経路が出す通知の順（reader の列は先に済ませておく）。
+    fn notices_without_a_stuck_reader(path: fn(&mut AudioHost)) -> Vec<String> {
+        let (mut host, observer) = script::scripted_parts([(
+            "GetDevices",
+            vec![
+                script::response_line(&IpcResponse::Devices(Vec::new())),
+                script::event_line(&script::started_event(1)),
+            ],
+        )]);
+        host.ensure_engine_running().unwrap();
+        host.execute_running_command(IpcCommand::GetDevices)
+            .unwrap();
+        let started = Instant::now();
+        while !observer
+            .recorder
+            .names()
+            .iter()
+            .any(|name| name == "audio-started")
+        {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        observer.recorder.clear();
+        path(&mut host);
+        let names = observer.recorder.names();
+        drop(host);
+        let _ = std::fs::remove_dir_all(&observer.dir);
+        names
+    }
+
+    type SwitchPath = fn(&mut AudioHost);
+    fn stop_while_blocked(host: &mut AudioHost) {
+        host.mode_vst.transaction = Some(journaled(Step::Restore(0)));
+        host.stop().unwrap();
+    }
+
+    fn mute_while_blocked(host: &mut AudioHost) {
+        host.mode_vst.transaction = Some(journaled(Step::Restore(0)));
+        host.set_global_mute(true).unwrap();
+    }
+
+    fn fail_the_transaction(host: &mut AudioHost) {
+        host.fail_mode_transaction(journaled(Step::Restore(0)), "boom".into(), true);
+    }
+
+    // T6：reader が `emit`（列の途中）で止まったままでも、停止・緊急のミュート・モードの切り替えの失敗で、
+    // 子は終わる。保持した通知は、回収の後に今の順で出る。
+    #[test]
+    fn t6_stop_mute_and_a_failed_switch_retire_the_child_while_the_reader_is_stuck_in_emit() {
+        let paths: [(&str, SwitchPath); 3] = [
+            ("stop", stop_while_blocked),
+            ("mute", mute_while_blocked),
+            ("switch failure", fail_the_transaction),
+        ];
+        for (label, path) in paths {
+            let expected_tail = notices_without_a_stuck_reader(path);
+            assert!(
+                expected_tail
+                    .iter()
+                    .any(|name| name == "audio-conditions-changed"),
+                "{label}: 回収の後に出す通知がある"
+            );
+            let (mut host, observer) = host_with_reader_stuck_mid_chain();
+            assert_eq!(observer.recorder.names(), ["audio-conditions-changed"]);
+            let runner = std::thread::spawn(move || {
+                path(&mut host);
+                host
+            });
+            assert!(
+                observer.probe(0).wait_exit(5000),
+                "{label}: 通知が止まったままでも、子が回収される"
+            );
+            assert!(
+                !runner.is_finished(),
+                "{label}: 保持した通知は、回収の後に出す（通知の列を待つ）"
+            );
+            observer.recorder.release();
+            let host = runner.join().unwrap();
+            assert!(host.child.is_none(), "{label}");
+            let mut expected = vec![
+                "audio-conditions-changed".to_owned(),
+                "audio-started".to_owned(),
+            ];
+            expected.extend(expected_tail);
+            assert_eq!(observer.recorder.names(), expected, "{label}");
+            drop(host);
+            let _ = std::fs::remove_dir_all(&observer.dir);
+        }
+    }
+
+    // P1 2：拒否の応答がそろった tick の時点で接続が閉じていたら、巻き戻しを予約せず、復旧の経路へ進む。
+    #[test]
+    fn p1_a_rejected_reply_followed_by_eof_goes_to_recovery_not_rollback() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host
+            .pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into())));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(
+            host.mode_vst.transaction.is_none(),
+            "巻き戻しの取引は残らない"
+        );
+        // 接続が開いたままなら、今のとおり巻き戻しを始める。
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        host.pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into()));
+        host.poll_mode_vst();
+        let rolled = host.mode_vst.transaction.as_ref().unwrap();
+        assert!(rolled.rollback);
+    }
+
+    // P1 2（今の順）：reader は先に `LinkState` を閉じ、`ReplySlot` はその後に閉じる。その間（接続は閉じ、
+    // 待ちはまだ開いている）に当たっても、次の送信へ進まず、文言は切断にそろえる。
+    #[test]
+    fn p1_a_closed_link_with_an_open_slot_reports_engine_exited_without_sending() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(recording.text().is_empty());
+    }
+
+    // P2（新しい順）：`LinkState` が閉じた後に拒否の応答を処理しても、接続の喪失として扱い、巻き戻しを
+    // 予約しない。
+    #[test]
+    fn p2_a_rejected_reply_after_the_link_close_is_a_loss() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host
+            .pending_reply_tx
+            .deliver(IpcResponse::Error("load refused".into())));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.transaction.is_none());
+    }
+
+    // P2（新しい順）：reader が `LinkState` を閉じた直後で止まっている間に、`Commit` の書き込みの完了を
+    // 受け取っても、完了を確定せず、復旧の記録を消さない。
+    #[test]
+    fn p2_a_commit_completion_never_deletes_the_journal_after_the_link_close() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        assert!(
+            !host.pending_reply_tx.begin().is_err(),
+            "待ちはまだ開いている"
+        );
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
+    }
+
+    // 検出力（新しい順）：ディスクの結果を取り込んだ**後**に `LinkState` が閉じても、完了を確定せず、
+    // 復旧の記録を消さない（poll に入る前は開いている）。
+    #[test]
+    fn p2_a_link_closed_after_the_disk_result_is_adopted_never_completes() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        host.mode_vst.after_disk_adopted = Some(Box::new(|host| {
+            host.link.close(CloseCause::Eof);
+        }));
+        assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
     }
 }

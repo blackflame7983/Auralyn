@@ -219,9 +219,14 @@ impl Store {
             .collect()
     }
 
-    #[cfg(test)]
+    /// 終了を確かめられず、記録に残っている子の数。
     pub(super) fn pending(&self, role: Role) -> usize {
         self.lock()[role.index()].len()
+    }
+
+    /// いまの記録から作る `engine_unconfirmed`（J-13 の数え方を含む）。
+    pub(super) fn unconfirmed_error(&self) -> EngineUnconfirmed {
+        Self::error(&self.lock())
     }
 
     #[cfg(test)]
@@ -292,7 +297,7 @@ pub(super) fn contain_and_resume(
     store: &Store,
     role: Role,
     child: Child,
-) -> anyhow::Result<(Child, Option<JobHandle>)> {
+) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
     #[cfg(test)]
     seam::stage(seam::Stage::Spawned(child.id()));
     let Some(job) = new_job() else {
@@ -308,12 +313,18 @@ pub(super) fn contain_and_resume(
     #[cfg(test)]
     seam::stage(seam::Stage::Assigned(child.id()));
     let resumed = resume(&child);
-    if resumed != 1 {
+    // 0 は私たちの停止がすでになかった（Job に入れる前に動いていた）、u32::MAX は失敗。
+    // 2 以上は、外の停止（ウイルス対策ソフトなど）が重なっている。私たちの再開は効いているので成功にする。
+    if resumed == 0 || resumed == u32::MAX {
         log::error!("音声エンジンの主スレッドを再開できません（戻り値 {resumed}）。起動しません");
         retire_child(store, role, child, Some(job));
         anyhow::bail!(LAUNCH_FAILED);
     }
-    Ok((child, Some(job)))
+    if resumed > 1 {
+        log::warn!("音声エンジンの主スレッドに、外の停止が重なっていました（再開の前の停止の数 {resumed}）。外の停止が解かれると動き出します");
+    }
+    // 外の停止が重なった子は、解かれるまで動かない。最初の応答が来るまでを起動の確認にする（呼び出し側）。
+    Ok((child, Some(job), resumed > 1))
 }
 
 #[cfg(not(windows))]
@@ -321,8 +332,8 @@ pub(super) fn contain_and_resume(
     _store: &Store,
     _role: Role,
     child: Child,
-) -> anyhow::Result<(Child, Option<JobHandle>)> {
-    Ok((child, None))
+) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
+    Ok((child, None, false))
 }
 
 #[cfg(windows)]
@@ -346,15 +357,48 @@ fn assign(job: &JobHandle, child: &Child) -> bool {
     job.assign(windows::Win32::Foundation::HANDLE(child.as_raw_handle()))
 }
 
-/// `ResumeThread` の戻り値（停止の数の、再開の前の値）。成功は `1`。
+/// `ResumeThread` の戻り値（停止の数の、再開の前の値）。成功は `1` 以上（`2` 以上は外の停止が重なっている）。
 #[cfg(windows)]
 fn resume(child: &Child) -> u32 {
     #[cfg(test)]
     match seam::resume() {
         seam::Resume::Real => {}
         seam::Resume::Returns(value) => return value,
+        // 外の停止が重なっていても、停止の数が0になるまで再開し、通常の起動と同じ `1` を返す。
+        seam::Resume::Normalized => loop {
+            let before = resume_main_thread(child);
+            if before <= 1 || before == u32::MAX {
+                return before;
+            }
+        },
         seam::Resume::ResumedEarly => {
-            let _ = resume_main_thread(child);
+            // 外の停止が重なっていても、停止の数が0になるまで先に再開する（その後の本来の再開は 0 を返す）。
+            loop {
+                let before = resume_main_thread(child);
+                if before <= 1 || before == u32::MAX {
+                    break;
+                }
+            }
+        }
+        // 外の停止を1回重ねてから、本来の再開を呼ぶ（戻り値は `2`。子は外の停止が解かれるまで止まる）。
+        seam::Resume::ExternalSuspend(release_after) => {
+            use std::os::windows::io::AsRawHandle;
+            use std::os::windows::process::ChildExt;
+            let thread =
+                windows::Win32::Foundation::HANDLE(child.main_thread_handle().as_raw_handle());
+            // SAFETY: `child` が生きているあいだ、主スレッドのハンドルは有効で、呼び出しの間だけ借りる。
+            let _ = unsafe { windows::Win32::System::Threading::SuspendThread(thread) };
+            if let (Some(delay), Some(owned)) =
+                (release_after, seam::OwnedThread::duplicate(thread))
+            {
+                // 外の停止が解かれる時刻。解く側は、自分で複製したハンドルを持つ。
+                std::thread::spawn(move || {
+                    let owned = owned;
+                    std::thread::sleep(delay);
+                    // SAFETY: 複製したハンドルは、このスレッドだけが持ち、`Drop` で一度だけ閉じる。
+                    let _ = unsafe { windows::Win32::System::Threading::ResumeThread(owned.0) };
+                });
+            }
         }
     }
     resume_main_thread(child)
@@ -374,6 +418,42 @@ fn resume_main_thread(child: &Child) -> u32 {
 pub(crate) mod seam {
     use super::{Duration, Instant, JobHandle};
     use std::cell::RefCell;
+
+    /// 試験のスレッドへ渡す、複製したスレッドのハンドル。
+    pub(super) struct OwnedThread(pub(super) windows::Win32::Foundation::HANDLE);
+
+    // SAFETY: 複製したハンドルは所有者だけが使い、`Drop` で一度だけ閉じる。
+    unsafe impl Send for OwnedThread {}
+
+    impl OwnedThread {
+        pub(super) fn duplicate(thread: windows::Win32::Foundation::HANDLE) -> Option<Self> {
+            use windows::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE};
+            use windows::Win32::System::Threading::GetCurrentProcess;
+            let mut copy = HANDLE::default();
+            // SAFETY: `thread` は呼び出しの間だけ借りる有効なハンドルで、複製は呼び出し側が所有する。
+            unsafe {
+                let process = GetCurrentProcess();
+                DuplicateHandle(
+                    process,
+                    thread,
+                    process,
+                    &mut copy,
+                    0,
+                    false,
+                    DUPLICATE_SAME_ACCESS,
+                )
+            }
+            .ok()
+            .map(|()| Self(copy))
+        }
+    }
+
+    impl Drop for OwnedThread {
+        fn drop(&mut self) {
+            // SAFETY: この複製を所有するのは自分だけで、ここで一度だけ閉じる。
+            let _ = unsafe { windows::Win32::Foundation::CloseHandle(self.0) };
+        }
+    }
 
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub(crate) enum Wait {
@@ -401,6 +481,10 @@ pub(crate) mod seam {
         Returns(u32),
         /// 先に実際に再開してから、本来の再開を呼ぶ（戻り値は `0`。子は動いている）。
         ResumedEarly,
+        /// 本来の再開の前に、外の停止を1回重ねる（戻り値は `2`）。`Some` なら、その時間の後に外の停止を解く。
+        ExternalSuspend(Option<Duration>),
+        /// 負荷で外の停止が重なっても、戻り値が 1 の通常の起動にそろえる。
+        Normalized,
     }
 
     pub(crate) enum Stage {

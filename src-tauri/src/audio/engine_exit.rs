@@ -2,7 +2,6 @@
 use crate::ipc::{Command, Response};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -196,13 +195,13 @@ impl State {
 impl super::AudioHost {
     fn require_live_engine(&mut self) -> anyhow::Result<()> {
         self.guard_mode_vst()?;
-        let reader_active = self.reader_active.load(Ordering::Acquire);
+        let link_open = !self.connection_lost();
         let alive = match self.child.as_mut() {
             Some(child) => child.try_wait()?.is_none(),
             None => false,
         };
         anyhow::ensure!(
-            reader_active && alive,
+            link_open && alive,
             "音声エンジンが動いていないため、変更できません。"
         );
         anyhow::ensure!(
@@ -342,20 +341,16 @@ impl Operations {
         }
     }
 
-    pub(super) fn unexpected_exit(&self, active: &AtomicBool) -> Option<ExitPayload> {
-        if !active.swap(false, Ordering::AcqRel) {
-            return None;
-        }
-        Some(
-            self.0
-                .lock()
-                .ok()
-                .map(|mut state| state.exit(Instant::now()))
-                .unwrap_or_else(|| ExitPayload {
-                    cause: "unknown",
-                    ..Default::default()
-                }),
-        )
+    /// EOF の原因の記録を取り出す。呼べるのは、接続を EOF で閉じる競りに勝った側だけ。
+    pub(super) fn take_exit(&self) -> ExitPayload {
+        self.0
+            .lock()
+            .ok()
+            .map(|mut state| state.exit(Instant::now()))
+            .unwrap_or_else(|| ExitPayload {
+                cause: "unknown",
+                ..Default::default()
+            })
     }
 }
 
@@ -396,7 +391,7 @@ mod tests {
     }
 
     fn exit(operations: &Operations) -> ExitPayload {
-        operations.unexpected_exit(&AtomicBool::new(true)).unwrap()
+        operations.take_exit()
     }
 
     fn start() -> Command {
@@ -528,14 +523,13 @@ mod tests {
                 if settling {
                     host.vst_operations.response(&started());
                 }
-                let active = host.reader_active.clone();
-                let operations = host.vst_operations.clone();
+                let link = host.link.clone();
                 if dropping {
                     drop(host);
                 } else {
                     host.kill_engine();
                 }
-                assert!(operations.unexpected_exit(&active).is_none());
+                assert!(!link.close(super::super::link::CloseCause::Eof));
             }
         }
     }
@@ -738,14 +732,13 @@ mod tests {
                 super::super::AudioHost::new(std::env::temp_dir().join("auralyn-exit-unit"));
             host.reset_engine_reader();
             host.vst_operations.begin(&load());
-            let active = host.reader_active.clone();
-            let operations = host.vst_operations.clone();
+            let link = host.link.clone();
             if dropping {
                 drop(host);
             } else {
                 host.kill_engine();
             }
-            assert!(operations.unexpected_exit(&active).is_none());
+            assert!(!link.close(super::super::link::CloseCause::Eof));
         }
     }
 
@@ -758,24 +751,22 @@ mod tests {
         host.vst_operations.response(&loaded());
         host.vst_operations
             .begin(&Command::OpenEditor { id: "id-a".into() });
-        let old_active = host.reader_active.clone();
+        let old_link = host.link.clone();
         let old_operations = host.vst_operations.clone();
         host.reset_engine_reader();
         assert!(!Arc::ptr_eq(&old_operations, &host.vst_operations));
-        assert!(old_operations.unexpected_exit(&old_active).is_none());
+        assert!(!old_link.close(super::super::link::CloseCause::Eof));
         assert!(host.vst_operations.0.lock().unwrap().plugins.is_empty());
         assert_eq!(exit(&host.vst_operations).cause, "unknown");
     }
 
     #[test]
-    fn unexpected_exit_is_reported_only_once() {
+    fn only_the_winner_of_the_eof_close_takes_the_exit_record() {
         let operations = Operations::default();
-        let active = AtomicBool::new(true);
-        assert_eq!(
-            operations.unexpected_exit(&active).unwrap().cause,
-            "unknown"
-        );
-        assert!(operations.unexpected_exit(&active).is_none());
+        let link = super::super::link::LinkState::open();
+        assert!(link.close(super::super::link::CloseCause::Eof));
+        assert_eq!(operations.take_exit().cause, "unknown");
+        assert!(!link.close(super::super::link::CloseCause::Eof));
     }
 
     #[test]
@@ -784,10 +775,10 @@ mod tests {
             super::super::AudioHost::new(std::env::temp_dir().join("auralyn-send-failure-unit"));
         host.reset_engine_reader();
         let operations = host.vst_operations.clone();
-        let active = host.reader_active.clone();
+        let link = host.link.clone();
         assert!(host.execute_running_command_inner(load()).is_err());
         assert!(operations.0.lock().unwrap().in_flight.is_none());
         assert!(operations.0.lock().unwrap().awaiting.is_none());
-        assert!(operations.unexpected_exit(&active).is_none());
+        assert!(!link.close(super::super::link::CloseCause::Eof));
     }
 }

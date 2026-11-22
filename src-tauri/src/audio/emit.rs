@@ -55,11 +55,102 @@ impl AudioEmitter {
     }
 }
 
+/// 通知の発行口を持つ。`AudioHost` と、その子の reader が共有する。
+///
+/// - `emitter` のロックは `AudioEmitter` を複製する間だけ。`emit` はロックの外で行う。
+/// - 同じ出来事の通知の列は、`order` を列の全体で持って出す（間に別のスレッドの通知が入らない）。
+///   `order` を持つ間に取ってよいのは `emitter` だけ。ほかのロックを取らず、IPC・応答の待ちをせず、
+///   通知の関数へ再び入らない。
+#[derive(Default)]
+pub(crate) struct Notifier {
+    emitter: std::sync::Mutex<Option<AudioEmitter>>,
+    order: std::sync::Mutex<()>,
+    /// 試験用：chain_if が順序のロックを取る直前に着いた回数。
+    #[cfg(test)]
+    arrivals: std::sync::atomic::AtomicUsize,
+}
+
+/// 列の途中で通知を出す手。`Notifier::chain` の中でだけ得られる。
+pub(crate) struct Chain<'a>(&'a Notifier);
+
+impl Chain<'_> {
+    pub(crate) fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
+        match self.0.current() {
+            Some(emitter) => emitter.emit(event, payload),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Notifier {
+    pub(crate) fn set(&self, emitter: AudioEmitter) {
+        *self
+            .emitter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(emitter);
+    }
+
+    fn current(&self) -> Option<AudioEmitter> {
+        self.emitter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// 通知の列を、間に別の通知を入れずに出す。
+    pub(crate) fn chain<R>(&self, f: impl FnOnce(&Chain<'_>) -> R) -> R {
+        let _order = self
+            .order
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        f(&Chain(self))
+    }
+
+    /// 列の直前に接続を確かめる。閉じていれば、列の全体を出さない。
+    pub(crate) fn chain_if(&self, open: impl Fn() -> bool, f: impl FnOnce(&Chain<'_>)) -> bool {
+        #[cfg(test)]
+        self.arrivals
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _order = self
+            .order
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !open() {
+            return false;
+        }
+        f(&Chain(self));
+        true
+    }
+
+    /// 試験用：chain_if が順序のロックを取る直前に着いた回数。
+    #[cfg(test)]
+    pub(crate) fn arrivals_for_test(&self) -> usize {
+        self.arrivals.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 1件だけの通知。
+    pub(crate) fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) {
+        self.chain(|chain| {
+            let _ = chain.emit(event, payload);
+        });
+    }
+}
+
 /// 試験用：`emit`の呼び出しを順に記録する。
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct Recorder {
     events: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+    gate: Gate,
+}
+
+/// 試験用：閉じている間、`emit` が戻らない。`(閉じている, 先に通す回数)`。
+#[cfg(test)]
+#[derive(Default)]
+struct Gate {
+    held: std::sync::Mutex<(bool, usize)>,
+    changed: std::sync::Condvar,
+    waiting: std::sync::atomic::AtomicUsize,
 }
 
 #[cfg(test)]
@@ -70,8 +161,41 @@ impl Recorder {
 
     fn push<S: Serialize>(&self, event: &str, payload: &S) -> tauri::Result<()> {
         let value = serde_json::to_value(payload).map_err(tauri::Error::from)?;
+        {
+            let mut held = self.gate.held.lock().unwrap();
+            if held.0 {
+                if held.1 > 0 {
+                    held.1 -= 1;
+                } else {
+                    self.gate
+                        .waiting
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    while held.0 {
+                        held = self.gate.changed.wait(held).unwrap();
+                    }
+                    self.gate
+                        .waiting
+                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        }
         self.events.lock().unwrap().push((event.to_owned(), value));
         Ok(())
+    }
+
+    /// `pass` 回の `emit` を通した後、`release` まで `emit` を止める（`emit` の途中で止まった通知を作る）。
+    pub(crate) fn block_after(&self, pass: usize) {
+        *self.gate.held.lock().unwrap() = (true, pass);
+    }
+
+    pub(crate) fn release(&self) {
+        *self.gate.held.lock().unwrap() = (false, 0);
+        self.gate.changed.notify_all();
+    }
+
+    /// 止まっている `emit` の数。
+    pub(crate) fn blocked_emits(&self) -> usize {
+        self.gate.waiting.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub(crate) fn events(&self) -> Vec<(String, serde_json::Value)> {
@@ -84,5 +208,63 @@ impl Recorder {
 
     pub(crate) fn clear(&self) {
         self.events.lock().unwrap().clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    // T12：ロックが poison されても、後続の通知は panic せず、内容と順は変わらない。
+    #[test]
+    fn a_poisoned_lock_does_not_break_later_notices() {
+        let notifier = Arc::new(Notifier::default());
+        let recorder = Arc::new(Recorder::default());
+        notifier.set(recorder.emitter());
+        let poisoner = notifier.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.emitter.lock().unwrap();
+            panic!("poison the emitter lock");
+        })
+        .join();
+        assert!(notifier.emitter.is_poisoned());
+        notifier.emit("a", 1);
+        let poisoner = notifier.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.order.lock().unwrap();
+            panic!("poison the order lock");
+        })
+        .join();
+        assert!(notifier.order.is_poisoned());
+        notifier.chain(|chain| {
+            let _ = chain.emit("b", 2);
+            let _ = chain.emit("c", 3);
+        });
+        notifier.set(recorder.emitter());
+        let events = recorder.events();
+        let names: Vec<&str> = events.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["a", "b", "c"]);
+        assert_eq!(events[2].1, serde_json::json!(3));
+    }
+
+    #[test]
+    fn a_chain_without_an_emitter_is_silent_and_a_closed_chain_is_not_run() {
+        let notifier = Notifier::default();
+        notifier.emit("nobody", ());
+        let mut ran = false;
+        assert!(!notifier.chain_if(
+            || false,
+            |_| {
+                ran = true;
+            }
+        ));
+        assert!(!ran);
+        assert!(notifier.chain_if(
+            || true,
+            |chain| {
+                let _ = chain.emit("x", ());
+            }
+        ));
     }
 }
