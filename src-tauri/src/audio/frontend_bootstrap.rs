@@ -138,8 +138,9 @@ impl AudioHost {
             return Ok(false);
         }
         self.frontend_bootstrap.warmup_seen = true;
+        let open = !self.connection_lost();
         if let Some(child) = &mut self.child {
-            let connected = self.link.is_open() && matches!(child.try_wait(), Ok(None));
+            let connected = open && matches!(child.try_wait(), Ok(None));
             let state = if connected {
                 self.auto_gain(crate::audio_engine::auto_gain::Request::Status)
                     .ok()

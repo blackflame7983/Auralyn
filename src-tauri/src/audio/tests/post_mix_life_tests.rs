@@ -1080,3 +1080,77 @@ fn p2_a_closed_reply_slot_alone_is_a_disconnect_for_the_post_mix() {
     assert!(state.error.is_none(), "切断として扱う");
     rig.finish();
 }
+
+fn empty_rack() -> Step {
+    response_line(&IpcResponse::PluginRack {
+        plugins: Vec::new(),
+        restore_eligible: true,
+        revision: 1,
+        running: false,
+    })
+}
+
+// P1（5回目）：最後の `GetPluginRack` の応答の後に `ReplySlot` だけが閉じたら、切断済みの取得結果で
+// 保存せず、保存のファイルは変わらない（`enabled` は残る）。
+#[test]
+fn p1_save_never_overwrites_the_saved_file_after_a_late_slot_close() {
+    let mut rig = Rig::new([("GetPluginRack", vec![empty_rack()])]);
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = calls.clone();
+    // 1回目（前の GetPluginRack）は何もせず、2回目（最後の GetPluginRack）の後に待ちだけを閉じる。
+    rig.host.post_mix.after_exec_check = Some(Box::new(move |child| {
+        if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+            drop(child.pending_reply_tx.close());
+        }
+    }));
+    let path = rig.host.post_mix.path.clone();
+    let request = save_request(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_eq!(error.to_string(), EXITED);
+    let state = &rig.host.post_mix;
+    assert!(!path.exists(), "保存のファイルを作っていない");
+    assert!(state.raw.is_none() && state.saved.is_none());
+    assert!(state.enabled && !state.restored && state.child.is_none());
+    assert!(state.error.is_none(), "切断として扱う");
+    rig.finish();
+}
+
+// P2（5回目）：`Enable(true)` の事前の確認で切断を見つけたら、切断の後処理を通して `enabled` を残す。
+#[test]
+fn p2_enable_true_keeps_enabled_when_the_precheck_finds_a_disconnect() {
+    use crate::audio_engine::mixing::Start;
+    let mut rig = Rig::with_primary(stopped_primary(), []);
+    rig.host.mixing.selected = Some(Start {
+        config: mixing_config("wasapi:one"),
+        target: None,
+    });
+    drop(
+        rig.host
+            .post_mix
+            .child
+            .as_ref()
+            .unwrap()
+            .pending_reply_tx
+            .close(),
+    );
+    let request = Request::Enable {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        enabled: true,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert!(error.to_string().contains("明示的に復元"), "{error}");
+    let state = &rig.host.post_mix;
+    assert!(state.enabled, "enabled を残す");
+    assert!(state.child.is_none() && !state.restored);
+    assert!(state.error.is_none(), "切断として扱う");
+    assert_eq!(
+        rig.host
+            .post_mix(Request::Snapshot)
+            .unwrap()
+            .error
+            .as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    rig.finish();
+}

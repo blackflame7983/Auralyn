@@ -478,7 +478,7 @@ impl AudioHost {
             self.preflight_proposal_apply()?;
         }
         let path = self.last_config_path.with_file_name("live_output.json");
-        if config.is_none() && (self.child.is_none() || !self.link.is_open()) {
+        if config.is_none() && (self.child.is_none() || self.connection_lost()) {
             let stored = if path.exists() {
                 serde_json::from_slice(&std::fs::read(&path)?)?
             } else {
@@ -1239,7 +1239,7 @@ impl AudioHost {
             "デバイス検出要求は失効しています"
         );
         anyhow::ensure!(
-            self.link.is_open(),
+            !self.connection_lost(),
             "検出中に音声エンジンとの通信が終了しました"
         );
         let response = self.execute_command(IpcCommand::PollDeviceScan {
@@ -1315,7 +1315,7 @@ impl AudioHost {
         let _ = ticket
             .terminal
             .set(Err("デバイス検出を取り消しました".into()));
-        if !self.link.is_open() {
+        if self.connection_lost() {
             return Ok(());
         }
         match self.execute_command(IpcCommand::CancelDeviceScan {
@@ -1517,7 +1517,7 @@ impl AudioHost {
                 .as_ref()
                 .and_then(|c| c.input_source.as_ref())
                 .is_some_and(|s| *s != crate::input_source::Config::default()))
-            && self.link.is_open()
+            && !self.connection_lost()
         {
             let status = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
             anyhow::ensure!(
@@ -1530,7 +1530,7 @@ impl AudioHost {
         if let Some(expected) = expected_generation {
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
-                self.child.is_some() && self.link.is_open(),
+                self.child.is_some() && !self.connection_lost(),
                 "初期化中に音声接続が終了しました"
             );
         } else if self.bundle_change_generation.is_some() && initial_controls.is_none() {
@@ -1684,7 +1684,7 @@ impl AudioHost {
 
     // 停止・画面の後始末で共有する。生存中の通信断を停止済みと推測しない。
     fn reap_confirmed_stopped_connection(&mut self) -> Result<bool> {
-        if self.link.is_open() {
+        if !self.connection_lost() {
             return Ok(false);
         }
         if let Some(child) = &mut self.child {
@@ -2275,7 +2275,7 @@ impl AudioHost {
             );
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
-                self.link.is_open(),
+                !self.connection_lost(),
                 "配信状態の変更中に音声エンジンが終了しました"
             );
         }
@@ -2368,7 +2368,7 @@ impl AudioHost {
         if !matches!(
             request.action,
             crate::audio_engine::voice_check::preview::Action::Open
-        ) && !self.link.is_open()
+        ) && self.connection_lost()
         {
             return Err(anyhow!(
                 "音声エンジンとの通信が終了しました。試聴画面を開き直してください"
@@ -2402,7 +2402,10 @@ impl AudioHost {
 
     fn require_proposal_connection(&mut self, generation: u64) -> Result<()> {
         validate_start_generation(generation, self.engine_generation)?;
-        anyhow::ensure!(self.link.is_open(), "音声エンジンとの通信が終了しました");
+        anyhow::ensure!(
+            !self.connection_lost(),
+            "音声エンジンとの通信が終了しました"
+        );
         let child = self
             .child
             .as_mut()

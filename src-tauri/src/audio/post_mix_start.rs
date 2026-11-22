@@ -5,13 +5,13 @@ impl AudioHost {
         if !self.post_attached {
             return;
         }
-        if self.link.is_open() {
+        if !self.connection_lost() {
             let _ = self.execute_running_command(IpcCommand::Stop);
         }
         if self.post_mix.stop().is_err() {
             self.post_mix.kill();
         }
-        if self.link.is_open() {
+        if !self.connection_lost() {
             let _ = self.execute_running_command(IpcCommand::PostMixClear);
         }
         self.post_attached = false;

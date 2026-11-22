@@ -195,7 +195,7 @@ impl State {
 impl super::AudioHost {
     fn require_live_engine(&mut self) -> anyhow::Result<()> {
         self.guard_mode_vst()?;
-        let link_open = self.link.is_open();
+        let link_open = !self.connection_lost();
         let alive = match self.child.as_mut() {
             Some(child) => child.try_wait()?.is_none(),
             None => false,

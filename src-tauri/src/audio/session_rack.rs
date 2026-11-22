@@ -17,7 +17,7 @@ impl AudioHost {
                 && lease.generation == self.engine_generation
                 && Instant::now() < lease.expires
                 && self.child.is_some()
-                && self.link.is_open()
+                && !self.connection_lost()
         })
     }
     fn read_session_rack(&mut self) -> Result<Reply> {
@@ -39,7 +39,7 @@ impl AudioHost {
                 restore_eligible,
                 revision,
                 running,
-            } if generation == self.engine_generation && self.link.is_open() => {
+            } if generation == self.engine_generation && !self.connection_lost() => {
                 if !plugins.is_empty() {
                     self.frontend_bootstrap.session_claimed = true;
                 }
@@ -203,7 +203,7 @@ impl AudioHost {
                         self.frontend_bootstrap.output_gain = Some(value);
                     }
                 }
-                if generation != self.engine_generation || !self.link.is_open() {
+                if generation != self.engine_generation || self.connection_lost() {
                     return Ok(Reply::Conflict);
                 }
                 self.next_restore_operation = self

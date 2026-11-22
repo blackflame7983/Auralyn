@@ -176,7 +176,7 @@ impl AudioHost {
             Request::Snapshot => {}
             Request::Reset { .. } => {
                 self.preflight_live_changes()?;
-                if self.link.is_open() {
+                if !self.connection_lost() {
                     anyhow::ensure!(
                         !self.engine_mixing_snapshot()?.running,
                         "音声を停止してから保存状態を復旧してください"
@@ -216,7 +216,7 @@ impl AudioHost {
                 marker.write_all(&serde_json::to_vec(&serde_json::json!({"version":1,"existed":raw.is_some(),"original":raw.as_ref().map(|_| format!("{name}.original.json"))}))?)?;
                 marker.sync_all()?;
                 drop(marker);
-                if self.link.is_open() {
+                if !self.connection_lost() {
                     self.apply_engine_mixing(None)?;
                 }
                 let mut reset = State {
@@ -236,7 +236,7 @@ impl AudioHost {
                 self.mixing = reset;
             }
             Request::Reload { .. } => {
-                if self.link.is_open() {
+                if !self.connection_lost() {
                     let snapshot = self.engine_mixing_snapshot()?;
                     anyhow::ensure!(
                         !snapshot.running,
@@ -358,7 +358,7 @@ impl AudioHost {
                     .ok_or_else(|| anyhow!("ミックス設定の世代を更新できません"))?;
             }
         }
-        let mut engine = if self.link.is_open() {
+        let mut engine = if !self.connection_lost() {
             self.engine_mixing_snapshot()?
         } else {
             model::Snapshot {

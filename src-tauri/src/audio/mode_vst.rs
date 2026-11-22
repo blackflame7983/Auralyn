@@ -274,7 +274,7 @@ impl AudioHost {
                 transaction: None,
             });
         snapshot.epoch = self.live_modes.epoch.clone();
-        snapshot.running &= self.link.is_open();
+        snapshot.running &= !self.connection_lost();
         snapshot.definitions = self.live_modes.definitions.clone();
         snapshot.transaction = self.mode_vst.status.clone();
         snapshot
@@ -353,7 +353,7 @@ impl AudioHost {
             .config(mode)
             .map_err(|e| anyhow!(e))?;
         anyhow::ensure!(
-            self.link.is_open() && self.child.is_some(),
+            !self.connection_lost() && self.child.is_some(),
             "音声を開始してからVST付きモードを切り替えてください"
         );
         let id = format!(
@@ -670,7 +670,7 @@ impl AudioHost {
             }
             Err(error) => {
                 // EOF の処理の途中（応答の待ちが閉じ、接続の開閉はこれから）に当たっても、文言を切断にそろえる。
-                let lost = !self.link.is_open() || error.to_string() == replies::CLOSED;
+                let lost = self.connection_lost() || error.to_string() == replies::CLOSED;
                 let message = if lost {
                     ENGINE_EXITED.into()
                 } else {

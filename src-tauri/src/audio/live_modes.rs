@@ -158,7 +158,7 @@ impl AudioHost {
     }
     pub fn preflight_live_changes(&mut self) -> Result<()> {
         self.guard_mode_vst()?;
-        if !self.link.is_open() {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         anyhow::ensure!(!self.live_modes.armed, model::PROTECTED);
@@ -261,7 +261,7 @@ impl AudioHost {
         Ok(token)
     }
     pub fn end_live_changes(&mut self, token: String) -> Result<()> {
-        if !self.link.is_open() {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         anyhow::ensure!(
@@ -300,7 +300,7 @@ impl AudioHost {
             return self.recover_mode_vst(expected_epoch);
         }
         self.guard_mode_vst()?;
-        if !self.link.is_open() {
+        if self.connection_lost() {
             self.invalidate_live_protection();
         }
         self.guard_live_reservation(&request)?;
@@ -333,10 +333,10 @@ impl AudioHost {
         if matches!(request, Request::Arm { .. }) {
             self.bind_live_protection()?;
         }
-        if matches!(request, Request::Disarm { .. }) && !self.link.is_open() {
+        if matches!(request, Request::Disarm { .. }) && self.connection_lost() {
             return self.live_modes(Request::Snapshot);
         }
-        if matches!(request, Request::Snapshot) && !self.link.is_open() {
+        if matches!(request, Request::Snapshot) && self.connection_lost() {
             return Ok(Snapshot {
                 epoch: self.live_modes.epoch.clone(),
                 running: false,

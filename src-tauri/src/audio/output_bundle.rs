@@ -98,7 +98,7 @@ impl AudioHost {
         if !self.is_global_muted
             || self.bundle_output_override.is_some()
             || self.bundle_change_generation.is_none()
-            || !self.link.is_open()
+            || self.connection_lost()
         {
             return Err("分離出力の復帰前に全体ミュートし、差分を取り直してください".into());
         }

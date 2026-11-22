@@ -601,7 +601,7 @@ impl State {
                 format!(
                     "{}:{}:{}",
                     c.engine_generation,
-                    c.link.is_open(),
+                    !c.connection_lost(),
                     c.child.is_some()
                 )
             })
@@ -670,6 +670,10 @@ impl State {
             IpcResponse::Error(error) => anyhow::bail!(error),
             _ => anyhow::bail!("配信VSTの一覧を確認できません"),
         };
+        // 最後の IPC の後で、接続を確定する（`ReplySlot` だけが閉じていても切断。保存へ進ませない）。
+        if self.settle() {
+            anyhow::bail!(ENGINE_EXITED);
+        }
         anyhow::ensure!(
             revision == end_revision
                 && before
@@ -951,7 +955,7 @@ impl State {
 }
 impl AudioHost {
     fn post_mix_stopped(&mut self) -> Result<()> {
-        if self.link.is_open() {
+        if !self.connection_lost() {
             match self.execute_running_command(IpcCommand::ProcessingState)? {
                 IpcResponse::ProcessingState { present: false, .. } => {}
                 IpcResponse::ProcessingState { .. } => {
@@ -1006,6 +1010,8 @@ impl AudioHost {
                 Request::Snapshot => return Ok(()),
                 Request::Enable { enabled, .. } => {
                     if enabled {
+                        // 切断を見つけたら、後処理（子を外す・`enabled` を残す）を通してから失敗にする。
+                        state.settle();
                         anyhow::ensure!(
                             state.restored && state.ready_for_enable(),
                             "配信VSTを明示的に復元してください"
@@ -1150,7 +1156,7 @@ impl AudioHost {
             return Err(error);
         }
         let mut snapshot = state.snapshot()?;
-        if self.link.is_open() && self.post_mix.enabled() {
+        if !self.connection_lost() && self.post_mix.enabled() {
             snapshot.apply_status(self.execute_running_command(IpcCommand::PostMixStatus)?);
         }
         Ok(snapshot)
