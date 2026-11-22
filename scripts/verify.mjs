@@ -58,6 +58,8 @@ try {
     node('browser-types', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.e2e.json');
     node('terms', 'scripts/check-ui-terms.cjs');
     node('dev-preview-urls', 'scripts/check-dev-preview-urls.cjs');
+    const changedOnly = !args.includes('--full') && !args.includes('--static') && !featureName;
+    node('control-chars', 'scripts/check-control-chars.cjs', ...(changedOnly ? ['--files', ...files] : []));
     if (!args.includes('--static')) {
         if (selection.full || selection.tests.length) node('vitest', 'node_modules/vitest/vitest.mjs', 'run', '--reporter=dot', ...(selection.full ? [] : selection.tests));
         else console.log('SKIP tests: 文書のみ、または未コミットの変更なし。コミット済み変更は--feature/--fullで指定してください。');
