@@ -189,6 +189,8 @@ struct Pending {
     receiver: Receiver<ReplyOutcome>,
     writer: Option<Receiver<writer::WriteDone>>,
     sent: Instant,
+    /// この命令の種類の応答の期限。`sent` から数える。
+    limit: Duration,
 }
 #[derive(Clone, Copy)]
 enum DiskKind {
@@ -552,28 +554,33 @@ impl AudioHost {
                         self.fail_mode_transaction(tx, error.to_string(), true);
                         return;
                     }
-                    Err(TryRecvError::Empty)
-                        if pending.sent.elapsed() < Duration::from_secs(10) =>
-                    {
+                    Err(TryRecvError::Empty) if pending.sent.elapsed() < pending.limit => {
                         pending.writer = Some(done);
                         tx.pending = Some(pending);
                         self.mode_vst.transaction = Some(tx);
                         return;
                     }
                     Err(_) => {
-                        self.fail_mode_transaction(tx, "VST切替の送信結果が不明です".into(), true);
+                        self.fail_mode_deadline(tx, "VST切替の送信結果が不明です");
                         return;
                     }
                 }
             }
             match pending.receiver.try_recv() {
-                Ok(ReplyOutcome::Response(response)) => {
+                // 期限の後に届いた応答は、受け取りが遅れなくても期限切れとして扱う。
+                Ok(ReplyOutcome::Response { received_at, .. })
+                    if received_at > pending.sent + pending.limit =>
+                {
+                    self.fail_mode_deadline(tx, "VST切替の応答が不明です");
+                    return;
+                }
+                Ok(ReplyOutcome::Response { resp, .. }) => {
                     // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
                     if self.connection_lost() {
                         self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
                         return;
                     }
-                    if let Err(error) = self.mode_step_response(&mut tx, *response) {
+                    if let Err(error) = self.mode_step_response(&mut tx, *resp) {
                         // 拒否の応答の直後に閉じていた場合も、ロールバックの対象にしない。
                         let lost = self.connection_lost();
                         let message = if lost {
@@ -590,13 +597,13 @@ impl AudioHost {
                     self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
                     return;
                 }
-                Err(TryRecvError::Empty) if pending.sent.elapsed() < Duration::from_secs(10) => {
+                Err(TryRecvError::Empty) if pending.sent.elapsed() < pending.limit => {
                     tx.pending = Some(pending);
                     self.mode_vst.transaction = Some(tx);
                     return;
                 }
                 Err(TryRecvError::Empty) => {
-                    self.fail_mode_transaction(tx, "VST切替の応答が不明です".into(), true);
+                    self.fail_mode_deadline(tx, "VST切替の応答が不明です");
                     return;
                 }
             }
@@ -680,6 +687,12 @@ impl AudioHost {
             }
         }
     }
+    /// 命令の種類の期限を過ぎた。接続の閉じた理由を `ReplyTimeout` にして、結果が分からない扱いで
+    /// 中止する（巻き戻さず、子を回収する。通知は今のまま）。
+    fn fail_mode_deadline(&mut self, tx: Transaction, message: &str) {
+        self.link.close(CloseCause::ReplyTimeout);
+        self.fail_mode_transaction(tx, message.into(), true);
+    }
     /// 接続を失ったか。「閉じた」は LinkState だけで決まる（reader は先に LinkState を閉じる）。
     pub(super) fn connection_lost(&self) -> bool {
         !self.link.is_open()
@@ -690,6 +703,7 @@ impl AudioHost {
             self.pending_reply_tx.cancel();
             return Err(anyhow!("音声エンジン入力がありません"));
         };
+        let limit = writer::reply_limit(&command);
         // 大きいVST stateのJSON化・pipe書込みもHost mutexの外（writerのスレッド）で行う。
         let payload = writer::Payload::Command(Box::new(command));
         #[cfg(test)]
@@ -707,6 +721,7 @@ impl AudioHost {
             receiver,
             writer: Some(done),
             sent: Instant::now(),
+            limit,
         })
     }
     fn spawn_mode_disk(&self, tx: &mut Transaction, kind: DiskKind) {
@@ -1781,6 +1796,7 @@ mod tests {
                 receiver: host.pending_reply_tx.begin().unwrap(),
                 writer: None,
                 sent: Instant::now(),
+                limit: Duration::from_secs(10),
             });
             host.mode_vst.transaction = Some(transaction);
             let started = Instant::now();
@@ -2136,6 +2152,7 @@ mod tests {
                 receiver: host.pending_reply_tx.begin().unwrap(),
                 writer: Some(writer),
                 sent: Instant::now(),
+                limit: Duration::from_secs(10),
             });
             host.mode_vst.transaction = Some(transaction);
             host.pending_reply_tx.deliver(IpcResponse::Success);
@@ -2273,6 +2290,7 @@ mod tests {
             receiver: host.pending_reply_tx.begin().unwrap(),
             writer: writer.map(write_done),
             sent: Instant::now(),
+            limit: Duration::from_secs(10),
         }
     }
 
@@ -2376,6 +2394,161 @@ mod tests {
         failed_with_recovery(&host, "音声エンジンの世代または接続が変わりました");
     }
 
+    // F1b-0a-2 の T7：モード VST の応答の期限は、命令の種類で決まる（起点は送った時点）。
+    fn silence_snapshot(ready: bool) -> IpcResponse {
+        IpcResponse::ModeSilence(mode_silence::Snapshot {
+            id: "tx-test".into(),
+            active: true,
+            ready,
+            running: true,
+            failed: false,
+        })
+    }
+
+    /// 製品の経路（`mode_step_command` → `send_mode_command`）で送った保留。書き込みの段は省く。
+    fn sent_pending(host: &mut AudioHost, step: Step, sent_ago: Duration) -> Pending {
+        host.pending_reply_tx.cancel();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        let mut transaction = journaled(step);
+        let command = host.mode_step_command(&mut transaction).unwrap();
+        let mut pending = host.send_mode_command(command).unwrap();
+        let written = pending.writer.take().unwrap();
+        written.recv_timeout(Duration::from_secs(5)).unwrap();
+        pending.sent = Instant::now() - sent_ago;
+        pending
+    }
+
+    fn recorded_host() -> (AudioHost, Arc<emit::Recorder>) {
+        let host = open_link_host();
+        let recorder = Arc::new(emit::Recorder::default());
+        host.emitter.set(recorder.emitter());
+        (host, recorder)
+    }
+
+    fn poll_with(host: &mut AudioHost, step: Step, pending: Pending) {
+        let mut transaction = journaled(step);
+        transaction.pending = Some(pending);
+        host.mode_vst.transaction = Some(transaction);
+        host.poll_mode_vst();
+    }
+
+    #[test]
+    fn t7_the_deadline_follows_the_command_class() {
+        use crate::audio::deadline::{A, B};
+        let mut host = open_link_host();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        for (command, expected) in [
+            (IpcCommand::GetPluginRack, A),
+            (
+                IpcCommand::ModeSilence {
+                    request: mode_silence::Request::Snapshot { id: "x".into() },
+                },
+                A,
+            ),
+            (IpcCommand::GetPluginState { id: "x".into() }, B),
+            (
+                IpcCommand::ModeSilence {
+                    request: mode_silence::Request::Begin { id: "x".into() },
+                },
+                B,
+            ),
+            (
+                IpcCommand::RestorePlugin {
+                    request: restore_request(&plugin()),
+                    operation_id: 1,
+                    expires_at_ms: 0,
+                },
+                B,
+            ),
+        ] {
+            let mut pending = host.send_mode_command(command).unwrap();
+            assert_eq!(pending.limit, expected);
+            let written = pending.writer.take().unwrap();
+            written.recv_timeout(Duration::from_secs(5)).unwrap();
+            host.pending_reply_tx.cancel();
+        }
+    }
+
+    #[test]
+    fn t7_a_b_command_accepts_a_reply_after_ten_seconds_and_aborts_at_thirty() {
+        let (mut host, recorder) = recorded_host();
+        let pending = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(15));
+        let received_at = pending.sent + Duration::from_secs(12);
+        assert!(host
+            .pending_reply_tx
+            .deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilenceBegin, pending);
+        assert!(
+            host.mode_vst.busy(),
+            "10秒を超えても、B の応答は採る: {:?}",
+            host.mode_vst.status
+        );
+        assert!(matches!(
+            host.mode_vst.transaction.as_ref().unwrap().step,
+            Step::SilencePoll
+        ));
+        assert!(host.link.is_open());
+
+        let (mut host, recorder_expired) = recorded_host();
+        let waiting = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(25));
+        poll_with(&mut host, Step::SilenceBegin, waiting);
+        assert!(host.mode_vst.busy(), "30秒までは待つ");
+        let expired = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(31));
+        poll_with(&mut host, Step::SilenceBegin, expired);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+        assert!(host.child.is_none());
+        for names in [recorder.names(), recorder_expired.names()] {
+            assert!(!names.contains(&"audio-error".to_owned()));
+        }
+    }
+
+    #[test]
+    fn t7_an_a_command_keeps_the_ten_second_deadline() {
+        let mut host = open_link_host();
+        let waiting = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(9));
+        poll_with(&mut host, Step::SilencePoll, waiting);
+        assert!(host.mode_vst.busy());
+        let expired = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(11));
+        poll_with(&mut host, Step::SilencePoll, expired);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    }
+
+    // 判定は届いた時刻（`received_at`）で行う。tick が遅れても、期限の内の応答を捨てず、期限の外の応答を採らない。
+    #[test]
+    fn t7_the_judgement_uses_received_at_not_the_tick_time() {
+        let mut host = open_link_host();
+        let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
+        let received_at = pending.sent + Duration::from_secs(9);
+        assert!(host
+            .pending_reply_tx
+            .deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilencePoll, pending);
+        assert!(
+            host.mode_vst.busy(),
+            "期限の内に届いた応答は、tick が遅れても採る: {:?}",
+            host.mode_vst.status
+        );
+        assert!(host.link.is_open());
+
+        let mut host = open_link_host();
+        let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
+        let received_at = pending.sent + Duration::from_secs(11);
+        assert!(host
+            .pending_reply_tx
+            .deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilencePoll, pending);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    }
+
     // T11：モード VST の書き込みは、通常の命令と同じ writer の列を通る。
     #[test]
     fn t11_mode_commands_and_normal_commands_share_the_same_writer() {
@@ -2390,7 +2563,9 @@ mod tests {
         ));
         host.pending_reply_tx.deliver(IpcResponse::Success);
         let outcome = mode.receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert!(matches!(outcome, ReplyOutcome::Response(r) if matches!(*r, IpcResponse::Success)));
+        assert!(
+            matches!(outcome, ReplyOutcome::Response { resp, .. } if matches!(*resp, IpcResponse::Success))
+        );
         let slot = host.pending_reply_tx.clone();
         let observed = recording.clone();
         let reply = std::thread::spawn(move || {

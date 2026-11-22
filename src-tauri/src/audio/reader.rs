@@ -33,6 +33,7 @@ impl Reader {
             if !self.link.is_open() {
                 break;
             }
+            let received_at = Instant::now();
             let Ok(l) = line else {
                 continue;
             };
@@ -43,7 +44,7 @@ impl Reader {
                 match serde_json::from_str::<OutputMessage>(json_str) {
                     Ok(OutputMessage::Response(resp)) => {
                         self.operations.response(&resp);
-                        if !self.replies.deliver(resp) {
+                        if !self.replies.deliver_at(resp, received_at) {
                             log::warn!("Received Response but no one is waiting");
                         }
                     }

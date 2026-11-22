@@ -4,12 +4,17 @@
 use crate::ipc::Response;
 use anyhow::{anyhow, Result};
 use std::sync::{mpsc, Mutex};
+use std::time::Instant;
 
 pub(super) const CLOSED: &str = "音声エンジンとの通信が終了しました";
 
 /// 待ち手が受け取る結果。送り側が捨てられた場合（`Disconnected`）は、呼び出し側が EOF と同じに扱う。
 pub(super) enum ReplyOutcome {
-    Response(Box<Response>),
+    /// `received_at` は reader が応答の行を読んだ時刻。受け取りが遅れても、期限の判定はこの時刻で行う。
+    Response {
+        resp: Box<Response>,
+        received_at: Instant,
+    },
     /// 子の出力が閉じた。通知は出し終えている。
     Eof,
 }
@@ -47,8 +52,14 @@ impl ReplySlot {
         }
     }
 
-    /// 応答を待ち手へ渡す。待ち手がなければ `false`（応答の ID・種類は照合しない）。
+    /// 今の時刻を `received_at` にして渡す。
+    #[cfg(test)]
     pub(super) fn deliver(&self, response: Response) -> bool {
+        self.deliver_at(response, Instant::now())
+    }
+
+    /// 応答を待ち手へ渡す。待ち手がなければ `false`（応答の ID・種類は照合しない）。
+    pub(super) fn deliver_at(&self, response: Response, received_at: Instant) -> bool {
         let Ok(mut state) = self.0.lock() else {
             return false;
         };
@@ -58,8 +69,11 @@ impl ReplySlot {
         let State::Waiting(tx) = std::mem::replace(&mut *state, State::Idle) else {
             return false;
         };
-        // タイムアウト済みなら送信先はないが、古い応答の消費は完了する。
-        let _ = tx.send(ReplyOutcome::Response(Box::new(response)));
+        // 待ち手が受け取りをやめていても、応答の消費は完了する。
+        let _ = tx.send(ReplyOutcome::Response {
+            resp: Box::new(response),
+            received_at,
+        });
         true
     }
 
@@ -101,25 +115,40 @@ mod tests {
 
     fn response(outcome: ReplyOutcome) -> Response {
         match outcome {
-            ReplyOutcome::Response(response) => *response,
+            ReplyOutcome::Response { resp, .. } => *resp,
             ReplyOutcome::Eof => panic!("EOF ではなく応答のはず"),
         }
     }
 
+    // F1b-0a-2：応答の期限切れは、呼び出し側が待ちを閉じる。遅い応答は捨てられ、同じスロットは使い直さない。
     #[test]
-    fn timed_out_response_cannot_complete_a_later_request() {
+    fn a_timed_out_request_closes_the_slot_and_a_late_response_is_dropped() {
         let slot = ReplySlot::default();
         let first = slot.begin().unwrap();
         assert!(first.recv_timeout(Duration::ZERO).is_err());
-        drop(first);
-        assert!(slot.begin().is_err());
-        assert!(slot.deliver(Response::Error("late response".into())));
-        let second = slot.begin().unwrap();
-        assert!(second.try_recv().is_err());
-        assert!(slot.deliver(Response::Error("second response".into())));
-        assert!(
-            matches!(response(second.recv().unwrap()), Response::Error(s) if s == "second response")
-        );
+        assert!(slot.begin().is_err(), "期限の後も、閉じるまでは待ちが残る");
+        let sender = slot.close().expect("待ち手の送り側を取り出せる");
+        drop(sender);
+        assert!(matches!(
+            first.recv_timeout(Duration::from_secs(1)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+        assert_eq!(slot.begin().unwrap_err().to_string(), CLOSED);
+        assert!(!slot.deliver(Response::Error("late response".into())));
+        assert_eq!(slot.begin().unwrap_err().to_string(), CLOSED);
+    }
+
+    // `received_at` は渡した時刻のまま届く（受け取りの遅れで変わらない）。
+    #[test]
+    fn the_received_at_stamp_travels_with_the_response() {
+        let slot = ReplySlot::default();
+        let waiter = slot.begin().unwrap();
+        let stamp = Instant::now() - Duration::from_secs(3);
+        assert!(slot.deliver_at(Response::Success, stamp));
+        match waiter.recv().unwrap() {
+            ReplyOutcome::Response { received_at, .. } => assert_eq!(received_at, stamp),
+            ReplyOutcome::Eof => panic!("応答のはず"),
+        }
     }
 
     #[test]

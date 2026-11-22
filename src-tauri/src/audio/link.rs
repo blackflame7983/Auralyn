@@ -13,6 +13,8 @@ pub(super) enum CloseCause {
     WriteFailed,
     /// 書き込みが期限（5秒）を過ぎた。Host が通知を出す。
     WriteTimeout,
+    /// 応答が命令の種類ごとの期限（10秒・30秒など）を過ぎた。Host が通知を出す。
+    ReplyTimeout,
 }
 
 const OPEN: u8 = 0;
@@ -24,6 +26,7 @@ impl CloseCause {
             Self::Eof => 2,
             Self::WriteFailed => 3,
             Self::WriteTimeout => 4,
+            Self::ReplyTimeout => 5,
         }
     }
 
@@ -33,6 +36,7 @@ impl CloseCause {
             2 => Some(Self::Eof),
             3 => Some(Self::WriteFailed),
             4 => Some(Self::WriteTimeout),
+            5 => Some(Self::ReplyTimeout),
             _ => None,
         }
     }
@@ -110,6 +114,7 @@ mod tests {
                 CloseCause::Eof,
                 CloseCause::WriteFailed,
                 CloseCause::WriteTimeout,
+                CloseCause::ReplyTimeout,
                 CloseCause::Intentional,
             ]
             .into_iter()

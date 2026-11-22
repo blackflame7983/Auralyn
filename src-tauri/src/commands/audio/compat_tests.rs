@@ -639,23 +639,31 @@ fn k8d_failed_warmup_is_inactive_and_never_respawns() {
     assert_eq!(f.spawn_count(), 1, "子を生成し直さない");
 }
 
-// タイムアウト：10秒。タイムアウト後も`Stop`を送らず、次の要求は「応答待ち」で拒まれる。
+// タイムアウト（F1b-0a-2）：A の命令は10秒。期限切れで接続を切り離して子を回収し、`Stop` を送らない。
+// 次の要求は「応答待ち」で断られず、子を作り直して送られる。
 #[test]
-fn timeout_waits_ten_seconds_sends_no_stop_and_blocks_the_next_request() {
-    let f = Fixture::new([("Start", vec![Step::SleepMs(12_000)])]);
+fn timeout_waits_ten_seconds_retires_the_child_sends_no_stop_and_does_not_block_the_next_request() {
+    let f = Fixture::new([("SetChannelScan", vec![Step::SleepMs(12_000)])]);
     let app = mock(&f);
     let begun = Instant::now();
-    let error = run(start_audio(app.state(), options(), None)).unwrap_err();
+    let error = run(set_channel_scan(app.state(), true)).unwrap_err();
     assert!(begun.elapsed() >= Duration::from_secs(10));
-    assert!(error.starts_with("オーディオエラーが発生しました。\n\n詳細: Timeout or disconnect waiting for engine response"));
+    assert_eq!(
+        error,
+        "音声エンジンが応答しないため、終了しました。もう一度お試しください"
+    );
     assert_eq!(
         f.sent().last().map(String::as_str),
-        Some("Start"),
+        Some("SetChannelScan"),
         "Stop を送らない"
     );
-    let blocked = run(get_engine_runtime_stats(app.state())).unwrap_err();
+    assert!(f.probe(0).wait_exit(5000), "子が回収される");
+    assert!(f.recorder.names().iter().any(|name| name == "audio-error"));
+    run(set_input_gain(app.state(), 1.0)).unwrap();
+    assert_eq!(f.spawn_count(), 2, "次の操作で作り直す");
     assert_eq!(
-        blocked,
-        "前の音声操作の応答待ちです。しばらく待つか、エンジンを再起動してください。"
+        f.sent().last().map(String::as_str),
+        Some("SetInputGain"),
+        "次の命令は送られる"
     );
 }
