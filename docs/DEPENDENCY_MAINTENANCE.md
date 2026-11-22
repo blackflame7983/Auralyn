@@ -454,10 +454,11 @@ Rust を 1.99.1（stable）から 1.100.0 へ上げ、版を固定した。理�
 - 1.100.0 の clippy が、既存の検査 `needless_bool` で `src-tauri/src/vst_host/instance.rs` の `needs_deferred_connection` に1件出たため、`allow` を足さず式に直した（挙動は同じ）。このファイルのハッシュが変わるため、Rust 例外台帳の該当指紋と、台帳の承認済み指紋（`config/gardening-policy.json`）だけを更新した。allow/expect の件数（2）は変わらない。
 - 確認したこと：`npm run verify -- --static --rust`（lint・型・clippy `-D warnings`・fmt・RT の試験）、`cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence`（1018件成功・7件は理由付き ignore）、`cargo test --locked --test integration_test --test repro_ott`。いずれも `CARGO_TARGET_DIR` は共有の `src-tauri/target`。
 - 確認していないこと：理由付き ignore の実機試験、実音声・聴感・長時間運転、署名済み配布物のビルド、CI での確認（CI は Rust をビルドしておらず、rustsec の監査だけ）。1.100.0 でのリリースビルドの成果物の比較もしていない。
+
 ## 2026-11-22 RustSec の指摘への限定更新（url）
 
 CI の RustSec の監査が、新しく公開された RUSTSEC-2026-0592（`url` 2.5.8。入れ子の `blob:` URL に対して `Url::origin()` が stack overflow する。対処は 2.5.9 以上）で失敗したため、`url` だけを上げた。
 
-- 変更：`cargo update -p url --precise 2.5.9`。`Cargo.lock` で `url` 2.5.8 → 2.5.9、`form_urlencoded` 1.2.2 → 1.2.3（`url` の依存として一緒に上がる）。`Cargo.toml` は変えていない。
+- 変更：`cargo update -p url --precise 2.5.9`。`Cargo.lock` で `url` 2.5.8 → 2.5.9、`form_urlencoded` 1.2.2 → 1.2.3（`url` の依存として一緒に上がる）。`Cargo.toml` は変えていない。`cargo update` の再解決で `cssparser-macros` の参照先が `syn 3.0.9` に変わったが、更新の範囲を `url` に限るため `syn 2.0.114` に戻し、`--locked` で通ることを確かめた。`npm run gen-cargo-licenses` で `src/assets/licenses-cargo.json` の2件（`url`・`form_urlencoded`）の版を同期した。
 - 確認したこと：`cargo audit --file src-tauri/Cargo.lock`（cargo-audit 0.22.2）で脆弱性 0 件、既存の許可済みの警告 8 件は変わらない。`cargo test --locked --lib`（1123件成功・7件は理由付き ignore）。`CARGO_TARGET_DIR` は共有の `src-tauri/target`。
 - 確認していないこと：実音声・署名済み配布物のビルド。Auralyn が `blob:` URL を `Url::origin()` に渡す経路は確かめていない（到達の可否によらず、監査の失敗を解くために上げた）。
