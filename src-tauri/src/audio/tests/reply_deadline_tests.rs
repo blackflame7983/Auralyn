@@ -4,6 +4,7 @@
 use super::compat_support::*;
 use super::engine_life::{seam, EngineUnconfirmed, Role};
 use super::link::CloseCause;
+use super::link_seam;
 use super::reader::Pause;
 use super::writer::{self, WriteDone, WriteResult};
 use super::*;
@@ -55,18 +56,19 @@ fn silent_host() -> (AudioHost, Observer) {
 
 fn paused_eof_reader(host: &AudioHost) -> (Pause, std::thread::JoinHandle<()>) {
     let pause = Pause::closed();
-    let reader = reader::Reader {
-        link: host.link.clone(),
-        operations: host.vst_operations.clone(),
-        replies: host.pending_reply_tx.clone(),
-        voice_activity: host.voice_activity.clone(),
-        notifier: host.emitter.clone(),
-        conditions: host.conditions.clone(),
-        epoch: 0,
-        engine_generation: 1,
-        pause: Some(pause.clone()),
-    };
-    (pause, std::thread::spawn(move || reader.finish()))
+    let mut reader = link_seam::reader_for(host, 0);
+    reader.pause = Some(pause.clone());
+    (pause, link_seam::finish_eof(reader))
+}
+
+/// このスレッドの子の回収（C3）が終わった時点で、止めた reader を解放する。
+fn release_when_retired(pause: &Pause) {
+    let pause = pause.clone();
+    seam::on_stage(move |stage| {
+        if matches!(stage, seam::Stage::Retired(_)) {
+            pause.release();
+        }
+    });
 }
 
 // T1：C3（主）。応答が来ないと、期限で失敗し、`LinkState` は `ReplyTimeout`、子は回収され、`audio-error` が出る。
@@ -157,7 +159,8 @@ fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_ret
     observer.recorder.clear();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
-    let rx = host.pending_reply_tx.begin().unwrap();
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    release_when_retired(&pause);
     let response = host
         .await_reply(
             Ok(done_with(
@@ -176,10 +179,61 @@ fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_ret
     );
     assert!(host.child.is_none(), "子は回収される");
     assert!(observer.probe(0).wait_exit(5000));
-    assert_eq!(count(&observer, "audio-error"), 0, "Host は出さない");
+    reader_thread.join().unwrap();
+    assert_eq!(
+        count(&observer, "audio-error"),
+        1,
+        "出すのは reader だけ（Host は出さない）"
+    );
+    drop(host);
+    let _ = std::fs::remove_dir_all(&observer.dir);
+}
+
+// S3（今の挙動の固定。F1b-0b-1 で、期待値を「reader を止めている間は戻らない。解放後、通知3件の後に戻る」へ反転する。
+// 設計 9.8）：期限の直前に reader が EOF の競りに勝っていると、負けた `reply_timed_out` は、reader が通知を出す前に
+// `Engine Crashed/Exited` で戻る。
+#[test]
+fn s3_today_the_c3_loser_returns_before_the_eof_notices() {
+    let (mut host, observer) = silent_host();
+    observer.recorder.clear();
+    let (pause, reader_thread) = paused_eof_reader(&host);
+    wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    let response = host
+        .await_reply(
+            Ok(done_with(
+                WriteResult::Ok,
+                Instant::now() - Duration::from_secs(12),
+            )),
+            rx,
+            Duration::from_secs(10),
+        )
+        .unwrap();
+    assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
+    assert_eq!(
+        count(&observer, "audio-engine-exited"),
+        0,
+        "戻った時点で、EOF の通知は出ていない"
+    );
+    assert_eq!(
+        count(&observer, "audio-error"),
+        0,
+        "戻った時点で、Host も reader も audio-error を出していない"
+    );
+    assert!(host.child.is_none(), "子の回収は、通知より先に終わっている");
+    assert!(!reader_thread.is_finished(), "reader は止まったまま");
     pause.release();
     reader_thread.join().unwrap();
-    assert_eq!(count(&observer, "audio-error"), 1, "出すのは reader だけ");
+    let names = observer.recorder.names();
+    assert_eq!(
+        names[names.len() - 3..],
+        [
+            "audio-conditions-changed",
+            "audio-engine-exited",
+            "audio-error"
+        ],
+        "解放の後に、EOF の通知3件が出る"
+    );
     drop(host);
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
@@ -192,10 +246,11 @@ fn t13_a_lost_race_leaves_the_vst_operation_as_the_exit_cause() {
         path: "C:/vst/crashing.vst3".into(),
         class_id: None,
     };
-    host.vst_operations.begin(&load);
+    link_seam::register_sent_operation(&host, &load);
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
-    let rx = host.pending_reply_tx.begin().unwrap();
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    release_when_retired(&pause);
     host.await_reply(
         Ok(done_with(
             WriteResult::Ok,
@@ -205,7 +260,6 @@ fn t13_a_lost_race_leaves_the_vst_operation_as_the_exit_cause() {
         Duration::from_secs(30),
     )
     .unwrap();
-    pause.release();
     reader_thread.join().unwrap();
     let exited = observer
         .recorder
@@ -221,6 +275,68 @@ fn t13_a_lost_race_leaves_the_vst_operation_as_the_exit_cause() {
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
 
+// S7（F1b-0a-2 設計 9章の1点目）：B の命令 `Start` も、期限で切り離される。子は回収され、`Stop` は送られず、
+// `audio-error` は1回。`Start` の `device_open` の記録は、作り直した接続へ持ち越されない。
+// 10秒の互換の試験（`commands/audio/compat_tests.rs`）は、A の `SetChannelScan` のまま。
+#[test]
+fn s7_start_is_cut_off_at_its_deadline_retired_and_no_stop_is_sent() {
+    for respawn in [false, true] {
+        s7_attempt(respawn);
+    }
+}
+
+/// `respawn` が偽なら、期限切れの直後の記録を確かめる。真なら、作り直しの後の記録だけを確かめる（記録は使い切らない）。
+fn s7_attempt(respawn: bool) {
+    let (mut host, observer) = scripted_parts([("Start", vec![Step::WaitGate("never".into())])]);
+    host.ensure_engine_running().unwrap();
+    let start = IpcCommand::Start {
+        input_source: None,
+        host: "WASAPI".into(),
+        input: None,
+        output: None,
+        input_id: None,
+        output_id: None,
+        buffer_size: None,
+        sample_rate: None,
+        initial_controls: None,
+        channel_routing: None,
+    };
+    assert_eq!(writer::reply_limit(&start), deadline::B);
+    writer::set_limits_for_test(None, Some(SHORT));
+    let started = Instant::now();
+    let error = host.execute_command(start).unwrap_err();
+    let elapsed = started.elapsed();
+    writer::set_limits_for_test(None, None);
+    assert_eq!(error.to_string(), REPLY_TIMED_OUT);
+    assert!(
+        elapsed >= SHORT && elapsed < Duration::from_secs(5),
+        "{elapsed:?}"
+    );
+    assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    assert!(host.child.is_none() && host.writer.is_none(), "回収済み");
+    assert!(!host.confirming_start);
+    assert!(observer.probe(0).wait_exit(5000), "子が終わっている");
+    assert!(!observer.sent().iter().any(|name| name == "Stop"));
+    assert_eq!(count(&observer, "audio-error"), 1);
+    if respawn {
+        host.ensure_engine_running().unwrap();
+        assert_eq!(observer.spawn_count(), 2, "次の操作で作り直す");
+        assert_eq!(
+            link_seam::take_exit(&host)["cause"],
+            "unknown",
+            "作り直した接続へ、機器を開く記録を持ち越さない"
+        );
+    } else {
+        assert_eq!(
+            link_seam::take_exit(&host)["cause"],
+            "device_open",
+            "期限切れの `Start` は、応答までの間、機器を開く記録を残す"
+        );
+    }
+    drop(host);
+    let _ = std::fs::remove_dir_all(&observer.dir);
+}
+
 // T4：期限は届いた時刻（`received_at`）で判定する。期限を過ぎていても受け側を1回読み、期限の内に届いた応答は採る。
 // 期限の後に届いた応答は、受け取りが遅れなくても期限切れで、閉じて回収するところまで進む。
 #[test]
@@ -230,27 +346,33 @@ fn t4_the_deadline_is_judged_by_received_at_even_when_the_receive_is_late() {
     let limit = Duration::from_secs(10);
     let flushed_at = Instant::now() - Duration::from_secs(12);
 
-    let rx = host.pending_reply_tx.begin().unwrap();
-    assert!(host
-        .pending_reply_tx
-        .deliver_at(IpcResponse::Success, flushed_at + Duration::from_secs(1)));
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    assert!(link_seam::deliver_at(
+        &host,
+        IpcResponse::Success,
+        flushed_at + Duration::from_secs(1)
+    ));
     let response = host
         .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, limit)
         .unwrap();
     assert!(matches!(response, IpcResponse::Success));
     assert!(host.link.is_open() && host.child.is_some());
 
-    let rx = host.pending_reply_tx.begin().unwrap();
-    assert!(host
-        .pending_reply_tx
-        .deliver_at(IpcResponse::Success, flushed_at + Duration::from_secs(11)));
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    assert!(link_seam::deliver_at(
+        &host,
+        IpcResponse::Success,
+        flushed_at + Duration::from_secs(11)
+    ));
     let error = host
         .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, limit)
         .unwrap_err();
     assert_eq!(error.to_string(), REPLY_TIMED_OUT);
     assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
     assert_eq!(
-        host.pending_reply_tx.begin().unwrap_err().to_string(),
+        link_seam::begin_request(&host, None)
+            .unwrap_err()
+            .to_string(),
         replies::CLOSED,
         "待ちが閉じる"
     );
@@ -275,21 +397,28 @@ fn t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_
             ),
             ("GetPluginState", vec![Step::WaitGate("never".into())]),
         ]));
-        let link = {
+        let eof_reader = {
             let mut host = lock_host(&f);
             host.ensure_engine_running().unwrap();
             f.recorder.clear();
             f.recorder.block_after(1);
             host.execute_running_command(IpcCommand::GetDevices)
                 .unwrap();
-            host.link.clone()
+            link_seam::reader_for(&host, 0)
         };
         wait_until("reader が列の途中で止まる", || {
             f.recorder.blocked_emits() == 1
         });
+        let retired = Arc::new(AtomicBool::new(false));
         let cutter = {
             let f = f.clone();
+            let retired = retired.clone();
             std::thread::spawn(move || {
+                seam::on_stage(move |stage| {
+                    if matches!(stage, seam::Stage::Retired(Role::Primary)) {
+                        retired.store(true, Ordering::SeqCst);
+                    }
+                });
                 writer::set_limits_for_test(None, Some(Duration::from_millis(800)));
                 let mut host = lock_host(&f);
                 let outcome = host
@@ -298,19 +427,24 @@ fn t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_
                 (outcome, host.retired.pending(Role::Primary))
             })
         };
-        if eof_wins {
+        let eof_finish = eof_wins.then(|| {
             wait_until("命令が子へ届く", || {
                 f.sent().iter().any(|name| name == "GetPluginState")
             });
-            assert!(link.close(CloseCause::Eof), "reader の競りの勝ちを再現する");
-        }
+            link_seam::finish_eof(eof_reader)
+        });
         assert!(
             f.probe(0).wait_exit(5000),
             "通知が止まったままでも、子が回収される（eof_wins={eof_wins}）"
         );
+        wait_until("回収が終わる", || retired.load(Ordering::SeqCst));
         assert!(!cutter.is_finished(), "保持した通知は、回収の後に出す");
+        assert_eq!(count(&f, "audio-engine-exited"), 0, "通知は止まっている");
         f.recorder.release();
         let (outcome, pending) = cutter.join().unwrap();
+        if let Some(finish) = eof_finish {
+            finish.join().unwrap();
+        }
         if eof_wins {
             assert!(matches!(outcome, Ok(IpcResponse::Error(text)) if text == EXITED));
         } else {
@@ -318,9 +452,26 @@ fn t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_
         }
         assert_eq!(pending, 0, "終了を確かめて回収済み");
         assert_eq!(
+            count(&f, "audio-engine-exited"),
+            usize::from(eof_wins),
+            "EOF に勝った reader が、解放の後に EOF の通知を出す"
+        );
+        if eof_wins {
+            let names = f.recorder.names();
+            assert!(
+                names.windows(3).any(|chain| chain
+                    == [
+                        "audio-conditions-changed",
+                        "audio-engine-exited",
+                        "audio-error"
+                    ]),
+                "EOF の通知3件（audio-conditions-changed を含む）が続けて出る: {names:?}"
+            );
+        }
+        assert_eq!(
             count(&f, "audio-error"),
-            usize::from(!eof_wins),
-            "勝ったときだけ Host が出す"
+            1,
+            "出すのは1回。勝った側（C3 の Host か EOF の reader）だけ"
         );
     }
 }

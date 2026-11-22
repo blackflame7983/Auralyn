@@ -245,6 +245,8 @@ pub(super) fn retire_child(store: &Store, role: Role, mut child: Child, job: Opt
     let _ = child.kill();
     if confirm(&mut child, CONFIRM) {
         drop(job);
+        #[cfg(test)]
+        seam::stage(seam::Stage::Retired(role));
         return;
     }
     log::warn!("音声エンジンの終了を確認できません（{role:?}）。記録して、作り直しを止めます");
@@ -258,6 +260,8 @@ pub(super) fn retire_child(store: &Store, role: Role, mut child: Child, job: Opt
             unconfirmed: 0,
         },
     );
+    #[cfg(test)]
+    seam::stage(seam::Stage::Retired(role));
 }
 
 /// アプリの終了。全部の子へ `kill()` を送り、共通の `SHUTDOWN` だけ確かめて、終わらなくても戻る。
@@ -487,9 +491,11 @@ pub(crate) mod seam {
         Normalized,
     }
 
-    pub(crate) enum Stage {
+    pub(in crate::audio) enum Stage {
         Spawned(u32),
         Assigned(u32),
+        /// `retire_child` が、終了を確かめた、または記録へ移した直後。
+        Retired(super::Role),
     }
 
     struct State {
@@ -566,7 +572,7 @@ pub(crate) mod seam {
     pub(crate) fn set_resume(resume: Resume) {
         with(|s| s.resume = resume);
     }
-    pub(crate) fn on_stage(hook: impl FnMut(Stage) + 'static) {
+    pub(in crate::audio) fn on_stage(hook: impl FnMut(Stage) + 'static) {
         with(|s| s.stage = Some(Box::new(hook)));
     }
     /// 仮想の時計が進んだ量。

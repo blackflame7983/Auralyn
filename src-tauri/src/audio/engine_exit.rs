@@ -352,10 +352,26 @@ impl Operations {
                 ..Default::default()
             })
     }
+
+    #[cfg(test)]
+    pub(super) fn in_flight_for_test(&self) -> bool {
+        self.0.lock().unwrap().in_flight.is_some()
+    }
+
+    #[cfg(test)]
+    pub(super) fn awaiting_for_test(&self) -> bool {
+        self.0.lock().unwrap().awaiting.is_some()
+    }
+
+    #[cfg(test)]
+    pub(super) fn plugin_count_for_test(&self) -> usize {
+        self.0.lock().unwrap().plugins.len()
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::link_seam;
     use super::*;
     use crate::ipc::{ChannelLayout, RestorePluginRequest, RestoredPlugin};
     use std::sync::Arc;
@@ -519,9 +535,9 @@ mod tests {
                     std::env::temp_dir().join("auralyn-device-exit-unit"),
                 );
                 host.reset_engine_reader();
-                host.vst_operations.begin(&start());
+                link_seam::register_sent_operation(&host, &start());
                 if settling {
-                    host.vst_operations.response(&started());
+                    link_seam::operation_response(&host, &started());
                 }
                 let link = host.link.clone();
                 if dropping {
@@ -731,7 +747,7 @@ mod tests {
             let mut host =
                 super::super::AudioHost::new(std::env::temp_dir().join("auralyn-exit-unit"));
             host.reset_engine_reader();
-            host.vst_operations.begin(&load());
+            link_seam::register_sent_operation(&host, &load());
             let link = host.link.clone();
             if dropping {
                 drop(host);
@@ -747,17 +763,23 @@ mod tests {
         let mut host =
             super::super::AudioHost::new(std::env::temp_dir().join("auralyn-respawn-unit"));
         host.reset_engine_reader();
-        host.vst_operations.begin(&load());
-        host.vst_operations.response(&loaded());
-        host.vst_operations
-            .begin(&Command::OpenEditor { id: "id-a".into() });
+        link_seam::register_sent_operation(&host, &load());
+        link_seam::operation_response(&host, &loaded());
+        link_seam::register_sent_operation(&host, &Command::OpenEditor { id: "id-a".into() });
+        assert_eq!(link_seam::plugin_records(&host), 1);
         let old_link = host.link.clone();
-        let old_operations = host.vst_operations.clone();
+        let old_record = link_seam::operation_record(&host);
         host.reset_engine_reader();
-        assert!(!Arc::ptr_eq(&old_operations, &host.vst_operations));
+        assert!(!Arc::ptr_eq(&old_link, &host.link));
         assert!(!old_link.close(super::super::link::CloseCause::Eof));
-        assert!(host.vst_operations.0.lock().unwrap().plugins.is_empty());
-        assert_eq!(exit(&host.vst_operations).cause, "unknown");
+        assert!(!old_record.is_same_record(&link_seam::operation_record(&host)));
+        assert_eq!(
+            old_record.plugin_count(),
+            1,
+            "旧い接続の記録は、作り直しで消えない"
+        );
+        assert_eq!(link_seam::plugin_records(&host), 0);
+        assert_eq!(link_seam::take_exit(&host)["cause"], "unknown");
     }
 
     #[test]
@@ -774,11 +796,10 @@ mod tests {
         let mut host =
             super::super::AudioHost::new(std::env::temp_dir().join("auralyn-send-failure-unit"));
         host.reset_engine_reader();
-        let operations = host.vst_operations.clone();
         let link = host.link.clone();
         assert!(host.execute_running_command_inner(load()).is_err());
-        assert!(operations.0.lock().unwrap().in_flight.is_none());
-        assert!(operations.0.lock().unwrap().awaiting.is_none());
+        assert!(!link_seam::operation_in_flight(&host));
+        assert!(!link_seam::operation_awaiting(&host));
         assert!(!link.close(super::super::link::CloseCause::Eof));
     }
 }

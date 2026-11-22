@@ -313,6 +313,9 @@ pub(super) struct State {
     /// 試験の継ぎ目：`command()` の送る前と、`snapshot` の最後の確認の前に呼ばれる。
     #[cfg(test)]
     between_ops: Option<ExecCheck>,
+    /// 試験の継ぎ目：公開の操作の失敗の処理で、`settle()` の後、`detached` を比べる前に呼ばれる。
+    #[cfg(test)]
+    after_failure_settle: Option<ExecCheck>,
     /// 試験の継ぎ目：次に `child()` が作る子として使う、台本つきの子（先頭から）。
     #[cfg(test)]
     test_children: Vec<Box<AudioHost>>,
@@ -343,6 +346,8 @@ impl State {
             after_exec_check: None,
             #[cfg(test)]
             between_ops: None,
+            #[cfg(test)]
+            after_failure_settle: None,
             #[cfg(test)]
             test_children: Vec::new(),
         }
@@ -1153,6 +1158,10 @@ impl AudioHost {
             // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
             // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（`enabled` を残す）を通す。
             state.settle();
+            #[cfg(test)]
+            if let (Some(hook), Some(child)) = (&state.after_failure_settle, &state.child) {
+                hook(child);
+            }
             if state.detached == detached_before {
                 state.discard_child();
                 state.error = Some(

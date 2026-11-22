@@ -344,7 +344,7 @@ pub(in crate::audio) mod tests {
         host.live_modes.needs_sync = false;
         let calls = Arc::new(Mutex::new(Vec::new()));
         let observed = calls.clone();
-        let slot = host.pending_reply_tx.clone();
+        let slot = link_seam::reply_slot(&host);
         let worker = thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else {
