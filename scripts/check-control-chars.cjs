@@ -6,9 +6,9 @@ const ROOT = path.resolve(__dirname, '..');
 
 const TEXT_EXTENSIONS = new Set([
   '.rs', '.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.md', '.mdc', '.toml', '.yml', '.yaml',
-  '.css', '.html', '.svg', '.xml', '.py', '.ps1', '.txt', '.hbs',
+  '.css', '.html', '.svg', '.xml', '.py', '.ps1', '.txt', '.hbs', '.sh', '.csv', '.ini', '.cfg',
 ]);
-const TEXT_BASENAMES = new Set(['.gitignore', '.gitattributes']);
+const TEXT_BASENAMES = new Set(['.gitignore', '.gitattributes', 'CODEOWNERS', 'Dockerfile', '.editorconfig']);
 const FIX_HINT = 'PowerShell の二重引用符の中のバッククォートなどで混入しやすい。Write/Edit ツールで書き直す（docs/BUILD_GUIDE.md の PowerShell の注意を参照）';
 
 const NAMES = new Map([
@@ -63,11 +63,16 @@ function listTrackedFiles() {
     .filter(Boolean);
 }
 
-function runControlCharsCheck(names) {
+// 消したファイルや改名の元（--changed で名前だけ渡る）と、同じ名前のフォルダーは見ない。
+function isExistingFile(fullPath) {
+  return fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() ?? false;
+}
+
+function runControlCharsCheck(names, root = ROOT) {
   const files = names
     .filter(isTargetFile)
-    .filter(name => fs.existsSync(path.join(ROOT, name)))
-    .map(name => ({ name, buffer: fs.readFileSync(path.join(ROOT, name)) }));
+    .filter(name => isExistingFile(path.join(root, name)))
+    .map(name => ({ name, buffer: fs.readFileSync(path.join(root, name)) }));
   const errors = checkControlChars(files);
   if (errors.length > 0) {
     const failure = new Error(`制御文字の検査に失敗しました (${errors.length}件)`);
