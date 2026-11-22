@@ -225,6 +225,20 @@
   - 通知（A・B・C・E）は272件で、すべて届き、欠落は0。応答（A・B・C・E の40件）は、同じ場面の応答の前の `emit` がすべて届いた後に届いた。
   - 遅れ（A・B・C・E。Rust の `emit` から WebView の受信まで）：中央値 0.5ms、最大 45.3ms。（`return` から応答の受信まで）：中央値 27.1ms、最大 46.1ms。
   - この測定は、聴感・実音声の合格ではない。範囲外：子の異常終了（EOF）の通知の順（D の準備で起きたが、順は照合していない）、複数ウィンドウ、本番ビルド（計測点は開発ビルドだけ）、debug の子、`audio-level` などのメーター。
+- 旧の通知とコマンドの応答の順序の測り直し（F1b-0a-1、2026-11-22、コミット `7bd67bc4`）：**実測した。** F1b-0a-1 は、子の stdin を接続ごとの writer へ集め、子の回収を通知より先にし、通知を `emitter` のロックの外で `emit_order` の列として出す。通知の順・欠落・応答との前後が F1a-0 から変わっていないかを、同じ手順（[TESTING](../TESTING.md) の W5）で確かめた。
+  - **子：** `D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe`（実行中の子のパスを `Win32_Process` で確かめた）。SHA-256 は `6721D9258947BAE10189E091C55A2B7088D9A8CDD180736CF861150EF678FA53`。`cargo build --release --locked --bin audio_engine` で作った `target/release/audio_engine.exe` と同じファイル（ハッシュ一致）。F1a-0 の記録のハッシュと違うのは、このバイナリが Host と同じライブラリを含み、F1b-0a-1 のコミットから作り直したため。サイドカーの IPC の形は変えていない。`Engine IPC parse error` は0件、`panicked` も0件。
+  - **条件：** F1a-0 と同じ。Windows 11、`tauri dev --no-watch --config src-tauri/tauri.debug-global.conf.json`（Host は debug、`AURALYN_EMIT_TRACE=1`）、WASAPI（入力：再生リダイレクト、出力：Voicemeeter In 2、512、48000、独立出力 1/2）。画面と同じ `audioApi.start`・`stop`・`restart` を WebView から呼び、応答の後 700ms 待った。起動直後に保存した設定で音声が自動で始まっていたので、測定の前に停止した。A・B・C・E は1周で A→C→B→E の順に10周（各10回）、D は子を外から終了させて10回。
+  - **結果（A・B・C・E・D の各10回、計50場面）：** Rust が `emit` を呼んだ順と、WebView が受け取った順は、聴取対象の通知465件の全部で一致（食い違い0）。欠落0。
+    - A 開始の成功：`conditions ×4`、`audio-started`、`conditions`、応答。9回。1回は、その後に `conditions ×2` が続いた（F1a-0 と同じ形・同じ回数）。
+    - B 開始の失敗：`conditions ×4`、`audio-stopped`、`conditions`、応答（`invoke-rejected`）。10回。
+    - C 停止（接続あり）：`conditions ×2`、`audio-stopped`、`conditions`、応答。10回。
+    - D 停止（接続なし）：`conditions`、応答。10回。`audio-stopped` は出ない。毎回、子の PID が OS 上で終わったことと、`audio-engine-exited`・`audio-error` の受信を確かめてから呼んだ。
+    - E 再起動：`live-modes-invalidated`、`conditions ×6`、`audio-started`、`conditions`、応答、`conditions ×2`。10回。`audio-stopped`・`audio-engine-exited`・`audio-error` は出ない。
+  - **F1a-0 では範囲外だった、子の異常終了（EOF）の順（D の準備で10回）：** 毎回 `audio-conditions-changed`、`audio-engine-exited`、`audio-error` の順に、間に別の通知を挟まずに届いた（Rust の呼び出し順とも一致）。その後ろに、画面の読み取りが接続の喪失を見て出す `live-modes-invalidated`、`conditions` が続く回があった。これは F1a-0 から変えていない経路の通知で、順は 2.4 の設計どおり（EOF の3つ → 待ち手の解放）。
+  - **応答との前後：** 応答（71件。うち計測外の後始末の停止を含む）は、すべて、同じ場面の応答の前の `emit` が WebView に届いた後に届いた（逆転0）。
+  - **遅れ：** Rust の `emit` から WebView の受信まで、中央値 2.0ms、最大 54.0ms（D と後始末の停止を含む）。`return` から応答の受信まで、中央値 37.4ms、最大 58.6ms。F1a-0（中央値 0.5ms・最大 45.3ms／中央値 27.1ms・最大 46.1ms）より、中央値が大きい。通知の列を `emit_order` で直列化したことの影響か、測定時の負荷の違いかは切り分けていない（通知の順・欠落には影響がなく、最大値も同程度）。
+  - **F1a-0 との違い：** 通知の名前・順・件数・欠落・応答との前後は同じ。違いは、EOF の順を測れたことと、遅れの中央値の差だけ。
+  - この測定は、聴感・実音声の合格ではない。範囲外：複数ウィンドウ、本番ビルド、debug の子、`audio-level` などのメーター、C2（書き込み5秒）・C5 の実機での再現（試験は Rust の試験で確かめた）。
 - `get_audio_state` を、ロックを待たない形にしたときの、フロントの2秒ごとの照合への影響。
 - 子の `Stop` が、ストリームを実際に止める時間（フェードの待ち）。
 - `stop_audio` の `Pending` が落ちるタイミングで進む `revision` が、witness の照合に与える影響の細部。
