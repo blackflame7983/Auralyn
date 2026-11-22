@@ -162,7 +162,7 @@ fn proposal_prepare_exited_child_with_late_reader_notification_never_ensures_or_
     let pid = child.id();
     host.child = Some(child);
     host.engine_generation = 7;
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     let error = host
         .voice_check_preview(proposal_prepare_request())
         .unwrap_err()
@@ -192,17 +192,17 @@ fn proposal_prepare_exit_after_connection_check_rejects_same_generation_without_
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+    host.attach_stdin_for_test(child.stdin.take().unwrap());
     let pid = child.id();
     host.child = Some(child);
     host.engine_generation = 7;
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     assert!(host.require_proposal_connection(6).is_err());
     host.require_proposal_connection(7).unwrap();
     // 公開入口の接続確認と実際の送信の間でchildだけが終了。reader通知はまだtrue。
-    host.stdin = None;
+    host.fail_writes_for_test();
     host.child.as_mut().unwrap().wait().unwrap();
-    assert!(host.reader_active.load(Ordering::Acquire));
+    assert!(host.link.is_open());
     let error = host
         .prepare_proposal_on_existing_generation(7, proposal_prepare_request())
         .unwrap_err()

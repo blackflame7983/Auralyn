@@ -280,7 +280,7 @@ fn k9c_prepare_update_stops_here_when_the_primary_stop_fails() {
     let error = host.prepare_update().unwrap_err().to_string();
     assert_eq!(error, "stop refused");
     assert!(!host.maintenance);
-    assert!(host.child.is_some() && host.reader_active.load(Ordering::Acquire));
+    assert!(host.child.is_some() && host.link.is_open());
     assert!(!names(&f).iter().any(|name| name == "audio-stopped"));
 }
 

@@ -139,8 +139,7 @@ impl AudioHost {
         }
         self.frontend_bootstrap.warmup_seen = true;
         if let Some(child) = &mut self.child {
-            let connected =
-                self.reader_active.load(Ordering::Acquire) && matches!(child.try_wait(), Ok(None));
+            let connected = self.link.is_open() && matches!(child.try_wait(), Ok(None));
             let state = if connected {
                 self.auto_gain(crate::audio_engine::auto_gain::Request::Status)
                     .ok()
@@ -943,7 +942,7 @@ mod connection_tests {
                 |_| status(false, true, 1.),
                 |host, _| {
                     if closed {
-                        host.reader_active.store(false, Ordering::Release);
+                        host.set_link_for_test(false);
                     }
                     let mut attempts = 0;
                     assert!(host

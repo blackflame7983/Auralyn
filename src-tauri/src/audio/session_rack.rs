@@ -17,7 +17,7 @@ impl AudioHost {
                 && lease.generation == self.engine_generation
                 && Instant::now() < lease.expires
                 && self.child.is_some()
-                && self.reader_active.load(Ordering::Acquire)
+                && self.link.is_open()
         })
     }
     fn read_session_rack(&mut self) -> Result<Reply> {
@@ -39,9 +39,7 @@ impl AudioHost {
                 restore_eligible,
                 revision,
                 running,
-            } if generation == self.engine_generation
-                && self.reader_active.load(Ordering::Acquire) =>
-            {
+            } if generation == self.engine_generation && self.link.is_open() => {
                 if !plugins.is_empty() {
                     self.frontend_bootstrap.session_claimed = true;
                 }
@@ -205,9 +203,7 @@ impl AudioHost {
                         self.frontend_bootstrap.output_gain = Some(value);
                     }
                 }
-                if generation != self.engine_generation
-                    || !self.reader_active.load(Ordering::Acquire)
-                {
+                if generation != self.engine_generation || !self.link.is_open() {
                     return Ok(Reply::Conflict);
                 }
                 self.next_restore_operation = self
@@ -341,10 +337,10 @@ pub(in crate::audio) mod tests {
         let mut child = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
             "while($null -ne ($line=[Console]::In.ReadLine())) { [Console]::Out.WriteLine($line) }"])
             .creation_flags(0x0800_0000).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
-        host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+        host.attach_stdin_for_test(child.stdin.take().unwrap());
         let stdout = child.stdout.take().unwrap();
         host.child = Some(child);
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         host.live_modes.needs_sync = false;
         let calls = Arc::new(Mutex::new(Vec::new()));
         let observed = calls.clone();
@@ -551,7 +547,7 @@ pub(in crate::audio) mod tests {
             |_| panic!("停止readerには送信禁止"),
             |host, calls| {
                 let pid = host.child.as_ref().unwrap().id();
-                host.reader_active.store(false, Ordering::Release);
+                host.set_link_for_test(false);
                 assert!(host.session_rack(Request::Snapshot).is_err());
                 assert_eq!(host.child.as_ref().unwrap().id(), pid);
                 assert!(calls.lock().unwrap().is_empty());

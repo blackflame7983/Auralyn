@@ -68,7 +68,7 @@ fn preflight_rejection_never_stops_audio_or_changes_saved_files() {
             assert!(!invoked.load(Ordering::SeqCst));
             assert!(calls.lock().unwrap().is_empty());
             assert_eq!(host.child.as_ref().unwrap().id(), initial_pid);
-            assert!(host.reader_active.load(Ordering::Acquire));
+            assert!(host.link.is_open());
             assert!(host.is_global_muted);
             assert_eq!(host.post_mix.bundle_revision(), initial_post);
             assert_eq!(std::fs::read(root.join("mixing.json")).unwrap(), mix_bytes);

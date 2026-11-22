@@ -231,7 +231,7 @@ fn w2_a_primary_write_failure_records_the_child_before_returning_the_original_er
     let (mut host, observer) = scripted_parts([]);
     host.ensure_engine_running().unwrap();
     seam::set_wait(seam::Wait::Stuck);
-    host.stdin = None;
+    host.fail_writes_for_test();
     let error = host
         .execute_running_command(IpcCommand::GetDevices)
         .unwrap_err();

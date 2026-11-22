@@ -21,6 +21,10 @@ pub(crate) enum Step {
     Exit,
     /// 孫のプロセス（長く待つだけの試験の実行ファイル）を作り、そのプロセス番号を指定のファイルへ書く。
     SpawnGrandchild(PathBuf),
+    /// 標準入力を読むのをやめて、止まる（親の書き込みが詰まる）。標準出力は開いたまま。
+    StallStdin,
+    /// 標準出力だけを閉じる。子は生きていて、標準入力を読み続ける。
+    CloseStdout,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -163,6 +167,19 @@ fn run_scripted_child(script: Script) {
                     }
                 }
                 Step::Exit => std::process::exit(0),
+                Step::StallStdin => loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                },
+                Step::CloseStdout => {
+                    use std::os::windows::io::AsRawHandle;
+                    let handle = std::io::stdout().as_raw_handle();
+                    // SAFETY: 標準出力のハンドルはこの子の持ち物で、以後は書かない。
+                    let _ = unsafe {
+                        windows::Win32::Foundation::CloseHandle(windows::Win32::Foundation::HANDLE(
+                            handle,
+                        ))
+                    };
+                }
                 Step::SpawnGrandchild(pid_file) => {
                     grandchildren.push(spawn_idle_process());
                     let pid = grandchildren.last().unwrap().id();
@@ -403,7 +420,7 @@ impl Observer {
     }
 }
 
-/// 試験から本番保護を有効にする。`reader_active`が真のあいだだけ保たれる（偽だと次の検査で解除される）。
+/// 試験から本番保護を有効にする。接続が開いているあいだだけ保たれる（閉じていると次の検査で解除される）。
 pub(crate) fn arm_live_protection(host: &mut AudioHost) {
     host.live_modes.armed = true;
 }
@@ -451,7 +468,7 @@ pub(crate) fn scripted_parts(
     let recorder = Arc::new(emit::Recorder::default());
     let spawned = Arc::new(AtomicU64::new(0));
     let fail_spawn = Arc::new(AtomicBool::new(false));
-    *host.emitter.lock().unwrap() = Some(recorder.emitter());
+    host.emitter.set(recorder.emitter());
     let probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>> = Arc::default();
     let (counter, fail, seen) = (spawned.clone(), fail_spawn.clone(), probes.clone());
     host.test_engine_launcher = Some(Arc::new(move || {

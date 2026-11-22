@@ -5,6 +5,7 @@ pub use control::{AudioControl, Entry, EntryKind};
 mod engine_exit;
 pub(crate) mod engine_life;
 pub(crate) mod frontend_bootstrap;
+mod link;
 mod live_bundle;
 mod live_modes;
 pub(crate) mod mixing;
@@ -15,18 +16,31 @@ pub(crate) mod post_mix;
 mod post_mix_start;
 mod process_bundle;
 pub(crate) mod process_inputs;
+mod reader;
 mod replies;
 mod session_rack;
+mod writer;
 use anyhow::{anyhow, Result};
-use replies::ReplySlot;
+use link::{CloseCause, LinkState};
+use replies::{ReplyOutcome, ReplySlot};
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+use std::time::Instant;
 use tauri::AppHandle;
+
+/// 子の終了を待ち手へ伝える文言（EOF の結果）。
+const ENGINE_EXITED: &str = "Engine Crashed/Exited";
+/// 書き込みが期限（5秒）内に終わらず、接続を切り離したときの文言（C2）。
+const WRITE_TIMED_OUT: &str = "音声エンジンが応答しないため、終了しました。もう一度お試しください";
+
+fn writer_gone() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Stdin not available")
+}
 
 fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
     crate::migration::write_json(path, config).map_err(anyhow::Error::msg)
@@ -233,6 +247,32 @@ pub struct LoopbackProbeResult {
     pub unavailable: Option<String>,
 }
 
+/// 試験の継ぎ目：接続の確認の後、応答の待ちを始める前に、一度だけ呼ばれる（試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_begin_hook {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+#[derive(Default)]
+struct HeldNotices {
+    depth: u32,
+    notices: Vec<(&'static str, serde_json::Value)>,
+}
+
 pub struct AudioHost {
     post_mix: post_mix::State,
     post_role: bool,
@@ -245,15 +285,17 @@ pub struct AudioHost {
     live_modes: live_modes::HostModes,
     mode_vst: mode_vst::State,
     voice_activity: Arc<AtomicBool>,
-    reader_active: Arc<AtomicBool>,
+    /// 接続の開閉と、閉じた理由。接続ごとに作り直す。
+    link: Arc<LinkState>,
     vst_operations: Arc<engine_exit::Operations>,
     child: Option<Child>,
-    stdin: Option<BufWriter<ChildStdin>>,
-    // We store a sender to satisfy a waiting command.
-    // Since we assume sequential commands from the UI (mutex locked AudioState),
-    // we only have one pending request at a time.
+    /// 子の stdin の唯一の持ち主（接続ごとの書き込みスレッド）への口。
+    writer: Option<writer::Writer>,
+    // 応答の待ちは1件だけ（直列プロトコル）。接続ごとに作り直す。
     pending_reply_tx: Arc<ReplySlot>,
-    emitter: Arc<Mutex<Option<emit::AudioEmitter>>>,
+    emitter: Arc<emit::Notifier>,
+    /// 子の回収の前に生まれた通知を、回収の後まで保持する。
+    held_notices: Mutex<HeldNotices>,
     #[cfg(test)]
     test_engine_launcher: Option<Arc<dyn Fn() -> Result<Child> + Send + Sync>>,
     cached_devices: Option<AudioDeviceList>,
@@ -327,7 +369,7 @@ mod checked_snapshot_scope_tests {
     fn checked_snapshot_preflight_rejects_protected_without_starting_engine() {
         let mut host =
             AudioHost::new(std::env::temp_dir().join("auralyn-checked-snapshot-preflight"));
-        host.reader_active.store(true, Ordering::Release);
+        host.set_link_for_test(true);
         host.live_modes.armed = true;
         assert!(host.checked_snapshot_supported().is_err());
         assert!(host.child.is_none());
@@ -431,8 +473,7 @@ impl AudioHost {
             self.preflight_proposal_apply()?;
         }
         let path = self.last_config_path.with_file_name("live_output.json");
-        if config.is_none() && (self.child.is_none() || !self.reader_active.load(Ordering::Acquire))
-        {
+        if config.is_none() && (self.child.is_none() || !self.link.is_open()) {
             let stored = if path.exists() {
                 serde_json::from_slice(&std::fs::read(&path)?)?
             } else {
@@ -515,12 +556,13 @@ impl AudioHost {
             live_modes: live_modes::HostModes::new(&config_dir),
             mode_vst,
             voice_activity: Arc::new(AtomicBool::new(false)),
-            reader_active: Arc::new(AtomicBool::new(false)),
+            link: Arc::new(LinkState::closed()),
             vst_operations: Arc::new(engine_exit::Operations::default()),
             child: None,
-            stdin: None,
+            writer: None,
             pending_reply_tx: Arc::new(ReplySlot::default()),
-            emitter: Arc::new(Mutex::new(None)),
+            emitter: Arc::new(emit::Notifier::default()),
+            held_notices: Mutex::new(HeldNotices::default()),
             #[cfg(test)]
             test_engine_launcher: None,
             cached_devices: None,
@@ -552,6 +594,27 @@ impl AudioHost {
         }
     }
 
+    /// 試験で、子の stdin を writer へ渡す。
+    #[cfg(test)]
+    pub(crate) fn attach_stdin_for_test(&mut self, stdin: std::process::ChildStdin) {
+        self.writer = Some(writer::Writer::start(stdin, self.link.clone()));
+    }
+
+    /// 試験で、接続の開閉を直接決める。開くときは、閉じていた応答の待ちも開き直す。
+    #[cfg(test)]
+    pub(crate) fn set_link_for_test(&mut self, open: bool) {
+        self.link.set_open_for_test(open);
+        if open {
+            self.pending_reply_tx.reopen_for_test();
+        }
+    }
+
+    /// 試験で、writer の失敗を差し込む（以後の書き込みは `Stdin not available` で失敗する）。
+    #[cfg(test)]
+    pub(crate) fn fail_writes_for_test(&mut self) {
+        self.writer = None;
+    }
+
     fn role(&self) -> engine_life::Role {
         if self.post_role {
             engine_life::Role::PostMix
@@ -566,17 +629,80 @@ impl AudioHost {
     }
 
     pub fn set_event_emitter(&mut self, handle: AppHandle) {
-        *self.emitter.lock().unwrap() = Some(emit::AudioEmitter::app(handle));
+        self.emitter.set(emit::AudioEmitter::app(handle));
     }
 
     pub(crate) fn conditions(&self) -> Arc<conditions::Conditions> {
         self.conditions.clone()
     }
 
-    fn notify_conditions_changed(&self) {
-        if let Some(handle) = self.emitter.lock().unwrap().as_ref() {
-            let _ = handle.emit("audio-conditions-changed", ());
+    /// ホストが出す通知。`hold_notices` の間は保持して、回収の後に出す。
+    fn notice<S: Serialize + Clone>(&self, name: &'static str, payload: S) {
+        {
+            let mut held = self
+                .held_notices
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if held.depth > 0 {
+                if let Ok(value) = serde_json::to_value(&payload) {
+                    held.notices.push((name, value));
+                }
+                return;
+            }
         }
+        self.emitter.emit(name, payload);
+    }
+
+    /// 子の回収の経路。通知は回収の後まで保持し、各経路の今の順で出す（`emitter` も通知の列も取らない）。
+    fn hold_notices<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.held_notices
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .depth += 1;
+        let result = f(self);
+        let notices = {
+            let mut held = self
+                .held_notices
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            held.depth -= 1;
+            if held.depth == 0 {
+                std::mem::take(&mut held.notices)
+            } else {
+                Vec::new()
+            }
+        };
+        if !notices.is_empty() {
+            self.emitter.chain(|chain| {
+                for (name, payload) in notices {
+                    let _ = chain.emit(name, payload);
+                }
+            });
+        }
+        result
+    }
+
+    fn notify_conditions_changed(&self) {
+        self.notice("audio-conditions-changed", ());
+    }
+
+    /// 接続を捨てる（2.3 の 1〜3）。勝ち負けを返す。子の回収は呼び出し側が続ける。
+    fn close_connection(&mut self, cause: CloseCause) -> bool {
+        let won = self.link.close(cause);
+        // 取り出した送り側を捨てて、待ち手を解放する。reader が先に取り出していたら、reader に任せる。
+        drop(self.pending_reply_tx.close());
+        self.writer = None;
+        won
+    }
+
+    /// 接続を捨てて、子を回収する（2.3 の 1〜4）。通知は出さない。
+    fn drop_connection(&mut self, cause: CloseCause) -> bool {
+        let won = self.close_connection(cause);
+        if let Some(child) = self.child.take() {
+            let job = self.engine_job.take();
+            self.retire_engine(child, job);
+        }
+        won
     }
 
     fn apply_engine_tuning_env(&self, command: &mut Command) {
@@ -740,21 +866,25 @@ impl AudioHost {
                     Ok(Some(status)) => {
                         log::error!("Audio Engine exited unexpectedly! Status: {}", status);
                         log::warn!("Forcing restart with empty state");
-                        self.reader_active.store(false, Ordering::Release);
+                        self.close_connection(CloseCause::Intentional);
                         self.child = None;
-                        self.stdin = None;
                         self.engine_job = None;
                     }
-                    Ok(None) => return Ok(()), // Running
+                    // 動いている。主の子で出力だけが閉じていたら、回収して作り直す（C5）。
+                    Ok(None) if self.post_role || self.link.cause() != Some(CloseCause::Eof) => {
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        log::warn!(
+                            "Audio engine stdout closed while the child is alive; replacing it"
+                        );
+                        self.drop_connection(CloseCause::Intentional);
+                        self.engine_job = None;
+                    }
                     Err(e) => {
                         // 終了の証拠ではない。確かめられるまで、同じ役割の子を作らない。
                         log::error!("Error waiting on audio engine child process: {}", e);
-                        self.reader_active.store(false, Ordering::Release);
-                        if let Some(child) = self.child.take() {
-                            let job = self.engine_job.take();
-                            self.retire_engine(child, job);
-                        }
-                        self.stdin = None;
+                        self.drop_connection(CloseCause::Intentional);
                     }
                 }
             }
@@ -769,10 +899,9 @@ impl AudioHost {
             engine_life::contain_and_resume(&self.retired, self.role(), launched)?;
         self.engine_job = job;
 
-        let stdin = BufWriter::new(child.stdin.take().unwrap());
+        let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
 
-        self.stdin = Some(stdin);
         self.child = Some(child);
         self.output_gain_initialized = false;
         self.engine_generation = self.engine_generation.wrapping_add(1);
@@ -781,285 +910,19 @@ impl AudioHost {
         // Spawn Output Reader Thread
         // 終了した旧プロセスの応答・終了通知を、新プロセスの待機やUIへ渡さない。
         self.reset_engine_reader();
-        let reader_active = self.reader_active.clone();
-        let vst_operations = self.vst_operations.clone();
-        let pending_tx_clone = self.pending_reply_tx.clone();
-        let emitter_clone = self.emitter.clone();
+        self.writer = Some(writer::Writer::start(stdin, self.link.clone()));
         self.voice_activity = Arc::new(AtomicBool::new(false));
-        let voice_activity = self.voice_activity.clone();
-        let conditions = self.conditions.clone();
-        let engine_generation = self.engine_generation;
-
-        thread::spawn(move || {
-            for line in stdout.lines() {
-                if !reader_active.load(Ordering::Acquire) {
-                    break;
-                }
-                let Ok(l) = line else {
-                    continue;
-                };
-                if l.trim().is_empty() {
-                    continue;
-                }
-
-                if let Some(json_str) = l.strip_prefix("IPC:") {
-                    match serde_json::from_str::<OutputMessage>(json_str) {
-                        Ok(msg) => match msg {
-                            OutputMessage::Response(resp) => {
-                                vst_operations.response(&resp);
-                                if !pending_tx_clone.deliver(resp) {
-                                    log::warn!("Received Response but no one is waiting");
-                                }
-                            }
-                            OutputMessage::Event(evt) => match evt {
-                                EngineEvent::ControlStall {
-                                    command,
-                                    plugin_id,
-                                    module,
-                                    elapsed_ms,
-                                } => {
-                                    log::error!(
-                                        "[Engine] Control stall: command={command} plugin_id={plugin_id:?} module={module:?} elapsed_ms={elapsed_ms}"
-                                    );
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit(
-                                            "audio-control-stall",
-                                            serde_json::json!({
-                                                "command": command,
-                                                "pluginId": plugin_id,
-                                                "module": module,
-                                                "elapsedMs": elapsed_ms,
-                                            }),
-                                        );
-                                    }
-                                }
-                                EngineEvent::MixingSourceFailed
-                                | EngineEvent::MixingOutputFailed => {
-                                    if !conditions.engine_changed(condition_epoch) {
-                                        continue;
-                                    }
-                                    if let Some(handle) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = handle.emit("audio-conditions-changed", ());
-                                        let _ = handle.emit(
-                                            if matches!(evt, EngineEvent::MixingSourceFailed) {
-                                                "mixing-source-failed"
-                                            } else {
-                                                "mixing-output-failed"
-                                            },
-                                            (),
-                                        );
-                                    }
-                                }
-                                EngineEvent::Log(s) => log::info!("[Engine] {}", s),
-                                EngineEvent::Error(s) => {
-                                    if !conditions.engine_event(condition_epoch, false) {
-                                        continue;
-                                    }
-                                    log::error!("[Engine] {}", s);
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit("audio-conditions-changed", ());
-                                        let _ = h.emit("audio-stream-error", &s);
-                                    }
-                                }
-                                EngineEvent::LevelMeter {
-                                    levels,
-                                    stream_generation,
-                                } => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        if let Err(e) = h.emit(
-                                            "audio-level",
-                                            LevelPayload {
-                                                levels,
-                                                stream_generation: stream_generation_label(
-                                                    engine_generation,
-                                                    stream_generation,
-                                                ),
-                                            },
-                                        ) {
-                                            log::warn!("Failed to emit audio-level: {}", e);
-                                        }
-                                    }
-                                }
-                                EngineEvent::Stopped {
-                                    stream_generation,
-                                    ended_stream_generation,
-                                } => {
-                                    if !conditions.engine_event(condition_epoch, false) {
-                                        continue;
-                                    }
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit("audio-conditions-changed", ());
-                                        let _ = h.emit(
-                                            "audio-stopped",
-                                            StoppedPayload {
-                                                stream_generation: stream_generation_label(
-                                                    engine_generation,
-                                                    stream_generation,
-                                                ),
-                                                ended_stream_generation: stream_generation_label(
-                                                    engine_generation,
-                                                    ended_stream_generation,
-                                                ),
-                                            },
-                                        );
-                                    }
-                                }
-                                EngineEvent::Loudness(reading) => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit("audio-loudness", reading);
-                                    }
-                                }
-                                EngineEvent::ChannelLevels(levels) => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        if let Err(e) = h.emit("audio-channel-scan", levels) {
-                                            log::warn!("Failed to emit audio-channel-scan: {}", e);
-                                        }
-                                    }
-                                }
-                                EngineEvent::Started {
-                                    sample_rate,
-                                    buffer_size,
-                                    stream_generation,
-                                } => {
-                                    if !conditions.engine_event(condition_epoch, true) {
-                                        continue;
-                                    }
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit("audio-conditions-changed", ());
-                                        let _ = h.emit(
-                                            "audio-started",
-                                            StartedPayload {
-                                                sample_rate,
-                                                buffer_size,
-                                                stream_generation: stream_generation_label(
-                                                    engine_generation,
-                                                    stream_generation,
-                                                ),
-                                            },
-                                        );
-                                    }
-                                }
-                                EngineEvent::VoiceCheckState {
-                                    state,
-                                    position_ms,
-                                    duration_ms,
-                                } => {
-                                    voice_activity.store(
-                                        matches!(state.as_str(), "recording" | "playing"),
-                                        Ordering::Release,
-                                    );
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        #[derive(serde::Serialize, Clone)]
-                                        struct VoiceCheckStatePayload {
-                                            state: String,
-                                            position_ms: u32,
-                                            duration_ms: u32,
-                                        }
-                                        let _ = h.emit(
-                                            "voice-check-state",
-                                            VoiceCheckStatePayload {
-                                                state,
-                                                position_ms,
-                                                duration_ms,
-                                            },
-                                        );
-                                    }
-                                }
-                                EngineEvent::EditorOpened { id } => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit(
-                                            "plugin-editor-opened",
-                                            serde_json::json!({ "id": id }),
-                                        );
-                                    }
-                                }
-                                EngineEvent::EditorClosed { id } => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        let _ = h.emit(
-                                            "plugin-editor-closed",
-                                            serde_json::json!({ "id": id }),
-                                        );
-                                    }
-                                }
-                                EngineEvent::ProcessingHealth {
-                                    state,
-                                    kind,
-                                    recent_late,
-                                    recent_underflow,
-                                    window_secs,
-                                } => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        #[derive(serde::Serialize, Clone)]
-                                        #[serde(rename_all = "camelCase")]
-                                        struct ProcessingHealthPayload {
-                                            state:
-                                                crate::audio_engine::processing_watch::HealthState,
-                                            stall_kind: Option<
-                                                crate::audio_engine::processing_watch::StallKind,
-                                            >,
-                                            recent_late: u64,
-                                            recent_underflow: u64,
-                                            window_secs: u32,
-                                        }
-                                        let _ = h.emit(
-                                            "audio-processing-health",
-                                            ProcessingHealthPayload {
-                                                state,
-                                                stall_kind: kind,
-                                                recent_late,
-                                                recent_underflow,
-                                                window_secs,
-                                            },
-                                        );
-                                    }
-                                }
-                                EngineEvent::VoiceCheckEnvelope {
-                                    raw_peaks,
-                                    processed_peaks,
-                                } => {
-                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                        #[derive(serde::Serialize, Clone)]
-                                        struct VoiceCheckEnvelopePayload {
-                                            raw_peaks: Vec<f32>,
-                                            processed_peaks: Vec<f32>,
-                                        }
-                                        let _ = h.emit(
-                                            "voice-check-envelope",
-                                            VoiceCheckEnvelopePayload {
-                                                raw_peaks,
-                                                processed_peaks,
-                                            },
-                                        );
-                                    }
-                                }
-                            },
-                        },
-                        Err(e) => {
-                            log::error!("Engine IPC parse error: {} (Line: {})", e, l);
-                        }
-                    }
-                } else {
-                    // Non-IPC line (External Log from VST or simple print)
-                    log::trace!("[Engine Raw] {}", l);
-                }
-            }
-
-            log::warn!("Engine stdout closed.");
-            let Some(exit) = vst_operations.unexpected_exit(&reader_active) else {
-                return;
-            };
-            log::error!("Audio engine exited: {exit:?}");
-            // Notify Frontend of crash/exit
-            conditions.engine_event(condition_epoch, false);
-            if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                let _ = h.emit("audio-conditions-changed", ());
-                let _ = h.emit("audio-engine-exited", exit);
-                let _ = h.emit("audio-error", "Audio Engine Process Exited (Crash?)");
-            }
-
-            // 終了時は待機中の呼出しを直ちに解放する。
-            pending_tx_clone.deliver(IpcResponse::Error("Engine Crashed/Exited".to_string()));
-        });
+        reader::Reader {
+            link: self.link.clone(),
+            operations: self.vst_operations.clone(),
+            replies: self.pending_reply_tx.clone(),
+            voice_activity: self.voice_activity.clone(),
+            notifier: self.emitter.clone(),
+            conditions: self.conditions.clone(),
+            epoch: condition_epoch,
+            engine_generation: self.engine_generation,
+        }
+        .spawn(stdout);
 
         if let Some(config) = self.peak_intent {
             let result = self.execute_running_command(IpcCommand::PeakProtection {
@@ -1137,62 +1000,103 @@ impl AudioHost {
         conditions.dispatch(
             conditions::command_changes(&cmd),
             || self.execute_running_command_inner(cmd),
-            || {
-                if let Some(handle) = emitter.lock().unwrap().as_ref() {
-                    let _ = handle.emit("audio-conditions-changed", ());
-                }
-            },
+            || emitter.emit("audio-conditions-changed", ()),
         )
     }
 
     fn reset_engine_reader(&mut self) {
         // 旧readerの終了を新しい接続へ持ち越さない。
-        self.reader_active.store(false, Ordering::Release);
+        self.close_connection(CloseCause::Intentional);
         self.pending_reply_tx = Arc::new(ReplySlot::default());
-        self.reader_active = Arc::new(AtomicBool::new(true));
+        self.link = Arc::new(LinkState::open());
         self.vst_operations = Arc::new(engine_exit::Operations::default());
     }
 
     fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         self.guard_mode_vst()?;
-        anyhow::ensure!(
-            self.reader_active.load(Ordering::Acquire),
-            "音声エンジンとの通信が終了しました"
-        );
+        anyhow::ensure!(self.link.is_open(), replies::CLOSED);
         let json = serde_json::to_string(&cmd)?;
+        #[cfg(test)]
+        before_begin_hook::run();
 
         // IDのない直列プロトコルなので、タイムアウトした応答を受け取るまで
         // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
         let rx = self.pending_reply_tx.begin()?;
         self.vst_operations.begin(&cmd);
-        let sent = match &mut self.stdin {
-            Some(stdin) => writeln!(stdin, "{}", json).and_then(|()| stdin.flush()),
-            None => Err(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "Stdin not available",
-            )),
-        };
-        if let Err(error) = sent {
-            self.pending_reply_tx.cancel();
-            self.vst_operations
-                .response(&IpcResponse::Error(error.to_string()));
-            // 書きかけのJSONや遅い応答が残る接続を再利用しない。
-            self.kill_engine();
-            if let Ok(emitter) = self.emitter.lock() {
-                if let Some(handle) = emitter.as_ref() {
-                    let _ = handle.emit("audio-error", "音声エンジンとの通信が切れました");
-                }
-            }
-            return Err(error.into());
-        }
-
-        let response = rx.recv_timeout(std::time::Duration::from_secs(10));
-        if response.is_err() {
-            self.vst_operations.timeout();
-        }
-        response.map_err(|e| anyhow!("Timeout or disconnect waiting for engine response: {e}"))
+        let submitted = self.submit_write(writer::Payload::Json(json));
+        self.await_reply(submitted, rx)
     }
 
+    fn submit_write(
+        &self,
+        payload: writer::Payload,
+    ) -> std::io::Result<std::sync::mpsc::Receiver<writer::WriteDone>> {
+        match &self.writer {
+            Some(writer) => writer.submit(payload),
+            None => Err(writer_gone()),
+        }
+    }
+
+    /// 書き込みの完了（5秒）と応答（書き込みが戻ってから10秒）を待つ。
+    ///
+    /// 実際の書き込みの失敗と書き込みの期限切れは、応答の受け側を読まずに接続を切り離す。
+    /// `Aborted`（EOF などで閉じていたので書かなかった）は、書き込みの失敗にせず EOF の結果を待つ。
+    fn await_reply(
+        &mut self,
+        submitted: std::io::Result<std::sync::mpsc::Receiver<writer::WriteDone>>,
+        rx: std::sync::mpsc::Receiver<ReplyOutcome>,
+    ) -> Result<IpcResponse> {
+        let done = match submitted {
+            Ok(done) => match done.recv_timeout(writer::write_limit()) {
+                Ok(done) => done,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(self.cut_off(
+                        CloseCause::WriteTimeout,
+                        std::io::Error::new(std::io::ErrorKind::TimedOut, WRITE_TIMED_OUT),
+                    ));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(self.cut_off(CloseCause::WriteFailed, writer_gone()));
+                }
+            },
+            Err(error) => return Err(self.cut_off(CloseCause::WriteFailed, error)),
+        };
+        let wait = match done.result {
+            writer::WriteResult::Ok => {
+                (done.flushed_at + writer::reply_limit()).saturating_duration_since(Instant::now())
+            }
+            writer::WriteResult::Aborted => writer::reply_limit(),
+            writer::WriteResult::Err(error) => {
+                return Err(self.cut_off(CloseCause::WriteFailed, error));
+            }
+        };
+        match rx.recv_timeout(wait) {
+            Ok(ReplyOutcome::Response(response)) => Ok(*response),
+            // EOF の通知は出し終えている。切断で解放された場合も、今の EOF と同じ結果にする。
+            Ok(ReplyOutcome::Eof) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Ok(IpcResponse::Error(ENGINE_EXITED.to_string()))
+            }
+            Err(error) => {
+                self.vst_operations.timeout();
+                Err(anyhow!(
+                    "Timeout or disconnect waiting for engine response: {error}"
+                ))
+            }
+        }
+    }
+
+    /// 書き込みの失敗・期限切れで接続を切り離す（2.3）。書きかけのJSONや遅い応答が残る接続を再利用しない。
+    fn cut_off(&mut self, cause: CloseCause, error: std::io::Error) -> anyhow::Error {
+        self.vst_operations
+            .response(&IpcResponse::Error(error.to_string()));
+        let won = self.link.close(cause);
+        self.kill_engine();
+        // 終了の通知を出すのは競りに勝った側だけ。EOF が先なら reader が出している。
+        if won {
+            self.notice("audio-error", "音声エンジンとの通信が切れました");
+        }
+        error.into()
+    }
     // 同期呼出元（プロファイル適用）は取得済み一覧だけを読む。
     // 明示再検出はcommands::get_audio_devicesのBegin/Poll経路を使う。
     pub fn enumerate_devices(&mut self, force_refresh: bool) -> Result<AudioDeviceList> {
@@ -1281,7 +1185,7 @@ impl AudioHost {
             "デバイス検出要求は失効しています"
         );
         anyhow::ensure!(
-            self.reader_active.load(Ordering::Acquire),
+            self.link.is_open(),
             "検出中に音声エンジンとの通信が終了しました"
         );
         let response = self.execute_command(IpcCommand::PollDeviceScan {
@@ -1357,7 +1261,7 @@ impl AudioHost {
         let _ = ticket
             .terminal
             .set(Err("デバイス検出を取り消しました".into()));
-        if !self.reader_active.load(Ordering::Acquire) {
+        if !self.link.is_open() {
             return Ok(());
         }
         match self.execute_command(IpcCommand::CancelDeviceScan {
@@ -1559,7 +1463,7 @@ impl AudioHost {
                 .as_ref()
                 .and_then(|c| c.input_source.as_ref())
                 .is_some_and(|s| *s != crate::input_source::Config::default()))
-            && self.reader_active.load(Ordering::Acquire)
+            && self.link.is_open()
         {
             let status = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
             anyhow::ensure!(
@@ -1572,7 +1476,7 @@ impl AudioHost {
         if let Some(expected) = expected_generation {
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
-                self.child.is_some() && self.reader_active.load(Ordering::Acquire),
+                self.child.is_some() && self.link.is_open(),
                 "初期化中に音声接続が終了しました"
             );
         } else if self.bundle_change_generation.is_some() && initial_controls.is_none() {
@@ -1726,7 +1630,7 @@ impl AudioHost {
 
     // 停止・画面の後始末で共有する。生存中の通信断を停止済みと推測しない。
     fn reap_confirmed_stopped_connection(&mut self) -> Result<bool> {
-        if self.reader_active.load(Ordering::Acquire) {
+        if self.link.is_open() {
             return Ok(false);
         }
         if let Some(child) = &mut self.child {
@@ -1747,8 +1651,10 @@ impl AudioHost {
 
     fn stop_primary(&mut self) -> Result<()> {
         if self.mode_vst.blocked() {
-            self.cancel_mode_vst("利用者が音声を停止しました");
-            self.kill_engine();
+            self.hold_notices(|host| {
+                host.cancel_mode_vst("利用者が音声を停止しました");
+                host.kill_engine();
+            });
             return Ok(());
         }
         self.frontend_bootstrap.cancel();
@@ -1890,22 +1796,18 @@ impl AudioHost {
         if self.mode_vst.blocked() {
             anyhow::ensure!(active, "切替・復旧の完了後にミュートを解除してください");
             self.is_global_muted = true;
-            self.cancel_mode_vst("緊急ミュートで切替を中止しました");
-            self.kill_engine();
-            if let Ok(emitter) = self.emitter.lock() {
-                if let Some(handle) = emitter.as_ref() {
-                    let _ = handle.emit("global-mute-changed", true);
-                }
-            }
+            self.hold_notices(|host| {
+                host.cancel_mode_vst("緊急ミュートで切替を中止しました");
+                host.kill_engine();
+            });
+            self.notice("global-mute-changed", true);
             return Ok(());
         }
         match self.execute_command(IpcCommand::SetGlobalMute { active })? {
             IpcResponse::Success => {
                 self.is_global_muted = active;
                 // Emit event for UI update
-                if let Some(h) = self.emitter.lock().unwrap().as_ref() {
-                    let _ = h.emit("global-mute-changed", active);
-                }
+                self.notice("global-mute-changed", active);
                 Ok(())
             }
             IpcResponse::Error(e) => Err(anyhow!(e)),
@@ -2214,11 +2116,7 @@ impl AudioHost {
     pub fn set_global_bypass(&mut self, active: bool) -> Result<()> {
         match self.execute_command(IpcCommand::SetGlobalBypass { active })? {
             IpcResponse::Success => {
-                if let Ok(emitter) = self.emitter.lock() {
-                    if let Some(handle) = emitter.as_ref() {
-                        let _ = handle.emit("global-bypass-changed", active);
-                    }
-                }
+                self.notice("global-bypass-changed", active);
                 Ok(())
             }
             IpcResponse::Error(e) => Err(anyhow!(e)),
@@ -2323,7 +2221,7 @@ impl AudioHost {
             );
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
-                self.reader_active.load(Ordering::Acquire),
+                self.link.is_open(),
                 "配信状態の変更中に音声エンジンが終了しました"
             );
         }
@@ -2416,7 +2314,7 @@ impl AudioHost {
         if !matches!(
             request.action,
             crate::audio_engine::voice_check::preview::Action::Open
-        ) && !self.reader_active.load(Ordering::Acquire)
+        ) && !self.link.is_open()
         {
             return Err(anyhow!(
                 "音声エンジンとの通信が終了しました。試聴画面を開き直してください"
@@ -2450,10 +2348,7 @@ impl AudioHost {
 
     fn require_proposal_connection(&mut self, generation: u64) -> Result<()> {
         validate_start_generation(generation, self.engine_generation)?;
-        anyhow::ensure!(
-            self.reader_active.load(Ordering::Acquire),
-            "音声エンジンとの通信が終了しました"
-        );
+        anyhow::ensure!(self.link.is_open(), "音声エンジンとの通信が終了しました");
         let child = self
             .child
             .as_mut()
@@ -2793,33 +2688,32 @@ impl AudioHost {
         self.kill_primary_engine();
     }
 
+    /// 状態は今の順で変え、通知は子の回収の後に出す（2.3）。
     fn kill_primary_engine(&mut self) {
-        self.post_attached = false;
-        self.output_gain_initialized = false;
-        if self.mode_vst.busy() {
-            self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
-        }
-        if self.child.is_some() {
-            self.frontend_bootstrap.cancel();
-            self.frontend_bootstrap.session_claimed = true;
-        }
-        self.invalidate_live_protection();
-        self.live_modes.needs_sync = true;
-        self.conditions.retire_engine();
-        self.notify_conditions_changed();
-        self.engine_generation = self.engine_generation.wrapping_add(1);
-        self.device_scan = None;
-        // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
-        self.reader_active.store(false, Ordering::Release);
-        if let Some(child) = self.child.take() {
-            log::warn!("Force Killing Audio Engine...");
-            let job = self.engine_job.take();
-            self.retire_engine(child, job);
-        }
-        self.stdin = None;
-        self.child = None;
-        self.voice_activity.store(false, Ordering::Release);
-        self.engine_job = None;
+        self.hold_notices(|host| {
+            host.post_attached = false;
+            host.output_gain_initialized = false;
+            if host.mode_vst.busy() {
+                host.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
+            }
+            if host.child.is_some() {
+                host.frontend_bootstrap.cancel();
+                host.frontend_bootstrap.session_claimed = true;
+            }
+            host.invalidate_live_protection();
+            host.live_modes.needs_sync = true;
+            host.conditions.retire_engine();
+            host.notify_conditions_changed();
+            host.engine_generation = host.engine_generation.wrapping_add(1);
+            host.device_scan = None;
+            // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
+            if host.child.is_some() {
+                log::warn!("Force Killing Audio Engine...");
+            }
+            host.drop_connection(CloseCause::Intentional);
+            host.voice_activity.store(false, Ordering::Release);
+            host.engine_job = None;
+        });
     }
 
     pub fn warmup(&mut self) -> Result<()> {
@@ -2951,8 +2845,8 @@ impl AudioHost {
 
 impl Drop for AudioHost {
     fn drop(&mut self) {
-        // アプリ終了によるkillを、readerの異常終了通知から除外する。
-        self.reader_active.store(false, Ordering::Release);
+        // アプリ終了によるkillを、readerの異常終了通知から除外する。writer は join しない。
+        self.close_connection(CloseCause::Intentional);
         self.conditions.retire_engine();
         if self.post_role {
             // 配信ミックスの子の `AudioHost` を手放す経路。終わらない子は、主の記録へ移す。
@@ -2976,16 +2870,11 @@ impl Drop for AudioHost {
 impl AudioHost {
     /// 子を手放す（`AudioHost` ごと捨てる前）。終了を確かめられなければ記録へ移す。
     fn release_engine(&mut self) {
-        self.reader_active.store(false, Ordering::Release);
-        if let Some(child) = self.child.take() {
-            let job = self.engine_job.take();
-            self.retire_engine(child, job);
-        }
-        self.stdin = None;
+        self.drop_connection(CloseCause::Intentional);
     }
 
     fn take_engine_for_shutdown(&mut self) -> Option<(Child, Option<engine_life::JobHandle>)> {
-        self.reader_active.store(false, Ordering::Release);
+        self.close_connection(CloseCause::Intentional);
         self.child
             .take()
             .map(|child| (child, self.engine_job.take()))
@@ -3145,3 +3034,7 @@ mod engine_life_tests;
 #[cfg(test)]
 #[path = "audio/tests/control_tests.rs"]
 mod control_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/link_tests.rs"]
+mod link_tests;

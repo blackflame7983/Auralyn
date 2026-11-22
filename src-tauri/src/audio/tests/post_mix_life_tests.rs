@@ -85,7 +85,7 @@ fn w2_post_mix_write_failure_moves_the_child_to_the_primary_record_first() {
     let mut rig = Rig::new([]);
     seam::set_wait(seam::Wait::Stuck);
     let child = rig.host.post_mix.child.as_mut().unwrap();
-    child.stdin = None;
+    child.fail_writes_for_test();
     let error = child
         .execute_running_command(IpcCommand::ProcessingState)
         .unwrap_err();
@@ -100,7 +100,7 @@ fn w2_post_mix_snapshot_after_eof_moves_the_child_to_the_primary_record_before_d
     let mut rig = Rig::new([]);
     seam::set_wait(seam::Wait::Stuck);
     let child = rig.host.post_mix.child.as_mut().unwrap();
-    child.reader_active.store(false, Ordering::Release);
+    child.set_link_for_test(false);
     let snapshot = rig.host.post_mix.snapshot().unwrap();
     assert!(snapshot.error.is_some() && !snapshot.restored);
     assert!(rig.host.post_mix.child.is_none());
@@ -304,4 +304,218 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
     );
     let _ = std::fs::remove_dir_all(&post_observer.dir);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// ---- F1b-0a-1（T10）。子への命令を `exec_child` に集めた後の、切断の後始末 ----
+
+use crate::audio::link::CloseCause;
+
+const EXITED: &str = "Engine Crashed/Exited";
+
+#[derive(Clone, Copy, Debug)]
+enum When {
+    /// 送る前に、すでに閉じていた（子の出力が閉じ、子は生きている）。
+    Before,
+    /// 送っている間に、子が終わった（EOF）。
+    During,
+    /// 書き込みが失敗した。
+    WriteFails,
+}
+
+fn command_name(op: &str) -> &'static str {
+    match op {
+        "rack" | "command" | "capture" => "GetPluginRack",
+        "snapshot" => "ProcessingState",
+        "start" => "PostMixStart",
+        "stop" => "Stop",
+        "restore_one" => "RestorePlugin",
+        _ => unreachable!(),
+    }
+}
+
+fn plugin() -> PresetPlugin {
+    PresetPlugin {
+        path: "post.vst3".into(),
+        name: "post".into(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 1.0,
+        state: Some("s".into()),
+        class_id: None,
+    }
+}
+
+/// 主の子も動かし、`post_attached` を立てた配信ミックスの一式。
+fn rig_for(op: &str, when: When) -> Rig {
+    let overrides = match when {
+        When::During => vec![(command_name(op), vec![Step::Exit])],
+        _ => Vec::new(),
+    };
+    let mut rig = Rig::new(overrides);
+    rig.host.ensure_engine_running().unwrap();
+    rig.host.post_attached = true;
+    let child = rig.host.post_mix.child.as_mut().unwrap();
+    match when {
+        When::Before => assert!(child.link.close(CloseCause::Eof)),
+        When::WriteFails => child.fail_writes_for_test(),
+        When::During => {}
+    }
+    rig
+}
+
+fn run(rig: &mut Rig, op: &str) -> std::result::Result<String, String> {
+    let state = &mut rig.host.post_mix;
+    let result = match op {
+        "rack" => state.rack().map(|_| String::new()),
+        "command" => state
+            .command(IpcCommand::GetPluginRack)
+            .map(|_| String::new()),
+        "capture" => state.capture_bundle().map(|_| String::new()),
+        "snapshot" => state
+            .snapshot()
+            .map(|snapshot| snapshot.error.unwrap_or_default()),
+        "start" => state.start(48000, descriptor()).map(|()| String::new()),
+        "stop" => state.stop().map(|()| String::new()),
+        "restore_one" => state.restore_one(&plugin()).map(|()| String::new()),
+        _ => unreachable!(),
+    };
+    result.map_err(|error| error.to_string())
+}
+
+fn expected(op: &str, when: When) -> std::result::Result<&'static str, &'static str> {
+    use When::*;
+    match (op, when) {
+        ("rack", Before) => Err("配信VSTのEngineが終了しました。保存設定を選び直してください"),
+        ("command", Before) | ("restore_one", Before) => Err(replies::CLOSED),
+        ("capture", Before) => Err("配信VSTの接続が終了しました"),
+        ("start", Before) => Err("配信VSTの保存設定を明示的に復元してください"),
+        ("start", WriteFails) => Err("配信VSTを開始できません"),
+        ("stop", Before) => Ok(""),
+        ("stop", During) | ("stop", WriteFails) => Err("配信VSTを停止できませんでした"),
+        ("snapshot", Before) => Ok("配信VSTのEngineが終了しました"),
+        (_, During) => Err(EXITED),
+        (_, WriteFails) => Err("Stdin not available"),
+        (_, Before) => unreachable!("{op}"),
+    }
+}
+
+// 切断の後（送る前・送っている間・書き込みの失敗）の、失敗が戻った直後の状態。
+// 子は外れ、`restored`・`running` は下り、`enabled` は残り、主の子と通知は触れず、`post_attached` は変わらない。
+// `post_attached` を下ろす位置は今のまま（`kill_primary_engine`・`cancel_prepared_post_start`・`prepare_post_mix_start`）。
+#[test]
+fn t10_every_exec_child_path_detaches_a_closed_child_the_same_way() {
+    for op in [
+        "rack",
+        "command",
+        "capture",
+        "snapshot",
+        "start",
+        "stop",
+        "restore_one",
+    ] {
+        for when in [When::Before, When::During, When::WriteFails] {
+            let mut rig = rig_for(op, when);
+            let result = run(&mut rig, op);
+            let label = format!("{op} / {when:?}");
+            match (expected(op, when), &result) {
+                (Ok(note), Ok(actual)) => assert_eq!(actual, note, "{label}"),
+                (Err(text), Err(actual)) => {
+                    assert!(actual.contains(text), "{label}: {actual}");
+                }
+                (want, got) => panic!("{label}: 期待 {want:?} / 実際 {got:?}"),
+            }
+            let state = &rig.host.post_mix;
+            assert!(state.child.is_none(), "{label}: 子は外れている");
+            assert!(!state.restored && !state.running, "{label}");
+            assert!(state.enabled, "{label}: enabled は残す");
+            assert!(rig.host.post_attached, "{label}: 解除の位置は変えない");
+            assert!(
+                !rig.primary.probe(0).exited(),
+                "{label}: 主の子は生きている"
+            );
+            assert!(
+                !rig.primary
+                    .recorder
+                    .names()
+                    .iter()
+                    .any(|name| name == "audio-error"),
+                "{label}: 配信ミックスの切断で、主の audio-error は出ない"
+            );
+            rig.finish();
+        }
+    }
+}
+
+// 別の操作が切断を処理して外した後の `snapshot` は、今の EOF の説明をエラーの情報つきの成功として出す。
+#[test]
+fn t10_a_snapshot_after_another_operation_detached_the_child_reports_the_eof_explanation() {
+    let mut rig = rig_for("rack", When::During);
+    run(&mut rig, "rack").unwrap_err();
+    assert!(rig.host.post_mix.child.is_none());
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    assert!(!snapshot.restored && !snapshot.running);
+    assert!(rig.host.post_mix.enabled, "enabled と保存した設定は残る");
+    rig.finish();
+}
+
+// 9章の条件3：状態を書き戻す直前にも確かめる。確認と更新の間に EOF が来ても、`running` は立たず、
+// 次の `snapshot` に終了の理由が残る。
+#[test]
+fn t10_an_eof_between_the_check_and_the_state_update_never_leaves_running_set() {
+    let mut rig = Rig::new([]);
+    rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    let error = rig
+        .host
+        .post_mix
+        .start(48000, descriptor())
+        .unwrap_err()
+        .to_string();
+    assert_eq!(error, "配信VSTを開始できません");
+    let state = &rig.host.post_mix;
+    assert!(!state.running && !state.restored && state.child.is_none());
+    rig.host.post_mix.after_exec_check = None;
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    rig.finish();
+
+    // `snapshot` の成功の応答の後に閉じても、`running` を立てない。
+    let mut rig = Rig::new([(
+        "ProcessingState",
+        vec![response_line(&IpcResponse::ProcessingState {
+            present: true,
+            failed: false,
+        })],
+    )]);
+    rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
+        child.link.close(CloseCause::Eof);
+    }));
+    let snapshot = rig.host.post_mix.snapshot().unwrap();
+    assert!(!snapshot.running && !snapshot.restored);
+    assert_eq!(
+        snapshot.error.as_deref(),
+        Some("配信VSTのEngineが終了しました")
+    );
+    assert!(rig.host.post_mix.child.is_none());
+    rig.finish();
+}
+
+// 切断を処理した後の `validate_start` は、保存設定の復元を求める（有効で未復元）。
+#[test]
+fn t10_start_after_a_detached_child_requires_an_explicit_restore() {
+    let mut rig = rig_for("rack", When::Before);
+    run(&mut rig, "rack").unwrap_err();
+    let error = rig.host.post_mix.validate_start().unwrap_err().to_string();
+    assert!(error.contains("明示的に復元"), "{error}");
+    rig.finish();
 }

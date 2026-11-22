@@ -102,7 +102,7 @@ fn home_operations_that_require_a_running_engine_do_not_restart_an_exited_one() 
     child.wait().unwrap();
     let pid = child.id();
     host.child = Some(child);
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     for message in home_routed_errors(&mut host, true) {
         assert!(message.contains("動いていない"), "{message}");
     }
@@ -121,7 +121,7 @@ fn home_operations_that_require_a_running_engine_need_the_reader_too() {
         .spawn()
         .unwrap();
     host.child = Some(child);
-    host.reader_active.store(false, Ordering::Release);
+    host.set_link_for_test(false);
     for message in home_routed_errors(&mut host, true) {
         assert!(message.contains("動いていない"), "{message}");
     }
@@ -148,10 +148,10 @@ fn obs_reach_ack_captures_own_stop_but_old_cleanup_never_stops_new_tone_or_user_
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+    host.attach_stdin_for_test(child.stdin.take().unwrap());
     let stdout = child.stdout.take().unwrap();
     host.child = Some(child);
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     let slot = host.pending_reply_tx.clone();
     let commands = Arc::new(Mutex::new(Vec::new()));
     let recorded = commands.clone();
@@ -232,7 +232,7 @@ fn frame_timing_trace_read_does_not_spawn_or_invalidate_audio_conditions() {
         })
         .is_err());
     assert!(host.child.is_none());
-    assert!(!host.reader_active.load(Ordering::Acquire));
+    assert!(!host.link.is_open());
     assert!(witness.validate().is_ok());
 }
 
@@ -456,7 +456,7 @@ fn bundle_start_keeps_initial_controls_in_one_request_and_rejects_retired_genera
         .start_on_existing_generation(7, start_command())
         .is_err());
     assert!(host.child.is_none());
-    assert!(!host.reader_active.load(Ordering::Acquire));
+    assert!(!host.link.is_open());
     let mut legacy = serde_json::to_value(start_command()).unwrap();
     legacy.as_object_mut().unwrap().remove("initial_controls");
     assert!(serde_json::from_value::<IpcCommand>(legacy).is_ok());
@@ -559,8 +559,8 @@ fn stop_without_engine_never_spawns_or_changes_retained_intent() {
     host.voice_activity.store(true, Ordering::Release);
     assert!(host.stop().is_ok());
     assert!(host.child.is_none());
-    assert!(host.stdin.is_none());
-    assert!(!host.reader_active.load(Ordering::Acquire));
+    assert!(host.writer.is_none());
+    assert!(!host.link.is_open());
     assert!(old_conditions.validate().is_err());
     assert!(!host.voice_activity.load(Ordering::Acquire));
     assert!(host.is_global_muted);
@@ -570,16 +570,16 @@ fn stop_without_engine_never_spawns_or_changes_retained_intent() {
 fn stop_after_reader_exit_or_broken_pipe_does_not_restart_engine() {
     let mut host = AudioHost::new(std::env::temp_dir());
     // UIが稼働状態を読んだ後、readerが終了した場合。
-    host.reader_active.store(true, Ordering::Release);
-    host.reader_active.store(false, Ordering::Release);
+    host.set_link_for_test(true);
+    host.set_link_for_test(false);
     assert!(host.stop().is_ok());
     assert!(host.child.is_none());
     // reader終了通知より先にstdinが失われた場合も、失敗接続を回収するだけ。
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     assert!(host.stop().is_err());
     assert!(host.child.is_none());
-    assert!(host.stdin.is_none());
-    assert!(!host.reader_active.load(Ordering::Acquire));
+    assert!(host.writer.is_none());
+    assert!(!host.link.is_open());
 }
 
 #[test]
@@ -592,10 +592,10 @@ fn cancelled_restore_cleanup_never_spawns_for_old_plugin_id() {
     host.live_modes.needs_sync = false;
     assert!(host.remove_plugin("late-old-id").is_err());
     assert!(host.child.is_none());
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     assert!(host.remove_plugin("late-old-id").is_err());
     assert!(host.child.is_none());
-    assert!(!host.reader_active.load(Ordering::Acquire));
+    assert!(!host.link.is_open());
 }
 
 fn background_observation(host: &mut AudioHost, kind: usize) -> Result<()> {
@@ -614,7 +614,7 @@ fn background_observation(host: &mut AudioHost, kind: usize) -> Result<()> {
 fn bundle_restore_fatal_stops_later_chain_requests_before_send_or_spawn() {
     let mut host = AudioHost::new(std::env::temp_dir());
     host.engine_generation = 7;
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     // ensure経路に退行しても、fixtureが実sidecarを起動しないよう防ぐ。
     host.maintenance = true;
     let request = || crate::ipc::RestorePluginRequest {
@@ -629,7 +629,7 @@ fn bundle_restore_fatal_stops_later_chain_requests_before_send_or_spawn() {
         // 最初の要求は既存接続へ送信を試み、閉じたstdinによりfatalになる。
         assert!(host.restore_plugin(request()).is_err());
         assert_eq!(host.next_restore_operation, 1);
-        assert!(!host.reader_active.load(Ordering::Acquire));
+        assert!(!host.link.is_open());
         assert!(host.child.is_none());
         let retired_generation = host.engine_generation;
         // チェーンがmissing扱いでcontinueしても、後続はID発行/送信前に拒否。
@@ -652,7 +652,7 @@ fn bundle_state_capture_never_spawns_absent_or_closed_reader_engine() {
     assert!(host.child.is_none());
     assert_eq!(host.engine_generation, 0);
     host.live_modes.needs_sync = false;
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     assert!(host.capture_bundle_state().is_err());
     assert!(host.child.is_none());
 }
@@ -660,10 +660,10 @@ fn bundle_state_capture_never_spawns_absent_or_closed_reader_engine() {
 fn bundle_change_scope_rejects_dead_stats_and_setters_without_spawning_or_adopting_generation() {
     let mut host = AudioHost::new(std::env::temp_dir());
     host.engine_generation = 5;
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     let result = host.bundle_change_scope(|host| {
         // capture後の終了。通常pollのdefault statsを成功した実状態に昇格しない。
-        host.reader_active.store(false, Ordering::Release);
+        host.set_link_for_test(false);
         assert!(host.get_engine_runtime_stats().is_err());
         assert!(host
             .set_noise_control_config(true, "smart".into(), 0.5, true)
@@ -676,7 +676,7 @@ fn bundle_change_scope_rejects_dead_stats_and_setters_without_spawning_or_adopti
     assert!(host.child.is_none());
     assert_eq!(host.engine_generation, 5);
     assert!(host.bundle_change_generation.is_none());
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     let result = host.bundle_change_scope(|host| {
         host.engine_generation += 1;
         Ok(())
@@ -709,8 +709,8 @@ fn absent_engine_cleanup_acknowledges_stop_without_spawning_or_changing_mute() {
         host.voice_activity.store(true, Ordering::Release);
         assert!(cleanup_observation(&mut host, cancel).is_ok());
         assert!(host.child.is_none());
-        assert!(host.stdin.is_none());
-        assert!(!host.reader_active.load(Ordering::Acquire));
+        assert!(host.writer.is_none());
+        assert!(!host.link.is_open());
         assert!(host.is_global_muted);
         assert!(!host.voice_activity.load(Ordering::Acquire));
         assert!(witness.validate().is_err());
@@ -759,7 +759,7 @@ fn cleanup_reaps_only_confirmed_exit_and_never_replaces_disconnected_child() {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }
-            host.reader_active.store(state == 2, Ordering::Release);
+            host.set_link_for_test(state == 2);
             host.conditions.lifecycle(true);
             let witness = host.conditions.snapshot().unwrap();
             let result = cleanup_observation(&mut host, cancel);
@@ -783,11 +783,11 @@ fn background_observations_do_not_spawn_cold_or_closed_reader_engine() {
         let result = background_observation(&mut host, kind);
         assert_eq!(result.is_ok(), kind == 3); // 旧runtime statsの不在default契約だけ保持。
         assert!(host.child.is_none());
-        assert!(host.stdin.is_none());
+        assert!(host.writer.is_none());
         assert_eq!(host.engine_generation, 0);
         assert!(host.is_global_muted);
         host.live_modes.needs_sync = false;
-        host.reader_active.store(false, Ordering::Release);
+        host.set_link_for_test(false);
         assert_eq!(background_observation(&mut host, kind).is_ok(), kind == 3);
         assert!(host.child.is_none());
     }
@@ -834,7 +834,7 @@ fn background_observations_do_not_replace_exited_child_or_broken_pipe() {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }
-            host.reader_active.store(!exited, Ordering::Release);
+            host.set_link_for_test(!exited);
             host.conditions.lifecycle(true);
             let witness = host.conditions.snapshot().unwrap();
             let result = background_observation(&mut host, kind);
@@ -858,10 +858,10 @@ fn existing_background_reads_keep_values_and_only_gain_initialize_invalidates_wi
             .args(["-NoProfile", "-NonInteractive", "-Command", "for($i=0;$i -lt 6;$i++){ $line=[Console]::In.ReadLine(); [Console]::Out.WriteLine($line) }; Start-Sleep -Seconds 30"])
             .creation_flags(0x0800_0000).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
     let pid = child.id();
-    host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+    host.attach_stdin_for_test(child.stdin.take().unwrap());
     let stdout = child.stdout.take().unwrap();
     host.child = Some(child);
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     host.live_modes.needs_sync = false;
     let slot = host.pending_reply_tx.clone();
     let worker = std::thread::spawn(move || {
@@ -964,10 +964,10 @@ fn remove_plugin_on_live_child_with_stopped_audio_sends_unload_and_invalidates_w
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
             .spawn().unwrap();
     let pid = child.id();
-    host.stdin = Some(BufWriter::new(child.stdin.take().unwrap()));
+    host.attach_stdin_for_test(child.stdin.take().unwrap());
     let stdout = child.stdout.take().unwrap();
     host.child = Some(child);
-    host.reader_active.store(true, Ordering::Release);
+    host.set_link_for_test(true);
     host.live_modes.needs_sync = false;
     // 音声streamが停止中でも、常駐child上のVSTは削除できる。
     host.voice_activity.store(false, Ordering::Release);
