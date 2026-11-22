@@ -63,14 +63,6 @@ impl ReplySlot {
         true
     }
 
-    /// 閉じているか（reader の EOF の処理が、接続を閉じる前に、先に閉じる）。
-    pub(super) fn is_closed(&self) -> bool {
-        match self.0.lock() {
-            Ok(state) => matches!(&*state, State::Closed),
-            Err(poisoned) => matches!(&*poisoned.into_inner(), State::Closed),
-        }
-    }
-
     /// 待ちを取り消す。閉じた状態は変えない。
     pub(super) fn cancel(&self) {
         if let Ok(mut state) = self.0.lock() {

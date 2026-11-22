@@ -803,6 +803,10 @@ impl State {
         self.running = false;
     }
     #[cfg(test)]
+    pub(super) fn has_child_for_test(&self) -> bool {
+        self.child.is_some()
+    }
+    #[cfg(test)]
     pub(super) fn adopt_child_for_test(&mut self, child: AudioHost) {
         self.child = Some(Box::new(child));
     }
@@ -1147,6 +1151,8 @@ impl AudioHost {
         if let Err(error) = result {
             // 切断（C2・EOF）のときは、子の回収と `restored`・`running` の更新が済んでいる。
             // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
+            // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（nabled を残す）を通す。
+            state.settle();
             if state.detached == detached_before {
                 state.discard_child();
                 state.error = Some(

@@ -37,6 +37,7 @@ fn reader_for(host: &AudioHost, epoch: u64) -> reader::Reader {
         conditions: host.conditions.clone(),
         epoch,
         engine_generation: 1,
+        pause: None,
     }
 }
 
@@ -272,21 +273,21 @@ fn t4_eof_between_the_link_check_and_begin_fails_the_waiter_at_once() {
         wait_until("reader が EOF を処理する", || !link.is_open());
     });
     let started = Instant::now();
-    let error = host
-        .execute_running_command(IpcCommand::GetDevices)
-        .unwrap_err()
-        .to_string();
-    assert_eq!(error, replies::CLOSED);
+    // 新しい順（LinkState を先に閉じる）：待ちの登録が拒否されるか、通って EOF の結果で解放される。
+    // どちらも期限を待たず、切断として返る。
+    let outcome = host.execute_running_command(IpcCommand::GetDevices);
+    match outcome {
+        Err(error) => assert_eq!(error.to_string(), replies::CLOSED),
+        Ok(IpcResponse::Error(text)) => assert_eq!(text, EXITED),
+        other => panic!("切断として返らない: {other:?}"),
+    }
     assert!(
         started.elapsed() < Duration::from_secs(1),
         "応答の期限を待たない: {:?}",
         started.elapsed()
     );
-    assert_eq!(
-        f.sent_after_start(),
-        ["SetInputChannels"],
-        "待ち手の登録で失敗し、書き込みへ進んでいない"
-    );
+    // 待ちの登録が拒否されたときは、書き込みへ進まない（通ったときは、書き込みは中止される）。
+    assert_eq!(f.sent_after_start(), ["SetInputChannels"]);
 }
 
 // T5：EOF の通知が、待ち手の解放より先。通知が止まっている間は、待ち手は解放されない。
@@ -660,4 +661,55 @@ fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
         drop(host);
         let _ = std::fs::remove_dir_all(&observer.dir);
     }
+}
+
+fn mixing_selection() -> crate::audio_engine::mixing::Start {
+    crate::audio_engine::mixing::Start {
+        config: serde_json::from_value(serde_json::json!({
+            "version": 1,
+            "source": { "kind": "device", "config": { "host": "WASAPI", "inputId": "wasapi:one", "inputChannels": [0, 1] } },
+            "levels": { "voice": { "gain": 1.0, "muted": false }, "accompaniment": { "gain": 1.0, "muted": false }, "monitorAccompaniment": true, "offsetMs": 0 }
+        }))
+        .unwrap(),
+        target: None,
+    }
+}
+
+// 6回目：reader は先に `LinkState` を閉じ、その後に `ReplySlot` を閉じる。`LinkState` を閉じた直後で止めても、
+// - その間に `begin()` が通った待ち手は、writer の `Aborted` を経て、`Eof`（`Engine Crashed/Exited`）で解放される。
+// - EOF の通知（K13 の3つの列）は欠けずに出る。
+// - 配信ミックスの子とオケの入力の選択は残る（主の EOF で捨てない）。
+#[test]
+fn t4_a_reader_stopped_just_after_closing_the_link_still_releases_the_waiter_and_keeps_the_post_mix(
+) {
+    let (mut host, recorder) = open_host();
+    let (mut post, post_observer) = scripted_parts([]);
+    post.post_role = true;
+    post.ensure_engine_running().unwrap();
+    host.post_mix.adopt_child_for_test(post);
+    host.mixing.selected = Some(mixing_selection());
+    let epoch = host.conditions.new_engine();
+    let pause = reader::Pause::closed();
+    let mut reader = reader_for(&host, epoch);
+    reader.pause = Some(pause.clone());
+    let finishing = std::thread::spawn(move || reader.finish());
+    wait_until("reader が LinkState を閉じる", || !host.link.is_open());
+    // 接続は閉じたが、待ちはまだ開いている。ここで `begin()` が通る。
+    let rx = host.pending_reply_tx.begin().expect("待ちはまだ開いている");
+    pause.release();
+    let response = host
+        .await_reply(Ok(done_with(WriteResult::Aborted, Instant::now())), rx)
+        .unwrap();
+    finishing.join().unwrap();
+    assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
+    assert_eq!(
+        names(&recorder),
+        [CC, "audio-engine-exited", "audio-error"],
+        "EOF の通知の列が欠けずに出る"
+    );
+    assert!(host.post_mix.has_child_for_test(), "配信ミックスの子は残る");
+    assert!(host.mixing.selected.is_some(), "オケの入力の選択は残る");
+    assert_eq!(host.link.cause(), Some(CloseCause::Eof));
+    drop(host);
+    let _ = std::fs::remove_dir_all(&post_observer.dir);
 }

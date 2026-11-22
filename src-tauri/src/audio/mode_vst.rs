@@ -670,7 +670,7 @@ impl AudioHost {
             }
             Err(error) => {
                 // EOF の処理の途中（応答の待ちが閉じ、接続の開閉はこれから）に当たっても、文言を切断にそろえる。
-                let lost = self.connection_lost() || error.to_string() == replies::CLOSED;
+                let lost = self.connection_lost();
                 let message = if lost {
                     ENGINE_EXITED.into()
                 } else {
@@ -680,10 +680,9 @@ impl AudioHost {
             }
         }
     }
-    /// 接続を失ったか。reader の EOF の処理は、応答の待ちを閉じてから接続を閉じるので、
-    /// その間に当たっても喪失として扱う。
+    /// 接続を失ったか。「閉じた」は LinkState だけで決まる（reader は先に LinkState を閉じる）。
     pub(super) fn connection_lost(&self) -> bool {
-        !self.link.is_open() || self.pending_reply_tx.is_closed()
+        !self.link.is_open()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
         let receiver = self.pending_reply_tx.begin()?;
@@ -2559,22 +2558,25 @@ mod tests {
         assert!(rolled.rollback);
     }
 
-    // P1 2：次の送信の直前に EOF の処理が入り、待ちの登録が拒否されたときも、文言は切断にそろえる。
+    // P1 2（新しい順）：reader は先に `LinkState` を閉じ、`ReplySlot` はその後に閉じる。その間（接続は閉じ、
+    // 待ちはまだ開いている）に当たっても、次の送信へ進まず、文言は切断にそろえる。
     #[test]
-    fn p1_a_refused_begin_during_eof_reports_engine_exited() {
+    fn p1_a_closed_link_with_an_open_slot_reports_engine_exited_without_sending() {
         let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
         host.mode_vst.transaction = Some(journaled(Step::ClearRack));
-        // reader の EOF の処理は、待ちを閉じてから接続を閉じる。その間に当たった場合。
-        drop(host.pending_reply_tx.close());
-        assert!(host.link.is_open());
+        host.link.close(CloseCause::Eof);
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(recording.text().is_empty());
     }
 
-    // P2：reader の EOF の処理は応答の待ちを閉じてから接続を閉じる。その間に拒否の応答を処理しても、
-    // 接続の喪失として扱い、巻き戻しを予約しない。
+    // P2（新しい順）：`LinkState` が閉じた後に拒否の応答を処理しても、接続の喪失として扱い、巻き戻しを
+    // 予約しない。
     #[test]
-    fn p2_a_rejected_reply_between_the_slot_close_and_the_link_close_is_a_loss() {
+    fn p2_a_rejected_reply_after_the_link_close_is_a_loss() {
         let mut host = open_link_host();
         let mut transaction = journaled(Step::Restore(0));
         transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
@@ -2582,18 +2584,16 @@ mod tests {
         assert!(host
             .pending_reply_tx
             .deliver(IpcResponse::Error("load refused".into())));
-        // 待ちは閉じたが、接続はまだ開いている。
-        drop(host.pending_reply_tx.close());
-        assert!(host.link.is_open());
+        host.link.close(CloseCause::Eof);
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.transaction.is_none());
     }
 
-    // P2（3回目）：reader が `ReplySlot` を閉じたところで止まっている間に、`Commit` の書き込みの完了を
+    // P2（新しい順）：reader が `LinkState` を閉じた直後で止まっている間に、`Commit` の書き込みの完了を
     // 受け取っても、完了を確定せず、復旧の記録を消さない。
     #[test]
-    fn p2_a_commit_completion_never_deletes_the_journal_while_the_reply_slot_is_closed() {
+    fn p2_a_commit_completion_never_deletes_the_journal_after_the_link_close() {
         let mut host = open_link_host();
         std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
         std::fs::write(&host.mode_vst.path, b"journal").unwrap();
@@ -2606,18 +2606,21 @@ mod tests {
             kind: DiskKind::Commit,
         });
         host.mode_vst.transaction = Some(transaction);
-        drop(host.pending_reply_tx.close());
-        assert!(host.link.is_open());
+        host.link.close(CloseCause::Eof);
+        assert!(
+            !host.pending_reply_tx.begin().is_err(),
+            "待ちはまだ開いている"
+        );
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
         let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
     }
 
-    // 検出力（4回目）：ディスクの結果を取り込んだ**後**に `ReplySlot` が閉じても、完了を確定せず、
-    // 復旧の記録を消さない（poll に入る前は閉じていない）。
+    // 検出力（新しい順）：ディスクの結果を取り込んだ**後**に `LinkState` が閉じても、完了を確定せず、
+    // 復旧の記録を消さない（poll に入る前は開いている）。
     #[test]
-    fn p2_a_slot_closed_after_the_disk_result_is_adopted_never_completes() {
+    fn p2_a_link_closed_after_the_disk_result_is_adopted_never_completes() {
         let mut host = open_link_host();
         std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
         std::fs::write(&host.mode_vst.path, b"journal").unwrap();
@@ -2631,9 +2634,9 @@ mod tests {
         });
         host.mode_vst.transaction = Some(transaction);
         host.mode_vst.after_disk_adopted = Some(Box::new(|host| {
-            drop(host.pending_reply_tx.close());
+            host.link.close(CloseCause::Eof);
         }));
-        assert!(!host.pending_reply_tx.is_closed() && host.link.is_open());
+        assert!(host.link.is_open());
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.path.exists(), "復旧の記録は残る");

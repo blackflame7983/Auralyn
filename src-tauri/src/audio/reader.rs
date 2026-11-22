@@ -14,6 +14,8 @@ pub(super) struct Reader {
     pub(super) conditions: Arc<conditions::Conditions>,
     pub(super) epoch: u64,
     pub(super) engine_generation: u64,
+    #[cfg(test)]
+    pub(super) pause: Option<Pause>,
 }
 
 impl Reader {
@@ -272,16 +274,22 @@ impl Reader {
         }
     }
 
-    /// stdout の終端（2.4）。応答の待ちを先に閉じ、接続を EOF で閉じる競りに勝った側だけが通知を出す。
+    /// stdout の終端（2.4）。先に接続を EOF で閉じる競りを行う。「閉じた」は `LinkState` だけで決まる。
+    /// 勝った側だけが、応答の待ちを閉じ、通知を出し、待ち手へ `Eof` を送る。
     pub(super) fn finish(&self) {
         log::warn!("Engine stdout closed.");
-        // 以後の `begin` を締め出し、待ち手の送り側を取り出す。
-        let waiter = self.replies.close();
         if !self.link.close(CloseCause::Eof) {
             // 意図した停止、または Host の切り離しが先。通知は出さず、待ち手は切断で解放される。
-            drop(waiter);
+            drop(self.replies.close());
             return;
         }
+        // 閉じてから待ちを閉じるまでの間に `begin` が通っても、writer は書き込みを始めず `Aborted` を返し、
+        // 呼び出し側は EOF の結果を待つ。ここで取り出す送り側が、その待ち手を含む。
+        #[cfg(test)]
+        if let Some(pause) = &self.pause {
+            pause.wait_open();
+        }
+        let waiter = self.replies.close();
         let exit = self.operations.take_exit();
         log::error!("Audio engine exited: {exit:?}");
         self.conditions.engine_event(self.epoch, false);
@@ -293,6 +301,30 @@ impl Reader {
         // 通知を出し終えてから、待っている呼び出しを解放する。
         if let Some(waiter) = waiter {
             let _ = waiter.send(ReplyOutcome::Eof);
+        }
+    }
+}
+
+/// 試験の継ぎ目：`LinkState` を閉じた直後で、reader を止める。
+#[cfg(test)]
+#[derive(Clone)]
+pub(super) struct Pause(Arc<(Mutex<bool>, std::sync::Condvar)>);
+
+#[cfg(test)]
+impl Pause {
+    pub(super) fn closed() -> Self {
+        Self(Arc::new((Mutex::new(false), std::sync::Condvar::new())))
+    }
+
+    pub(super) fn release(&self) {
+        *self.0 .0.lock().unwrap() = true;
+        self.0 .1.notify_all();
+    }
+
+    fn wait_open(&self) {
+        let mut open = self.0 .0.lock().unwrap();
+        while !*open {
+            open = self.0 .1.wait(open).unwrap();
         }
     }
 }

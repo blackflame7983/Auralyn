@@ -937,6 +937,8 @@ impl AudioHost {
             conditions: self.conditions.clone(),
             epoch: condition_epoch,
             engine_generation: self.engine_generation,
+            #[cfg(test)]
+            pause: None,
         }
         .spawn(stdout);
 

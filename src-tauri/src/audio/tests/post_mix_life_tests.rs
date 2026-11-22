@@ -1035,21 +1035,18 @@ fn p2_a_write_failure_or_timeout_during_the_start_confirmation_keeps_the_post_mi
     }
 }
 
-// P2（4回目）：`ReplySlot` だけが閉じた間も、配信ミックスは切断として扱う（`LinkState` が開いたままでも）。
+// P2（4回目・新しい順）：配信ミックスは、接続（`LinkState`）が閉じたら、待ち（`ReplySlot`）がまだ開いていても切断として扱う。
 #[test]
-fn p2_a_closed_reply_slot_alone_is_a_disconnect_for_the_post_mix() {
+fn p2_a_closed_link_with_an_open_slot_is_a_disconnect_for_the_post_mix() {
     // `snapshot`：理由つきの成功。
     let mut rig = Rig::new([]);
-    drop(
-        rig.host
-            .post_mix
-            .child
-            .as_ref()
-            .unwrap()
-            .pending_reply_tx
-            .close(),
-    );
-    assert!(rig.host.post_mix.child.as_ref().unwrap().link.is_open());
+    rig.host
+        .post_mix
+        .child
+        .as_ref()
+        .unwrap()
+        .link
+        .close(CloseCause::Eof);
     let snapshot = rig.host.post_mix.snapshot().unwrap();
     assert_eq!(
         snapshot.error.as_deref(),
@@ -1065,7 +1062,7 @@ fn p2_a_closed_reply_slot_alone_is_a_disconnect_for_the_post_mix() {
         [("GetPluginRack", vec![rack_with_a_plugin()])],
     );
     rig.host.post_mix.between_ops = Some(Box::new(|child| {
-        drop(child.pending_reply_tx.close());
+        child.link.close(CloseCause::Eof);
     }));
     let request = Request::Add {
         expected_epoch: rig.host.post_mix.epoch.clone(),
@@ -1090,7 +1087,7 @@ fn empty_rack() -> Step {
     })
 }
 
-// P1（5回目）：最後の `GetPluginRack` の応答の後に `ReplySlot` だけが閉じたら、切断済みの取得結果で
+// P1（5回目）：最後の `GetPluginRack` の応答の後に接続が閉じたら、切断済みの取得結果で
 // 保存せず、保存のファイルは変わらない（`enabled` は残る）。
 #[test]
 fn p1_save_never_overwrites_the_saved_file_after_a_late_slot_close() {
@@ -1100,7 +1097,7 @@ fn p1_save_never_overwrites_the_saved_file_after_a_late_slot_close() {
     // 1回目（前の GetPluginRack）は何もせず、2回目（最後の GetPluginRack）の後に待ちだけを閉じる。
     rig.host.post_mix.after_exec_check = Some(Box::new(move |child| {
         if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
-            drop(child.pending_reply_tx.close());
+            child.link.close(CloseCause::Eof);
         }
     }));
     let path = rig.host.post_mix.path.clone();
@@ -1124,15 +1121,13 @@ fn p2_enable_true_keeps_enabled_when_the_precheck_finds_a_disconnect() {
         config: mixing_config("wasapi:one"),
         target: None,
     });
-    drop(
-        rig.host
-            .post_mix
-            .child
-            .as_ref()
-            .unwrap()
-            .pending_reply_tx
-            .close(),
-    );
+    rig.host
+        .post_mix
+        .child
+        .as_ref()
+        .unwrap()
+        .link
+        .close(CloseCause::Eof);
     let request = Request::Enable {
         expected_epoch: rig.host.post_mix.epoch.clone(),
         expected_revision: rig.host.post_mix.revision.to_string(),
@@ -1152,5 +1147,33 @@ fn p2_enable_true_keeps_enabled_when_the_precheck_finds_a_disconnect() {
             .as_deref(),
         Some("配信VSTのEngineが終了しました")
     );
+    rig.finish();
+}
+
+// 6回目：公開の操作の失敗の処理は、子の接続が閉じていれば、どの段で見つけた失敗でも、切断の後処理
+// （`enabled` を残す）を通す。ここでは切断とは別の理由（空のパス）で失敗するが、接続は閉じている。
+#[test]
+fn p3_any_failure_with_a_closed_link_keeps_enabled_through_the_disconnect_cleanup() {
+    let mut rig = Rig::with_primary(stopped_primary(), []);
+    assert!(rig
+        .host
+        .post_mix
+        .child
+        .as_ref()
+        .unwrap()
+        .link
+        .close(CloseCause::Eof));
+    let request = Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: String::new(),
+        class_id: None,
+    };
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert!(error.to_string().contains("追加できません"), "{error}");
+    let state = &rig.host.post_mix;
+    assert!(state.enabled, "enabled を残す");
+    assert!(state.child.is_none() && !state.restored);
+    assert!(state.error.is_none());
     rig.finish();
 }
