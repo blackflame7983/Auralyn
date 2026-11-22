@@ -398,3 +398,17 @@ ID（`T1`〜）は 9章の中だけで使う。
 - **(d) 鏡の読み取り。** reader が行の先頭で `is_open()` を読んだ後に閉じると、1つの列が出うる（通知の列の直前の確認の後に閉じる窓。F1b-0a-1 設計 3.4 と同じ）。完全な形は F1b-0b-4（7.3）。
 - **(e) `voice_activity.store(true)`・epoch の古い `engine_event`。** 変えない（F1b-0b-4）。S6 が固定する。
 - **(f) 配信ミックスの `settle_with`（`post_mix.rs:450,845,1018`）の読み取り。** 開いていると読んだ後の EOF は、その操作の中では何も外さず、次の呼び出しで外れる。結果は切断として失敗するだけで、`enabled` は落ちない（`discard_child` を呼ぶ判断は 2a だけ）。
+
+## 10. 未決 U1〜U9 の決定（統括、2026-11-23）
+
+| # | 決定 |
+|---|---|
+| U1 | `LinkCell` で壊れる試験は、7.4 の4ファイルの外（`mode_vst.rs`・`engine_exit.rs`・`output_bundle.rs`・`session_rack.rs` の試験部）も含めて、F1b-0b-0 で `audio/tests/link_seam.rs` の窓口へ寄せる。範囲は「`LinkCell` で壊れる参照のすべて」とし、7.4 の表の F1b-0b-0 の行をこの意味に読み替える。期待値は変えない |
+| U2 | `config_storage_tests` は、壊れる3か所（`:155`・`:866`・`:976`）だけを窓口へ寄せる。それ以外は触らない |
+| U3 | `EOF_WAIT` は2秒の案で始め、実装の試験で見直す。上限を過ぎたら、待たずに `Engine Crashed/Exited` を返し、ログに1回残す（結果は同じで、通知との順だけが崩れる。9.10 の既知の狭い競合に入れる） |
+| U4 | 負けた側の待ちは、`rx` ではなく `LinkCell` の条件変数にする。reader が EOF の通知の列を出し終えたら「通知済み」を立てて知らせる。遅い応答を受け取り済みの待ち手も、同じ条件変数で待てる |
+| U5 | reaper で壊れる試験の寄せは、F1b-0b-3 の段に含める（F1b-0b-0 には入れない） |
+| U6 | 鏡（`AtomicU8`）を許す。正本は `LinkCell` で、鏡は `LinkCell` のロックの中でだけ書き、通知の列のロックの中の読み取りにだけ使う |
+| U7 | `Operations` の全体（`awaiting`・`plugins` を含む）を `LinkCell` に移す。`LinkCell` のロックの区間では I/O と `emit` をしない規則を守る |
+| U8 | `voice_activity` と epoch の窓は F1b-0b-4 で直す |
+| U9 | 試験専用の `link.close(Eof)` は `win_eof` に寄せる（9章のとおり） |
