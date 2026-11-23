@@ -448,7 +448,7 @@ ID（`T1`〜）は 9章の中だけで使う。
 | 6 | 時間で動くもの | 周期でホストのロックを取るのは、モード VST の scheduler の1本だけ（配信ミックス・メーターは取らない）。scheduler のスレッドは今のまま（10ms 眠る→`run`で1 tick→返事を待つ）。tick は列に溜まらず、期限の起点は `AudioHost` の中の `Instant` のまま（11.8） |
 | 7 | 終了・起動 | 最後の `AudioControl` を捨てると列を閉じ、実行のスレッドが残りの仕事を `Err(Stopped)` で断り、ホストを `Drop`（子の回収は今の `Drop` のまま）してから終わる。`Drop` は終わりを `join` して待つ。実際の終了での `Drop` は一律には断定しない。通常起動後は、通知用の `AppHandle` が `AudioState` を管理する `AppManager` を参照する輪があり、ホストが保持されうる。いずれでも子は Job で回収される（新しい終了の手順は足さない。11.9）。起動は `new`→scheduler→`run`（emitter）→warmup のスレッドの順（11.9） |
 | 8 | ロックの順 | 実行のスレッドが閉包を走らせている間が「今のホストのロックの中」。その中の順（`Shortcuts` の gate → `Store.slots`／`order`→`emitter`／`held_notices`／`LinkCell`）は今のまま。列と `Admission.log` は葉で、持ったまま何もしない。reader は列も実行のスレッドも取らない（11.10） |
-| 9 | 試験 | 既存の試験は、**型名3か所の差し替えだけ**で期待値を変えずに通る。そのために、試験専用の `AudioControl::lock`（実行のスレッドがホストを箱ごと貸し出す `HostLease`）を残す。足す試験は `X1`〜`X14`、壊して確かめる項目は 11.14 の (a)〜(y)（11.14） |
+| 9 | 試験 | 既存の試験は、**型名3か所の差し替えだけ**で期待値を変えずに通る。そのために、試験専用の `AudioControl::lock`（実行のスレッドがホストを箱ごと貸し出す `HostLease`）を残す。足す試験は `X1`〜`X14`、壊して確かめる項目は 11.14 の (a)〜(z)（11.14） |
 
 ### 11.2 範囲
 
@@ -514,17 +514,17 @@ AudioControl::note(&self, entry)                             // 残す（ロッ�
 5. 返事を `recv()` する（呼び出しのスレッドは何も持たずに待つ。今の `Mutex::lock` の待ちと同じ）。受け取ったのが panic なら `resume_unwind`（11.6）。返事が来ずに口が閉じていれば `Err(Stopped)`。
 
 **実行のスレッドの順**（1 件ずつ）
-1. 列のロックを取る。**ロックの中で、先に `closed` を見る。** `closed` なら、`jobs` の**全件**を取り出して（`mem::take`）ロックを放し、放した後に `drain_and_stop` の (i)(ii) の順で断る（残件を実行しない）。`closed` でなく `jobs` が空なら `Condvar` で待つ。そうでなければ `take_next` で1件取り、ロックを放す。**2a の `take_next` は `pop_front` だけ。2b はここを、停止の優先と断りに差し替える。**
+1. 列のロックを取る。**ロックの中で、先に `closed` を見る。** `closed` なら、`jobs` の**全件**を取り出して（`mem::take`）ロックを放し、放した後に `drain_and_stop` の (i)(ii) の順で断る（残件を実行しない）。`closed` でなく `jobs` が空なら `Condvar` で待つ。そうでなければ `take_next` で1件取り、ロックを放す。**2a の `take_next` は `pop_front` だけ。2b はここを、停止の優先と断りに差し替える。** 取り出した1件は、**外の `current: Option<Job>` に置く**（ループの中の変数で所有しない。I13）。
 2. `Admission::push_granted(seq, entry)`（`LockGranted`。今は `Ticket::lock` が呼ぶ）。
-3. `Run` は、poison していれば `tx` へ `Err(Poisoned)` を送り、そうでなければ `catch_unwind(f(&mut host))` の結果を `tx` へ送る。`Post` は、poison していれば `f(Err(Poisoned))`、そうでなければ `f(Ok(&mut host))` を `catch_unwind` で呼ぶ。panic したら `Panicked`。
+3. 個別の `catch_unwind` に入るときに `current.take()` する。`Run` は、poison していれば `tx` へ `Err(Poisoned)` を送り、そうでなければ `catch_unwind(f(&mut host))` の結果を `tx` へ送る。`Post` は、poison していれば `f(Err(Poisoned))`、そうでなければ `f(Ok(&mut host))` を `catch_unwind` で呼ぶ。panic したら `Panicked`。
 4. `Panicked` なら `poisoned = true`。次の仕事へ。
 5. 1 で全件を断ったら、`drain_and_stop` が終わった後に、ホストを `Drop` して終わる（下。ホストは外側の `catch_unwind` の外にある）。
 
 **実行のスレッドの本体と回収（異常終了も通常終了も同じ1つの関数）**
 - 実行のスレッドの本体（取り出し→実行の loop 全体）を、1件ごとの `catch_unwind`（`exec` の内側）とは別に、**外側でも `catch_unwind` で包む**。`Drop` のガードで unwind 中に回収する形は採らない（unwind 中の通知・取り込み値の破棄が再度 panic すると abort し、残りの待機者を解放できないため）。
 - 外側の `catch_unwind` が戻った後（unwind が終わった後）に、通常終了（1 で `closed` を見た場合）と**同じ回収の関数 `drain_and_stop`** を呼ぶ。
-- **ホストは `Option<Box<AudioHost>>` として、外側の `catch_unwind` の外に持つ**（閉包は `&mut` で借りて渡す）。外側の中で所有すると、異常終了の unwind 中に `drain_and_stop` より先に `AudioHost::drop`（子の回収。最大2秒）が走り、その間 `run` が解放されず、`Drop` が再 panic すれば解放の前に abort する。**ホストを `drop` するのは、`drain_and_stop` を終えた後**（その `drop` も `catch_unwind` で包み、panic はログに残す）。
-- `drain_and_stop`：(1) 列のロックを**poison でも `into_inner` で**取る。(2) `closed = true`。(3) `jobs` を `mem::take` で全件取り出す。(4) ロックを放す。以降はロックの外：(i) **まず `Run` の `tx` を全件 `drop` する**（閉包 `f` にはまだ触れない。待ち手の `recv()` は `Err` になり、`Err(Stopped)` に写す）。(ii) **次に、取り出した全件の閉包を1件ずつ `catch_unwind` で包んで捨てる**：`Run` の `f` は呼ばずに捨て（取り込み値の `Drop` が panic しても次へ進む）、`Post` の `f` は `f(Err(Stopped))` で呼ぶ（panic しても次へ進む）。
+- **ホストは `Option<Box<AudioHost>>` として、外側の `catch_unwind` の外に持つ**（閉包は `&mut` で借りて渡す）。外側の中で所有すると、異常終了の unwind 中に `drain_and_stop` より先に `AudioHost::drop`（子の回収。最大2秒）が走り、その間 `run` が解放されず、`Drop` が再 panic すれば解放の前に abort する。**ホストを `drop` するのは、`drain_and_stop` を終えた後**（その `drop` も `catch_unwind` で包み、panic はログに残す）。同じ規則で、取り出し済みの仕事も外の `current` が持ち、ループの内側では所有しない（I13）。
+- `drain_and_stop`：(1) 列のロックを**poison でも `into_inner` で**取る。(2) `closed = true`。(3) `jobs` を `mem::take` で全件取り出し、**外の `current` に残った仕事（取り出し直後に panic した場合）も、同じ集まりに加える**。(4) ロックを放す。以降はロックの外：(i) **まず `Run` の `tx` を全件 `drop` する**（閉包 `f` にはまだ触れない。待ち手の `recv()` は `Err` になり、`Err(Stopped)` に写す）。(ii) **次に、取り出した全件の閉包を1件ずつ `catch_unwind` で包んで捨てる**：`Run` の `f` は呼ばずに捨て（取り込み値の `Drop` が panic しても次へ進む）、`Post` の `f` は `f(Err(Stopped))` で呼ぶ（panic しても次へ進む）。
 - **`run` の待ち手の解放は、`tx` を落とすことだけで起き、`post` の失敗の処理・通知・取り込み値の `Drop` に依存しない。** `tx` を閉包の中に閉じ込めない（取り込み値の `Drop` が止まる・二重 panic しても `tx` が落ちるように、`Job` が閉包とは別に持つ。(i) が (ii) より先）。
 - **返事の送信端は `Job` だけが持つ。** 待ち手（`run` の呼び出し側）は受信端と `Shared`（列を含む）を持つが、送信端は持たない。列に残った仕事を取り出して `drop` すれば、送信端が落ちて `recv()` が戻る。以後に積む `run`・`post` は、ロックの中で（poison でも `into_inner` で）`closed` を見て `Err(Stopped)`（4 の手順）。
 
@@ -594,7 +594,7 @@ stateDiagram-v2
 |---|---|---|
 | unwind するビルド（試験・dev）で、閉包が panic | 持っているガードが drop されて `Mutex` が poison。panic は呼び出しのスレッドを unwind する（`spawn_blocking` なら `JoinError`。`run_blocking` が `e.to_string()` に写す）。以後の `lock` はすべて `Err` で、各入口が自分の文言（11.3）に写す。poison は戻らない。poison した `Mutex<AudioHost>` の `Drop` も、中身を普通に捨てる | 閉包を `exec` の中で `catch_unwind(AssertUnwindSafe(…))`。`run` の呼び出し側には payload を返し、呼び出し側が `resume_unwind` する（panic のメッセージは二重に出ない）。実行のスレッドは `poisoned = true` にして次の仕事へ進む。以後の仕事は、閉包を実行せず `exec(Err(Poisoned))`。poison は戻らない。poison したホストの `Drop` は、列が閉じたときに普通に走る |
 | `post` の閉包が panic | トレイ：イベントループのスレッドの callback の中で panic する。unwind するビルドでは、現行の tao（`tao-0.37.1 event_loop.rs:266`）が再送出する。ショートカット：`spawn_blocking` の `JoinError`（捨てられる） | 受け手がいないので、`log::error!` に payload の文字列を残し、poison する。以後は上と同じ。**unwind するビルドでの差**：トレイの panic は、今はイベントループの上で再送出されるが、2a ではイベントループは巻き込まれず、ログと poison だけが残る（リリースは abort で、どちらも即終了） |
-| 閉包の外（`Drop` する取り込み値、`exec` の組み立て）の panic | — | 仕事1件の処理の全体も `catch_unwind` し、`Panicked` として扱う。実行のスレッドが何らかの理由で終わる場合は、外側の `catch_unwind` の後に、通常終了と同じ回収の関数（`drain_and_stop`。poison でも列を取り、`run` の残件を先に捨て、`post` の残件を1件ずつ `catch_unwind` で呼ぶ）を呼ぶ（11.4）。**ホストの `Drop` は、この回収の後**（外側の `catch_unwind` の外。`Drop` が再 panic しても、待つ `run` は先に解放済み）。待つ `run` も `post` も解放される |
+| 閉包の外（`Drop` する取り込み値、仕事の組み立て、取り出し直後）の panic | — | 仕事1件の処理も個別に `catch_unwind` し、`Panicked` として扱う。取り出した仕事は外の `current` が持つので、個別の `catch_unwind` の前の panic でも、回収が `current` を列の残件と同じ規則で扱う（I13）。**位置づけ：リリースは `panic = "abort"` なので、これらの経路が実際に問題になるのは unwind するビルド（開発・試験）だけ。** 実行のスレッドが何らかの理由で終わる場合は、外側の `catch_unwind` の後に、通常終了と同じ回収の関数（`drain_and_stop`。poison でも列を取り、`run` の残件を先に捨て、`post` の残件を1件ずつ `catch_unwind` で呼ぶ）を呼ぶ（11.4）。**ホストの `Drop` は、この回収の後**（外側の `catch_unwind` の外。`Drop` が再 panic しても、待つ `run` は先に解放済み）。待つ `run` も `post` も解放される |
 | リリース（`panic = "abort"`） | 即終了 | 即終了。変わらない |
 
 文言は変えない。X4 が、閉包の panic → 以後の `run` の `Err(Poisoned)` → 各入口の今の文言（`commands/audio/compat_tests.rs:445-467` と同じ3つ）を固定する。
@@ -727,6 +727,7 @@ thread::spawn(move || loop {
 | I10 | 列が閉じた後は、新しい閉包を実行しない。残りは `Err(Stopped)`。終わる時に、ホストを `Drop` する |
 | I11 | 通知の名前・中身・順、エラーの文言、`engine_generation` の更新点は変えない |
 | I12 | scheduler の仕事は、列に同時に高々1件 |
+| I13 | **実行のスレッドが所有するもの（ホスト・取り出し済みの仕事・列から取り出した残件）は、すべて外側の `catch_unwind` の外の変数が持つ。** 外側の `catch_unwind` の内側のループは、それらを借りるか、外の変数との間で出し入れするだけで、所有したまま panic しうる区間を作らない。取り出し済みの仕事は外の `current: Option<Job>` に置き、個別の `catch_unwind` に入るときに `take()` する。回収（`drain_and_stop`）は `current` に残った仕事も、列の残件と同じ規則で扱う |
 
 ### 11.13 変える箇所の一覧（`ファイル:関数`、今の行）
 
@@ -793,7 +794,7 @@ thread::spawn(move || loop {
 | X4 | `x4_a_panicking_closure_poisons_with_the_same_texts_and_the_actor_survives` | `run` の閉包が panic：呼び出し側に panic が投げ直される。続けて `start_audio`・`get_audio_state`・`get_saved_audio_config` が今の3つの文言（`commands/audio/compat_tests.rs:445-467` と同じ）。実行のスレッドは生きている（`post` した閉包が `Err(Poisoned)` を受ける）。`post` の閉包の panic でも同じ。scheduler は眠って続ける |
 | X5 | `x5_run_from_inside_a_closure_fails_at_once` | 閉包の中で、取り込んだ `AudioControl` の複製から `run` を呼ぶと `Err(Reentrant)` で戻る（固まらない。門つきで、時間切れは失敗）。**`control.run(…)` と `control.admit(…).run(…)` の両方**で確かめる（判定が共通の待機処理にあること）。その後も実行のスレッドは普通に動く。`post` は戻って、列の末尾で実行される |
 | X5b | `x5b_no_entry_handle_outside_the_command_layer` | `audio/`（`control.rs` と試験を除く）・`profile.rs`・`bundle.rs`・`obs_setup/` のソースに `AudioControl`・`AudioState` が現れない（ファイルを読む構造の試験）。持ち込みを防ぐ再発防止 |
-| X6 | `x6_dropping_the_last_control_stops_the_actor_and_drops_the_host` | **`Fixture` を使わず、`scripted_parts`（`compat_support.rs`）から直接 `AudioControl` を組み立てる**（`Fixture::drop`（`:566-573`）は先にリースで `kill_engine` を呼ぶので、`join` を外す改変が通ってしまう）。子を起動した状態で、ホストの破棄を門で止めておく（試験専用の `Drop` の継ぎ目）。最後の `drop(control)` は、門を開けるまで**戻らない**（`join` している）。開けた後に戻り、その時点で子が終わっている（`probe.wait_exit`）。列が閉じた後の `post` は閉包に `Err(Stopped)`、`run` は `Err(Stopped)`。**列の残件は、閉じた後に実行されない**（実行のスレッドが門で止まっている間に積んだ `post` が、閉じた後に実行されず `Err(Stopped)` を受ける）。**閉包が取り込んだ最後の複製をその仕事が捨てる**場合に、固まらない（`ThreadId` の確認。時間切れは失敗） |
+| X6 | `x6_dropping_the_last_control_stops_the_actor_and_drops_the_host` | **`Fixture` を使わず、`scripted_parts`（`compat_support.rs`）から直接 `AudioControl` を組み立てる**（`Fixture::drop`（`:566-573`）は先にリースで `kill_engine` を呼ぶので、`join` を外す改変が通ってしまう）。子を起動した状態で、ホストの破棄を門で止めておく（試験専用の `Drop` の継ぎ目）。最後の `drop(control)` は、門を開けるまで**戻らない**（`join` している）。開けた後に戻り、その時点で子が終わっている（`probe.wait_exit`）。閉じた後に積む `post` は閉包を呼ばずに `Err(Stopped)` を返し、`run` は `Err(Stopped)`。**受け付け済みの `post`**（閉じる前に積まれ、列に残っていたもの）は閉じた後に実行されず、回収で閉包が `Err(Stopped)` を1回受ける。この2つを区別して確かめる。**閉包が取り込んだ最後の複製をその仕事が捨てる**場合に、固まらない（`ThreadId` の確認。時間切れは失敗） |
 | X7 | `x7_the_scheduler_ticks_through_the_actor_and_never_piles_up` | scheduler の `poll_mode_vst` が実行のスレッドの上で走り、`Scheduler` の受付が増える。実行のスレッドを止めている間、`accepted_of(Scheduler)` の増えは高々1（観測は100msだけ待つ）。`Scheduler` は `records()` に出ない。`control` を捨てると scheduler が止まる（今の試験と同じ） |
 | X8 | `x8_the_record_is_accepted_then_granted_when_the_actor_takes_it` | 実行のスレッドを止めている間は `[Accepted]` だけ。取り出した後に `LockGranted` が付き、閉包はその後に始まる（K12 と `control_tests` の記録の形） |
 | X9 | `x9_waiters_hold_no_lock_and_the_queue_lock_is_a_leaf` | `run` で待つスレッドが複数いる間、別のスレッドの `admit`・`note`・`post`・`records()` が戻る。取り出しの間（`Condvar` の待ち）も同じ。`drain_and_stop` の間も列のロックを持たない |
@@ -802,7 +803,7 @@ thread::spawn(move || loop {
 | X12 | `x12_a_reader_blocked_in_emit_does_not_stall_the_queue_or_other_callers` | 2.2-A：`Recorder::block_after` で reader を `emit` の途中で止める。`order` を取りたい閉包は止まるが、ほかの `post`・`run` の受付・`LinkCell` の読み取り・`note` は戻る。reader を解放すると、止まっていた閉包が進み、通知の順が今と同じ（K13） |
 
 | X13 | `x13_a_stop_queued_before_a_completing_tick_cancels_the_switch_and_the_reverse_order_stops_normally` | 完了を確定できる tick（`ReleasePoll` で `phase == "completed"`。`mode_vst.rs:633`）を、継ぎ目（列の順）で決めて確かめる。(i) 停止が先：`[stop, tick]` の順に積む。結果が、main で「停止が先にロックを取った」場合と同じ（`AudioHost` を直接使い `stop()` の後に `poll_mode_vst()` を呼んだ結果。切替の取り消し「利用者が音声を停止しました」・`kill_engine`・子の終了・通知の順）。(ii) tick が先：`[tick, stop]`。切替が確定し、その後に通常の停止（取り消しの文言なし）。2b の C1 が (i) を「停止が先」に固定するときの基準 |
-| X14 | `x14_an_abnormal_actor_exit_releases_every_waiting_run_and_post` | 列に `run`（待つ側）と `post` を積んだ状態で、実行のスレッドを異常に終わらせる。次の3つの形で、待っていた `run` がすべて `Err(Stopped)` で戻る（`recv()` が固まらない。待つ側が `Shared` を持ったままでも）：(a) **列のロックを持つ間の panic**（試験専用の継ぎ目で起こす。ロックが poison する）。(b) **`post` の失敗の処理が panic する**（残りの `post` も呼ばれ、続く `run` も解放される）。(c) **取り込み値の `Drop` が panic する**（`run`・`post` の両方）。いずれも `post` の閉包は、panic しないものは `Err(Stopped)` を1回受ける。以後の `run`・`post` も `Err(Stopped)`。プロセスは abort しない。(d) **`AudioHost::drop` を門で止めても（試験専用の継ぎ目）、待つ `run` は先に `Stopped` で戻る**（ホストの `Drop` は回収の後で、外側の `catch_unwind` の外）。`Drop` が再 panic しても、`run` は解放済みで、プロセスは abort しない（unwind するビルド）。(e) 取り込み値の `Drop` を止めても、`tx` は先に落ちて `run` が戻る |
+| X14 | `x14_an_abnormal_actor_exit_releases_every_waiting_run_and_post` | 列に `run`（待つ側）と `post` を積んだ状態で、実行のスレッドを異常に終わらせる。次の3つの形で、待っていた `run` がすべて `Err(Stopped)` で戻る（`recv()` が固まらない。待つ側が `Shared` を持ったままでも）：(a) **列のロックを持つ間の panic**（試験専用の継ぎ目で起こす。ロックが poison する）。(b) **`post` の失敗の通知（`Err(Stopped)` を受けた閉包の中の通知）を門で止めたまま、待つ `run` が `Stopped` で戻る**（`run` の解放が通知に依存しない。通知が panic する場合も、残りの `post` は呼ばれ、続く `run` も解放される）。(f) **取り出し直後（`current` に置いた後、個別の `catch_unwind` の前）の panic**（試験専用の継ぎ目で起こす）：取り込み値の `Drop` を止める・再 panic させても、列に残る待ち手の `run` が `Stopped` で戻り、`current` の仕事も同じ規則で扱われる。(c) **取り込み値の `Drop` が panic する**（`run`・`post` の両方）。いずれも `post` の閉包は、panic しないものは `Err(Stopped)` を1回受ける。以後の `run`・`post` も `Err(Stopped)`。プロセスは abort しない。(d) **`AudioHost::drop` を門で止めても（試験専用の継ぎ目）、待つ `run` は先に `Stopped` で戻る**（ホストの `Drop` は回収の後で、外側の `catch_unwind` の外）。`Drop` が再 panic しても、`run` は解放済みで、プロセスは abort しない（unwind するビルド）。(e) 取り込み値の `Drop` を止めても、`tx` は先に落ちて `run` が戻る |
 
 **壊して確かめる（T11 型。一時的な改変）**：
 (a) `take_next` を末尾から取る → X1。
@@ -820,16 +821,17 @@ thread::spawn(move || loop {
 (m) `closed` を見る前に `pop_front` する（閉じた後も残件を実行する） → X6。
 (n) 異常終了で `closed` を立てるだけで、列の残件を取り出して `drop` しない → X14（待つ `run` が固まる。門の時間切れで失敗）。
 (o) 再入の判定を `AudioControl::run` だけに置く（`Ticket::run` が迂回する） → X5。
-(p) 閉じた列への `post` を、呼び出しのスレッドで呼ばず捨てる → X11（ショートカットの `shortcut-error` が出ない）。
+(p) 閉じた後に拒否した `post` の `Err(Stopped)` を、呼び出し側が通知に使わず捨てる → X11（ショートカットの `shortcut-error` が出ない）。受け付け済みの `post` への回収の `Err(Stopped)` を省く → X6・X14。
 (q) tick を停止より先に実行する順に固定する／停止を後にする → X13。
 (r) `switch_session` の `app.exit(0)` を閉包の中へ戻す → 構造の試験（`temporary_session.rs` の単体。閉包の中に `exit` が無い）。
 (s) 回収を unwind の中（`Drop` のガード）に戻す → X14（(b)(c) で abort する、または待つ `run` が残る）。
-(t) `run` の解放を `post` の失敗の処理の後に置く → X14 (b)。
+(t) `run` の解放を `post` の失敗の通知の後に置く（通知を門で止めると `run` が戻らない） → X14 (b)。
 (u) 列のロックが poison のとき、回収が `into_inner` せずに諦める → X14 (a)。
 (v) 閉じた列への `post` の失敗の通知を、コールバックの上で直接 `emit` する → X11（`emit` を塞ぐとコールバックが戻らない）。
 (w) ホストを外側の `catch_unwind` の内側で持ち、回収より先に落とす → X14 (d)（`Drop` を止めると `run` が戻らない）。
 (x) `tx` を閉包の中に戻す → X14 (e)（取り込み値の `Drop` を止めると `run` が戻らない）。
-(y) 閉じた列の `post` が閉包を呼ぶ → X11（閉包の呼び出し回数が0であること）。
+(y) 閉じた後に拒否する `post` が閉包を呼ぶ → X11（閉包の呼び出し回数が0であること）。
+(z) 取り出し済みの仕事をループの中の変数で持つ（`current` を外に置かない） → X14 (f)。
 
 ### 11.15 利用者から見て変わること
 
