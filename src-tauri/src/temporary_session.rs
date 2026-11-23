@@ -218,7 +218,7 @@ pub(crate) async fn acknowledge_session_review(
                         .map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "音声状態を取得できません")??;
+            .map_err(|error| error.text("音声状態を取得できません"))??;
         if !observation.running || observation.stream_failed {
             return Err("明示開始後の音声処理を確認できません".into());
         }
@@ -349,7 +349,7 @@ pub(crate) async fn restart_temporary_session(
                     Ok(())
                 },
             )
-            .map_err(|_| "音声状態を取得できません")??;
+            .map_err(|error| error.text("音声状態を取得できません"))??;
         app.exit(0);
         Ok(())
     })
@@ -518,7 +518,7 @@ mod tests {
         let source = include_str!("temporary_session.rs");
         let start = source.find("\"switch_session\",").unwrap();
         let closure_end = source[start..]
-            .find(".map_err(|_| \"音声状態を取得できません\")??;")
+            .find(".map_err(|error| error.text(\"音声状態を取得できません\"))??;")
             .unwrap()
             + start;
         assert!(

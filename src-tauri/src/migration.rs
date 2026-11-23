@@ -500,7 +500,7 @@ pub async fn apply_settings(
                     Ok(())
                 },
             )
-            .map_err(|_| "音声状態を取得できません")?
+            .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await
     .map_err(|e| e.to_string())?

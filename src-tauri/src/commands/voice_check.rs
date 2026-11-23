@@ -12,16 +12,15 @@ pub(crate) async fn voice_check_preview(
     request: crate::audio_engine::voice_check::preview::Request,
 ) -> Result<crate::audio_engine::voice_check::preview::Snapshot, String> {
     let state = state.0.clone();
+    let entry = audio::Entry::command("voice_check_preview")
+        .class(audio::control::request_class::voice_check_preview(&request));
     super::run_blocking(move || {
         state
-            .run(
-                audio::Entry::command("voice_check_preview"),
-                move |host| -> Result<_, String> {
-                    host.voice_check_preview(request)
-                        .map_err(|error| error.to_string())
-                },
-            )
-            .map_err(|_| "Failed to lock audio state")?
+            .run(entry, move |host| -> Result<_, String> {
+                host.voice_check_preview(request)
+                    .map_err(|error| error.to_string())
+            })
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -77,7 +76,7 @@ pub(crate) async fn start_voice_check(
                         .map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -93,7 +92,7 @@ pub(crate) async fn stop_voice_check(state: State<'_, audio::AudioState>) -> Res
                     host.stop_voice_check().map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -114,7 +113,7 @@ pub(crate) async fn play_voice_check(
                         .map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -132,7 +131,7 @@ pub(crate) async fn stop_voice_check_playback(
                     host.stop_voice_check_playback().map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -158,7 +157,7 @@ pub(crate) async fn export_voice_check_wav(
                             .map_err(|e| e.to_string())
                     },
                 )
-                .map_err(|_| "Failed to lock audio state")?,
+                .map_err(|error| error.text("Failed to lock audio state"))?,
             None => Err("cancelled".to_string()),
         }
     })
@@ -181,7 +180,7 @@ pub(crate) async fn export_voice_check(
                         .map_err(|e| e.to_string())
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -217,7 +216,7 @@ pub(crate) async fn analyze_voice_check(
                     Ok(buffer_size)
                 },
             )
-            .map_err(|_| "Failed to lock audio state")??;
+            .map_err(|error| error.text("Failed to lock audio state"))??;
 
         let loaded = audio_analysis::load_wav_interleaved_f32(&raw_path).and_then(|raw| {
             audio_analysis::load_wav_interleaved_f32(&processed_path).map(|proc| (raw, proc))

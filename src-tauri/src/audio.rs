@@ -1,7 +1,7 @@
 pub(crate) mod conditions;
 pub(crate) mod control;
 pub(crate) mod emit;
-pub use control::{AudioControl, ControlError, Entry, EntryKind};
+pub use control::{AudioControl, ControlError, Entry, EntryKind, JobClass};
 mod deadline;
 mod engine_exit;
 pub(crate) mod engine_life;
@@ -3070,6 +3070,22 @@ pub(crate) fn tray_mute_toggle(host: Result<&mut AudioHost, control::ControlErro
     }
 }
 
+/// トレイのミュート切替を積む。停止・ミュートの意図を、待つ前に`interrupt_restore`で記録し、
+/// その`Pending`は閉包が終わる・断られる・捨てられるときに落ちる。結果は捨てる。
+pub(crate) fn post_tray_mute(
+    control: &control::AudioControl,
+    conditions: Option<&Arc<conditions::Conditions>>,
+) {
+    let interrupt = conditions.map(conditions::Conditions::interrupt_restore);
+    let _ = control.post(
+        control::Entry::new(control::EntryKind::Tray, "mute_toggle"),
+        move |host| {
+            let _interrupt = interrupt;
+            tray_mute_toggle(host);
+        },
+    );
+}
+
 /// Translate common audio engine errors into user-friendly Japanese messages.
 pub fn localize_audio_error(e: String) -> String {
     let lower = e.to_lowercase();
@@ -3146,6 +3162,22 @@ mod control_tests;
 #[cfg(test)]
 #[path = "audio/tests/actor_tests.rs"]
 mod actor_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/queue_support.rs"]
+mod queue_support;
+
+#[cfg(test)]
+#[path = "audio/tests/stop_priority_tests.rs"]
+mod stop_priority_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/release_tests.rs"]
+mod release_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/class_tests.rs"]
+mod class_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_seam.rs"]

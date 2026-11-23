@@ -4,14 +4,24 @@
 //! 記録は受付の順序と取り出した順序を残すだけである。操作の並べ替えにも、利用者から見た勝ち負けにも
 //! 使わない。仕事は積んだ順（FIFO）に1件ずつ実行する。
 mod actor;
+mod class;
 #[cfg(test)]
 mod lease;
 mod queue;
+pub(crate) mod request_class;
 
 #[cfg(test)]
 pub(crate) use lease::HostLease;
 #[cfg(test)]
 pub(crate) use queue::ActorPoint;
+
+pub(crate) use class::class_of;
+pub use class::JobClass;
+#[cfg(test)]
+pub(crate) use class::{
+    request_class as request_class_of, NAME_CLASSES, NAME_PAIRS, REQUEST_CLASSES, REQUEST_ENTRIES,
+    REQUEST_PAIRS,
+};
 
 use super::{engine_life, AudioHost};
 use queue::{Job, JobKind, JobQueue, Payload, Reply};
@@ -21,10 +31,16 @@ use std::io;
 use std::panic::resume_unwind;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::thread::{self, JoinHandle, ThreadId};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+pub const BUSY_TEXT: &str =
+    "音声の操作が混み合っています。しばらくしてから、もう一度操作してください。";
+pub const EXPIRED_TEXT: &str = "前の音声の操作が長引いているため、この操作は実行しませんでした。前の操作が終わってから、もう一度操作してください。";
+pub const STOPPED_FIRST_TEXT: &str =
+    "停止が先に行われたため、この操作は実行しませんでした。必要なら、もう一度操作してください。";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -35,6 +51,24 @@ pub enum ControlError {
     Stopped,
     /// 実行のスレッドの上から`run`を呼んだ。
     Reentrant,
+    /// 終わっていない操作が上限に達していて、受け付けなかった。
+    Busy,
+    /// 受付から期限までに始まらなかった。
+    Expired,
+    /// 停止が先に行われたため、実行せずに断った。
+    StoppedFirst,
+}
+
+impl ControlError {
+    /// 入口の利用者向けの文言。今の3種は入口ごとの`fallback`、新しい3種は共通の文言。
+    pub fn text(self, fallback: &'static str) -> &'static str {
+        match self {
+            Self::Busy => BUSY_TEXT,
+            Self::Expired => EXPIRED_TEXT,
+            Self::StoppedFirst => STOPPED_FIRST_TEXT,
+            Self::Poisoned | Self::Stopped | Self::Reentrant => fallback,
+        }
+    }
 }
 
 impl fmt::Display for ControlError {
@@ -43,6 +77,9 @@ impl fmt::Display for ControlError {
             Self::Poisoned => "audio control is poisoned",
             Self::Stopped => "audio control has stopped",
             Self::Reentrant => "audio control was entered from its own thread",
+            Self::Busy => BUSY_TEXT,
+            Self::Expired => EXPIRED_TEXT,
+            Self::StoppedFirst => STOPPED_FIRST_TEXT,
         })
     }
 }
@@ -71,11 +108,16 @@ const KIND_COUNT: usize = 12;
 pub struct Entry {
     pub kind: EntryKind,
     pub name: &'static str,
+    class: Option<JobClass>,
 }
 
 impl Entry {
     pub const fn new(kind: EntryKind, name: &'static str) -> Self {
-        Self { kind, name }
+        Self {
+            kind,
+            name,
+            class: None,
+        }
     }
     pub const fn command(name: &'static str) -> Self {
         Self::new(EntryKind::Command, name)
@@ -83,12 +125,22 @@ impl Entry {
     pub const fn bundle(name: &'static str) -> Self {
         Self::new(EntryKind::Bundle, name)
     }
+    /// 名前では決まらない入口が、要求の中身から決めた種類を渡す。
+    pub const fn class(mut self, class: JobClass) -> Self {
+        self.class = Some(class);
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Accepted,
-    LockGranted,
+    /// 実行のスレッドが取り出した。
+    Started,
+    /// 閉包が戻った。返事の前。
+    Completed,
+    /// 実行せずに断った（上限・期限・停止が先）。
+    Refused,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +148,8 @@ pub struct Record {
     pub seq: u64,
     pub entry: Entry,
     pub phase: Phase,
+    /// `Completed`だけが持つ、実行にかかった時間。
+    pub elapsed: Option<Duration>,
 }
 
 const LOG_CAPACITY: usize = 256;
@@ -104,6 +158,7 @@ const LOG_CAPACITY: usize = 256;
 pub struct Admission {
     next_seq: AtomicU64,
     counts: [AtomicU64; KIND_COUNT],
+    slow: AtomicU64,
     log: Mutex<VecDeque<Record>>,
     #[cfg(test)]
     hook: Mutex<Option<TestHook>>,
@@ -125,6 +180,7 @@ impl Admission {
         Self {
             next_seq: AtomicU64::new(1),
             counts: std::array::from_fn(|_| AtomicU64::new(0)),
+            slow: AtomicU64::new(0),
             log: Mutex::new(VecDeque::new()),
             #[cfg(test)]
             hook: Mutex::new(None),
@@ -150,7 +206,7 @@ impl Admission {
             let lock_held = self.log.try_lock().is_err();
             self.run_hook(TestPoint::AfterSeq { seq, lock_held });
         }
-        Self::append(&mut log, seq, entry, Phase::Accepted);
+        Self::append(&mut log, seq, entry, Phase::Accepted, None);
         seq
     }
 
@@ -167,20 +223,42 @@ impl Admission {
         *self.hook.lock().unwrap() = Some(hook);
     }
 
-    fn append(log: &mut VecDeque<Record>, seq: u64, entry: Entry, phase: Phase) {
+    fn append(
+        log: &mut VecDeque<Record>,
+        seq: u64,
+        entry: Entry,
+        phase: Phase,
+        elapsed: Option<Duration>,
+    ) {
         if log.len() == LOG_CAPACITY {
             log.pop_front();
         }
-        log.push_back(Record { seq, entry, phase });
+        log.push_back(Record {
+            seq,
+            entry,
+            phase,
+            elapsed,
+        });
     }
 
-    fn push_granted(&self, seq: u64, entry: Entry) {
+    /// 受付の後の段階（取り出し・完了・断り）を記録する。定期の更新は記録しない。
+    fn record(&self, seq: u64, entry: Entry, phase: Phase, elapsed: Option<Duration>) {
         if entry.kind == EntryKind::Scheduler {
             return;
         }
         if let Ok(mut log) = self.log.lock() {
-            Self::append(&mut log, seq, entry, Phase::LockGranted);
+            Self::append(&mut log, seq, entry, phase, elapsed);
         }
+    }
+
+    fn note_slow(&self) {
+        self.slow.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 試験用：実行の時間の警告を出した回数。
+    #[cfg(test)]
+    pub(crate) fn slow_warnings(&self) -> u64 {
+        self.slow.load(Ordering::Relaxed)
     }
 
     /// 受け付けた件数。
@@ -206,6 +284,8 @@ pub struct Ticket<'a> {
     control: &'a AudioControl,
     seq: u64,
     entry: Entry,
+    class: JobClass,
+    accepted_at: Instant,
 }
 
 struct Shared {
@@ -281,10 +361,14 @@ impl AudioControl {
 
     /// 受付だけを行う。列へ積む操作は、返された`Ticket`の`run`・`post`で行う。
     pub fn admit(&self, entry: Entry) -> Ticket<'_> {
+        let class = class_of(entry);
+        let accepted_at = Instant::now();
         Ticket {
             control: self,
             seq: self.shared.admission.accept(entry),
             entry,
+            class,
+            accepted_at,
         }
     }
 
@@ -334,6 +418,35 @@ impl AudioControl {
         self.shared.queue.len()
     }
 
+    /// 試験用：終わっていない数える仕事の数。
+    #[cfg(test)]
+    pub(crate) fn counted(&self) -> usize {
+        self.shared.queue.counted()
+    }
+
+    /// 試験用：最後に受け付けた停止の番号。
+    #[cfg(test)]
+    pub(crate) fn fence(&self) -> u64 {
+        self.shared.queue.fence()
+    }
+
+    /// 試験用：上限・期限・警告の長さを縮める。
+    #[cfg(test)]
+    pub(crate) fn set_limits(
+        &self,
+        max_counted: usize,
+        wait: Duration,
+        slow: Duration,
+        slow_start: Duration,
+    ) {
+        self.shared.queue.set_limits(queue::Limits {
+            max_counted,
+            wait,
+            slow,
+            slow_start,
+        });
+    }
+
     #[cfg(test)]
     pub(crate) fn set_actor_seam(&self, seam: Arc<dyn Fn(ActorPoint) + Send + Sync>) {
         self.shared.queue.set_seam(seam);
@@ -345,13 +458,27 @@ impl AudioControl {
         thread::spawn(move || loop {
             thread::sleep(Duration::from_millis(10));
             let Some(control) = weak.upgrade() else { break };
-            match control.run(Entry::new(EntryKind::Scheduler, "poll_mode_vst"), |host| {
+            let tick = control.run(Entry::new(EntryKind::Scheduler, "poll_mode_vst"), |host| {
                 host.poll_mode_vst()
-            }) {
-                Ok(()) | Err(ControlError::Poisoned) => {}
-                Err(ControlError::Stopped | ControlError::Reentrant) => break,
+            });
+            if !scheduler_continues(tick) {
+                break;
             }
         });
+    }
+}
+
+/// 更新の結果から、次の周期へ進むか。断りは次の周期へ、止まった・再入は終わる。
+pub(super) fn scheduler_continues(result: Result<(), ControlError>) -> bool {
+    match result {
+        Ok(())
+        | Err(
+            ControlError::Poisoned
+            | ControlError::Busy
+            | ControlError::Expired
+            | ControlError::StoppedFirst,
+        ) => true,
+        Err(ControlError::Stopped | ControlError::Reentrant) => false,
     }
 }
 
@@ -360,11 +487,53 @@ impl<'a> Ticket<'a> {
         self.seq
     }
 
-    fn job(self, kind: JobKind) -> Job {
+    fn job(&self, kind: JobKind) -> Job {
         Job {
             seq: self.seq,
             entry: self.entry,
+            class: self.class,
+            accepted_at: self.accepted_at,
             kind,
+        }
+    }
+
+    /// 列へ積む。混雑で断られたら`Refused`を記録する（閉じていた`Stopped`は記録しない）。
+    fn push(&self, kind: JobKind) -> Result<(), ControlError> {
+        let result = self.control.shared.queue.push(self.job(kind));
+        if result == Err(ControlError::Busy) {
+            self.record_refused();
+        }
+        result
+    }
+
+    fn record_refused(&self) {
+        self.control
+            .shared
+            .admission
+            .record(self.seq, self.entry, Phase::Refused, None);
+    }
+
+    /// 期限付きの待ち（Starting・Normal）は、受付から期限までに始まらなければ、列のロックの中で
+    /// まだ列にある自分の仕事を取り除いて`Expired`にする。取り出された後なら、返事が来るまで待つ。
+    /// Stop・Mute・Tick・Release は無期限に待つ。
+    fn wait_reply(&self, rx: &Receiver<Reply>) -> Result<Reply, ControlError> {
+        if !self.class.waits_with_deadline() {
+            return rx.recv().map_err(|_| ControlError::Stopped);
+        }
+        let queue = &self.control.shared.queue;
+        let remaining =
+            (self.accepted_at + queue.limits().wait).saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(reply) => Ok(reply),
+            Err(RecvTimeoutError::Disconnected) => Err(ControlError::Stopped),
+            Err(RecvTimeoutError::Timeout) => match queue.cancel_waiting(self.seq) {
+                Some(job) => {
+                    drop(job);
+                    self.record_refused();
+                    Err(ControlError::Expired)
+                }
+                None => rx.recv().map_err(|_| ControlError::Stopped),
+            },
         }
     }
 
@@ -386,17 +555,16 @@ impl<'a> Ticket<'a> {
     ) -> Result<R, ControlError> {
         self.guard_reentrancy()?;
         let (tx, rx) = sync_channel(1);
-        let queue = &self.control.shared.queue;
         let run = Box::new(move |host: &mut AudioHost| Box::new(f(host)) as Payload);
-        queue.push(self.job(JobKind::Run { tx, f: run }))?;
-        match rx.recv() {
-            Ok(Reply::Done(output)) => output
+        self.push(JobKind::Run { tx, f: run })?;
+        match self.wait_reply(&rx)? {
+            Reply::Done(output) => output
                 .downcast::<R>()
                 .map(|output| *output)
                 .map_err(|_| ControlError::Stopped),
-            Ok(Reply::Panicked(payload)) => resume_unwind(payload),
-            Ok(Reply::Poisoned) => Err(ControlError::Poisoned),
-            Err(_) => Err(ControlError::Stopped),
+            Reply::Panicked(payload) => resume_unwind(payload),
+            Reply::Poisoned => Err(ControlError::Poisoned),
+            Reply::Refused(error) => Err(error),
         }
     }
 
@@ -404,8 +572,7 @@ impl<'a> Ticket<'a> {
         self,
         f: impl FnOnce(Result<&mut AudioHost, ControlError>) + Send + 'static,
     ) -> Result<(), ControlError> {
-        let queue = self.control.shared.queue.clone();
-        queue.push(self.job(JobKind::Post { f: Box::new(f) }))
+        self.push(JobKind::Post { f: Box::new(f) })
     }
 
     #[cfg(test)]
@@ -417,10 +584,7 @@ impl<'a> Ticket<'a> {
             grant: grant_tx,
             back: back_rx,
         };
-        self.control
-            .shared
-            .queue
-            .push(self.job(JobKind::Lease(lease)))?;
+        self.push(JobKind::Lease(lease))?;
         match grant_rx.recv() {
             Ok(Ok(host)) => Ok(HostLease::new(host, back_tx)),
             Ok(Err(error)) => Err(error),
