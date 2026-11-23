@@ -250,6 +250,48 @@ pub struct LoopbackProbeResult {
     pub unavailable: Option<String>,
 }
 
+/// 試験の継ぎ目：`ensure_engine_running` が、接続を閉じて確定した後・`ensure_clear` の前に、一度だけ呼ばれる
+/// （試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_ensure_clear {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+/// 試験の継ぎ目：tick の `send_mode_command` が、最後の接続の確認の後・待ちの登録（`begin`）の前に、
+/// 一度だけ呼ばれる（試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_mode_begin {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
 /// 試験の継ぎ目：接続の確認の後、応答の待ちを始める前に、一度だけ呼ばれる（試験のスレッドごと）。
 #[cfg(test)]
 pub(crate) mod before_begin_hook {
@@ -713,6 +755,14 @@ impl AudioHost {
         won
     }
 
+    /// 接続を閉じて子を回収した後の、切断状態の確定（F1b-0b-4 の14.7）。`ensure_clear` が失敗して
+    /// `new_engine` が来なくても、`running`・`voice_activity` を残さず、閉鎖の前の epoch を失効させる。
+    /// 通知は出さない。待たない。
+    fn settle_disconnected(&self) {
+        self.conditions.retire_engine();
+        self.voice_activity.store(false, Ordering::Release);
+    }
+
     /// 接続を捨てて、子を回収する（2.3 の 1〜4）。通知は出さない。
     fn drop_connection(&mut self, cause: CloseCause) -> bool {
         let won = self.close_connection(cause);
@@ -887,6 +937,7 @@ impl AudioHost {
                         self.close_connection(CloseCause::Intentional);
                         self.child = None;
                         self.engine_job = None;
+                        self.settle_disconnected();
                     }
                     // 動いている。主の子で出力だけが閉じていたら、回収して作り直す（C5）。
                     Ok(None) if self.post_role || self.link.cause() != Some(CloseCause::Eof) => {
@@ -898,17 +949,25 @@ impl AudioHost {
                         );
                         self.drop_connection(CloseCause::Intentional);
                         self.engine_job = None;
+                        self.settle_disconnected();
                     }
                     Err(e) => {
                         // 終了の証拠ではない。確かめられるまで、同じ役割の子を作らない。
                         log::error!("Error waiting on audio engine child process: {}", e);
                         self.drop_connection(CloseCause::Intentional);
+                        self.settle_disconnected();
                     }
                 }
             }
         }
 
-        self.retired.ensure_clear(self.role())?;
+        #[cfg(test)]
+        before_ensure_clear::run();
+        if let Err(error) = self.retired.ensure_clear(self.role()) {
+            #[cfg(test)]
+            engine_life::seam::stage(engine_life::seam::Stage::ResultDecided);
+            return Err(error.into());
+        }
         log::info!("Spawning Audio Engine Sidecar...");
         let condition_epoch = self.conditions.new_engine();
         self.notify_conditions_changed();
@@ -2804,7 +2863,6 @@ impl AudioHost {
             host.invalidate_live_protection();
             host.live_modes.needs_sync = true;
             host.conditions.retire_engine();
-            host.notify_conditions_changed();
             host.engine_generation = host.engine_generation.wrapping_add(1);
             host.device_scan = None;
             // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
@@ -2813,6 +2871,8 @@ impl AudioHost {
             }
             host.drop_connection(CloseCause::Intentional);
             host.voice_activity.store(false, Ordering::Release);
+            // 切断状態の確定が済んでから、保持する通知を積む。
+            host.notify_conditions_changed();
             host.engine_job = None;
         });
     }
@@ -3202,6 +3262,10 @@ mod link_cell_tests;
 #[cfg(test)]
 #[path = "audio/tests/link_tests.rs"]
 mod link_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/n2_tests.rs"]
+mod n2_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/reply_deadline_tests.rs"]

@@ -239,6 +239,17 @@ impl Store {
         id
     }
 
+    /// 試験で、生きたままの子を、`kill` も確認もせずに記録へ置く（終わらない子の再現）。
+    #[cfg(test)]
+    pub(super) fn adopt_for_test(self: &Arc<Self>, role: Role, child: Child) {
+        let killed_at = Instant::now();
+        let id = self.push(role, child, None, killed_at);
+        if !reaper::spawn(self, id, reaper::Source::Poll, killed_at) {
+            self.mark_unwatched(id);
+        }
+        self.ring();
+    }
+
     fn error(slots: &Slots) -> EngineUnconfirmed {
         EngineUnconfirmed {
             repeated: slots.iter().flatten().any(|r| r.unconfirmed >= REPEAT_AT),
@@ -793,6 +804,8 @@ pub(crate) mod seam {
         Assigned(u32),
         /// `retire_child` が、終了を確かめた、または記録へ移した直後。
         Retired(super::Role),
+        /// `ensure_clear` の失敗（`engine_unconfirmed`）が決まった直後。まだ返していない。
+        ResultDecided,
     }
 
     struct State {
@@ -848,7 +861,7 @@ pub(crate) mod seam {
             None => false,
         })
     }
-    pub(super) fn stage(stage: Stage) {
+    pub(in crate::audio) fn stage(stage: Stage) {
         if let Some(mut hook) = with(|s| s.stage.take()) {
             hook(stage);
             with(|s| s.stage = Some(hook));

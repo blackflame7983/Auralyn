@@ -1,6 +1,7 @@
 //! 子の stdout を読み、応答の待ち手と通知へつなぐ（接続ごとに1本のスレッド）。
 //!
-//! ホストのロックは持たない・取らない。通知は `emit_order` を取った後に接続を確かめてから、列の全体を出す。
+//! ホストのロックは持たない・取らない。状態の変更は `LinkCell::enter`（閉鎖と不可分）の中だけで行い、
+//! 通知は `emit_order` を取った後に接続を確かめてから、列の全体を出す。
 use super::*;
 use crate::audio::emit::Notifier;
 use std::process::ChildStdout;
@@ -83,7 +84,7 @@ impl Reader {
                 });
             }
             EngineEvent::MixingSourceFailed | EngineEvent::MixingOutputFailed => {
-                if !conditions.engine_changed(epoch) {
+                if !self.link.enter(|| conditions.engine_changed(epoch)) {
                     return;
                 }
                 let name = if matches!(event, EngineEvent::MixingSourceFailed) {
@@ -98,7 +99,7 @@ impl Reader {
             }
             EngineEvent::Log(s) => log::info!("[Engine] {}", s),
             EngineEvent::Error(s) => {
-                if !conditions.engine_event(epoch, false) {
+                if !self.link.enter(|| conditions.engine_event(epoch, false)) {
                     return;
                 }
                 log::error!("[Engine] {}", s);
@@ -130,7 +131,7 @@ impl Reader {
                 stream_generation,
                 ended_stream_generation,
             } => {
-                if !conditions.engine_event(epoch, false) {
+                if !self.link.enter(|| conditions.engine_event(epoch, false)) {
                     return;
                 }
                 self.emit_chain(|c| {
@@ -167,7 +168,7 @@ impl Reader {
                 buffer_size,
                 stream_generation,
             } => {
-                if !conditions.engine_event(epoch, true) {
+                if !self.link.enter(|| conditions.engine_event(epoch, true)) {
                     return;
                 }
                 self.emit_chain(|c| {
@@ -190,10 +191,13 @@ impl Reader {
                 position_ms,
                 duration_ms,
             } => {
-                self.voice_activity.store(
-                    matches!(state.as_str(), "recording" | "playing"),
-                    Ordering::Release,
-                );
+                let active = matches!(state.as_str(), "recording" | "playing");
+                if !self.link.enter(|| {
+                    self.voice_activity.store(active, Ordering::Release);
+                    true
+                }) {
+                    return;
+                }
                 #[derive(serde::Serialize, Clone)]
                 struct VoiceCheckStatePayload {
                     state: String,

@@ -1,7 +1,8 @@
 //! 子との接続の状態の正本。開閉・閉じた理由・応答の待ち・操作の記録を、1つのロックの下の状態機械にまとめる。
 //!
 //! 勝敗が決めるのは「誰が終了の通知を出すか」だけ。回収（子・writer・応答の待ち）は勝敗に関係なく行う。
-//! ロックは葉。持つ間は、メモリの更新と待たない `mpsc` の送信・破棄だけをする。例外は `wait_notified` の待ち。
+//! ロックは葉。持つ間は、メモリの更新（`enter` の効果は、ロックを取らない原子操作だけ）と待たない `mpsc` の送信・破棄だけを
+//! する。例外は `wait_notified` の待ち。
 use super::engine_exit::{ExitPayload, OperationLog};
 use super::replies::{ReplyOutcome, CLOSED};
 use crate::ipc::{Command, Response};
@@ -98,6 +99,30 @@ pub(super) struct LinkCell {
     /// 試験の継ぎ目：`wait_notified` に入った回数。
     #[cfg(test)]
     waits_entered: std::sync::atomic::AtomicUsize,
+    /// 試験の継ぎ目：ロックを取ろうとして、すでに持たれていた回数。
+    #[cfg(test)]
+    contended: std::sync::atomic::AtomicUsize,
+}
+
+/// 試験の継ぎ目：`enter` が、接続の確認を通った直後・状態の変更の前に、一度だけ呼ぶ（試験のスレッドごと）。
+/// ロックを持ったまま呼ばれる。
+#[cfg(test)]
+pub(super) mod after_check_before_effect {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(in crate::audio) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
 }
 
 impl LinkCell {
@@ -105,6 +130,8 @@ impl LinkCell {
         Self {
             #[cfg(test)]
             waits_entered: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            contended: std::sync::atomic::AtomicUsize::new(0),
             inner: Mutex::new(Inner {
                 state,
                 eof_notified: false,
@@ -126,7 +153,30 @@ impl LinkCell {
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
+        #[cfg(test)]
+        match self.inner.try_lock() {
+            Ok(guard) => return guard,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => return poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                self.contended.fetch_add(1, Ordering::AcqRel);
+            }
+        }
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// reader が、状態の変更と通知の前に1回呼ぶ。閉鎖と同じロックの下で「閉じていない」を確かめ、
+    /// 閉じていなければ `effect`（ロックを取らない原子操作だけ）を行って、その結果を返す。
+    /// 閉じていれば `false`（`effect` は呼ばない）。`close` が戻った後は、`effect` は走らない。
+    pub(super) fn enter(&self, effect: impl FnOnce() -> bool) -> bool {
+        let inner = self.lock();
+        if matches!(inner.state, State::Closed(_)) {
+            return false;
+        }
+        #[cfg(test)]
+        after_check_before_effect::run();
+        let proceed = effect();
+        drop(inner);
+        proceed
     }
 
     pub(super) fn is_open(&self) -> bool {
@@ -298,6 +348,12 @@ impl LinkCell {
     #[cfg(test)]
     pub(super) fn waits_entered_for_test(&self) -> usize {
         self.waits_entered.load(Ordering::Acquire)
+    }
+
+    /// 試験で、ロックを取ろうとして、すでに持たれていた回数（`close` が `enter` を待ったことの観測）。
+    #[cfg(test)]
+    pub(super) fn lock_contended_for_test(&self) -> usize {
+        self.contended.load(Ordering::Acquire)
     }
 
     #[cfg(test)]
