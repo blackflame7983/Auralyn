@@ -1,6 +1,6 @@
 # F1b-0b セッションの中心部の作り直しの設計（第1版・骨子）
 
-状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。Sol のレビュー2回（どちらも BLOCK）と Neon への相談を受けた第3版。閉じる側の待ちは無い。要承認の候補は無い。着手前に決めることは残っていない。次段・実装時の未決と選択肢だけの O12 を14.15 に挙げた）まで書き、F1b-0b-4 を実装した（実装との差は14.21）。
+状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。Sol のレビュー2回（どちらも BLOCK）と Neon への相談を受けた第3版。閉じる側の待ちは無い。要承認の候補は無い。着手前に決めることは残っていない。次段・実装時の未決と選択肢だけの O12 を14.15 に挙げた）まで書き、F1b-0b-4 を実装した（実装との差は14.21）。15章（F1b-0b-2c：実行中の停止。J-20。一歩の境目 31 地点＋子の起動の門 2 地点の設計。コードは未実装で、設計だけ。要承認の候補 A〜D と未決 U1〜U9 を15.13・15.14 に挙げた。分け方の案は15.18。実装との差は15.19〔実装後に書く〕）を書いた。
 
 前提の文書：
 - 今の事実：`audio-session-f1b0b-inventory.md`（bcd2dca2 の時点。以下「洗い出し」）。
@@ -2419,3 +2419,423 @@ stateDiagram-v2
 8. **Q10**：`LinkCell` の poison だけ。`order` の poison は `emit.rs` の T12 が固定する。
 9. **既存の試験の期待値**：変えたのは S6（`s6_a_closed_reader_cannot_raise_voice_activity`）だけ。`ensure_engine_running` の3経路で `retire_engine` を呼ぶので、`revision` が1回多く進むが、既存の試験の期待値は変わらなかった（`audio::` 443本・`--lib` の全体 1275本が通る）。
 10. **ガードの台帳**：`config/gardening-rust-baseline.json` の `audio.rs` のファイル指紋だけを更新した（allow の数は8のまま。新しい allow・expect は無い）。`config/gardening-policy.json` の `approved` の末尾に記録し、台帳のファイルの指紋を合わせた。
+
+## 15. F1b-0b-2c（実行中の停止。J-20）の詳細
+
+前提：コードは main `0f8ed400`（F1b-0b-4 の PR #849 をマージした後）の上に作ったブランチ `codex/audio-session-f1b0b2c`。`ファイル:行` は `src-tauri/src/` を基準にし、今のコードで確かめ直した（12.20 が書いた行は、F1b-0b-3・4 の後に動いている。食い違いは 15.17）。この章は**設計だけ**で、コードは変えない。正本は 12.7・12.8・12.15・12.16・12.19・12.20（2b から外したもの。S1〜S15 は「設計の入力」）と、`audio-session-controller.md:919` の J-20、`audio-session-f1b0-changes.md` の C1・C4・J-20。14章（N2）までの不変条件（I1〜I56）、K2・K10 の境界、通知の名前・中身・数・順、N2 の契約（14.1）は**変えない**。
+
+J-20（承認済み）：「操作全体の期限（90秒／120秒）は、複数の命令を続けて送る長い操作には使わず、一歩ごとの期限だけにする。停止が来たら、次の命令を送る前に止めて、今ある巻き戻しの手順を通す」。承認済みの文言：「停止が先に行われたため、操作を途中で止めました。一部の設定は変更済みの場合があります。現在の状態を確認してください。」（12.15・12.16）。
+
+### 15.1 答えの要約（決めること 1〜10）
+
+| # | 決めること | 答え |
+|---|---|---|
+| 1 | 範囲と分け方 | 一歩の境目は、正本の S1〜S15 を今のコードで確かめ直すと **31 地点**（S1〜S15 の枝分かれ）。それに、子の起動の門の **2 地点**（G1・G2）を足して **33 地点**（15.5）。1 段で扱うには多いので、**2c-1（基盤＋門＋開始系。16 地点）と 2c-2（プロファイル・配信側の復元・配信セットの適用。17 地点）に分ける案**を 15.18 に出す。設計は全部をここに書く |
+| 2 | 停止を知る仕組み | 実行のスレッドの上の `JobContext`（`thread_local!`。1件の仕事の間だけ）が、`seq`（受付で固定）・割り込みを受ける種類か・`fence` の `Arc<AtomicU64>` を持つ。`fence` は **`JobQueue` へ移した1か所**（今は `QueueState` の `u64`。`queue.rs:103`）で、書くのは Stop を積む時の列のロックの中だけ（2b と同じ）。読み手は取り出す時（`verdict`）と境目（`check_stopped`）。**同じ関数 `stopped_after(seq, fence)`** で判定する（15.4） |
+| 3 | 割り込みを受ける種類 | **Starting だけ**（12.4 の表のとおり）。`JobClass::interrupts_running` を、`_ =>` なしの網羅の `match` のメソッドとして足す（6つ目。Y31 の対象）。Stop・Mute・Tick・Release・Normal は何もしない（V1・V12） |
+| 4 | 型 | 途中で止めたことを表す **`StoppedMidway`**（`ControlError` とは別の型。`std::error::Error`。`Display` は承認済みの文言）。**`ControlError::StoppedFirst` は取り出す時の断り（実行前の文言）だけのまま**。IPC の `anyhow::Error` に混ぜない。型名は正本の `StoppedFirst` と別にした（15.14 の U2） |
+| 5 | 境目 | `check_stopped(Boundary) -> Result<(), StoppedMidway>`。`Boundary` は 33 地点の列挙（`ALL` を持つ）。境目から戻る経路は、その境目がある関数の**今の後始末へ合流**する（`?` で飛ばさない。15.5） |
+| 6 | 子の起動の門 | `ensure_engine_running`（`audio.rs:924`）の中、**主のホストだけ**（`post_role` は通す）。**`ensure_clear` の前（G1）と後・`new_engine` の前（G2）**。子を閉じて切断状態を確定した後で止まる（`new_engine`・起動はしない）。**IPC の口（`execute_running_command`・`dispatch`）には置かない**（15.6） |
+| 7 | `Err` に別の意味を混ぜない | 門は IPC の外（`ensure_engine_running` は `dispatch` の外）で、境目は IPC の口に無い。それでも、門・境目の `Err` が届きうる「`Err` を分類する10か所」を経路ごとに洗い出し、手当てを決めた（15.7）。**特に、`load_plugin_chain` の欠落扱い・`prepare_warmup`・`warmup_once` の失敗の記録・ショートカットの通知・`localize_audio_error` の包み・`post_mix()` の失敗の処理** |
+| 8 | 止めた後始末 | 新しい巻き戻しは作らない。**今ある手順**（配信セットの適用の枠の `stop()`・`kill_engine`・`rollback_settings`、開始の失敗の `cancel_prepared_post_start`、`prepare_post_mix_start` の失敗の後始末、`post_mix()` の失敗の処理）を通す。`apply_profile` は途中で戻す手順が無く、**止めた後の状態は今の途中の失敗と同じ**（12.18 の 7）。**後始末の区間（`cleanup`）・ラッチは作らない**。代わりに「後始末が境目を含む関数を呼ばない」(I61) を構造の試験で守る |
+| 9 | 文言を返す場所 | 境目・門が `StoppedMidway` を作り、`?` で上へ。入口の閉包が `to_string()` した文字列＝承認済みの文言が、利用者へ届く。**`localize_audio_error` は素通しにする**（`engine_life` の日本語の最終文言と同じ扱い）。ショートカットは何も表示しない（要承認。15.13 の A）。配信セットの適用・取り消しは「一部適用・結果不明: …。原本を保持しています」の中に入る（15.8） |
+| 10 | 試験 | `H1`〜`H21`（21本。記号 H は既存の a〜z の頭文字に無い）。順は継ぎ目で固定し、`sleep`・競りの反復に頼らない。期待値が変わる既存の試験は **Y31（5→6 のメソッド）** のみ。Y12 は名前とコメントを狭める（結果は同じ）。壊して確かめる項目は (a)〜(x)（15.12） |
+
+### 15.2 範囲
+
+やること：
+- 停止を知る仕組み（`JobContext`・`fence` の移動・`stopped_after`・`JobClass::interrupts_running`・`StoppedMidway`・`Boundary`・`check_stopped`）。実行のスレッドでの文脈の出し入れ。
+- 一歩の境目（31 地点）と、子の起動の門（2 地点）。戻る経路の規則。
+- `Err` を分類する10か所の手当て。`localize_audio_error` の素通し。
+- 試験の継ぎ目（`Boundary` の継ぎ目）と、H1〜H21。
+
+やらないもの（この段で変えない）：
+- **90 秒／120 秒の打ち切り**（V3。J-20）。一歩ごとの期限（書き込み 5 秒・応答 10／30 秒・起動の確認 10 秒・作り直しの待ち 10 秒・回収 2 秒・EOF の待ち 2 秒）は今のまま。
+- **ミュートは J-20 の割り込みを受けない**（V1）。Mute は fence を上げない。
+- **通知の名前・中身・数・順、K2・K10 の境界、N2 の契約（14.1。旧い1列は出うる）、`engine_generation` の更新点、`Phase`（`Accepted`・`Started`・`Completed`・`Refused`）**。途中で止めた仕事は `Completed` で閉じる（返事は `Done`。15.9）。
+- `interrupt` の計数器・`bundle_interrupt` の fence への一本化（V9。F1b）。
+- `ensure_clear` の待ち（最大10秒）・`retire_child`（2秒）・`wait_notified`（2秒）・応答の待ち（10・30 秒）を、停止で起こすこと（待ちを足さない。N3 の範囲。15.15 の (a)）。
+- 利用者へ見せる画面（フロント）の変更。英語は #833。
+- Release を子の起動の門に通すこと（12.4 の末尾の一文との食い違い。15.14 の U1）。
+
+### 15.3 今の事実（確かめ直したもの）
+
+- **列と fence**：`JobQueue`（`audio/control/queue.rs:126`）。`QueueState` の `fence: u64`（`:103`）は、`push`（`:166`）が Stop のとき `max` で更新し（`:180-182`）、`take_next`（`:208`）の `scan_lanes`（`:365`）が `verdict`（`:395`）へ渡す。**書くのは列のロックの中だけ**。`verdict` は、`refused_after_stop`（Starting）で `job.seq < fence` なら `StoppedFirst`、`waits_with_deadline` で 60 秒を超えたら `Expired`。種類の判定は `audio/control/class.rs:31-66` の5つのメソッド（`counted`・`waits_with_deadline`・`refused_after_stop`・`lane`・`raises_fence`。いずれも `_ =>` なし）。
+- **実行の出入口**：`serve`（`actor.rs:111-142`）→`execute`（`:144-177`）が、`queue.store().begin_closure()` の内側で `run_job`（`:188`）・`post_job`（`:198`）を `catch_unwind` つきで呼ぶ。返事は `completed`（数の減算→`Phase::Completed`）の後（`:158-159`）。`ON_ACTOR`（`:21-23`）は再入の判定だけ。`Finish`（`:73-109`）が `seq`・`class` を持つ。`Job` は受付で `seq`・`class`・`launch`・`known`・`accepted_at` を持つ（`queue.rs:56-65`。`Ticket::job`、`control.rs:570-588`）。
+- **停止の入口**：`stop_audio`（`commands/audio.rs:575-591`）は `run_async` の前に `interrupt_restore()` を取る（`:579`）。`Conditions::interrupt_restore`（`conditions.rs:81-84`）は `interrupt += 1` と `begin()`。fence は積む時に上がる（admit〜push の間は上がらない。12.17 の (k)）。配信セットの適用・取り消しは、`execute_command`（`audio.rs:1079-1080`）の先頭で毎回 `validate_bundle_connection`（`:2373-2386`）を呼び、`interrupt` の計数器が変わっていれば「停止・ミュート操作が優先されたため、配信状態の復帰を中断しました」で失敗する。**配信セットの適用の中では、IPC のたびに今も停止・ミュートで中断される**（`ensure_engine_running` は通らない）。
+- **子の起動点**：`ensure_engine_running`（`audio.rs:924`）。生きている子は `:944` で `Ok`（門を通らない）。閉じる3経路（`:934-960`）→`settle_disconnected`（`:761`）→ 継ぎ目 `before_ensure_clear`（`:964-965`）→`retired.ensure_clear`（`:966`。最大10秒）→ `new_engine`（`:972`）→ `notify_conditions_changed`（`:973`）→ 起動（`:974`）。呼び出し元（製品のコード）：`execute_command`（`:1082`）・`start_internal_with_source`（`:1642`）・`restore_plugin`（`:1866`）・`warmup_once`（`prepare_warmup` 経由。`:2892`）・`frontend_bootstrap`（`frontend_bootstrap.rs:374`）・`live_modes`（`live_modes.rs:364`）・`mixing`（`mixing.rs:301`）・`recover_mode_vst`（`mode_vst.rs:422`）・`session_rack(Begin)`（`session_rack.rs:155`）・**配信ミックスの子の `child()`**（`post_mix.rs:545`。子のホスト＝`post_role`）。
+- **`Err` を分類する箇所**（15.7 の元）：`load_plugin_chain`（`profile/plugin_chain.rs:45-48`。`restore` は `to_string()` で型を落とす。`:30`）、`prepare_warmup`（`frontend_bootstrap.rs:161-166`）、`warmup_once`（`audio.rs:2956-2960`）、`frontend_bootstrap`（`frontend_bootstrap.rs:212-221`）、`post_mix()` の失敗の処理（`post_mix.rs:1161-1181`）、`shortcut_notice`（`shortcuts.rs:582-594`）と比較のショートカットの `auto_gain` の `Err(_)`（`:488-492`）、`localize_audio_error`（`audio.rs:3154-3196`。`start_audio` は `commands/audio.rs:512`、`restart_audio_engine` は `:846`）、配信セットの適用・取り消しの結果の文（`commands/bundles.rs:2779-2788,2946-2955`）。
+- **巻き戻しの手順がある場所**：`with_bundle_mixing`（`mixing_bundle.rs:248-266`。`stop()`→失敗なら `kill_engine`→`rollback_settings`→子の作り直し）、`with_bundle_output`（`output_bundle.rs:126-131`）、`with_bundle_live`（`live_bundle.rs:201-224`）、`process_bundle_scope`（`process_bundle.rs:117-119`）、`mixing(Levels)` の保存失敗（`mixing.rs:342-346`）。開始の失敗：`cancel_prepared_post_start`（`post_mix_start.rs:4-18`）、`prepare_post_mix_start` の `start` 失敗（`:47-51`）と準備の未完了（`:66-69`）、`Started` の検査の失敗の `Stop`（`audio.rs:1714,1719,1733`。IPC として送る）。モード VST の取引の `rollback` は tick の経路（`mode_vst.rs:836-841`。Tick は割り込まれない）。停止は `stop_primary` の `mode_vst.blocked()` の分岐（`audio.rs:1810-1816`）で取引を取り消す。**これらの後始末が呼ぶ関数に、境目を置く関数（`start_*`・`apply_profile`・`unload_all_plugins`・`set_output_gain`・`load_plugin_chain`・`prepare_post_mix_start`・`restore_bundle`）は無い**（今のコード。I61 が守る）。
+- **`apply_profile` は戻す手順を持たない**：`?` で上へ返るだけ（`profile.rs:225-499`。引数に `skip_backup`。バックアップは `:254-261` で `BACKUP_PROFILE_NAME` へ**上書き**する。`:144-165`）。
+
+### 15.4 停止を知る仕組み（実行の文脈）と、2b の fence・verdict との関係
+
+**形（`audio/control/context.rs`。新設）**
+```text
+StoppedMidway                        // Copy。std::error::Error。Display = STOPPED_MIDWAY_TEXT
+Boundary { ...33 地点... }           // ALL を持つ。id()（"S8a" など）・group() は _ => なしの match
+JobContext {
+  seq: u64,                          // admit で固定（Job.seq）
+  interrupts: bool,                  // class.interrupts_running()（admit で固定の class から）
+  fence: Arc<AtomicU64>,             // JobQueue が持つ唯一の fence
+  stopped_seen: Cell<Option<Boundary>>,   // 最初に Err を返した境目（観測用。ログと計数）
+  #[cfg(test)] passed: RefCell<Vec<Boundary>>
+}
+thread_local! { static CONTEXT: RefCell<Option<JobContext>> }
+ContextScope                         // Drop で消す（panic でも）
+enter(seq, class, &fence) -> ContextScope
+check_stopped(Boundary) -> Result<(), StoppedMidway>
+fn stopped_after(seq: u64, fence: u64) -> bool { seq < fence }   // verdict と check_stopped が共有
+```
+
+**規則**
+1. `check_stopped`：文脈が無い（`AudioHost` を直接使う試験・`HostLease`・ほかのスレッド）→ `Ok`。`interrupts` が偽（Stop・Mute・Tick・Release・Normal）→ `Ok`。それ以外で `stopped_after(seq, fence.load(SeqCst))` → `Err(StoppedMidway)`。`thread_local` へ `try_with` で入り、失敗したら `Ok`。
+2. **`fence` は単調**なので、一度 `Err` が出たら、同じ仕事の以後の境目もすべて `Err`（置いた境目だけ。IPC の口では出さない）。握りつぶされた `Err` は、次の境目で再び出る（遅れるだけ）。
+3. 文脈は、`execute`（`actor.rs:144`）が、`begin_closure()` と同じ範囲で `Run`・`Post` の閉包の前に入れ、閉包の後（panic のときも）`ContextScope` の `Drop` で消す。`Lease`（試験）・断る仕事（`refuse`）・`drain_and_stop` の残件には入れない。閉包が戻った後、`stopped_seen` があれば、`Admission` の計数（`slow` と同じ作り。`midway_stops()` は試験用）と `log::info!` を1回だけ出す。**`Phase` は増やさない**。
+4. **ロック・待ちを足さない**：`check_stopped` が触るのは、実行のスレッドの `thread_local`（`RefCell`。`borrow` だけ）と1つの atomic の `load` だけ。poison が無い（Mutex を使わない）。列のロックを取らない。
+5. **fence の移動**：`QueueState.fence` を消し、`JobQueue.fence: Arc<AtomicU64>` にする（`fence_handle()` で `Arc` を渡す）。`push` は、**列のロックの中で**今までの位置（`queue.rs:180-182`）で `fetch_max(seq, SeqCst)`。`scan_lanes` は `fence.load` を `verdict` へ渡す（列のロックの中で読む。今と同じ順序）。試験用の `queue.fence()`（`queue.rs:312`）は `load` を返す。ロックの順は変わらない（列のロック→なし）。
+6. **ON_ACTOR は統合しない**：`on_actor()`（再入の判定）は、仕事の外でも真でなければならない（`actor.rs:49`）。文脈は仕事の間だけ。別の `thread_local`（12.20.3 の「統合」は採らない。差は小さい）。
+
+**2b の `fence`・`verdict` との関係**
+- **同じ fence・同じ述語**。取り出す時（`verdict`。まだ始まっていない。閉包を呼ばない。`ControlError::StoppedFirst`。`Phase::Refused`。**実行前の文言**）と、実行中（境目・門。閉包は走っている。`StoppedMidway`。閉包の `Err`。`Phase::Completed`。**途中で止めた文言**）は**排他**：断った仕事には文脈が入らず、走った仕事は断りの対象でない。
+- 取り出す時に通った仕事が、最初の境目で止まることはある（その間に Stop が積まれた）。逆は無い（fence は減らない）。
+- 判定が `seq` だけなので、停止より**後に**受け付けた Starting は、先の停止の fence を見ても止まらない（`seq > fence`）。停止の積む順・時刻・`interrupt` の計数器には頼らない（受付時点の固定。12.6）。`interrupt` の計数器・`bundle_interrupt`・`Pending` は置き換えず、そのまま残す（V9。15.8 の「配信セットでの二重」）。
+
+### 15.5 一歩の境目の一覧（S1〜S15 を今のコードで確かめ直した）
+
+「どの閉包の中か」は入口の名前（`Entry`）。**止めた時の状態**は、その境目より前に済んでいること。**戻る経路**は、境目が `Err(StoppedMidway)` を返した後に通る既存の後始末。`ID` は正本の S 番号の枝。
+
+| ID（`Boundary`） | 場所（今のコード） | どの閉包の中か | 確かめる位置 | 止めた時の状態 | 戻る経路 |
+|---|---|---|---|---|---|
+| **S1a** `ProfileBeforeBackup`（**新**） | `profile.rs:254`（`if !skip_backup` の前） | `apply_profile`・`restore_backup_profile`・`apply_owned`・`undo_owned`（`apply_selected_core`） | バックアップを**書く前** | 何も書いていない。**前のバックアップが残る**（`:164` の `save_preset` は上書き） | `?`（`Err(String)`） |
+| S1b `ProfileAfterBackup` | `profile.rs:261-268`（バックアップの後・`get_engine_runtime_stats` の前） | 同上 | 控えを取る前 | バックアップだけ書いた | `?` |
+| S2 `ProfileBeforeRestart` | `profile.rs:363-365`（`if differs \|\| …` の中・`audio_start_intent` の前） | 同上 | 再起動（`start_bundle*`）の前 | 何も適用していない | `?` |
+| S3a・S3b `ProfileBeforeInputGain`・`…OutputGain` | `profile.rs:433`・`:438` | 同上 | 入力・出力ゲインの前 | 再起動と、プロファイルに無いカテゴリの復元（`:400-429`）までは済み | `?`。再起動した子は動いている（今の途中の失敗と同じ） |
+| S4a・S4b・S4c `ProfileBeforeNoise`・`…BuiltinFx`・`…Chain` | `profile.rs:452`・`:460`・`:475` | 同上 | 各カテゴリの前 | それまでのカテゴリは適用済み。戻す手順は無い | `?`。`restore_backup_profile`（「適用前に戻す」）で戻せる（`skip_backup` でなければ） |
+| S5 `UnloadEach` | `audio.rs:2441-2442`（`unload_all_plugins` の `for` の頭・`remove_plugin` の前） | プロファイルの VST チェーン・配信セットの空チェーン | 1つ外す前 | 一部だけ外した | `?` |
+| S6 `ChainEach`・S6b `ChainAfterFailure` | `profile/plugin_chain.rs:40`（ループの頭）・`:45-48`（`restore` が失敗した `else` の中） | `load_plugin_chain(…, Apply)` の呼び出し（`profile.rs:482`） | 1つ復元する前／**失敗を欠落に数える前**（門が `restore_plugin` の中で `Err` を返しても、欠落に数えない） | 途中まで読み込んだものは残る。**欠落に数えず、成功の結果も出さない** | `?`（`Err(String)`）。`profile.rs:482` の `?` |
+| S7 `OutputGainConfirm` | `audio.rs:2170-2171`（確認の `for` の中・`auto_gain(Status)` の前） | `set_output_gain`・プロファイル・ショートカットの音量・配信セット（`commands/bundles.rs:1957`） | 確認の1回ごと | 命令は送り済み（`output_gain_initialized = true`）。確認だけが省かれる | `?`（今の「反映を確認できません」と同じ種類の失敗。画面は保存しない） |
+| S8a `StartAfterEnsure` | `audio.rs:1642-1649` | `start_audio`・`restart_audio_engine`・`warmup`・`frontend_bootstrap`・配信セットの開始・`process_bundle` | `ensure_engine_running` の後・`sync_live_modes` の前 | 子は起動済みで `Start` 前 | `?` |
+| S8b `StartBeforeCapability` | `audio.rs:1651-1654` | 同上 | 能力確認の前 | 同上。何も開始していない | `?` |
+| S8c `StartBeforeLiveOutput` | `audio.rs:1655-1667` | 同上 | `live_output.json` の読み取りと `LiveOutput` の前 | 同上 | `?` |
+| S8d `StartBeforeMonitor` | `audio.rs:1675-1676` | 同上 | `ModeMonitor` の復帰の前 | 同上（`LiveOutput` は反映済みのことがある。今の失敗と同じ） | `?` |
+| S8e `StartBeforeMixing` | `audio.rs:1684-1685` | 同上 | `prepare_mixing_start` の前 | 同上 | `?` |
+| S8f `StartBeforePostMix` | `audio.rs:1685-1686` | 同上 | `prepare_post_mix_start` の前（**`prepare_mixing_start` の適用の後**。Sol の注記） | 入力元の選択は子へ適用済み。配信側・主側の転送には何も付いていない（今の `prepare_post_mix_start` の `?` の失敗と同じ） | `?` |
+| S9 `StartBeforeStart` | `audio.rs:1688-1699` | 同上 | **`Start` を送る直前** | 配信側の準備（`prepare_post_mix_start`）が済んでいることがある | `let response = match check_stopped(..) { Err(e) => Err(e.into()), Ok(()) => … }` として、**既存の `Err(error) => { cancel_prepared_post_start(); return Err(error) }`（`:1693-1699`）へ合流**。`cancel_prepared_post_start`（`post_mix_start.rs:4-18`）が `Stop`・`post_mix.stop()`・`PostMixClear`・`post_attached = false` |
+| S10a `PostMixBeforeStart` | `audio/post_mix_start.rs:46-47`（`post_attached = true` の後・`post_mix.start` の前） | 同上（`prepare_post_mix_start`） | **配信側を起動する前**。止めたら `PostMixClear`・`post_attached = false` だけ。**`post_mix.stop()` を呼ばない**（`start` の前に配信側が動いていれば、利用者の Stop より前に `running` を下げないため。Sol の指摘） | `PostMixPrepare` は成功（主側の転送が付いた） | `:47-51` と同じ形の後始末（`let _ = PostMixClear`・`post_attached = false`）の後 `Err` |
+| S10b `PostMixStatusEach` | `post_mix_start.rs:53-54`（`PostMixStatus` の確認の各反復の前） | 同上 | 確認の1回ごと | 配信側を**この操作が起動した**（`start` 成功） | 既存の「準備未完了」の後始末（`:66-69`。`post_mix.stop()`・`PostMixClear`・`post_attached = false`）へ合流してから `Err`。**子は破棄されない**（`stop()` は IPC の `Stop` を送るだけ。`post_mix.rs:823-848`）。`restored`・`enabled` は残る |
+| S11a `BundleRestoreBegin` | `post_mix.rs:723-724`（`restore_bundle` の先頭。`preset.validate` の後・`unchanged` と原本の保管の前） | 配信セットの適用（`with_bundle_mixing` → `restore_bundle`） | 原本の保管・旧い子の破棄の**前** | 何も変えていない | `?`。`with_bundle_mixing` の失敗の枝（`mixing_bundle.rs:248-266`） |
+| S11b `BundleRestoreEach` | `post_mix.rs:757-758`（各 `restore_one` の前） | 同上 | 1つ復元する前 | 旧い子は捨てて作り直し中（`:753-756`）。保管済み | 内側の失敗の処理（`:782-787`。`discard_child`・`error` を立てる）→ `Err`。上の失敗の枝 |
+| S11c `RestoreSavedBegin` | `post_mix.rs:1018-1020`（`post_mix()` の `RestoreSaved` で、**失敗の処理の外**。`let state = &mut self.post_mix;`〔`:1019`〕・`state.rack_pin = None` の前） | `post_mix`（`RestoreSaved`。Starting） | 旧いラックを捨てる**前**（空ラックでも通る） | 何も変えていない。**健全な子・`restored`・`enabled` が残る** | `?` で返す。**`post_mix()` の失敗の処理（`:1161-1181`）を通らない**（通すと、健全な子が `discard_failed_child` で捨てられ、`enabled` が落ちる） |
+| S11d `RestoreSavedEach` | `post_mix.rs:1041-1042`（各 `restore_one` の前） | 同上 | 1つ復元する前 | 旧いラックは捨て済み（`:1037`）。作りかけの子 | `post_mix()` の失敗の処理（`:1161-1181`）。作りかけの子を捨てる。`restored = false`・`enabled = false`・`error` を立てる＝**今の復元失敗と同じ**。次は保存設定の明示の復元が要る |
+| S12 `RestartBeforeKill` | `commands/audio.rs:827-831`（`resolve_input_source` の後・`preserve_live_changes_for_restart`・`kill_engine` の前） | `restart_audio_engine` | **動いている子を殺す前** | 何も変えていない | `?`（`localize_audio_error` は素通し。15.7） |
+| S13a `BundleStartBeforeKill` | `audio.rs:2341-2358`（`validate_bundle_connection`・`preflight_live_changes` の後・`kill_*` の枝の前） | `start_bundle*`（プロファイルの再起動・配信セットの出力） | 子を殺す前 | 同上 | `?` |
+| S13b `ProcessStartBeforeKill`（**新**） | `process_bundle.rs:77-79`（`validate_bundle_connection` の後・`preserve_live_changes_for_restart`・`kill_engine` の前） | `apply_owned`・`undo_owned`（プロセス入力の復帰） | 子を殺す前（S13a と同じ規則が、この経路に無かった） | 同上 | `?`。`process_bundle_scope` の失敗の枝（`process_bundle.rs:117-119`） |
+| S14 `WarmupBeforeStart` | `audio.rs:2892-2895`（`prepare_warmup` の後・移行の確認と `frontend_bootstrap` の旗の前） | `warmup`・`audio_frontend_bootstrap` | 保存した設定での自動開始の前 | 待機用の子は起動済みのことがある | `?`（`warmup` の呼び出しは結果を捨てる。`lib.rs:393-404`） |
+| S15a `BundleVoiceBeforeStage` | `commands/bundles.rs:1694-1698`（`with_bundle_mixing` の閉包の先頭・`stage_bundle_voice` の前） | `apply_owned`・`undo_owned`（ミックスの復帰） | 声ラックの準備の前 | `with_bundle_mixing` の中（`stop()`・`apply_engine_mixing`・`restore_bundle`）は済み | `with_bundle_mixing` の失敗の枝（`mixing_bundle.rs:248-266`）。**`StoppedMidway` は IPC から出ないので、`stop()` が失敗して健全な子を殺すことは無い** |
+| S15b `BundleBeforeUnload` | `commands/bundles.rs:1928-1932`（`apply_selected_core`。`replace_empty` の `unload_all_plugins` の前） | 同上・単独の復帰 | VST の入れ替えの前 | 入出力の開始までは済み | 枠の失敗の枝（`with_bundle_output`・`with_bundle_live`・`process_bundle_scope`・`with_bundle_mixing`。15.3） |
+| **G1** `GateBeforeClear` | `audio.rs:962-966`（閉じる3経路と `settle_disconnected` の後・`before_ensure_clear` の前） | 主のホストの `ensure_engine_running` を通る**あらゆる** Starting | `ensure_clear`（最大10秒の待ち）の前 | 旧い子は閉じて回収・確定済み | `Err(StoppedMidway)`。**`new_engine`・起動をしない**（15.6） |
+| **G2** `GateBeforeSpawn` | `audio.rs:969-972`（`ensure_clear` が `Ok` の後・`new_engine` の前） | 同上 | 起動の直前（`ensure_clear` の待ちの間に停止が来た場合） | 同上 | 同上 |
+
+**数え方**：31 地点（S1a・S1b・S2・S3×2・S4×3・S5・S6×2・S7・S8×6・S9・S10×2・S11×4・S12・S13×2・S14・S15×2）＋門 2 ＝ **33**。
+
+**戻る経路の規則（I60）**：境目から戻る経路は、その関数の**既存の後始末へ合流**する。`Result` を返す関数は `?` でよい（後始末が無い）。後始末を持つ関数（S9・S10・S11・S15）は、上の表の「戻る経路」のとおり、後始末を通してから `Err` を返す。
+
+#### 15.5.1 正本の S1〜S15 と今のコードの違い（足した・動かした・置かないもの）
+
+1. **S1a（足した）**：バックアップは `BACKUP_PROFILE_NAME` を上書きする（`profile.rs:164`）。書く前に止めれば、前のバックアップ（「適用前に戻す」の材料）を失わない。正本は書いた後（S1b）だけだった。
+2. **S13b（足した）**：プロセス入力の復帰は `start_bundle_process` が子を殺す（`process_bundle.rs:78-79`）。S13 の規則（殺す前に止める）が、この経路に無かった。
+3. **S11a・S11c（足した。位置が正本と違う）**：正本は反復の中（S11b・S11d）だけだった。`restore_bundle`・`RestoreSaved` は、反復より前に旧い子を捨てる（`post_mix.rs:753-754,1037`）。Sol の指摘（空ラックだと S11 を通らない・旧ラックを捨ててから止まる）に応え、**捨てる前**に置いた。S11c は、`post_mix()` の失敗の処理の**外**（関数の頭）に置く。中に置くと、健全な子が捨てられる（15.7 の 5）。
+4. **S6b（足した）**：`load_plugin_chain` の `restore` が門で `Err` を返しても、`to_string()` で型が落ちて欠落に化ける（`plugin_chain.rs:30,45-48`）。失敗の後に境目を確かめ直し、止まっていれば `Err`（欠落に数えない）。
+5. **S6 は `ChainPurpose::Apply` のときだけ**（Sol の S6/S13）：`profile.rs:426` の、**再起動で消えた既存の VST を戻す呼び出し（`Reinstate`）には、境目も失敗の確かめ直しも置かない**。置くと、変更対象外の VST が欠けたまま次の開始へ進む。再起動とその後の復元（`profile.rs:365-429`）は1つの単位で、途中で止めない（S3a の前まで）（I64）。
+6. **S15 の3つ目（`:1931` の `apply_profile` の呼び出しの前）は置かない**：呼び出しの先頭の S1a と同じ位置になる。
+7. **S14 の位置**：`audio.rs:2816`（正本）は `2892-2895` に動いた。
+8. **`recover_mode_vst`（`mode_vst.rs:417`）は置かない**：`kill_engine` の後に門（G1・G2）で止まり、`blocked` は戻る（`:422-424`）。停止は `stop_primary` の `blocked` の分岐で取引を取り消す。
+9. **境目を置かないもの**：1〜数回の IPC で終わる入口（`set_gain`・`set_bypass`・ノイズ設定・`post_mix` の `Add`・`Gain`・`Bypass` など）。停止より前に受け付けたものは、始まる前に断る。走り始めたものは、数回の IPC で終わるので、1段遅れるだけ（ただし、子がいなければ門で止まる）。応答の待ち（最大10・30 秒）の最中は止まらない（J-18）。
+10. **Mute・Tick・Release・Normal は境目を通っても何もしない**（I59）。同じ関数（`set_output_gain` など）が Normal・Release の閉包から呼ばれても、止まらない。
+
+### 15.6 子の起動の門（`ensure_engine_running` の中）
+
+**置き方**：
+```text
+fn ensure_engine_running(&mut self) -> Result<()> {
+    guard_mode_vst / maintenance                          // 今のまま
+    if child is some { try_wait … 生きていれば return Ok(()) （:944）  // 門を通らない
+                        閉じる3経路（:934-960）+ settle_disconnected }  // 今のまま
+    if !self.post_role { check_stopped(GateBeforeClear)? }     // G1
+    before_ensure_clear::run();                           // 試験の継ぎ目（今のまま）
+    ensure_clear … Err なら return（今のまま。ResultDecided）
+    if !self.post_role { check_stopped(GateBeforeSpawn)? }     // G2
+    new_engine / notify / spawn …                         // 今のまま
+}
+```
+- **主のホストだけ**：`self.post_role` が真（配信ミックスの子のホスト。`control.rs:713-717`）は門を通さない。理由：配信ミックスの子の起動は `post_mix::State::child()`（`post_mix.rs:545`）から呼ばれ、その `Err` は `post_mix()` の失敗の処理（`:1161-1181`）へ入り、`discard_failed_child`（`enabled`・`restored` を落とす）に化ける。子の起動は、入口の断り（取り出す時）と境目 S11 で止める。
+- **G1 と G2 の2つ**：G1 は、止まっていれば、最大10秒の `ensure_clear` の待ちを始めない。G2 は、その待ちの間に停止が来た場合に、起動の直前で止める。**子を閉じて切断状態を確定する部分（`:934-960`）は、門より前**＝今のまま（接続を閉じて回収した状態は、止めても整合している。`ensure_clear` が失敗する今の経路と同じ。14.7）。
+- **止まったときの状態**：旧い子は閉じて回収済み、`running = false`・`voice_activity = false`・epoch 更新済み（`settle_disconnected`）。`new_engine`・`notify_conditions_changed`・起動はしない。**続く Stop の実行が `kill_engine`→`kill_primary_engine` で `audio-conditions-changed` を1件積む**（`audio.rs:2875`。`stop_primary` の `reap_confirmed_stopped_connection`〔`:1789-1801`〕経由）ので、画面は更新される。
+- **IPC の口には置かない**：`execute_running_command`（`:1104`）・`execute_running_command_inner`・`Conditions::dispatch` は変えない。門は `dispatch` の**外**（`execute_command`〔`:1082`〕・`start_internal_with_source`〔`:1642`〕が呼ぶ `ensure_engine_running` の中）にあるので、`lifecycle(false)`・「IPC の `Err`＝エンジン異常」の前提には入らない。
+- **`Err` の型**：`Err(anyhow::Error::new(StoppedMidway))`。`downcast_ref::<StoppedMidway>()` で見分けられる（`.context()` を足さない。15.7）。
+- **Release・Normal・Mute・Tick は通る**（`check_stopped` が `Ok`）。Mute と Stop は、停止の後でも待機用の子を起動しうる（承認済みの例外。12.6）。Normal の `Reorder { ids: [] }` が接続を固定していない `command()` から子を起動しうる経路（12.17 の (e)）は、この段でも残る（15.15 の (d)）。
+- **`confirming_start`（起動の確認。最大10秒）・`contain_and_resume`・ピーク保護の引き継ぎは、門の後**なので止まらない（今のまま。J-18）。
+
+### 15.7 `StoppedMidway` を IPC の `Err` に混ぜない：経路ごとの確かめ
+
+境目は IPC の口に無く、門は `dispatch` の外にある。それでも、境目・門の `Err` が届きうる、**`Err` を分類・変換する箇所**を洗い出した。「既存の失敗の処理が、子の破棄・`restored`／`enabled` の落下・欠落・準備失敗・「非対応」・誤った文言に化けない」ことを、経路ごとに示す。
+
+| # | 場所 | 今の `Err` の意味 | `StoppedMidway` が届く経路 | 化けない手当て | 試験 |
+|---|---|---|---|---|---|
+| 1 | `profile/plugin_chain.rs:45-48` | 復元の失敗＝**欠落**（`missing_plugins`） | 門（`restore_plugin`→`ensure_engine_running`。`audio.rs:1866`）が `Err`。`restore` が `to_string()`（`:30`）で型を落とす | `ChainHost::check_stopped(&self) -> Result<(), String>`（既定は `Ok`）を、ループの頭（S6）と**失敗の `else` の中**（S6b）で呼ぶ。止まっていれば `Err`（欠落に数えない）。`ChainPurpose::Reinstate`（`profile.rs:426`）は呼ばない | H9a |
+| 2 | `frontend_bootstrap.rs:161-166`（`prepare_warmup`） | 準備の失敗＝`warmup_error`「音声エンジンの準備に失敗しました」・`cancel()` | 門（`warmup_once` が渡す `ensure_engine_running`） | `downcast_ref::<StoppedMidway>()` なら、`warmup_error`・`cancel()` を**書かずに**そのまま返す。続く Stop が `cancel()` する（`audio.rs:1817`） | H9b |
+| 3 | `audio.rs:2956-2960`（`warmup_once` の自動開始の失敗） | 「自動開始が完了していません」・`cancel()` | S8・S9・門 | 同じ。書かずに `Err` を返す | H9b |
+| 4 | `frontend_bootstrap.rs:212-221`（`audio_frontend_bootstrap`） | `Reply.error` に `warmup_error` か `error.to_string()` | 2・3 の `Err` | **未決（15.13 の B）**：推奨は、`Reply.error` に出さない（`None`）。出す場合は承認済みの文言 | H9b |
+| 5 | `post_mix.rs:1161-1181`（`post_mix()` の失敗の処理） | `Err` はすべて、**子を捨てる**（`discard_failed_child`。`enabled` を落とし `error` を立てる）か、外す（`detach_with`） | 門は子のホスト（`post_role`）を通さないので届かない。境目 S11c・S11a は関数の頭・失敗の処理の**外**。S11b・S11d は、旧いラックを捨てた後の反復の中（作りかけの子を捨てるのは今の復元失敗と同じ）。`Add`・`Remove`・`Reorder`・`Bypass`・`Mute`・`Gain`・`Editor`・`Save`・`Reload`・`Reset`・`Enable` は境目を持たない | H12 |
+| 6 | `post_mix_start.rs:47-51,66-69` | 開始・準備の失敗の後始末 | S10 | S10a は `start` の前（`start` の失敗の枝に入らない）。S10b は準備未完了の後始末へ合流。どちらも `post_mix.start`・`stop` の失敗の枝に入らない | H11 |
+| 7 | `mixing_bundle.rs:248-266` ほか4か所の `stop().is_err()`→`kill_engine` | `stop()` が失敗したら、子を殺す | S15・S13・S1〜S8 の `Err` が枠へ届く | `stop()` は IPC の `Stop` を送るだけで、境目・門を通らない。**`StoppedMidway` は IPC の `Err` にならない**ので、`stop()` は失敗せず、健全な子を殺さない | H14 |
+| 8 | `shortcuts.rs:582-594`（`shortcut_notice`）・`:488-492` | `ActionFailed { detail }` に変換。`auto_gain` の `Err(_)` は「動いていない」 | 境目・門 | `downcast_ref::<StoppedMidway>()` → `None`（何も出さない。V8 の拡張。**要承認 A**）。比較の `Err(_)` は「動いていない」扱いで比較を送らない（安全側。通知なし）。変えない | H10 |
+| 9 | `audio.rs:3154-3196`（`localize_audio_error`。`start_audio`・`restart_audio_engine`） | 既定で「オーディオエラーが発生しました。詳細: …」に包む | S8・S9・S12・S13・門 | 文言を含むとき**素通し**（`engine_life::REPEATED_JA` の扱い。`:3157-3163`）。K14 に項目を足す | H10 |
+| 10 | `commands/bundles.rs:2779-2788,2946-2955` | 「一部適用・結果不明: {error}。原本を保持しています」 | S15・S1〜S8 | 文言をそのまま入れる（想定内の失敗の枠。利用者が現在の状態を確認できる） | H14 |
+| 11 | `mode_vst.rs:422`（`recover_mode_vst`）・`session_rack.rs:155`（`Begin`）・`live_modes.rs:364`・`mixing.rs:301`・`audio.rs:1082`（`execute_command` の約40の入口）・`frontend_bootstrap.rs:374` | `?` で返す | 門 | `Err` を分類せず返すだけ。`recover_mode_vst` は `blocked` を戻してから返す（`:421-424`）。`Begin` の予約は ensure の後（`session_rack.rs:214`）なので、予約を取らない | H8 |
+
+**規則（I65）**：失敗を「欠落」「不在」「準備失敗」「非対応」など、別の意味へ**分類する前に、停止を確かめる**（1〜3）。**実装時に、`Err` の分類を全数で洗い直す**（`.ok()`・`let _ =`・`matches!`・`Err(_)`・`unwrap_or`・`is_err`。今回の洗い出しでは上の10か所だけ。`let _ = execute_running_command(Stop)`〔`audio.rs:1714,1719,1733`〕・`post_mix_start.rs` の `let _ =` は、門・境目を通らない IPC で、変えない）。
+
+**`StoppedMidway` の型を保つ経路**：`anyhow` の `?` と `ControlError` と同じ作り（`class_tests.rs:234-239`）。`Result<_, String>` へ落ちる経路は、文言（`STOPPED_MIDWAY_TEXT`）だけで運び、見分けるのは文言を含むかどうか（9）だけ。
+
+### 15.8 止めたときの後始末と、文言を返す場所
+
+**今ある手順を使う**（15.3）：
+- **配信セットの適用・取り消し**：`with_bundle_*`・`process_bundle_scope` の失敗の枝が、`stop()`（失敗なら `kill_engine`）・ファイルの `rollback_settings`・`post_mix` の作り直し（`mixing_bundle.rs:248-266`）を行う。**今の途中の失敗と同じ**で、新しい巻き戻しは無い。
+- **開始**：S9 は `cancel_prepared_post_start`、S10 は準備の後始末（15.5）。S8 より前の境目は、何も付いていないので `?` だけ。
+- **モード VST**：取引（tick）は割り込まれない（Tick）。停止は、`stop_primary` の `blocked` の分岐で取引を取り消す（`audio.rs:1810-1816`）。`rollback`（`mode_vst.rs:836-841`）は、取引の失敗の経路で、この段は触らない。
+- **`apply_profile`**：戻す手順が無い。**止めた後の状態は、今の途中の失敗と同じ**（12.18 の 7）。「適用前に戻す」（`restore_backup_profile`）の材料（バックアップ）は、S1a で止めれば前のものが残り、S1b 以後は今の適用のものが残る。**止まった位置の範囲では、一部のカテゴリだけが適用されている**（承認済みの文言「一部の設定は変更済みの場合があります」）。
+- **後始末の区間は作らない**：一度出た `Err` は、同じ仕事の以後の境目でも出続ける（単調）。後始末が境目を含む関数を呼ぶと、後始末が切られる。**後始末・巻き戻しの関数は、境目を含む関数を呼ばない**（I61。今のコードはそうなっている。15.3）。壊れない保証は、構造の試験 H18 が守る（後始末の本体に境目を含む関数の名前が現れたら落ちる）。
+
+**文言をどこで返すか**：
+1. 境目・門が `StoppedMidway`（`Display`＝`STOPPED_MIDWAY_TEXT`。`audio/control.rs` の `STOPPED_FIRST_TEXT`〔`:43`〕の隣）を作る。
+2. 入口の閉包が `to_string()` し、`Err(String)` として返す（`commands/profiles.rs:155-164`・`commands/audio.rs:15,1226,512,846`。`ControlError::text` は通らない＝`ControlError` の文言は変わらない）。
+3. 利用者に届く形：`start_audio`・`restart_audio_engine`・`apply_profile`・`restore_backup_profile`・`set_output_gain`・`post_mix` は**承認済みの文言そのまま**。配信セットの適用は「一部適用・結果不明: 停止が先に行われたため、操作を途中で止めました。…。原本を保持しています」。ショートカットは何も表示しない（要承認 A）。
+
+**配信セットでの二重（V9）**：配信セットの適用・取り消しの中は、`interrupt` の計数器が、`execute_command` の先頭で毎回中断する（今の文言「停止・ミュート操作が優先されたため、配信状態の復帰を中断しました」）。Stop は `interrupt_restore()`（積む前）が先、fence が後なので、**IPC の前では今の文言が先に出ることが多く、境目では新しい文言が出うる**。どちらも失敗として同じ枠を通る（15.3）。Mute は今の文言だけ（fence を上げない）。一本化は F1b（V9）で、この段では変えない。
+
+### 15.9 役者×状態×順序（停止の受付・境目の確認・閉包の実行・巻き戻し・応答）
+
+役者：**A**＝実行のスレッド（`serve`・閉包）、**Adm**＝受付（`admit`・`push`）、**St**＝停止の入口（`stop_audio`：`interrupt_restore`→`admit`→`push`）、**R**＝reader、**P**＝reaper。`F`＝`fence`。`H`＝`JobContext`。
+
+| # | 瞬間 | 順序 | 結果 |
+|---|---|---|---|
+| 1 | Starting（番号 9）の閉包が境目 B の手前。St が Stop（10）を積む | St：`interrupt_restore`（`Pending`）→Adm：`admit`(10)→`push`：列のロックの中で `F = 10`。A：B で `F` を `SeqCst` で読み、`9 < 10` → `Err(StoppedMidway)`。**次の IPC を送らず**、15.5 の戻る経路を通り、閉包が戻る | `Completed`（`counted -= 1`）→返事（`Done`＝閉包の `Err`）。次に A が停止のレーンの先頭（Stop）を取り出す |
+| 2 | Stop が積まれる前に、A が境目 B を通過 | A：B で `F` ＜ 9 → `Ok`。次の段へ | 止まらない。**次の境目で止まる**（1段遅れ。15.15 の (a)） |
+| 3 | St の `admit` と `push` の間（12.17 の (k)） | `Pending` と `interrupt` は積む前に効く。`F` はまだ上がらない | 境目は `Ok`。配信セットの中の IPC は、今の文言で中断される。`push` の後の境目で止まる |
+| 4 | A が子の応答を待っている最中に Stop が積まれる（J-18） | A：応答を待つ（打ち切らない。応答 10・30 秒の期限は今のまま）。R：応答を A へ渡す（変えない）。A：応答を処理 → 次の境目で止まる | 応答は捨てない。**次の IPC は送らない** |
+| 5 | A が `ensure_engine_running` で旧い子を閉じ、`settle_disconnected` を済ませた後（G1）。St が Stop を積む | A：G1 で `Err`。`ensure_clear`（P の記録を待つ）に入らない | 起動なし。`new_engine`・`notify_conditions_changed` なし。続く Stop が `kill_engine` で通知を1件積む |
+| 6 | A が `ensure_clear` の待ちの最中。P が記録を閉じる前に Stop が積まれる | A：待ちは今のまま最長10秒（**起こさない**）。待ちが終わる（`Ok`）→G2 で `Err` | 起動なし。待ちは増えない（今の最長）。`ensure_clear` が失敗する場合は今の `engine_unconfirmed`（G2 まで来ない） |
+| 7 | 境目で止まった閉包の**後始末**の中 | 一度 `Err` が出た後の fence は上がったまま。後始末は境目を通らない（I61） | 後始末は最後まで走る（`stop()`・`kill_engine`・`cancel_prepared_post_start`・失敗の処理） |
+| 8 | Stop と Mute が先着で並ぶ（V10） | 停止のレーンは積んだ順。Mute は `F` を上げない。A：Starting の閉包は Stop が積まれたときだけ止まる | Mute の件数ぶん Stop が遅れるのは今と同じ（12.17 の (h)）。Mute だけでは止めない（V1） |
+| 9 | Stop が積まれたとき、Starting が列で待っている | Adm：`push`。A：`take_next` の `verdict` が `StoppedFirst`（実行前の文言） | **取り出す時の断り**（2b）。文脈は入らない。閉包は呼ばれない。2c と排他 |
+| 10 | 境目で止まった Starting が `post`（ショートカット）で積まれた閉包 | A：閉包が `Err` を返す。`shortcut_notice` が `StoppedMidway` を `None` にする | 何も表示しない（要承認 A） |
+| 11 | 呼び出し側（`run_async` の future）が先に捨てられる | 閉包は実行のスレッドで走り切る／止まる。後始末は閉包の中で終わる。返事は送れずに捨てる（`reply_to`。`actor.rs:180-186`） | 後始末は失われない。取り消しは、まだ始まっていない仕事だけ（`cancel_waiting`） |
+| 12 | R の EOF が、境目の直前に勝つ | 境目は `F` だけを見る。子の終了は、IPC の失敗（EOF→`ENGINE_EXITED`）として今の経路 | 停止の `Err` と EOF の `Err` は、先に当たった方。**境目が IPC の口に無い**ので、EOF の文言は変わらない |
+| 13 | Normal・Release・Mute・Tick の閉包（同じ Stop の下） | A：`H.interrupts = false` → `check_stopped` は `Ok` | 止まらない（V1・V12）。`post_mix` の `Add`・`Gain` などは最後まで走る |
+| 14 | 境目の無い長い待ち（`ensure_clear` 10 秒・`retire_child` 2 秒・`wait_notified` 2 秒・応答 10／30 秒・`set_output_gain` 以外のループ） | A：待つ。Stop は待つ | 止まらない（J-18。既知。15.15 の (a)） |
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "操作中（開始・適用など）" as Running
+    state "停止の受付（停止を押した）" as Accepted
+    state "次の境目で止まる" as Boundary
+    state "今ある後始末" as Cleanup
+    state "停止を実行" as StopRuns
+    state "停止済み" as Stopped
+    [*] --> Running: 開始・適用を押す
+    Running --> Stopped: 停止より前に受け付けた操作は、始まる前に断る（実行しませんでした）
+    Running --> Accepted: 停止を押す
+    Accepted --> Boundary: 次の境目へ来る（応答は待つ）
+    Boundary --> Cleanup: 途中で止めました（次の命令は送らない）
+    Cleanup --> StopRuns: 配信セットの停止・巻き戻し、開始の準備の取り消し
+    StopRuns --> Stopped: 先に並んだ操作より前に停止が効く
+    Running --> Stopped: 境目の無い操作は終わってから、直後に停止
+    Stopped --> Running: もう一度操作する（再試行）
+```
+利用者の目に見える動き：(1) 長い操作（適用・開始・配信セットの適用）の最中に停止を押すと、**次の一歩の前に止まり**、「停止が先に行われたため、操作を途中で止めました。一部の設定は変更済みの場合があります。現在の状態を確認してください。」と出る。(2) 以前は、その操作が終わるまで停止が待たされた。(3) 取消：呼び出し側が先に離れても、止まった後の後始末は終わる。(4) 再試行：停止の後に受け付けた操作は、普通に実行される（`seq > fence`）。(5) 失敗：応答の待ちの最中は止まらない（最大10・30 秒）。
+
+### 15.10 不変条件（12.20.5 の I17・I18・I19・I27 を採り、I57 から続ける）
+
+12.20.5 の **I17**（割り込めるのは Starting が明示の境目か門にいる時だけ）・**I18**（文脈だけを見る。文脈が無ければ何もしない）・**I19**（`StoppedFirst`＝途中で止めた `Err` は IPC から出ない。出るのは境目と門の2か所。`execute_*` は `check_stopped` を呼ばない）・**I27**（置き忘れは安全側）を、型名を `StoppedMidway` に読み替えて採る。次を足す。
+
+| # | 不変条件 |
+|---|---|
+| I57 | `JobContext` は、実行のスレッドの上で、`Run`・`Post` の閉包を呼んでいる間だけ在る。閉包が戻る・panic する・`Lease`・断る仕事・`drain_and_stop` では無い。`ContextScope` の `Drop` で消える |
+| I58 | 判定は `stopped_after(seq, fence)`（`seq < fence`）だけ。**取り出す時（`verdict`）と境目（`check_stopped`）が同じ関数を使う**。`fence` は `JobQueue` の1か所（`Arc<AtomicU64>`）で、増えるだけ・書くのは Stop を積む時の列のロックの中だけ。一度 `Err` が出たら、同じ仕事の以後の境目もすべて `Err` |
+| I59 | 割り込みを受けるのは `JobClass::interrupts_running()` が真の種類（Starting）だけ。網羅の `match`（`_ =>` なし）1か所。Stop・Mute・Tick・Release・Normal の閉包は、同じ関数を通っても止まらない |
+| I60 | 境目から戻る経路は、その境目がある関数の**既存の後始末へ合流**し、`?` で後始末を飛ばさない（S9・S10・S11・S15）。S10a は `post_mix.stop()` を呼ばない。S11c・S11a は、`post_mix()` の失敗の処理・原本の保管の**前**（関数の頭）に置く |
+| I61 | **後始末・巻き戻しの関数は、境目を含む関数（`start_*`・`apply_profile*`・`unload_all_plugins`・`set_output_gain`・`load_plugin_chain`・`prepare_post_mix_start`・`restore_bundle`・`post_mix(RestoreSaved)`）を呼ばない**。一度出た `Err` は出続けるので、呼ぶと後始末が切られる。構造の試験が守る |
+| I62 | `StoppedMidway` は `ControlError` の変種にしない。`ControlError::StoppedFirst` は取り出す時の断り（実行前の文言）だけ。IPC の `Err`（`execute_running_command` の結果）にならない。文言は1つの定数 `STOPPED_MIDWAY_TEXT` |
+| I63 | 子の起動の門は主のホストだけ（`post_role` は通す）。2地点（`ensure_clear` の前と後）。門で止まっても、旧い子の切断状態の確定は済み、`new_engine`・起動・`notify_conditions_changed` は呼ばれない。生きている子（`:944`）は通る |
+| I64 | 再起動と、プロファイルに無いカテゴリ・既存の VST の復元（`profile.rs:365-429`）は1つの単位で、途中に境目を置かない。`load_plugin_chain` の `Reinstate` は、境目も失敗の確かめ直しも持たない |
+| I65 | 失敗を欠落・不在・準備失敗・非対応など別の意味へ分類する前に、停止を確かめる（15.7 の 1〜3）。`StoppedMidway` を `.context()` で包まない |
+| I66 | 受付時点の固定：`seq`・`class`（要求で決める種類を含む）は `admit` で決まり `Job` が持つ。文脈は `Job` から作り、実行中に変えない。変わるのは `fence` だけ（増える） |
+| I67 | 境目・門の抜けと余りは、`Boundary` の列挙と呼び出しの数の構造の試験が守る（H17）。置き忘れた境目は、停止が1段遅れるだけ（I27） |
+| I68 | `check_stopped` は、待ち・ロック・I/O・IPC・通知を行わない（`thread_local` の `borrow` と atomic の `load` だけ）。新しい待ち・`Condvar` を足さない |
+| I69 | 通知の名前・中身・数・順、`Phase` の種類、`Completed` の記録（途中で止めた仕事も `Completed`）、返事の順（減算→`Completed`→返事。`actor.rs:158-159`）、K2・K10、N2 の契約は変えない |
+
+### 15.11 変える箇所の一覧（`ファイル:関数`、今の行。コードは変えない）
+
+| ファイル:行 | 関数・項目 | 変えること |
+|---|---|---|
+| `audio/control/context.rs`（新設） | `StoppedMidway`・`Boundary`・`JobContext`・`ContextScope`・`check_stopped`・`stopped_after`・試験の継ぎ目 | 15.4。`JobClass::` を直接見ない（Y31） |
+| `audio/control/class.rs:31-66` | `JobClass` | `interrupts_running`（6つ目。Starting だけ真。`_ =>` なし） |
+| `audio/control/queue.rs:98-106,126,166-193,312,365-403` | `QueueState`・`JobQueue`・`push`・`scan_lanes`・`verdict` | `fence` を `JobQueue` の `Arc<AtomicU64>` へ移す。`verdict` が `stopped_after` を使う。`fence_handle()` |
+| `audio/control/actor.rs:144-177` | `execute` | `begin_closure()` と並べて文脈を入れる。閉包の後に `stopped_seen` を計数・ログ |
+| `audio/control.rs:40-44,196-318` | `STOPPED_MIDWAY_TEXT`・`Admission` | 定数と、`midway` の計数（`slow` と同じ作り） |
+| `audio.rs:924-973` | `ensure_engine_running` | G1・G2（`!self.post_role`） |
+| `audio.rs:1642-1699` | `start_internal_with_source` | S8a〜S8f・S9（`cancel_prepared_post_start` への合流） |
+| `audio.rs:2170-2171` | `set_output_gain` | S7 |
+| `audio.rs:2341-2358` | `start_bundle_with_device_ids` | S13a |
+| `audio.rs:2440-2445` | `unload_all_plugins` | S5 |
+| `audio.rs:2892-2895,2956-2960` | `warmup_once` | S14。失敗の記録の手当て |
+| `audio.rs:3154-3196` | `localize_audio_error` | `STOPPED_MIDWAY_TEXT` を含むとき素通し |
+| `audio/frontend_bootstrap.rs:161-166,212-221` | `prepare_warmup`・`frontend_bootstrap` | 失敗の記録の手当て。`Reply.error`（15.13 の B） |
+| `audio/post_mix_start.rs:46-69` | `prepare_post_mix_start` | S10a・S10b |
+| `audio/post_mix.rs:723-724,757-758,1018-1020,1041-1042` | `restore_bundle`・`post_mix`・`RestoreSaved` | S11a〜S11d（S11a・S11c は失敗の処理の外） |
+| `audio/process_bundle.rs:77-79` | `start_bundle_process` | S13b |
+| `profile.rs:254-262,363-365,433-442,452-475` | `apply_profile_with_start_intent_and_ids` | S1a・S1b・S2・S3・S4。`load_plugin_chain` の呼び出しに `ChainPurpose` |
+| `profile/plugin_chain.rs:12-62` | `ChainHost`・`load_plugin_chain` | `check_stopped`（既定 `Ok`）・`ChainPurpose`・S6・S6b |
+| `commands/audio.rs:827-831` | `restart_audio_engine` の閉包 | S12 |
+| `commands/bundles.rs:1694-1698,1928-1932` | `apply_selected`・`apply_selected_core` | S15a・S15b |
+| `shortcuts.rs:582-594` | `shortcut_notice` | `StoppedMidway` → `None` |
+| `audio/tests/`・`commands/audio/compat_tests.rs` | H1〜H21 | 15.12 |
+
+- **変えないもの**：`execute_running_command`・`execute_command`・`dispatch`（境目・門を置かない）、`ControlError` の変種・文言、`Phase`、`hold_notices`・`settle_disconnected`・`kill_primary_engine`、通知、`interrupt`・`bundle_interrupt`・`Pending`、`LinkCell`・reader・reaper・`Store`、90／120 秒。
+- **台帳**：`audio.rs`・`profile.rs`・`post_mix.rs` などを編集するので、`config/gardening-rust-baseline.json` のファイルの指紋は変わる。**`allow`・`expect`・`unsafe`・試験の `ignore` は足さない**。
+
+### 15.12 合格の条件と試験の形
+
+**合格の条件**：(1) 既存の試験が通る。期待値が変わるのは **Y31 のみ**。(2) H1〜H21 が通る。(3) 壊して確かめる (a)〜(x) で、対応する H が落ちる（T15）。(4) `npm run verify -- --static --rust` が通る。(5) 実機（未実施）：長い適用・開始の最中に停止を押し、止まる位置・文言・停止後の状態（`restore_backup_profile` で戻せる）を確かめる。
+
+**試験の作り方**：記号は `H`（既存の a〜z の頭文字に無い）。置き場所は `audio/tests/halt_tests.rs`（H1〜H20。`mod` は `audio.rs` に足す）と `commands/audio/compat_tests.rs`（H10 の一部）。道具は既存を使う：`scripted_parts`・`Fixture`・`Step::WaitGate`（`compat_support.rs:14,453,544`）、`with_host`（`session_rack.rs:331`）、`reaper_seam::stuck`（`reaper_seam.rs:8`）、`before_ensure_clear`（`audio.rs:253-272`）、`ActorPoint`（`queue.rs:110`）。**新しい継ぎ目**：`context::set_boundary_seam(Arc<dyn Fn(Boundary)>)`（`#[cfg(test)]`。`check_stopped` が判定する**前**に呼ぶ。門で止め、別のスレッドが `post(stop)` で fence を上げてから解放する）。`sleep` で順を作らず、競りの反復に頼らない（時間切れは失敗の上限としてだけ）。
+
+| ID | 名前の案 | 確かめること | どこを壊すと落ちるか（T15） |
+|---|---|---|---|
+| H1 | `h1_the_context_exists_only_while_a_starting_closure_runs_and_is_inert_elsewhere` | `Run`・`Post` の閉包の間だけ文脈がある。閉包の後・panic の後・`Lease`・断る仕事・直接の `AudioHost`・ほかのスレッドでは `check_stopped` は `Ok`（fence が上がっていても）。次の仕事に前の文脈が残らない | `ContextScope` の `Drop` を外す・`Lease` に文脈を入れる → 落ちる |
+| H2 | `h2_the_decision_is_seq_below_fence_for_starting_only_and_stays_once_it_trips` | Starting は、Stop が積まれた後の境目で `Err`、以後の境目もすべて `Err`（単調）。Stop・Mute・Tick・Release・Normal は fence が上がっていても `Ok`。Mute は fence を上げない。停止より**後**に受け付けた Starting は `Ok`（`seq > fence`）。2つの Stop は `max` | `<` を `<=` にする・種類を見ない・`interrupts_running` を Starting 以外へ広げる → 落ちる |
+| H3 | `h3_acceptance_order_decides_not_push_order_for_a_running_closure` | Starting（番号 5）が走っている間に、番号 6 の Stop を admit した後に番号 7 の Starting を admit し、先に 7 を、後で 6 を push。番号 5 は止まり、番号 7 は止まらない。admit〜push の間（k）は `Ok`、push の後で `Err` | 積んだ順・時刻で判定する → 落ちる |
+| H4 | `h4_each_start_boundary_stops_before_the_next_ipc_and_the_start_is_never_sent` | S7・S8a〜S8f・S9・S12・S13a・S13b・S14 を、`Boundary` の継ぎ目で止め、Stop を積む。**子へ送られた命令の列が、その境目までと一致**（次の IPC は送られない）。`Start` は送られない。S9 は `cancel_prepared_post_start`（`Stop`・`PostMixClear`・`post_attached = false`）を通る。`running`（`conditions`）・通知が変わらない。**表は `Boundary::ALL` の網羅**（行が足りなければ落ちる） | 境目を外す・S9 の合流を `?` にする（`cancel_prepared_post_start` を飛ばす）・表に無い境目を足す → 落ちる |
+| H5 | `h5_each_profile_boundary_stops_before_the_next_ipc_and_leaves_the_failure_state` | S1a・S1b・S2・S3・S4・S5・S6・S6b・S15b。`apply_profile` の各境目で止め、命令の列が境目までと一致。S1a で止めれば**前のバックアップのファイルが変わらない**、S1b で止めればバックアップは新しい。再起動（S2 の後）の単位の中（`:365-429`）では止まらない。`Reinstate` は、fence が上がっていても全プラグインを試みる | S1a を S1b の後へ動かす・`Reinstate` に境目を置く・S2〜S3a の単位に境目を足す → 落ちる |
+| H6 | `h6_a_cut_chain_is_neither_missing_nor_successful` | S6・S6b。3つ目の前で止める。1・2つ目は読み込み済み、3つ目以降は**欠落に数えられず**、結果は `Err`（途中で止めた文言）、成功の結果は出ない。`restore` が門で `Err` を返す場合（子が終了）も同じ（S6b）。試験用の `ChainHost` の既定は `Ok` | S6b を外す → 欠落に数えて落ちる。`Reinstate` で止める → 落ちる |
+| H7 | `h7_the_spawn_gate_stops_before_ensure_clear_and_before_the_spawn_and_never_gates_the_post_mix_child` | 子が終了済みで再生成が要る閉包で、G1（`ensure_clear` の前）と G2（待ちの間に Stop）。起動の計数が 0、`new_engine`・`notify_conditions_changed` が呼ばれず、旧い子の `running = false`・`voice_activity = false`・epoch 更新済み。続く Stop が通知を1件積む。生きている子（`:944`）は止まらない。**`post_role` の `ensure_engine_running` は、fence が上がっていても `Ok`**（`post_mix` の `child()`）。`ensure_clear` が失敗する場合は今の `engine_unconfirmed` | G1 を `ensure_clear` の後だけにする・`post_role` を通す・生きている子を止める・`new_engine` の後へ動かす → 落ちる |
+| H8 | `h8_a_pending_stop_never_changes_an_ipc_result_and_the_mouth_has_no_check` | fence が上がった Starting の閉包で、`execute_running_command`・`execute_command`（生きている子）の結果が今と同じ（`Ok`・`IpcResponse::Error`・EOF・期限切れ）。**IPC の `Err` が `StoppedMidway` になることは無い**（`downcast_ref` が `None`）。`recover_mode_vst`・`session_rack(Begin)`・`live_modes`・`mixing(Configure)` が門で止まったとき、状態（`blocked`・予約・選択）が壊れない | 確かめの点を IPC の口へ置く → 落ちる |
+| H9 | `h9_error_classifiers_do_not_turn_a_stop_into_missing_unprepared_or_failed` | (a) `load_plugin_chain` は H6。(b) `prepare_warmup`・`warmup_once`：`ensure`・自動開始が `StoppedMidway` を返しても、`warmup_error` が書かれず、`cancel()` されない。続く Stop が `cancel()` する。(c) `audio_frontend_bootstrap` の `Reply.error`（15.13 の B の決定どおり） | `downcast_ref` の手当てを外す → `warmup_error` が書かれて落ちる |
+| H10 | `h10_the_midway_text_is_the_approved_one_and_is_never_wrapped_or_shown_by_shortcuts` | `STOPPED_MIDWAY_TEXT` が承認済みの文言と一致。`ControlError` の文言・`StoppedFirst` の文言は変わらない（Y16）。`start_audio`・`restart_audio_engine`・`apply_profile`・`post_mix`・`set_output_gain` の `Err(String)` が文言そのまま（`localize_audio_error` が包まない。K14 の項目）。`shortcut_notice` が `None`。`Busy`・`Expired` は今のまま | `localize_audio_error` の素通しを外す・`shortcut_notice` の分岐を外す・文言を変える → 落ちる |
+| H11 | `h11_a_stop_during_the_post_mix_start_check_cleans_the_main_side_and_keeps_the_broadcast_child` | S10a：`PostMixPrepare` の成功の後（`start` の前）。結果は途中で止めた文言。`PostMixClear` が送られ、`post_attached = false`。**`post_mix.stop()` は呼ばれず、`running`・`restored`・`enabled` が変わらない**（`start` の前に動いていた配信側が、動いたまま）。S10b：`PostMixStatus` の反復の途中。`post_mix.stop()`・`PostMixClear`・`post_attached = false`。**子は破棄されず、`restored`・`enabled` が残る**。続く Stop の後、次回の開始が再復元なしで成功する | S10a を `start` の後へ動かす・S10a に `post_mix.stop()` を足す・`?` で後始末を飛ばす → 落ちる |
+| H12 | `h12_the_restore_loop_boundaries_keep_a_healthy_rack_before_the_discard_and_match_the_failure_state_after_it` | S11a・S11c：旧いラックを捨てる前に止める。**健全な子・`restored`・`enabled` が変わらない**（失敗の処理を通らない）。空ラックでも S11c を通る。S11b・S11d：反復の途中。作りかけの子が捨てられ、`restored = false`・`enabled = false`・`error` が立つ（今の復元失敗と同じ。保存設定は残る）。`Add`・`Remove`・`Reorder`・`Gain`・`Bypass`・`Mute`・`Editor`・`Save`・`Enable` は、fence が上がっていても `Err` を返さず、子・`enabled`・`restored` が変わらない | S11c を失敗の処理の中へ入れる・`Add` などに境目を足す・S11a を保管の後へ動かす → 落ちる |
+| H13 | `h13_a_start_failure_cleanup_after_a_stop_never_calls_a_gated_function` | S9 の後始末（`cancel_prepared_post_start`）と `Started` の検査の失敗の `Stop`（`audio.rs:1714,1719,1733`）が、fence が上がっていても、通常の IPC としてその場で送られる（IPC の口に確かめの点が無い）。先着の Mute が10件並んでいても、列を通らない | 後始末に境目・門を置く → 落ちる |
+| H14 | `h14_the_bundle_scope_failure_branches_run_unchanged_for_a_midway_stop` | S15a・S15b・S13a・S13b・S1〜S8 の `Err` が、`with_bundle_mixing`・`with_bundle_output`・`with_bundle_live`・`process_bundle_scope` の失敗の枝へ入り、`stop()`・`kill_engine`（`stop()` が失敗した場合だけ）・`rollback_settings` が今のとおり動く。**健全な子が殺されない**（`stop()` は `StoppedMidway` で失敗しない）。結果の文は「一部適用・結果不明: …。原本を保持しています」に途中で止めた文言が入る。`interrupt` の計数器と fence が両方上がった場合、どちらの文言が先でも、同じ枠を通る | 境目から `?` で枠を飛ばす・`stop()` に確かめの点を置く → 落ちる |
+| H15 | `h15_a_midway_stopped_job_completes_normally_and_the_stop_runs_next` | 途中で止めた仕事は `Accepted`→`Started`→`Completed`（`Refused` でない）。`counted` の減算は返事の前（`BeforeReply` の継ぎ目）。返事は `Done`（閉包の `Err`）。次に取り出されるのは停止のレーンの先頭（先に並んだ Normal・Starting より前）。`Admission` の `midway_stops` が1。ログは1回。取り出す時の断り（`StoppedFirst`）の仕事には文脈が入らず、`midway_stops` が増えない | 途中で止めた仕事を `Refused` にする・減算を返事の後へ戻す → 落ちる |
+| H16 | `h16_a_stop_during_a_reply_wait_waits_for_the_reply_and_stops_at_the_next_boundary` | 子の応答を門で止めている間に Stop を積む。応答の期限は今のまま（打ち切らない）。応答を渡すと、閉包は応答を処理してから、次の境目で止まる。応答は捨てられず、次の IPC は送られない | 応答の最中に打ち切る → 落ちる |
+| H17 | `h17_every_boundary_is_placed_exactly_as_the_table_and_the_ipc_mouth_has_none` | 構造の試験（ソースの走査）：`Boundary` の各変種が、表の関数に決めた数だけ `check_stopped(Boundary::…)` で現れ、`ALL` に全部あり、表に無い `check_stopped(` が製品のコードに無い。`execute_running_command`・`execute_command`・`execute_running_command_inner`・`dispatch` の本体に無い。門は `ensure_engine_running` にだけ、`ensure_clear` の前後に1つずつ、`!self.post_role` つきで、`new_engine` より前にある。`reader.rs`・`emit.rs`・`link.rs` に無い | 境目の抜け・余り・IPC の口への移動・門の位置を動かす → 落ちる |
+| H18 | `h18_cleanup_and_rollback_bodies_never_call_a_boundary_function` | 構造の試験：`cancel_prepared_post_start`・`stop`・`stop_primary`・`kill_engine`・`kill_primary_engine`・5か所の失敗の枝（`.stop().is_err()` から関数の終わりまで）・`post_mix()` の失敗の処理の本体に、境目を含む関数の名前（`start_internal`・`start_bundle`・`apply_profile`・`unload_all_plugins`・`set_output_gain`・`load_plugin_chain`・`prepare_post_mix_start`・`restore_bundle`・`check_stopped`）が無い。`ChainPurpose::Reinstate` の呼び出し（`profile.rs:426`）がある | 後始末に境目を含む関数を呼ばせる → 落ちる |
+| H19 | `h19_the_decision_has_one_source_and_one_exhaustive_method` | 構造の試験：`JobClass` に `interrupts_running` があり、`_ =>` なしの `match`（Y31 の6つ）。`context.rs` が `JobClass::` を直接書かない。`fence` の定義が1か所（`JobQueue`）。`verdict` と `check_stopped` が `stopped_after` を使う。`StoppedMidway` が `ControlError` の変種に無い | 述語の二重化・fence の二重化・`_ =>` を足す → 落ちる |
+| H20 | `h20_checking_never_waits_or_locks_and_ignores_a_poisoned_queue` | 構造の試験：`check_stopped` の本体に `lock(`・`wait`・`recv`・`Condvar`・`emit`・`log::` が無い（`thread_local` の `borrow`・atomic の `load` だけ）。列のロックが poison していても（列の閉包以外の panic で作る）、`check_stopped` が `Err`／`Ok` を返す | ロックや待ちを足す・`unwrap()` を足す → 落ちる |
+| H21 | `h21_normal_release_mute_and_tick_jobs_run_to_the_end_under_the_same_stop` | 同じ Stop の下で、Normal（`post_mix` の `Add`・`Gain`、読み取り）・Release（`stop_test_tone` など）・Mute・Tick の閉包は、境目・門のある関数（`set_output_gain`・`ensure_engine_running`）を呼んでも `Ok` で、最後まで走る（V1・V12） | `interrupts_running` を広げる → 落ちる |
+
+**期待値が変わる既存の試験**：
+- **Y31**（`class_tests.rs:425-455`）：メソッドが5→6（`interrupts_running`）、`match self` の数が 5→6。`context.rs` を `JobClass::` を直接書かないファイルの一覧へ足す。
+- **Y12**（`stop_priority_tests.rs:397-434`）：結果は同じ（境目の無い閉包は終わりまで走る）。名前とコメントを「**境目の無い**閉包」へ狭める（一般の主張ではなくなる）。
+- K14（`commands/audio/compat_tests.rs:404-443`）・Y16・Y15・Y21・Y33 は期待値が変わらない（K14 は項目を足す）。`plugin_chain.rs` の試験の `Host` は、`check_stopped` の既定の `Ok` を使うので変わらない。
+- 実装時に `cargo test` の全体で、**走っている Starting の閉包が、境目を含む実関数を呼びながら Stop を受ける**既存の試験が他に無いことを確かめる（今回の洗い出しでは、`actor_tests`・`reaper_tests`・`release_tests`・`compat_tests` の Stop は、実行前の断り・Tick・境目の無い閉包だけ）。
+
+**壊して確かめる（一時的な改変。T15）**：(a) 述語を `<=` へ・種類を見ない → H2。(b) 判定を押した順・時刻へ → H3。(c) 境目を1つ外す／足す → H4・H5・H17。(d) 確かめの点を IPC の口へ置く → H8・H17。(e) S9 を `?` にして `cancel_prepared_post_start` を飛ばす → H4。(f) S10a に `post_mix.stop()` を足す、または `start` の後へ動かす → H11。(g) S11c を失敗の処理の中へ入れる／S11a を保管の後へ → H12。(h) S6b を外す → H6。(i) `Reinstate` に境目を置く → H5・H18。(j) 門を `post_role` に通す → H7。(k) G2 を外す・`new_engine` の後へ → H7。(l) `localize_audio_error` の素通しを外す → H10。(m) `shortcut_notice` の分岐を外す → H10。(n) `prepare_warmup` の手当てを外す → H9。(o) 後始末に境目を含む関数を呼ばせる → H18・H13。(p) 途中で止めた仕事を `Refused` にする・減算を返事の後へ → H15。(q) 応答の最中に打ち切る → H16。(r) `interrupts_running` を広げる → H2・H21。(s) `check_stopped` にロックを足す → H20。(t) 文脈を消さない → H1。(u) fence を二重にする → H19。(v) `StoppedMidway` を `ControlError` の変種にする → H19。(w) 状態の変更（`running`・通知）を境目の中で行う → H4。(x) `post_mix` の `Add` などに境目を足す → H12・H21。
+
+### 15.13 利用者から見て変わること
+
+**承認済み**：J-20（停止が来たら次の命令を送る前に止めて、今ある巻き戻しの手順を通す）と、文言「停止が先に行われたため、操作を途中で止めました。一部の設定は変更済みの場合があります。現在の状態を確認してください。」（12.15 の 2026-11-23 の決定）。90／120 秒の打ち切りは入れない（V3）。
+
+**変わること（承認の範囲内）**：
+1. 長い操作（適用・開始・再起動・配信セットの適用・出力音量の反映）の最中に停止を押すと、**次の一歩の前に止まる**。以前は、その操作が終わるまで停止が待たされた。
+2. 停止が来た後、実行中の開始系の操作は、**新しい子（待機用のエンジン）を起動しない**（主のエンジンだけ。配信 VST の子と、Normal・Release の操作を除く）。
+3. プロファイルの適用を途中で止めると、**一部のカテゴリだけが適用された状態が残る**（戻す手順は今も無い）。承認済みの文言が、その旨を伝える。止める位置によっては、適用前のバックアップが前のまま残る（S1a）。
+4. 配信セットの適用・取り消しの途中の停止は、今の失敗と同じ枠を通る（停止・巻き戻し・原本を保持）。今の「停止・ミュート操作が優先されたため…」か、新しい文言のどちらかが出る。
+5. **変わらない**：Mute は止めない・通知・停止の遅れの上限（待ちは増えない）。Stop が遅れる場面は、今より増えない（境目の間・`ensure_clear` の待ちなどは今のまま。15.15）。
+
+**要承認（承認済みの範囲を超えるもの）**：利用者の言葉で。
+
+- **A. ショートカットで始めた操作が、停止で途中で止まったとき、何も表示しない**。理由：V8（承認済み）は「停止より前に受け付けた操作が断られたとき」だけを決めた。途中で止めた場合も、「押した後に停止を押した」利用者の意図に合う。**推奨：何も表示しない**。選択肢：既存のショートカットのエラー通知（`ActionFailed`）に文言を出す。
+- **B. 起動直後の自動開始が、停止で途中で止まったとき、画面にエラーを出すか**。今の `audio_frontend_bootstrap` は、失敗を `Reply.error` に出す。**推奨：出さない**（A と同じ理由。続く停止が自動開始を取り消す）。選択肢：途中で止めた文言を出す。
+- **C. まだ何も変えていない操作が、子の起動の門で止まったときも、「一部の設定は変更済みの場合があります」と出る**。門は閉包の中で、その前に設定を変えたかを知らない。例：子が終了している状態で `set_gain` を始めて、再生成の直前に止める。文言は「場合があります」なので誤りではないが、実際は変更なし。**推奨：承認済みの文言のまま**（閉包が何かを変えたかの記録を足すと、境目が増える）。選択肢：門で止めたときだけ、実行前の文言（「…この操作は実行しませんでした…」）を使う。
+- **D. 配信 VST の復元（「保存した配信 VST を復元」）の最中に停止を押すと、復元が途中で止まり、配信 VST の「復元済み・有効」が外れる**（もう一度「復元」が要る。保存設定は残る）。今の復元の失敗と同じ状態。以前は、復元が終わるまで停止が待たされた。**推奨：そのまま（途中で止める。S11b・S11d）**。選択肢：配信 VST の復元には境目を置かず、停止はその復元が終わるまで待つ（S11 を外す。2c-2 から減る）。
+
+**ほかに、別に挙げるもの**：「一部だけ適用された状態が残る」は承認済みの文言の範囲。「停止が今より遅れる」場面は無い。新しい文言・新しい通知は無い。
+
+### 15.14 未決（決め切れない点）と推奨
+
+| # | 未決 | 推奨 |
+|---|---|---|
+| U1 | 12.4 の末尾の一文「子の起動の門が入るときは、Release にも効かせる（取り消しだけのために子を起動しない）」と、12.20.3 の規則（種類が Starting でない → `Ok`。Release も）と、12.4 の表（Release は J-20 の割り込みを受けない）の食い違い | **門も Starting だけ**（12.20.3 と表に従う。Release は断らない・失敗させない＝V12）。Release が、停止の後に待機用の子を起動しうる点は、今と同じ（`let _ =` で結果を捨てる入口もある）。Release が子を起動しないようにする変更は、別の段（子が無ければ取り消しは成功を返す。約12入口の挙動が変わる）。12.4 の一文は、実装 PR で直す |
+| U2 | 途中で止めた `Err` の型名。正本は `check_stopped() -> Result<(), StoppedFirst>`（12.20.3）で、`ControlError::StoppedFirst`（実行前の文言）と同じ名前 | **`StoppedMidway`**（別の型）。`ControlError` に混ぜないため（I62）。2b の `StoppedFirst` の文言・`scheduler_continues`・`control_notice` の `match` を変えずに済む |
+| U3 | `check_stopped()`（引数なし。12.20.3）に `Boundary` の引数を足す | 足す。構造の試験（H17）が各境目の数を守り、`Boundary::ALL` の網羅（H4・H5）と、`passed` の記録で「どの境目まで来たか」を試験が観測できる。引数なしだと、数の走査だけになる |
+| U4 | 後始末の区間（`cleanup`）を足すか（12.20.3 は「取りやめた」） | **足さない**（正本どおり）。後始末が境目を含む関数を呼ばない（I61）を構造の試験で守る。将来、後始末が境目つきの関数を使う必要が出たら、そのときに区間を設計する |
+| U5 | `ensure_clear` の待ち（最大10秒）を、停止で起こすか | **起こさない**（新しい待ちを足さない。N3 の範囲。G2 が、待ちの後で止める） |
+| U6 | 配信セットの中の `interrupt` の計数器と fence の二重（V9） | 残す。一本化は F1b |
+| U7 | A・B・C・D（15.13） | 推奨のとおり。**承認を得る** |
+| U8 | 境目の数（33 地点）を1段で入れるか | **2c-1・2c-2 に分ける**（15.18）。決めるのは統括 |
+| U9 | 実機で確かめること：(1) 適用・開始の最中の停止の位置と文言、(2) フロントが `Err` の文字列で分岐していないか・自動で再試行しないか（`src/` を、実装 PR で確認する）、(3) `docs/USER_DOCS.md` の対象の記述（停止の挙動）の有無 | 実装 PR で確かめる。今回は画面側を調べていない（文言は Rust 側の文字列として返すだけ） |
+
+### 15.15 既知の狭い競合として残るもの
+
+判断の基準：今直すのは、退行・保存データの破損や喪失・固まる／回復できない・main では起きない誤情報の残存、だけ。次はいずれも、main で起きるか、この段の新しい失敗ではない。
+
+- **(a) 境目の間は止まらない（1段遅れ）**：境目の無い待ち（`ensure_clear` 10 秒・`retire_child` 2 秒・`wait_notified` 2 秒・応答 10／30 秒・`confirming_start` 10 秒・`contain_and_resume`）と、境目の間の IPC。**以前（全部が終わるまで）より短い**。J-18。固まらない（上限は今のまま）。
+- **(b) 先着の Mute の件数だけ Stop が遅れる**（V10。12.17 の (h)）。Mute は fence を上げず、Starting を止めない（V1）。
+- **(c) 停止の `admit`〜`push` の間は止まらない**（12.17 の (k)）。`interrupt`・`Pending` は積む前に効く。1段遅れるだけ。
+- **(d) Normal・Release・Mute が、停止の後に待機用の子を起動しうる**：12.17 の (e)（`post_mix` の `Reorder { ids: [] }` など）と、Release（U1）。main でも同じ順で起き、音は出ない。
+- **(e) 予約の中の `Add`・`session_rack(Add)` は止まらない**（12.17 の (f)。Normal）。
+- **(f) 配信セットの中は、今の `interrupt` で IPC のたびに中断される**（15.8。文言が2種）。保存データは今の失敗の枠が守る。
+- **(g) `PostMixStatus` の IPC の失敗で `?` が後始末を飛ばす**（12.18 の 9の5。`post_mix_start.rs:54`）。IPC の失敗のときの今の挙動で、変えない。境目 S10 は IPC の失敗とは別の経路。
+- **(h) 止めた後のプロファイルは、一部が適用されたまま**：戻す手順が無い（12.18 の 7）。承認済みの文言が伝える。バックアップ（`restore_backup_profile`）で戻せる。`restore_backup_profile` を止めると半端に戻る。バックアップは残るので、もう一度実行できる。
+- **(i) `RestoreSaved` を途中で止めると、配信 VST の復元済み・有効が外れる**（15.13 の D。要承認）。保存設定は残る。
+- **(j) 将来、後始末が境目つきの関数を呼ぶと切れる**：I61 と H18 が、今の呼び出しを固定する。新しい後始末を足す PR で CI が落ちる。
+- **(k) 握りつぶされた `Err` は、次の境目まで気付かない**：I58 のとおり遅れるだけ。分類の手当て（15.7）で、状態は誤らない。
+- **(l) 門を通らない子の起動**：`ensure_engine_running` を通らない起動は無い（製品のコードで `spawn_engine_process` を呼ぶのは `audio.rs:974` の1か所。今回 grep で確認。実装時に再確認）。
+
+### 15.16 これまでの段のレビューで繰り返し出た指摘の型への自己点検
+
+| 型 | この段の設計が当たらないことの確かめ |
+|---|---|
+| (1) ロックの順 | 新しいロックが無い。`check_stopped` は `thread_local` の `borrow` と atomic の `load` だけ（I68）。`fence` の書き込みは列のロックの中（今と同じ位置）、読みは列のロックの中（`verdict`）と、ロック無し（境目）。ロックの順は変わらない。**当たらない** |
+| (2) 取りこぼしの起床 | 新しい `Condvar`・待ちが無い。`ensure_clear` の待ちを起こさない（U5）。G2 が待ちの後で止めるので、待ちの間の停止は取りこぼさない。**当たらない（対象が無い）** |
+| (3) 取り消しで失われる後処理 | 呼び出し側が離れても、閉包は実行のスレッドで走り、後始末は閉包の中で終わる。後始末は境目を通らない（I61・H18）。**当たらない**。ただし、後始末が境目を含む関数を呼ぶと切れる点は、構造の試験で守る（15.15 の (j)） |
+| (4) 受付時点の固定 | `seq`・`class`（要求で決める種類を含む）は `admit` で決まる（I66）。文脈は `Job` から作る。`fence` だけが変わり、増えるだけ。**当たらない** |
+| (5) poison の扱い | `fence` は atomic、文脈は `RefCell`（`try_with`・`borrow`）。Mutex を足さない。列のロックは今の `into_inner`。H20。**当たらない** |
+| (6) 継ぎ目で順序を固定しない試験 | `Boundary` の継ぎ目・`before_ensure_clear`・`ActorPoint`・`reaper_seam::stuck`・`Step::WaitGate`・`post(stop)` の戻りで順を作る。**`sleep` と競りの反復に頼らない**。**当たらない** |
+| (7) `Err` に別の意味を混ぜる | `StoppedMidway` は `ControlError` に混ぜず（I62）、IPC の口に置かない（I19）。`Err` を分類する10か所を経路ごとに洗い出し、手当てを決めた（15.7）。実装時に全数で洗い直す（I65）。**当たらない（手当て済み）** |
+| (8) 分類の網羅（`JobClass` の `match`） | `interrupts_running` は `_ =>` なしの網羅の `match`（Y31 の6つ目）。`Boundary` の `id()`・`group()` も網羅。要求で決める入口の分類（`REQUEST_CLASSES`）は変えない。**当たらない** |
+| (9) 状態と通知が別々になる | 境目は状態も通知も変えない。門は `new_engine`・`notify_conditions_changed` の前で止まり、続く Stop が通知を積む（H7）。**当たらない** |
+| (10) 後始末を飛ばす／切る | 境目から戻る経路は既存の後始末へ合流（I60）。S10a は `stop()` を呼ばない・S11c は失敗の処理の外（健全な子を捨てない）。H11・H12。**当たらない** |
+| (11) 停止がさらに遅れる | 新しい待ちが無い（I68）。境目は IPC の前だけ。**当たらない** |
+| (12) 契約の例外の取りこぼし | 例外（途中で止めない場所）を、15.5.1・15.15 に同じ言い方で書いた。`Reinstate`・`ensure_clear`・応答の待ち。**当たらない（範囲を明記した）** |
+
+### 15.17 洗い出しと今のコードで食い違っていた点
+
+1. **行の移動**：12.20 の行は、F1b-0b-3・4 の後に動いた。`audio.rs` は約 +54〜+64（`ensure_engine_running` は 870→**924**、`start_internal_with_source` の `Start` の直前は `:1628`→**`:1688`**、`set_output_gain` は `:2102`→**`:2165`**、`start_bundle_with_device_ids` の kill は `:2288-2294`→**`:2351-2358`**、`warmup` は `:2816`→**`:2880`**〔自動開始の前は `:2892-2895`〕、`unload_all_plugins` は `:2377`→**`:2440`**）。`profile.rs`（S1〜S4）・`plugin_chain.rs`（S6）は動いていない。`commands/audio.rs:797`（S12）→**`:827-831`**。`post_mix.rs`：S11 の `:757`・`:1041` は動いていない。`commands/bundles.rs`：S15 の `:1693-1698`・`:1928`・`:1931` は **`:1694-1698`・`:1928`・`:1932`**。`post_mix_start.rs` は動いていない。
+2. **正本が S8 の (1) の後に置いた「`ensure_engine_running` の後」**は、`audio.rs:1642-1647` の `if … else if … else` の後の `let generation`（`:1648`）の前。
+3. **`fence` は `QueueState` の `u64`**（12.20.3 は `Arc<AtomicU64>`。2b の実装で変わった。12.18 の 13 の (a)）。境目の読みのため、`JobQueue` へ移す（15.4）。
+4. **`ControlError::StoppedFirst` は取り出す時の断りだけ**で、`ControlError::text`・`shortcuts.rs:599`・`scheduler_continues`（`control.rs:559`）がその前提。途中で止める `Err` を同じ型にすると、これらの `match` の意味が混ざる。型を分けた（U2）。
+5. **`localize_audio_error` は `engine_life` の日本語の最終文言を素通しにしている**（`audio.rs:3157-3163`）。同じ扱いを足す（12.18 の 13 の (e) の予告どおり）。
+6. **`prepare_warmup` は `ensure` の `Err` を「準備に失敗しました」に変える**（`frontend_bootstrap.rs:161-166`）。12.20.3 の「変わらないもの」の一覧にこの経路は無かった。門（主のホスト）が `ensure_engine_running` の `Err` を返すと、この記録が誤情報になる。手当てを足した（15.7 の 2・3）。
+7. **`load_plugin_chain` の `restore` が `to_string()` で型を落とす**（`plugin_chain.rs:30`）。12.20.2 の Sol の指摘どおり、門が欠落に化ける。`ChainHost::check_stopped` と S6b で防ぐ。
+8. **`post_mix()` の失敗の処理は、`Err` のすべて（検証の失敗を含む）で子を捨てる**（`post_mix.rs:1161-1181`）。S11 の置き場所の根拠（失敗の処理の外）。
+9. **配信セットの適用の中は、今も `interrupt` の計数器で IPC のたびに中断される**（`audio.rs:1079-1080,2373-2386`）。J-20 の一部は main に既にある（Stop・Mute 両方）。境目はそれを置き換えず、IPC の前の抜けを足す。
+10. **バックアップは上書き**（`profile.rs:164`）。S1a を足した理由。
+11. **`recover_mode_vst`（`mode_vst.rs:417`）・`session_rack(Begin)`（`session_rack.rs:155`）・`live_modes`（`live_modes.rs:364`）・`mixing(Configure)`（`mixing.rs:301`）は `ensure_engine_running` を直接呼ぶ**。門の影響を受けるが、`Err` を分類せず返すだけ（15.7 の 11）。12.20 の「変わらない経路」の一覧に無かった。
+
+### 15.18 分け方の案（決めるのは統括）
+
+境目 33 地点は、1 段で扱うには多い。**2c-1・2c-2 に分ける**案：
+
+- **2c-1（基盤＋門＋開始系。16 地点）**：`context.rs`・`fence` の移動・`interrupts_running`・`StoppedMidway`・`Boundary`・`check_stopped`・`execute` への文脈。門 G1・G2。S7・S8a〜S8f・S9・S10a・S10b・S12・S13a・S13b・S14。`localize_audio_error` の素通し・`prepare_warmup`・`warmup_once` の手当て・`shortcut_notice`。H1・H2・H3・H4・H7・H8・H9・H10・H11・H13・H15・H16・H17（開始系の分）・H19・H20・H21。要承認 A・B・C。
+- **2c-2（プロファイル・配信側の復元・配信セットの適用。17 地点）**：S1a・S1b・S2・S3a・S3b・S4a〜S4c・S5・S6・S6b（`ChainPurpose`・`ChainHost::check_stopped`）、S11a〜S11d、S15a・S15b。H5・H6・H12・H14・H17（残り）・H18。要承認 D。
+
+理由：2c-1 は、基盤と、状態が単純な開始系（子の起動・`Start` の前）で、**門と文脈の設計の誤りがここで見つかる**。2c-2 は、状態を壊しうる箇所（`post_mix` の復元・プロファイルの再起動の単位・配信セットの枠）で、基盤が固まってから入れる。2c-2 の要承認 D を「入れない」と決めれば、S11 の4地点が 2c-2 から減る。2 段に分けるときは、2c-1 が `ChainHost`・S11 の境目を持たない（試験は `Boundary::ALL` の網羅を、その段の範囲の部分集合で確かめる）。
+
+### 15.19 実装との差
+
+実装後に書く（14.21 と同じ形。実装中に見つけた設計との差は、本文を書き換えずここへ残す）。
