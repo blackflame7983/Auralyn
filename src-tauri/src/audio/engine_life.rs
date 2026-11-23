@@ -121,17 +121,15 @@ struct Retired {
 type Slots = [Vec<Retired>; 2];
 
 /// 終了が確かめられた記録を取り除いて返す。残った子へは `kill()` をやり直す。返した記録は、ロックの外で落とす。
-fn reap(lists: &mut [Vec<Retired>]) -> Vec<Retired> {
+fn reap(list: &mut Vec<Retired>) -> Vec<Retired> {
     let mut removed = Vec::new();
-    for list in lists {
-        let mut at = 0;
-        while at < list.len() {
-            if exited(&mut list[at].child) {
-                removed.push(list.remove(at));
-            } else {
-                let _ = list[at].child.kill();
-                at += 1;
-            }
+    let mut at = 0;
+    while at < list.len() {
+        if exited(&mut list[at].child) {
+            removed.push(list.remove(at));
+        } else {
+            let _ = list[at].child.kill();
+            at += 1;
         }
     }
     removed
@@ -165,14 +163,15 @@ impl Store {
         self.push(role, child, None, now());
     }
 
-    /// 案内を切り替えるのは、最初の `kill()` から期限を過ぎても記録が残るとき。
-    fn error(slots: &Slots) -> EngineUnconfirmed {
+    /// 案内を切り替えるのは、確かめた役割の記録が、最初の `kill()` から期限を過ぎても残るとき。
+    fn error(slots: &Slots, roles: &[Role]) -> EngineUnconfirmed {
         let now = now();
         EngineUnconfirmed {
-            repeated: slots
-                .iter()
-                .flatten()
-                .any(|record| now.saturating_duration_since(record.killed_at) >= DEADLINE),
+            repeated: roles.iter().any(|role| {
+                slots[role.index()]
+                    .iter()
+                    .any(|record| now.saturating_duration_since(record.killed_at) >= DEADLINE)
+            }),
         }
     }
 
@@ -182,10 +181,10 @@ impl Store {
             let mut slots = self.lock();
             let mut removed = Vec::new();
             for role in roles {
-                removed.extend(reap(std::slice::from_mut(&mut slots[role.index()])));
+                removed.extend(reap(&mut slots[role.index()]));
             }
             let alive = roles.iter().any(|role| !slots[role.index()].is_empty());
-            (removed, alive.then(|| Self::error(&slots)))
+            (removed, alive.then(|| Self::error(&slots, roles)))
         };
         if !removed.is_empty() {
             log::info!("終了を確認しました（{roles:?}）");
@@ -224,9 +223,11 @@ impl Store {
         self.recorded[role.index()].load(Ordering::Acquire)
     }
 
-    /// いまの記録から作る `engine_unconfirmed`。
-    pub(super) fn unconfirmed_error(&self) -> EngineUnconfirmed {
-        Self::error(&self.lock())
+    /// `role` の記録を確かめ直して作る `engine_unconfirmed`。残っていなければ初回の案内。
+    pub(super) fn unconfirmed_error(&self, role: Role) -> EngineUnconfirmed {
+        self.check(&[role])
+            .err()
+            .unwrap_or(EngineUnconfirmed { repeated: false })
     }
 }
 

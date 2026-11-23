@@ -140,9 +140,9 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
             );
             assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
             assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
-            assert!(!reaper_seam::unconfirmed(&host).repeated);
+            assert!(!reaper_seam::unconfirmed(&host, Role::Primary).repeated);
             reaper_seam::pass_deadline();
-            assert!(reaper_seam::unconfirmed(&host).repeated);
+            assert!(reaper_seam::unconfirmed(&host, Role::Primary).repeated);
             reaper_seam::real();
         }
         drop(host);

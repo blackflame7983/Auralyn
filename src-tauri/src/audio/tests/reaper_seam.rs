@@ -21,8 +21,8 @@ pub(super) fn pending(host: &AudioHost, role: Role) -> usize {
     host.retired.pending(role)
 }
 
-pub(super) fn unconfirmed(host: &AudioHost) -> EngineUnconfirmed {
-    host.retired.unconfirmed_error()
+pub(super) fn unconfirmed(host: &AudioHost, role: Role) -> EngineUnconfirmed {
+    host.retired.unconfirmed_error(role)
 }
 
 pub(super) fn recheck(host: &AudioHost) -> Result<(), EngineUnconfirmed> {
