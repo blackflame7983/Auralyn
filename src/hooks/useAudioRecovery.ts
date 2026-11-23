@@ -1,6 +1,7 @@
 import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect } from 'react';
+import { delay } from './internal/schedule';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { audioApi, stopCallCount } from '../api/audio';
@@ -18,11 +19,11 @@ export function useAudioRecovery() {
         let exhausted = false;
         let startingGeneration: number | null = null;
         let generation = 0;
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        let cancelTimer: (() => void) | undefined;
         const cancel = () => {
             generation++;
             recovering = false;
-            if (timer) clearTimeout(timer);
+            cancelTimer?.();
         };
 
         const errors = listen<string>('audio-stream-error', event => {
@@ -37,7 +38,7 @@ export function useAudioRecovery() {
             const valid = () => active && current === generation;
 
             const schedule = (attempt: number) => {
-                timer = setTimeout(() => void retry(attempt), attempt * 2000);
+                cancelTimer = delay(attempt * 2000, () => void retry(attempt));
             };
             const retry = async (attempt: number) => {
                 if (!valid()) return;
@@ -104,5 +105,5 @@ export function useAudioRecovery() {
                 void subscription.then(unlisten => unlisten()).catch(console.error);
             });
         };
-    }, []);
+    }, [t]);
 }
