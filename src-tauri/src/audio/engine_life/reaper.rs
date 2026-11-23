@@ -63,12 +63,18 @@ impl Script {
     }
 
     pub(crate) fn set(&self, mode: Mode) {
-        *self.mode.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = mode;
+        *self
+            .mode
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = mode;
         self.changed.notify_all();
     }
 
     fn wait(&self, slice: Duration) -> Result<bool, WaitFailed> {
-        let guard = self.mode.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self
+            .mode
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match *guard {
             Mode::Panics => {
                 drop(guard);
@@ -177,7 +183,9 @@ fn run(weak: &Weak<Store>, id: u64, source: &Source, killed_at: Instant) {
             return;
         }
         let now = Instant::now();
-        if now < killed_at + timing.deadline && now.saturating_duration_since(last_kill) >= timing.retry_kill {
+        if now < killed_at + timing.deadline
+            && now.saturating_duration_since(last_kill) >= timing.retry_kill
+        {
             store.kill(id);
             last_kill = now;
         }

@@ -14,14 +14,15 @@ pub(crate) async fn voice_check_preview(
     let state = state.0.clone();
     let entry = audio::Entry::command("voice_check_preview")
         .request(audio::control::request_class::voice_check_preview(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.voice_check_preview(request)
                     .map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -67,33 +68,35 @@ pub(crate) async fn start_voice_check(
     max_ms: Option<u32>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("start_voice_check"),
                 move |host| -> Result<_, String> {
                     host.start_voice_check(max_ms.unwrap_or(10_000))
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
 #[tauri::command]
 pub(crate) async fn stop_voice_check(state: State<'_, audio::AudioState>) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("stop_voice_check"),
                 move |host| -> Result<_, String> {
                     host.stop_voice_check().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -104,17 +107,18 @@ pub(crate) async fn play_voice_check(
     loop_playback: Option<bool>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("play_voice_check"),
                 move |host| -> Result<_, String> {
                     host.play_voice_check(source, loop_playback.unwrap_or(true))
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -123,16 +127,17 @@ pub(crate) async fn stop_voice_check_playback(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("stop_voice_check_playback"),
                 move |host| -> Result<_, String> {
                     host.stop_voice_check_playback().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -142,26 +147,27 @@ pub(crate) async fn export_voice_check_wav(
     source: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
-        let path = rfd::FileDialog::new()
+    let path = super::run_blocking(move || {
+        Ok(rfd::FileDialog::new()
             .set_file_name("voice-check.wav")
             .add_filter("WAV", &["wav"])
-            .save_file();
-
-        match path {
-            Some(p) => state
-                .run(
-                    audio::Entry::command("export_voice_check_wav"),
-                    move |host| -> Result<_, String> {
-                        host.export_voice_check(p.to_string_lossy().to_string(), source)
-                            .map_err(|e| e.to_string())
-                    },
-                )
-                .map_err(|error| error.text("Failed to lock audio state"))?,
-            None => Err("cancelled".to_string()),
-        }
+            .save_file())
     })
-    .await
+    .await?;
+
+    match path {
+        Some(p) => state
+            .run_async(
+                audio::Entry::command("export_voice_check_wav"),
+                move |host| -> Result<_, String> {
+                    host.export_voice_check(p.to_string_lossy().to_string(), source)
+                        .map_err(|e| e.to_string())
+                },
+            )
+            .await
+            .map_err(|error| error.text("Failed to lock audio state"))?,
+        None => Err("cancelled".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -171,17 +177,18 @@ pub(crate) async fn export_voice_check(
     source: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("export_voice_check"),
                 move |host| -> Result<_, String> {
                     host.export_voice_check(path, source)
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -196,27 +203,30 @@ pub(crate) async fn analyze_voice_check(
         .app_cache_dir()
         .map_err(|e| e.to_string())?
         .join("voice-analysis");
+    let workspace =
+        super::run_blocking(move || AnalysisWorkspace::new(root).map_err(|e| e.to_string()))
+            .await?;
+    let raw_path = workspace.0.join("raw.wav");
+    let processed_path = workspace.0.join("processed.wav");
+    let raw_export = raw_path.to_string_lossy().to_string();
+    let processed_export = processed_path.to_string_lossy().to_string();
+    let exported = state
+        .run_async(
+            audio::Entry::command("analyze_voice_check"),
+            move |host| -> Result<_, String> {
+                let buffer_size = host.get_state().config.as_ref().and_then(|c| c.buffer_size);
+                host.export_voice_check(raw_export, "raw".to_string())
+                    .map_err(|e| e.to_string())?;
+                host.export_voice_check(processed_export, "processed".to_string())
+                    .map_err(|e| e.to_string())?;
+                Ok(buffer_size)
+            },
+        )
+        .await
+        .map_err(|error| error.text("Failed to lock audio state"));
     super::run_blocking(move || {
-        let workspace = AnalysisWorkspace::new(root).map_err(|e| e.to_string())?;
-        let temp_dir = &workspace.0;
-        let raw_path = temp_dir.join("raw.wav");
-        let processed_path = temp_dir.join("processed.wav");
-
-        let raw_export = raw_path.to_string_lossy().to_string();
-        let processed_export = processed_path.to_string_lossy().to_string();
-        let buffer_size = state
-            .run(
-                audio::Entry::command("analyze_voice_check"),
-                move |host| -> Result<_, String> {
-                    let buffer_size = host.get_state().config.as_ref().and_then(|c| c.buffer_size);
-                    host.export_voice_check(raw_export, "raw".to_string())
-                        .map_err(|e| e.to_string())?;
-                    host.export_voice_check(processed_export, "processed".to_string())
-                        .map_err(|e| e.to_string())?;
-                    Ok(buffer_size)
-                },
-            )
-            .map_err(|error| error.text("Failed to lock audio state"))??;
+        let _workspace = workspace;
+        let buffer_size = exported??;
 
         let loaded = audio_analysis::load_wav_interleaved_f32(&raw_path).and_then(|raw| {
             audio_analysis::load_wav_interleaved_f32(&processed_path).map(|proc| (raw, proc))

@@ -8,14 +8,15 @@ pub(crate) async fn post_mix(
     request: audio::post_mix::Request,
 ) -> Result<audio::post_mix::Snapshot, String> {
     let host = state.0.clone();
-    let entry =
-        audio::Entry::command("post_mix").request(audio::control::request_class::post_mix(&request));
-    super::run_blocking(move || {
-        host.run(entry, move |host| -> Result<_, String> {
+    let entry = audio::Entry::command("post_mix")
+        .request(audio::control::request_class::post_mix(&request));
+    async move {
+        host.run_async(entry, move |host| -> Result<_, String> {
             host.post_mix(request).map_err(|error| error.to_string())
         })
+        .await
         .map_err(|error| error.text("配信VSTの設定を取得できません").to_owned())?
-    })
+    }
     .await
 }
 
@@ -121,13 +122,14 @@ pub(crate) async fn peak_protection(
     let state = state.0.clone();
     let entry = audio::Entry::command("peak_protection")
         .request(audio::control::request_class::peak_protection(&config));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.peak_protection(config).map_err(|e| e.to_string())
             })
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -139,13 +141,14 @@ pub(crate) async fn broadcast_true_peak(
     let state = state.0.clone();
     let entry = audio::Entry::command("broadcast_true_peak")
         .request(audio::control::request_class::broadcast_true_peak(&config));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.broadcast_true_peak(config).map_err(|e| e.to_string())
             })
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -157,13 +160,14 @@ pub(crate) async fn live_output(
     let state = state.0.clone();
     let entry = audio::Entry::command("live_output")
         .request(audio::control::request_class::live_output(&config));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.live_output(config).map_err(|e| e.to_string())
             })
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -175,13 +179,14 @@ pub(crate) async fn mixing(
     let state = state.0.clone();
     let entry =
         audio::Entry::command("mixing").request(audio::control::request_class::mixing(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.mixing(request).map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -199,17 +204,18 @@ pub(super) async fn enumerate_devices_async(
     force_refresh: bool,
 ) -> Result<audio::AudioDeviceList, String> {
     let begin_state = state.clone();
-    let start = super::run_blocking(move || {
+    let start = async move {
         begin_state
-            .run(
+            .run_async(
                 audio::Entry::command("enumerate_devices_async"),
                 move |host| -> Result<_, String> {
                     host.begin_device_scan(force_refresh)
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await?;
     let ticket = match start {
         audio::DeviceScanStart::Cached(devices) => return Ok(devices),
@@ -220,49 +226,52 @@ pub(super) async fn enumerate_devices_async(
         // scanner待機はasync側で行い、停止・設定操作がAudioStateを取得できるようにする。
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         if tokio::time::Instant::now() >= deadline {
-            let _ = super::run_blocking(move || {
+            let _ = async move {
                 state
-                    .run(
+                    .run_async(
                         audio::Entry::command("cancel_device_scan"),
                         move |host| -> Result<_, String> {
                             host.cancel_device_scan(&ticket)
                                 .map_err(|error| error.to_string())
                         },
                     )
+                    .await
                     .map_err(|error| error.text("Failed to lock audio state"))?
-            })
+            }
             .await;
             return Err("デバイス検出が時間切れになりました。再試行してください。".into());
         }
         let poll_state = state.clone();
         let poll_ticket = ticket.clone();
-        let polled = super::run_blocking(move || {
+        let polled = async move {
             poll_state
-                .run(
+                .run_async(
                     audio::Entry::command("enumerate_devices_async"),
                     move |host| -> Result<_, String> {
                         host.poll_device_scan(&poll_ticket)
                             .map_err(|error| error.to_string())
                     },
                 )
+                .await
                 .map_err(|error| error.text("Failed to lock audio state"))?
-        })
+        }
         .await;
         match polled {
             Ok(Some(devices)) => return Ok(devices),
             Ok(None) => {}
             Err(error) => {
-                let _ = super::run_blocking(move || {
+                let _ = async move {
                     state
-                        .run(
+                        .run_async(
                             audio::Entry::command("cancel_device_scan"),
                             move |host| -> Result<_, String> {
                                 host.cancel_device_scan(&ticket)
                                     .map_err(|error| error.to_string())
                             },
                         )
+                        .await
                         .map_err(|error| error.text("Failed to lock audio state"))?
-                })
+                }
                 .await;
                 return Err(error);
             }
@@ -275,17 +284,18 @@ pub(crate) async fn get_output_gain_observation(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::frontend_bootstrap::GainObservation, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_output_gain_observation"),
                 move |host| -> Result<_, String> {
                     host.output_gain_observation()
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -297,14 +307,15 @@ pub(crate) async fn audio_frontend_bootstrap(
     let state = state.0.clone();
     let entry = audio::Entry::command("audio_frontend_bootstrap")
         .request(audio::control::request_class::frontend_bootstrap(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.frontend_bootstrap(request)
                     .map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -313,17 +324,18 @@ pub(crate) async fn get_saved_audio_config(
     state: State<'_, audio::AudioState>,
 ) -> Result<Option<audio::ActiveAudioConfig>, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_saved_audio_config"),
                 move |host| -> Result<_, String> {
                     host.read_saved_audio_config()
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声設定を取得できません").to_owned())?
-    })
+    }
     .await
 }
 
@@ -332,14 +344,15 @@ pub(crate) async fn get_audio_state(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::AudioStateInfo, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_audio_state"),
                 move |host| -> Result<_, String> { Ok(host.get_state()) },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -348,14 +361,15 @@ pub(crate) async fn get_engine_tuning_config(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::EngineTuningConfig, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_engine_tuning_config"),
                 move |host| -> Result<_, String> { Ok(host.get_engine_tuning_config()) },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -365,17 +379,18 @@ pub(crate) async fn set_engine_tuning_config(
     config: audio::EngineTuningConfig,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_engine_tuning_config"),
                 move |host| -> Result<_, String> {
                     host.set_engine_tuning_config(config);
                     Ok(())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -384,16 +399,17 @@ pub(crate) async fn get_engine_runtime_stats(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::EngineRuntimeStats, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_engine_runtime_stats"),
                 move |host| -> Result<_, String> {
                     host.get_engine_runtime_stats().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -463,7 +479,7 @@ pub(crate) async fn start_audio(
         channel_routing,
     } = options;
     let state = state.0.clone();
-    let result = super::run_blocking(move || {
+    let result = async move {
         log::debug!(
             "start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
             host,
@@ -472,7 +488,7 @@ pub(crate) async fn start_audio(
             sample_rate
         );
         state
-            .run(
+            .run_async(
                 audio::Entry::command("start_audio"),
                 move |host_instance| -> Result<_, String> {
                     if let Some(expected) = expected_state {
@@ -496,8 +512,9 @@ pub(crate) async fn start_audio(
                         .map_err(|e| audio::localize_audio_error(e.to_string()))
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await;
     audio::emit::trace_mark("return", "start_audio");
     result
@@ -561,14 +578,15 @@ pub(crate) async fn stop_audio(
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
-    let result = super::run_blocking(move || {
+    let result = async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("stop_audio"),
                 move |host| -> Result<_, String> { host.stop().map_err(|e| e.to_string()) },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await;
     audio::emit::trace_mark("return", "stop_audio");
     result
@@ -582,14 +600,15 @@ pub(crate) async fn session_rack(
     let state = state.0.clone();
     let entry = audio::Entry::command("session_rack")
         .request(audio::control::request_class::session_rack(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.session_rack(request)
                     .map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -599,17 +618,18 @@ pub(crate) async fn restore_plugin(
     request: crate::ipc::RestorePluginRequest,
 ) -> Result<crate::ipc::RestoredPlugin, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("restore_plugin"),
                 move |host| -> Result<_, String> {
                     host.restore_plugin(request)
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -622,17 +642,18 @@ pub(crate) async fn load_plugin(
     class_id: Option<String>,
 ) -> Result<crate::ipc::LoadedPlugin, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("load_plugin"),
                 move |host| -> Result<_, String> {
                     host.load_plugin(&path, class_id.as_deref())
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -642,16 +663,17 @@ pub(crate) async fn remove_plugin(
     id: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("remove_plugin"),
                 move |host| -> Result<_, String> {
                     host.remove_plugin(&id).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -661,16 +683,17 @@ pub(crate) async fn reorder_plugins(
     order: Vec<String>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("reorder_plugins"),
                 move |host| -> Result<_, String> {
                     host.reorder_plugins(order).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -681,16 +704,17 @@ pub(crate) async fn set_bypass(
     active: bool,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_bypass"),
                 move |host| -> Result<_, String> {
                     host.set_bypass(&id, active).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -701,16 +725,17 @@ pub(crate) async fn set_mute(
     active: bool,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_mute"),
                 move |host| -> Result<_, String> {
                     host.set_mute(&id, active).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -720,16 +745,17 @@ pub(crate) async fn resume_plugin(
     id: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("resume_plugin"),
                 move |host| -> Result<_, String> {
                     host.resume_plugin(&id).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -740,16 +766,17 @@ pub(crate) async fn set_gain(
     value: f32,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_gain"),
                 move |host| -> Result<_, String> {
                     host.set_gain(&id, value).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -770,7 +797,11 @@ pub(crate) async fn restart_audio_engine(
         channel_routing,
     } = options;
     let state = state.0.clone();
-    let result = super::run_blocking(move || {
+    let microphone_host = host.clone();
+    let needs_microphone = !input_source
+        .as_ref()
+        .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)));
+    let result = async move {
         log::debug!(
             "restart_audio_engine IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
             host,
@@ -779,15 +810,15 @@ pub(crate) async fn restart_audio_engine(
             sample_rate
         );
         // 未許可・確認不能なら、既存の音声とサイドカー上のVSTを保持する。
-        if !input_source
-            .as_ref()
-            .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)))
-        {
-            desktop_integration::check_microphone_access(host.as_deref())
-                .map_err(audio::localize_audio_error)?;
+        if needs_microphone {
+            super::run_blocking(move || {
+                desktop_integration::check_microphone_access(microphone_host.as_deref())
+                    .map_err(audio::localize_audio_error)
+            })
+            .await?;
         }
         state
-            .run(
+            .run_async(
                 audio::Entry::command("restart_audio_engine"),
                 move |audio_host| -> Result<_, String> {
                     audio_host
@@ -815,8 +846,9 @@ pub(crate) async fn restart_audio_engine(
                         .map_err(|e| audio::localize_audio_error(e.to_string()))
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await;
     audio::emit::trace_mark("return", "restart_audio_engine");
     result
@@ -899,16 +931,17 @@ pub(crate) async fn open_editor(
     id: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("open_editor"),
                 move |host| -> Result<_, String> {
                     host.open_editor(&id).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -918,16 +951,17 @@ pub(crate) async fn get_plugin_state(
     id: String,
 ) -> Result<String, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_plugin_state"),
                 move |host| -> Result<_, String> {
                     host.get_plugin_state(&id).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -938,17 +972,18 @@ pub(crate) async fn set_plugin_state(
     state: String,
 ) -> Result<(), String> {
     let audio = audio.0.clone();
-    super::run_blocking(move || {
+    async move {
         audio
-            .run(
+            .run_async(
                 audio::Entry::command("set_plugin_state"),
                 move |host| -> Result<_, String> {
                     host.set_plugin_state(&id, &state)
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -959,16 +994,17 @@ pub(crate) async fn toggle_global_mute(
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("toggle_global_mute"),
                 move |host| -> Result<_, String> {
                     host.toggle_global_mute().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -980,16 +1016,17 @@ pub(crate) async fn set_global_mute(
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_global_mute"),
                 move |host| -> Result<_, String> {
                     host.set_global_mute(active).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -999,16 +1036,17 @@ pub(crate) async fn set_input_gain(
     value: f32,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_input_gain"),
                 move |host| -> Result<_, String> {
                     host.set_input_gain(value).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1019,17 +1057,18 @@ pub(crate) async fn set_noise_reduction(
     mode: Option<String>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_noise_reduction"),
                 move |host| -> Result<_, String> {
                     host.set_noise_reduction(active, mode)
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1039,17 +1078,18 @@ pub(crate) async fn start_noise_learning(
     duration_ms: Option<u32>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("start_noise_learning"),
                 move |host| -> Result<_, String> {
                     host.start_noise_learning(duration_ms.unwrap_or(3000))
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1058,16 +1098,17 @@ pub(crate) async fn cancel_noise_learning(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("cancel_noise_learning"),
                 move |host| -> Result<_, String> {
                     host.cancel_noise_learning().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1081,9 +1122,9 @@ pub(crate) async fn set_noise_control_config(
     require_running: Option<bool>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_noise_control_config"),
                 move |host| -> Result<_, String> {
                     host.set_noise_control_config_routed(
@@ -1096,8 +1137,9 @@ pub(crate) async fn set_noise_control_config(
                     .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1111,9 +1153,9 @@ pub(crate) async fn set_built_in_effects(
     require_running: Option<bool>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_built_in_effects"),
                 move |host| -> Result<_, String> {
                     host.set_built_in_effects_routed(
@@ -1126,8 +1168,9 @@ pub(crate) async fn set_built_in_effects(
                     .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1140,14 +1183,15 @@ pub(crate) async fn builtin_effects(
     let state = state.0.clone();
     let entry = audio::Entry::command("builtin_effects")
         .request(audio::control::request_class::builtin_effects(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.builtin_effects_routed(require_running.unwrap_or(false), request)
                     .map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1159,14 +1203,14 @@ pub(crate) async fn set_loudness_measurement(
     let host = state.0.clone();
     let entry = audio::Entry::command("set_loudness_measurement")
         .request(audio::control::request_class::set_loudness_measurement(&id));
-    tauri::async_runtime::spawn_blocking(move || {
-        host.run(entry, move |host| -> Result<_, String> {
+    async move {
+        host.run_async(entry, move |host| -> Result<_, String> {
             host.set_loudness_measurement(id).map_err(|e| e.to_string())
         })
+        .await
         .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1175,17 +1219,17 @@ pub(crate) async fn set_output_gain(
     value: f32,
 ) -> Result<(), String> {
     let host = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        host.run(
+    async move {
+        host.run_async(
             audio::Entry::command("set_output_gain"),
             move |host| -> Result<_, String> {
                 host.set_output_gain(value).map_err(|e| e.to_string())
             },
         )
+        .await
         .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1196,14 +1240,14 @@ pub(crate) async fn auto_gain(
     let host = state.0.clone();
     let entry = audio::Entry::command("auto_gain")
         .request(audio::control::request_class::auto_gain(&request));
-    tauri::async_runtime::spawn_blocking(move || {
-        host.run(entry, move |host| -> Result<_, String> {
+    async move {
+        host.run_async(entry, move |host| -> Result<_, String> {
             host.auto_gain(request).map_err(|e| e.to_string())
         })
+        .await
         .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1212,16 +1256,17 @@ pub(crate) async fn set_global_bypass(
     active: bool,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_global_bypass"),
                 move |host| -> Result<_, String> {
                     host.set_global_bypass(active).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1232,17 +1277,18 @@ pub(crate) async fn set_input_channels(
     right: usize,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("set_input_channels"),
                 move |host| -> Result<_, String> {
                     host.set_input_channels(left, right)
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1254,13 +1300,14 @@ pub(crate) async fn set_channel_scan(
     let state = state.0.clone();
     let entry = audio::Entry::command("set_channel_scan")
         .request(audio::control::request_class::set_channel_scan(active));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.set_channel_scan(active).map_err(|e| e.to_string())
             })
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1272,9 +1319,9 @@ pub(crate) async fn play_test_tone(
     level_db: Option<f32>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("play_test_tone"),
                 move |host| -> Result<_, String> {
                     host.play_test_tone(
@@ -1285,24 +1332,26 @@ pub(crate) async fn play_test_tone(
                     .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
 #[tauri::command]
 pub(crate) async fn stop_test_tone(state: State<'_, audio::AudioState>) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("stop_test_tone"),
                 move |host| -> Result<_, String> {
                     host.stop_test_tone().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1312,16 +1361,17 @@ pub(crate) async fn measure_round_trip(
     level_db: Option<f32>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("measure_round_trip"),
                 move |host| -> Result<_, String> {
                     host.measure_round_trip(level_db).map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1330,17 +1380,18 @@ pub(crate) async fn cancel_round_trip_measurement(
     state: State<'_, audio::AudioState>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("cancel_round_trip_measurement"),
                 move |host| -> Result<_, String> {
                     host.cancel_round_trip_measurement()
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1349,16 +1400,17 @@ pub(crate) async fn get_round_trip_measurement(
     state: State<'_, audio::AudioState>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_round_trip_measurement"),
                 move |host| -> Result<_, String> {
                     host.get_round_trip_measurement().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1372,9 +1424,9 @@ pub(crate) async fn probe_loopback(
     // プローブは 1.5〜2 秒ブロックするため、メインスレッドを塞がないよう
     // ブロッキングスレッドで実行する（AudioState ロックはその間保持される）
     let state = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("probe_loopback"),
                 move |host| -> Result<_, String> {
                     host.probe_loopback(
@@ -1385,10 +1437,10 @@ pub(crate) async fn probe_loopback(
                     .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state").to_string())?
-    })
+    }
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1396,17 +1448,18 @@ pub(crate) async fn get_routing_diagnostics(
     state: State<'_, audio::AudioState>,
 ) -> Result<routing_diag::RoutingDiagnosticsReport, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_routing_diagnostics"),
                 move |host| -> Result<_, String> {
                     let engine_rate = host.get_state().config.as_ref().and_then(|c| c.sample_rate);
                     Ok(routing_diag::collect_routing_diagnostics(engine_rate))
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -1418,13 +1471,14 @@ pub(crate) async fn live_modes(
     let state = state.0.clone();
     let entry = audio::Entry::command("live_modes")
         .request(audio::control::request_class::live_modes(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.live_modes(request).map_err(|error| error.to_string())
             })
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 #[tauri::command]
@@ -1432,17 +1486,18 @@ pub(crate) async fn preflight_live_changes(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("preflight_live_changes"),
                 move |host| -> Result<_, String> {
                     host.preflight_live_changes()
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -1451,16 +1506,17 @@ pub(crate) async fn begin_live_changes(
     state: State<'_, audio::AudioState>,
 ) -> Result<String, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("begin_live_changes"),
                 move |host| -> Result<_, String> {
                     host.begin_live_changes().map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 #[tauri::command]
@@ -1469,17 +1525,18 @@ pub(crate) async fn end_live_changes(
     token: String,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("end_live_changes"),
                 move |host| -> Result<_, String> {
                     host.end_live_changes(token)
                         .map_err(|error| error.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -1491,13 +1548,14 @@ pub(crate) async fn noise_measurement(
     let state = state.0.clone();
     let entry = audio::Entry::command("noise_measurement")
         .request(audio::control::request_class::noise_measurement(&request));
-    super::run_blocking(move || {
+    async move {
         state
-            .run(entry, move |host| -> Result<_, String> {
+            .run_async(entry, move |host| -> Result<_, String> {
                 host.noise_measurement(request).map_err(|e| e.to_string())
             })
+            .await
             .map_err(|error| error.text("音声の状態を取得できません"))?
-    })
+    }
     .await
 }
 
@@ -1595,16 +1653,17 @@ pub(crate) async fn get_process_input_sources(
     state: State<'_, audio::AudioState>,
 ) -> Result<Vec<audio::process_inputs::Candidate>, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("get_process_input_sources"),
                 move |host| -> Result<_, String> {
                     host.process_input_sources().map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声設定を取得できません").to_owned())?
-    })
+    }
     .await
 }
 

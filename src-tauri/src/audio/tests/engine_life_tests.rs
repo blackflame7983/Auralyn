@@ -75,7 +75,11 @@ fn w1b_assignment_failure_blocks_the_same_role_until_the_exit_is_confirmed() {
     reaper_seam::stuck();
     let error = host.ensure_engine_running().unwrap_err();
     assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
-    assert_eq!(reaper_seam::pending(&host, Role::Primary), 1, "確かめられない");
+    assert_eq!(
+        reaper_seam::pending(&host, Role::Primary),
+        1,
+        "確かめられない"
+    );
     assert!(observer.probe(0).wait_exit(5000), "kill は実際に届いている");
     seam::set_assign(seam::Assign::Real);
     let error = host.ensure_engine_running().unwrap_err();

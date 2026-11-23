@@ -206,9 +206,9 @@ pub(crate) async fn acknowledge_session_review(
 ) -> Result<(), String> {
     let mode = mode.inner().clone();
     let host = state.0.clone();
-    crate::commands::run_blocking(move || {
+    async move {
         let observation = host
-            .run(
+            .run_async(
                 crate::audio::Entry::new(
                     crate::audio::EntryKind::TemporarySession,
                     "acknowledge_session_review",
@@ -218,12 +218,13 @@ pub(crate) async fn acknowledge_session_review(
                         .map_err(|e| e.to_string())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))??;
         if !observation.running || observation.stream_failed {
             return Err("明示開始後の音声処理を確認できません".into());
         }
         acknowledge(&mode)
-    })
+    }
     .await
 }
 fn acknowledge(mode: &Mode) -> Result<(), String> {
@@ -285,9 +286,9 @@ pub(crate) async fn restart_temporary_session(
         None
     };
     let state = app.state::<crate::audio::AudioState>().0.clone();
-    crate::commands::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 crate::audio::Entry::new(
                     crate::audio::EntryKind::TemporarySession,
                     "switch_session",
@@ -349,10 +350,11 @@ pub(crate) async fn restart_temporary_session(
                     Ok(())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))??;
         app.exit(0);
         Ok(())
-    })
+    }
     .await
 }
 

@@ -365,10 +365,7 @@ fn scan_lanes(state: &QueueState, windows: &[OpenWindow], now: Instant) -> Scan 
         next_wake: None,
         unwatched: false,
     };
-    for (lane, queue) in [
-        (Lane::Stop, &state.stop_lane),
-        (Lane::Regular, &state.jobs),
-    ] {
+    for (lane, queue) in [(Lane::Stop, &state.stop_lane), (Lane::Regular, &state.jobs)] {
         for (at, job) in queue.iter().enumerate() {
             let taken = verdict(job, state.fence, state.limits.wait);
             let held = held_by(job, windows);

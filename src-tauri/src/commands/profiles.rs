@@ -58,10 +58,10 @@ pub(crate) async fn save_profile(
     builtin_fx_amount: Option<f32>,
 ) -> Result<(), String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    async move {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         state
-            .run(
+            .run_async(
                 audio::Entry::command("save_profile"),
                 move |host| -> Result<_, String> {
                     let mut audio_config = None;
@@ -112,8 +112,9 @@ pub(crate) async fn save_profile(
                     presets::save_preset(&config_dir, &name, &preset)
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -146,9 +147,9 @@ pub(crate) async fn apply_profile(
     if profile.audio_config.is_some() {
         super::audio::enumerate_devices_async(state.clone(), false).await?;
     }
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("apply_profile"),
                 move |host| -> Result<_, String> {
                     profile::apply_profile(
@@ -163,8 +164,9 @@ pub(crate) async fn apply_profile(
                     )
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 
@@ -193,9 +195,9 @@ pub(crate) async fn restore_backup_profile(
     })
     .await?;
     super::audio::enumerate_devices_async(state.clone(), false).await?;
-    super::run_blocking(move || {
+    async move {
         state
-            .run(
+            .run_async(
                 audio::Entry::command("restore_backup_profile"),
                 move |host| -> Result<_, String> {
                     profile::apply_profile(
@@ -210,8 +212,9 @@ pub(crate) async fn restore_backup_profile(
                     )
                 },
             )
+            .await
             .map_err(|error| error.text("Failed to lock audio state"))?
-    })
+    }
     .await
 }
 

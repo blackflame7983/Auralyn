@@ -209,7 +209,11 @@ fn x1_jobs_run_in_the_order_they_were_queued() {
         .filter(|r| r.phase == Phase::Started && ["A", "B"].contains(&r.entry.name))
         .map(|r| r.entry.name)
         .collect();
-    assert_eq!(granted, ["A", "B"], "実行の順は受付の番号の順（13.6。K11 は別の試験）");
+    assert_eq!(
+        granted,
+        ["A", "B"],
+        "実行の順は受付の番号の順（13.6。K11 は別の試験）"
+    );
 }
 
 // X2：すべての閉包が、呼び出しとは別の1つのスレッドで走る。`run`は、閉包の中の通知が終わるまで戻らない。

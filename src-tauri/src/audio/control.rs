@@ -17,12 +17,12 @@ pub(crate) use lease::HostLease;
 pub(crate) use queue::ActorPoint;
 
 pub(crate) use class::{class_of, launch_of, RequestKind};
-pub use class::{JobClass, Launch};
 #[cfg(test)]
 pub(crate) use class::{
     request_class as request_class_of, request_launch, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS,
     REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
 };
+pub use class::{JobClass, Launch};
 
 use super::{engine_life, AudioHost};
 use queue::{Job, JobKind, JobQueue, Payload, Reply, ReplyTx};
