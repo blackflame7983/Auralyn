@@ -95,11 +95,16 @@ pub(super) struct LinkCell {
     notified: Condvar,
     /// 開閉の鏡。正本は `inner`。遷移のたびに、ロックの中で書く。
     phase: AtomicU8,
+    /// 試験の継ぎ目：`wait_notified` に入った回数。
+    #[cfg(test)]
+    waits_entered: std::sync::atomic::AtomicUsize,
 }
 
 impl LinkCell {
     fn with(state: State, phase: u8) -> Self {
         Self {
+            #[cfg(test)]
+            waits_entered: std::sync::atomic::AtomicUsize::new(0),
             inner: Mutex::new(Inner {
                 state,
                 eof_notified: false,
@@ -249,6 +254,8 @@ impl LinkCell {
 
     /// EOF の通知が出し終わるのを、絶対期限まで待つ。待つ間はロックを放す。
     pub(super) fn wait_notified(&self, deadline: Instant) -> bool {
+        #[cfg(test)]
+        self.waits_entered.fetch_add(1, Ordering::AcqRel);
         let mut inner = self.lock();
         loop {
             if inner.eof_notified {
@@ -285,6 +292,12 @@ impl LinkCell {
     pub(super) fn hold_for_test<R>(&self, f: impl FnOnce() -> R) -> R {
         let _held = self.lock();
         f()
+    }
+
+    /// 試験で、`wait_notified` に入った回数。
+    #[cfg(test)]
+    pub(super) fn waits_entered_for_test(&self) -> usize {
+        self.waits_entered.load(Ordering::Acquire)
     }
 
     #[cfg(test)]

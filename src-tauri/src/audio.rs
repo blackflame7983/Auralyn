@@ -1051,6 +1051,7 @@ impl AudioHost {
 
     fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         self.guard_mode_vst()?;
+        anyhow::ensure!(self.link.is_open(), replies::CLOSED);
         let json = serde_json::to_string(&cmd)?;
         #[cfg(test)]
         before_begin_hook::run();

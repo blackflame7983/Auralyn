@@ -198,6 +198,7 @@ fn the_c3_loser_waits_for_the_eof_notices() {
     let rx = link_seam::begin_request(&host, None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
+    let link = host.link.clone();
     let caller = std::thread::spawn(move || {
         let response = host.await_reply(
             Ok(done_with(
@@ -209,8 +210,10 @@ fn the_c3_loser_waits_for_the_eof_notices() {
         );
         (host, response)
     });
-    assert!(observer.probe(0).wait_exit(5000), "子は回収される");
-    std::thread::sleep(Duration::from_millis(300));
+    wait_until("呼び出し側が通知済みの待ちに入る", || {
+        link.waits_entered_for_test() == 1
+    });
+    assert!(observer.probe(0).wait_exit(5000), "子は回収されている");
     assert!(!caller.is_finished(), "reader を止めている間は戻らない");
     assert_eq!(count(&observer, "audio-engine-exited"), 0);
     pause.release();

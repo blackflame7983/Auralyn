@@ -101,8 +101,10 @@ fn the_loser_waits_for_the_notices_without_holding_any_lock() {
             let response = host.await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, limit);
             (host, response)
         });
+        wait_until("呼び出し側が通知済みの待ちに入る", || {
+            link.waits_entered_for_test() == 1
+        });
         assert!(observer.probe(0).wait_exit(5000), "子は回収される");
-        std::thread::sleep(Duration::from_millis(200));
         assert!(!caller.is_finished(), "止めている間は戻らない");
         let probed = returns_promptly("待つ間の読み取り", move || {
             let open = link.is_open();
@@ -196,11 +198,24 @@ fn the_wait_for_the_notices_is_capped_and_the_chain_is_not_doubled() {
 fn losing_to_something_other_than_eof_does_not_wait() {
     let (mut host, observer) = silent_host();
     let rx = link_seam::begin_request(&host, None).unwrap();
+    let received_at = Instant::now() - Duration::from_secs(1);
+    assert!(link_seam::deliver_at(
+        &host,
+        IpcResponse::Success,
+        received_at
+    ));
     assert!(host.link.close(CloseCause::WriteFailed));
     writer::set_eof_wait_for_test(Some(Duration::from_secs(10)));
     let started = Instant::now();
     let response = host
-        .await_reply(Ok(expired()), rx, Duration::from_secs(10))
+        .await_reply(
+            Ok(done_with(
+                WriteResult::Ok,
+                Instant::now() - Duration::from_secs(12),
+            )),
+            rx,
+            Duration::from_secs(10),
+        )
         .unwrap();
     let elapsed = started.elapsed();
     writer::set_eof_wait_for_test(None);
