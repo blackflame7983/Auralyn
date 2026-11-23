@@ -163,34 +163,29 @@ fn w2_a_recorded_post_mix_child_blocks_a_new_one_and_the_error_text_is_final() {
     rig.finish();
 }
 
-// J-13：記録ごとに数え、どれかが3以上なら3回目以降の文言。主と配信ミックスは別の記録。
+// J-13：最初の kill から期限を過ぎても記録が残るまでは初回の文言。過ぎると、主と配信ミックスの両方が再起動の案内になる。
 #[test]
-fn j13_counts_per_record_and_any_record_at_three_switches_the_message() {
+fn j13_the_message_switches_to_restart_once_a_record_outlives_the_deadline() {
     let mut rig = Rig::new([]);
     rig.host.ensure_engine_running().unwrap();
     reaper_seam::stuck();
     rig.host.kill_engine();
     assert_eq!(rig.pending(Role::Primary), 1);
     assert_eq!(rig.pending(Role::PostMix), 1);
-    reaper_seam::pass_window(&rig.host);
-    for _ in 0..2 {
-        rig.host.ensure_engine_running().unwrap_err();
-    }
-    assert_eq!(reaper_seam::counts(&rig.host, Role::Primary), [2]);
+    let error = rig.host.ensure_engine_running().unwrap_err();
+    assert!(!error.downcast_ref::<EngineUnconfirmed>().unwrap().repeated);
     let error = rig.host.post_mix.child().map(|_| ()).unwrap_err();
-    assert_eq!(error.to_string(), FIRST_FINAL, "最大の数は2");
-    assert_eq!(reaper_seam::counts(&rig.host, Role::PostMix), [1]);
+    assert_eq!(error.to_string(), FIRST_FINAL);
+    reaper_seam::pass_deadline();
     let error = rig.host.ensure_engine_running().unwrap_err();
     assert!(error.downcast_ref::<EngineUnconfirmed>().unwrap().repeated);
     let error = rig.host.post_mix.child().map(|_| ()).unwrap_err();
     assert!(
         error.to_string().starts_with(engine_life::REPEATED_JA),
-        "配信ミックスの記録は2でも、主の記録が3なので3回目以降の文言"
+        "配信ミックスの記録も、期限を過ぎれば再起動の案内"
     );
-    assert_eq!(reaper_seam::counts(&rig.host, Role::PostMix), [2]);
     rig.finish();
 }
-
 // B40a：配信ミックスの子を挟んでも、主の `engine_generation` は変わらない。
 #[test]
 fn b40a_post_mix_children_do_not_move_the_primary_generation() {

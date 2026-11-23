@@ -657,11 +657,9 @@ fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
             );
             assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
             assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
-            // J-13：作り直しの要求が確かめられない回数を、同じ記録で数える（窓が過ぎた後の失敗だけ）。
-            reaper_seam::pass_window(&host);
-            for _ in 0..3 {
-                host.ensure_engine_running().unwrap_err();
-            }
+            // J-13：最初の kill から期限を過ぎても記録が残るときは、再起動の案内に変わる。
+            assert!(!reaper_seam::unconfirmed(&host).repeated);
+            reaper_seam::pass_deadline();
             assert!(reaper_seam::unconfirmed(&host).repeated);
             reaper_seam::real();
         }

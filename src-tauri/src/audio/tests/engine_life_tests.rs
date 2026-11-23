@@ -261,7 +261,7 @@ fn a_job_failure_is_never_read_as_a_microphone_permission_denial() {
     }
 }
 
-// B17・D7：確かめられない子は、2秒で記録へ移り、同じ役割の子を作らない。期限は最初の kill から10秒。
+// B17・D7：確かめられない子は、2秒で記録へ移り、同じ役割の子を作らない。期限（最初の kill から10秒）を過ぎたら、再起動の案内に変える。
 #[test]
 fn b17_d7_an_unconfirmed_child_is_recorded_after_two_seconds_and_blocks_a_new_one_until_the_deadline(
 ) {
@@ -270,25 +270,24 @@ fn b17_d7_an_unconfirmed_child_is_recorded_after_two_seconds_and_blocks_a_new_on
     assert!(after_kill >= Duration::from_secs(2) && after_kill < Duration::from_millis(2100));
     assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
     assert!(host.child.is_none() && !host.get_state().is_running);
-    // 窓の中の要求は、待たずに失敗し、数を進めない。
+    // 期限の前の要求は、待たずに、初回の案内で失敗する。
     let error = host.ensure_engine_running().unwrap_err();
     assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
-    assert_eq!(reaper_seam::counts(&host, Role::Primary), [0]);
     assert_eq!(seam::elapsed(), after_kill, "待たない");
-    // 窓（最初の kill から期限まで）が過ぎた後の要求は、待たずに答え、記録ごとに数を1つ進める。
-    reaper_seam::pass_window(&host);
+    // 最初の kill から期限を過ぎても残るときは、待たずに、再起動の案内で失敗する。
+    reaper_seam::pass_deadline();
     let error = host.ensure_engine_running().unwrap_err();
-    assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
+    assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: true });
     assert_eq!(observer.spawn_count(), 1, "新しい子を作らない");
-    assert_eq!(reaper_seam::counts(&host, Role::Primary), [1]);
-    let error = host.ensure_engine_running().unwrap_err();
-    assert!(!unconfirmed(&error).repeated);
-    assert_eq!(seam::elapsed(), after_kill, "待たない");
-    assert_eq!(reaper_seam::counts(&host, Role::Primary), [2]);
+    assert_eq!(
+        seam::elapsed(),
+        after_kill + engine_life::DEADLINE,
+        "待たない"
+    );
     finish(host, observer);
 }
 
-// B18：遅れて終了を確かめたら、次の要求で片付けて作り直す。数も消える。
+// B18：遅れて終了を確かめたら、次の要求で片付けて作り直す。
 #[test]
 fn b18_a_child_that_ends_late_is_cleared_by_the_next_request_and_the_role_can_start_again() {
     let (mut host, observer) = stuck_primary();
@@ -298,7 +297,6 @@ fn b18_a_child_that_ends_late_is_cleared_by_the_next_request_and_the_role_can_st
     host.ensure_engine_running().unwrap();
     assert_eq!(observer.spawn_count(), 2);
     assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
-    assert!(reaper_seam::counts(&host, Role::Primary).is_empty());
     finish(host, observer);
 }
 
@@ -341,17 +339,17 @@ fn w2_a_primary_write_failure_records_the_child_before_returning_the_original_er
     finish(host, observer);
 }
 
-// J-13：どれかの記録が3回に達したら案内を変える。開始（`localize_audio_error`）と更新（生の文字列）の両方。
+// J-13：期限を過ぎても記録が残ったら案内を変える。開始（`localize_audio_error`）と更新（生の文字列）の両方。
 #[test]
-fn j13_the_third_unconfirmed_request_changes_the_japanese_message_on_both_paths() {
+fn j13_a_record_that_outlives_the_deadline_changes_the_japanese_message_on_both_paths() {
     let (mut host, observer) = stuck_primary();
-    reaper_seam::pass_window(&host);
     let first = start(&mut host).unwrap_err().to_string();
     assert_eq!(first, JA_FIRST_FINAL);
     assert_eq!(localize_audio_error(first), JA_FIRST_FINAL);
     let update = host.prepare_update().unwrap_err().to_string();
     assert_eq!(update, JA_FIRST_FINAL, "更新の経路は生の文字列");
     assert!(!host.maintenance, "更新へ進まない");
+    reaper_seam::pass_deadline();
     let third = start(&mut host).unwrap_err().to_string();
     assert_eq!(third, JA_REPEATED_FINAL);
     assert_eq!(localize_audio_error(third), JA_REPEATED_FINAL);
