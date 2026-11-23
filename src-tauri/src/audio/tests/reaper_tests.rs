@@ -1511,4 +1511,5 @@ fn z26_a_mute_that_reaps_a_c5_child_in_its_own_closure_waits_in_the_actor_and_su
         started.elapsed() < Duration::from_millis(500),
         "ほかの記録は待たない"
     );
+    assert_eq!(rig.store.counts(Role::Primary), [0], "窓の中の失敗は数えない");
 }
