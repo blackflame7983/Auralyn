@@ -1287,12 +1287,7 @@ mod tests {
 
         // 満杯：受付で断られ、新しい文言を`ActionFailed`で出す。
         let (control, release) = blocked_control();
-        control.set_limits(
-            1,
-            Duration::from_secs(3600),
-            Duration::from_secs(3600),
-            Duration::from_secs(3600),
-        );
+        control.set_limits(1, Duration::from_secs(3600), Duration::from_secs(3600));
         control
             .post(crate::audio::Entry::command("get_audio_state"), |_| ())
             .unwrap();
@@ -1317,12 +1312,7 @@ mod tests {
 
         // 受付から期限を過ぎた：取り出す時に断られ、新しい文言を出す。
         let (control, release) = blocked_control();
-        control.set_limits(
-            256,
-            Duration::from_millis(50),
-            Duration::from_secs(3600),
-            Duration::from_secs(3600),
-        );
+        control.set_limits(256, Duration::from_millis(50), Duration::from_secs(3600));
         let (notify, log, gate) = notice_log();
         gate.send(()).unwrap();
         post_shortcut_work(

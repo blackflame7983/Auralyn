@@ -18,10 +18,7 @@ pub(crate) use queue::ActorPoint;
 pub(crate) use class::class_of;
 pub use class::JobClass;
 #[cfg(test)]
-pub(crate) use class::{
-    request_class as request_class_of, NAME_CLASSES, NAME_PAIRS, REQUEST_CLASSES, REQUEST_ENTRIES,
-    REQUEST_PAIRS,
-};
+pub(crate) use class::{NAME_CLASSES, NAME_PAIRS};
 
 use super::{engine_life, AudioHost};
 use queue::{Job, JobKind, JobQueue, Payload, Reply, ReplyTx};
@@ -181,7 +178,6 @@ const LOG_CAPACITY: usize = 256;
 pub struct Admission {
     next_seq: AtomicU64,
     counts: [AtomicU64; KIND_COUNT],
-    slow: AtomicU64,
     log: Mutex<VecDeque<Record>>,
     #[cfg(test)]
     hook: Mutex<Option<TestHook>>,
@@ -203,7 +199,6 @@ impl Admission {
         Self {
             next_seq: AtomicU64::new(1),
             counts: std::array::from_fn(|_| AtomicU64::new(0)),
-            slow: AtomicU64::new(0),
             log: Mutex::new(VecDeque::new()),
             #[cfg(test)]
             hook: Mutex::new(None),
@@ -272,16 +267,6 @@ impl Admission {
         if let Ok(mut log) = self.log.lock() {
             Self::append(&mut log, seq, entry, phase, elapsed);
         }
-    }
-
-    fn note_slow(&self) {
-        self.slow.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// 試験用：実行の時間の警告を出した回数。
-    #[cfg(test)]
-    pub(crate) fn slow_warnings(&self) -> u64 {
-        self.slow.load(Ordering::Relaxed)
     }
 
     /// 受け付けた件数。
@@ -484,18 +469,11 @@ impl AudioControl {
 
     /// 試験用：上限・期限・警告の長さを縮める。
     #[cfg(test)]
-    pub(crate) fn set_limits(
-        &self,
-        max_counted: usize,
-        wait: Duration,
-        slow: Duration,
-        slow_start: Duration,
-    ) {
+    pub(crate) fn set_limits(&self, max_counted: usize, wait: Duration, slow: Duration) {
         self.shared.queue.set_limits(queue::Limits {
             max_counted,
             wait,
             slow,
-            slow_start,
         });
     }
 
@@ -567,9 +545,9 @@ impl<'a> Ticket<'a> {
 
     /// 期限付きの待ち（Starting・Normal）は、受付から期限までに始まらなければ、列のロックの中で
     /// まだ列にある自分の仕事を取り除いて`Expired`にする。取り出された後なら、返事が来るまで待つ。
-    /// Stop・Mute・Tick・Release は無期限に待つ。
+    /// Stop・Mute・Release は無期限に待つ。
     fn wait_reply(&self, rx: &Receiver<Reply>) -> Result<Reply, ControlError> {
-        if !self.class.waits_with_deadline() {
+        if !self.class.bounded() {
             return rx.recv().map_err(|_| ControlError::Stopped);
         }
         let queue = &self.control.shared.queue;
@@ -578,15 +556,19 @@ impl<'a> Ticket<'a> {
         match rx.recv_timeout(remaining) {
             Ok(reply) => Ok(reply),
             Err(RecvTimeoutError::Disconnected) => Err(ControlError::Stopped),
-            Err(RecvTimeoutError::Timeout) => match queue.cancel_waiting(self.seq) {
-                Some(job) => {
-                    drop(job);
-                    self.record_refused();
-                    Err(ControlError::Expired)
-                }
+            Err(RecvTimeoutError::Timeout) => match self.expire() {
+                Some(error) => Err(error),
                 None => rx.recv().map_err(|_| ControlError::Stopped),
             },
         }
+    }
+
+    /// 期限に達したとき、まだ列にある自分の仕事を取り除いて`Expired`にする。取り出された後なら`None`。
+    fn expire(&self) -> Option<ControlError> {
+        let job = self.control.shared.queue.cancel_waiting(self.seq)?;
+        drop(job);
+        self.record_refused();
+        Some(ControlError::Expired)
     }
 
     /// `wait_reply`の非同期版。待つ間にブロッキングのスレッドを使わない。
@@ -594,19 +576,15 @@ impl<'a> Ticket<'a> {
         &self,
         mut rx: tokio::sync::oneshot::Receiver<Reply>,
     ) -> Result<Reply, ControlError> {
-        if !self.class.waits_with_deadline() {
+        if !self.class.bounded() {
             return rx.await.map_err(|_| ControlError::Stopped);
         }
         let queue = &self.control.shared.queue;
         let deadline = tokio::time::Instant::from_std(self.accepted_at + queue.limits().wait);
         match tokio::time::timeout_at(deadline, &mut rx).await {
             Ok(reply) => reply.map_err(|_| ControlError::Stopped),
-            Err(_elapsed) => match queue.cancel_waiting(self.seq) {
-                Some(job) => {
-                    drop(job);
-                    self.record_refused();
-                    Err(ControlError::Expired)
-                }
+            Err(_elapsed) => match self.expire() {
+                Some(error) => Err(error),
                 None => rx.await.map_err(|_| ControlError::Stopped),
             },
         }

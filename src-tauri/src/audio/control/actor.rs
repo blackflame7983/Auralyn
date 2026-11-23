@@ -3,7 +3,7 @@
 //! 所有するもの（ホスト・取り出し済みの仕事・列から取り出した残件）は、すべて外側の`catch_unwind`の
 //! 外の変数が持つ。内側のループは借りるか、外の変数との間で出し入れするだけで、所有したまま
 //! panic しうる区間を作らない。実行する仕事も断る仕事も、取り出したら`current`に置く。
-use super::class::{is_start_request, JobClass};
+use super::class::JobClass;
 use super::queue::{
     ActorPoint, Job, JobKind, JobQueue, Payload, PostFn, Reply, ReplyTx, RunFn, Taken,
 };
@@ -84,14 +84,7 @@ impl Finish<'_> {
         let elapsed = started.elapsed();
         self.admission
             .record(self.seq, self.entry, Phase::Completed, Some(elapsed));
-        let limits = self.queue.limits();
-        let slow = if is_start_request(self.entry) {
-            limits.slow_start
-        } else {
-            limits.slow
-        };
-        if elapsed >= slow {
-            self.admission.note_slow();
+        if elapsed >= self.queue.limits().slow {
             log::warn!(
                 "audio operation {} took {} ms (seq {})",
                 self.entry.name,
@@ -190,18 +183,19 @@ fn run_job(f: RunFn, host: &mut Option<Box<AudioHost>>, poisoned: bool) -> (Repl
 }
 
 fn post_job(f: PostFn, host: &mut Option<Box<AudioHost>>, poisoned: bool) -> Outcome {
-    let target = host.as_deref_mut().filter(|_| !poisoned);
-    let result = catch_unwind(AssertUnwindSafe(|| match target {
-        Some(host) => f(Ok(host)),
-        None => f(Err(ControlError::Poisoned)),
-    }));
-    match result {
+    let target = host
+        .as_deref_mut()
+        .filter(|_| !poisoned)
+        .ok_or(ControlError::Poisoned);
+    call_post(f, target, "a posted audio operation")
+}
+
+/// `post`の閉包を1回呼ぶ。panic は記録して捨て、`Panicked`で返す。
+fn call_post(f: PostFn, arg: Result<&mut AudioHost, ControlError>, label: &str) -> Outcome {
+    match catch_unwind(AssertUnwindSafe(|| f(arg))) {
         Ok(()) => Outcome::Done,
         Err(payload) => {
-            log::error!(
-                "a posted audio operation panicked: {}",
-                payload_text(payload.as_ref())
-            );
+            log::error!("{label} panicked: {}", payload_text(payload.as_ref()));
             discard(payload);
             Outcome::Panicked
         }
@@ -218,18 +212,7 @@ fn refuse(kind: JobKind, error: ControlError, queue: &JobQueue) -> Outcome {
         }
         JobKind::Post { f } => {
             queue.run_seam(ActorPoint::BeforeReply);
-            let result = catch_unwind(AssertUnwindSafe(|| f(Err(error))));
-            match result {
-                Ok(()) => Outcome::Done,
-                Err(payload) => {
-                    log::error!(
-                        "a refused audio operation panicked: {}",
-                        payload_text(payload.as_ref())
-                    );
-                    discard(payload);
-                    Outcome::Panicked
-                }
-            }
+            call_post(f, Err(error), "a refused audio operation")
         }
         #[cfg(test)]
         JobKind::Lease(lease) => {

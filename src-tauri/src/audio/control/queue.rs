@@ -75,8 +75,6 @@ pub(super) struct Limits {
     pub(super) wait: Duration,
     /// この長さを超えた実行は警告を1回出す（打ち切らない）。
     pub(super) slow: Duration,
-    /// 開始・再起動の警告の長さ。
-    pub(super) slow_start: Duration,
 }
 
 impl Default for Limits {
@@ -85,7 +83,6 @@ impl Default for Limits {
             max_counted: 256,
             wait: Duration::from_secs(60),
             slow: Duration::from_secs(90),
-            slow_start: Duration::from_secs(120),
         }
     }
 }
@@ -158,7 +155,7 @@ impl JobQueue {
         let mut state = self.lock();
         let refusal = if state.closed {
             Some(ControlError::Stopped)
-        } else if job.class.counted() && state.counted >= state.limits.max_counted {
+        } else if job.class.bounded() && state.counted >= state.limits.max_counted {
             Some(ControlError::Busy)
         } else {
             None
@@ -171,7 +168,7 @@ impl JobQueue {
         if job.class.raises_fence() {
             state.fence = state.fence.max(job.seq);
         }
-        if job.class.counted() {
+        if job.class.bounded() {
             state.counted += 1;
         }
         match job.class.lane() {
@@ -214,7 +211,7 @@ impl JobQueue {
         let at = state
             .jobs
             .iter()
-            .position(|job| job.seq == seq && job.class.waits_with_deadline())?;
+            .position(|job| job.seq == seq && job.class.bounded())?;
         let job = state.jobs.remove(at)?;
         state.counted = state.counted.saturating_sub(1);
         Some(job)
@@ -222,7 +219,7 @@ impl JobQueue {
 
     /// 仕事の終わり（実行・断り）で、数える仕事の数を下げる。返事を送る前に呼ぶ。
     pub(super) fn complete(&self, class: JobClass) {
-        if class.counted() {
+        if class.bounded() {
             let mut state = self.lock();
             state.counted = state.counted.saturating_sub(1);
         }
@@ -302,7 +299,7 @@ fn verdict(job: &Job, fence: u64, wait: Duration) -> Taken {
     if job.class.refused_after_stop() && job.seq < fence {
         return Taken::Refuse(ControlError::StoppedFirst);
     }
-    if job.class.waits_with_deadline() && job.accepted_at.elapsed() >= wait {
+    if job.class.bounded() && job.accepted_at.elapsed() >= wait {
         return Taken::Refuse(ControlError::Expired);
     }
     Taken::Run
