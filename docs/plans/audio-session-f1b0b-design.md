@@ -892,7 +892,7 @@ thread::spawn(move || loop {
 | 5 | トレイ・ショートカットのミュートと `interrupt_restore` | **取る**（推奨。V2。承認済み）。コマンドの3つと同じ扱いにそろえる。トレイ・ショートカットの呼び出しのスレッドで `interrupt_restore()` を取り（atomic だけ。待たない）、`Pending` を `post` の閉包へ移す。閉包が終わる・断られる・捨てられるときに落ちる（12.9） |
 | 6 | U9・U8 | **U9**：`Phase::LockGranted` を `Started` に改名し、`Completed`・`Refused` を足す。完了の記録は、上限の数え方（実行中の1件を引く）と試験のために要る。**U8**：scheduler は優先度を上げない（FIFO のまま）。種類は **Tick**（上限・期限・断り・割り込みの対象外）（12.10） |
 | 7 | 11.17 (i) | 2b で定まる：**列に積まれた tick は、停止より必ず後**（停止のレーンが先）。すでに走っている tick は割り込まない（J-18）ので、その場合だけ tick が先。X13 の (ii) は「列の順 `[tick, stop]`」では作れなくなり、**tick を走らせたまま停止を積む形**に変わる（12.14） |
-| 8 | 試験 | 既存の試験で期待値が変わるのは、(i) `Phase` の改名と `Completed` の追加（`control_tests`・`actor_tests`・`compat_tests` の数行）、(ii) X13 の (ii)、(iii) `temporary_session.rs` の構造の試験の検索文字列。K 群・`compat_tests` の K11・K12・モード VST の試験は、結果が変わらない（12.14）。足す試験は `Y1`〜`Y30`、壊して確かめる項目は (a)〜(z)・(aa)〜(ad)（12.14）。12章は Sol の設計レビュー（BLOCK）を受けて直した（12.19） |
+| 8 | 試験 | 既存の試験で期待値が変わるのは、(i) `Phase` の改名と `Completed` の追加（`control_tests`・`actor_tests`・`compat_tests` の数行）、(ii) X13 の (ii)、(iii) `temporary_session.rs` の構造の試験の検索文字列。K 群・`compat_tests` の K11・K12・モード VST の試験は、結果が変わらない（12.14）。足す試験は `Y1`〜`Y34`、壊して確かめる項目は (a)〜(z)・(aa)〜(aj)（12.14）。12章は Sol の設計レビュー（BLOCK）を受けて直した（12.19） |
 
 ### 12.2 範囲
 
@@ -1010,7 +1010,7 @@ Phase { Accepted, Started, Completed, Refused }                    // LockGrante
 断る仕事は、ロックを放した後に、実行のスレッドが処理する（11章 I8：列のロックを持ったまま閉包・通知を使わない）。**断る仕事も、取り出したら外側の `current`（11章 I13）に置く**（実行する仕事と同じ。ループの中の変数で持たない）：`Run` は閉包を**呼ばずに捨て**、`Err` の返事を作り、`Post` は閉包を `f(Err(…))` で呼ぶ。どちらも `counted -= 1` し、`Phase::Refused` を記録してから返事を送る（下の「実行の順」と同じ順）。**異常終了の回収（`drain_and_stop`）は、停止の列・通常の列・`current` の全件を取り出し、すべての `Run` の `tx` を先に落とす**（I13。レーンが2つになっても、待っている `run` を残さない。Y27）。
 
 **`Ticket::run` の待ち**
-- 積んだ後、**残り時間つきで返事を待つ**：`rx.recv_timeout(accepted_at + 60 秒 - now)`。Stop・Mute・Tick は無期限（今と同じ）。
+- 積んだ後、**残り時間つきで返事を待つのは、Starting・Normal だけ**：`rx.recv_timeout(accepted_at + 60 秒 - now)`。**Stop・Mute・Tick・Release は無期限に待つ**（今と同じ `rx.recv()`。取り消しもしない）。Release を期限付きにすると、通常の列で60秒待った解放が呼び出し側に取り消され、予約や `maintenance` が残る（Sol の再レビュー）。待ちの種類は、`Job` の `class` から1か所（`Ticket::run`）で決める：`fn waits_with_deadline(class) -> bool`（Starting・Normal だけ真）。`take_next` の期限の断り（3 の2つ目）と同じ関数を使う。
 - 時間切れになったら、**列のロックの中で**、その仕事が `jobs` にまだあるかを探す。**あれば**取り除き（`counted -= 1`）、`Phase::Refused` を記録して `Err(Expired)`。**無ければ**（実行のスレッドが取り出した後）、期限は成立せず、返事が来るまで待つ。取り出しと取り消しは同じロックで直列になるので、二重にも取りこぼしにもならない（I21）。
 - `post` は待ち手がいないので、取り出す時の判定（3 の2つ目）だけで足りる。
 
@@ -1097,6 +1097,33 @@ stateDiagram-v2
 
 **変換の漏れを、構造で検出する方法**：(1) 型：`StoppedFirst` は専用の型で、`is_stopped` でしか見分けない（文字列の比較をしない）。(2) 構造の試験 Y22：IPC の結果を捨てる・畳む書き方を、許可リストと区間の外では許さない。(3) 実経路の試験（Y9・Y19・Y23・Y24）：実際の `apply_profile`・開始・warmup・配信側の開始で止め、**結果が `Err`（途中で止めた文言）で、後続の IPC・欠落の記録・成功の結果が出ない**ことを確かめる。(4) 実行の文脈に**観測の旗 `stopped_seen`**（止めた回数）を持たせ、試験の継ぎ目が読めるようにする。止めたのに閉包が `Ok` で戻った場合（変換の漏れ）に、試験が検出できる。
 
+**「状態を壊す失敗の処理」の側で守る（Sol の再レビュー。決定。同じ系統の2回目）**：変換の箇所を1つずつ足すだけでは、また漏れる。そこで、**失敗の処理（IPC が `Err` になったときに、子を破棄する・`restored`／`enabled`／`running` を落とす・`error` を立てる・接続を閉じる・`kill_engine` を呼ぶ処理）の入口で、最初に `StoppedFirst` を見分け、状態を壊さずにそのまま返す**（不変条件 I29）。`StoppedFirst` は「子が壊れた」ではなく「送るのをやめた」なので、健全な子・配信VSTの子・保存の状態を、停止を理由に壊さない（J-18 の「健全な子を停止のために強制終了しない」の一般化）。
+
+- **規則 A（壊さずに返す）**：他の状態に属する健全なものを、失敗を理由に壊す処理。入口で `Failure::of(err)` を呼び、`Stopped` なら何もせず `Err` を返す。
+- **規則 B（自分の途中の作りを巻き戻す）**：その操作が自分で作った途中のもの（起動したばかりの子、復元の途中の子）の後始末。これは壊してよいが、**区間（`cleanup`）の中で行い、返すエラーは `StoppedFirst` のまま**（文言を別の失敗にしない）。
+- **型で守る**：失敗の処理が壊す前に必ず受け取る型 `Failure { Stopped(anyhow::Error), Fault(Fault) }`（`audio.rs`）を作る。`Fault` は `Failure::of` だけが作れる（コンストラクタは非公開）。**壊す操作は `&Fault` を引数に要求する**：`PostMix::discard_after_fault(&Fault)`・`AudioHost::kill_engine_after_fault(&Fault)`・`State::detach_after_fault(&Fault)`。`StoppedFirst` からは `Fault` が作れないので、壊す操作を呼ぶ経路が、型の上で書けない。壊す操作の既存の名前（`discard_child`・`discard_failed_child`・`kill_engine`）は、規則 B（区間）と、Stop・アプリの終了など失敗の処理でない呼び出し専用に残す。構造の試験 Y31 は、失敗の枝（`Err(`・`is_err()`・`if let Err`）の中の `discard_*`・`kill_engine`・`link.close(Intentional)` が、`Fault` 経由・区間の中・許可リストのどれかであることを固定する。
+
+**洗い出した一覧（初版。V13）**：
+
+| 失敗の処理（今の行） | 今の壊し方（`StoppedFirst` を受けたとき） | 規則と直し |
+|---|---|---|
+| `audio/post_mix.rs:1161-1181`（`post_mix` の要求の失敗） | 接続を `Intentional` で閉じ、`discard_failed_child`（子の回収・`enabled`・`restored`・`running` を落とし、`error` を立てる） | **A**。ただし `RestoreSaved`（`:1036-1047`。自分で子を作り直す）は **B**（区間の中で、作りかけの子だけを捨てる）。`Add`・`Remove`・`Gain` などの変更の要求は、健全な子を残す |
+| `audio/post_mix.rs:849-897`（`State::start` の失敗の2つの枝） | `PostMixStart` が `Err` なら `_ =>` の枝で `kill_engine`・`restored = false`・「配信VSTを開始できません」。`Ok(Error(e))` の枝も同じ | **A**。`Err(e)` を `Failure::of` で見分け、`Stopped` なら子を殺さず `restored` を残して返す（`PostMixPrepare` が成功した直後に停止が来ても、正常な配信VSTの子が残る） |
+| `audio/post_mix.rs:823-848`（`State::stop` の失敗の枝） | `exec_child(Stop)` が `Success` でなければ `kill_engine`・`restored = false`・`running = false`・「停止できませんでした」 | **A**。`Stopped` なら何も変えずに返す（`running` も残す）。Stop・Release・`cleanup` の中の呼び出し（`StoppedFirst` が起きない）は、今のまま |
+| `audio/post_mix.rs:865-868`（`start` の `if self.running { self.stop()?; … }`）・`:753` | 動いている配信側の停止が壊す（上の行）。`:753` は `stop()?` の後に `discard_child` | `stop()` が A で戻るので、`?` が `StoppedFirst` をそのまま上へ返し、`:754` の `discard_child` へ進まない。`running` の子は動いたまま（停止の仕事が後で止める） |
+| `audio/post_mix.rs:755-787`（復元の途中の失敗） | `discard_child`・`error` を立てる | **B**（自分で作った途中の子の巻き戻し）。区間の中で行い、`StoppedFirst` を返す。`error` の文言は今のまま |
+| `audio/post_mix_start.rs:47-50`（`post_mix.start` の失敗） | `PostMixClear`・`post_attached = false` | **B**。区間の中で行い、`start` が A で子を残すので、主側だけが解除される（Y32） |
+| `audio/mixing.rs:342-346`・`live_bundle.rs:201-204`・`output_bundle.rs:126-131`・`process_bundle.rs:117-119`・`mixing_bundle.rs:248-266` の `if self.stop().is_err() { self.kill_engine(); }` | 作業の失敗の後始末の `stop()` が `StoppedFirst` で失敗すると、**健全な子を `kill_engine` で終了する** | **B**。5か所とも後始末の枝全体を区間で包む（`stop()` が `StoppedFirst` にならない）。`stop()` が本当に失敗したときだけ `kill_engine` |
+| `audio.rs:944-969`・`:971-994`（起動の確認・引き継ぎの失敗） | `kill_engine`／`kill_primary_engine`（自分が起動したばかりの子） | **B**。後始末の後に `StoppedFirst` をそのまま返す（12.6） |
+| `Conditions::dispatch`（`conditions.rs:113-116`。`Err` で `lifecycle(false)`） | `running` を落とし通知を出す | 確かめの点を `dispatch` の外に置く（12.7）ので、`StoppedFirst` は通らない |
+| `audio.rs:1651,1656,1670`・`post_mix_start.rs:9,15,48,67` | `let _ =` で捨てる | 区間（12.7 の表） |
+| `audio/live_modes.rs:84-124`（`sync_live_modes`）・`audio.rs:2635-2649` など | `?` で上へ返るだけで、状態を壊さない（`needs_sync` は真のまま） | 変えない（保持する） |
+| `audio/mode_vst.rs:831`（`fail_mode_transaction`） | 取引を失敗として記録し、子を回収する | Tick は確かめの点の対象外で、`StoppedFirst` を受けない（12.17 (l)） |
+
+**規則を変える範囲**：上の「壊す処理」の入口だけ。IPC の応答を読むだけの処理（`snapshot` の `exec.result?` など）は変えない。
+
+**漏れを検出する方法（決定）**：(1) 型：壊す操作は `&Fault` を要求する（`StoppedFirst` から作れない）。(2) 構造の試験 Y31：失敗の枝の中の `discard_*`・`kill_engine`・`link.close(Intentional)`・`restored = false`・`enabled = false` が、`Fault`・区間・許可リストのいずれか。(3) 実経路の試験 Y32：`PostMixPrepare` の成功直後に Stop を積む場合と、配信側が動いている場合の `self.stop()` の両方で、配信VSTの子が破棄されず `restored` が残る。Y33：`post_mix` の変更の要求（`Add`・`Gain`）が `StoppedFirst` で止まっても、子と `enabled` が残る。Y34：5か所の `stop().is_err()` 後始末で、健全な子が終了しない。
+
 **状態の整合（途中まで適用した設定の扱い）**：
 | 閉包 | 止まる位置 | 残る状態 | 利用者の次の手 |
 |---|---|---|---|
@@ -1143,7 +1170,7 @@ stateDiagram-v2
 | 8 | 数える仕事が 256 件の間に、Stop・Mute・Tick・Release が届く | `push`：数えない。積まれる | 断らない（停止は断らない・捨てない。解放も断らない） |
 | 8b | 予約を取った後に、列が満杯になる、または解放が 60 秒を超えて待つ | C：`begin_live_changes`→取得（通った）→…→`end_live_changes`（Release）の `push`：数えない→A：順番に取り出して実行（期限なし） | 予約は必ず解放される（満杯でも期限後でも消える。Y25） |
 | 8c | `Started` の応答の検査の失敗の最中に、Stop が届く | A（閉包の中）：区間の `Stop` をその場で送る→`cancel_prepared_post_start`→`Err`→`complete`。Stop の仕事はその後 | 誤った機器で始まった音声が残らない（先着の Mute を待たない。Y26） |
-| 9 | 受付から 60 秒経っても、先頭の閉包が長く走っている | C（`run`）：`recv_timeout`が切れる→列のロックの中で、自分の仕事がまだ `jobs` にあるか→**ある**：取り除いて `Err(Expired)`。**無い**（A が取り出した）：待ち続ける | 始まっていない操作だけが失敗する |
+| 9 | 受付から 60 秒経っても、先頭の閉包が長く走っている（Starting・Normal の `run` だけ。Release・Stop・Mute・Tick は無期限に待つ） | C（`run`）：`recv_timeout`が切れる→列のロックの中で、自分の仕事がまだ `jobs` にあるか→**ある**：取り除いて `Err(Expired)`。**無い**（A が取り出した）：待ち続ける | 始まっていない操作だけが失敗する |
 | 10 | `post`（ショートカットの Starting）が 60 秒経つ | A：取り出す時に `now - accepted_at >= 60 秒`→閉包を `f(Err(Expired))` で呼ぶ | ショートカットは「混み合っています」を通知（12.15） |
 | 11 | tick（S）が列にあるとき、Stop が届く | A：停止の列が先→Stop→その後に tick。tick が**走っている最中**に Stop が届いたときは、tick（J-18：割り込まない）→Stop | 11.17 (i) の決まり（12.14 の X13） |
 | 12 | 停止の後に、`ensure_engine_running` が呼ばれる（Starting・Normal とも） | A：`ensure_clear` の前と `spawn_engine_process` の前に、文脈を見て `seq < F` なら `StoppedFirst` | 停止の後は子を起動しない |
@@ -1160,13 +1187,14 @@ stateDiagram-v2
 | I18 | 確かめの点・門は、実行のスレッドの上の `JobContext` だけを見る。文脈が無ければ何もしない。`AudioHost` を直接使う試験・`HostLease` は影響を受けない |
 | I19 | **ラッチは持たない。** 停止の後、Starting の閉包の区間の外の IPC は、すべて `StoppedFirst`（何度でも）。区間（`cleanup`）の中の IPC だけが通る。起動の門は、区間の中でも fence の後は常に断る（Stop・Mute・Tick を除く） |
 | I20 | `counted` ＝ 数える仕事（Starting・Normal）の、列にある数＋実行中の数。`push`・取り消し・断り・`complete` のすべてが、列のロックの中で更新する。**返事の送信は、減算と `Completed` の記録の後**（`run_job` は返事を送らず、`serve` が送る） |
-| I21 | `run` の期限切れは、列のロックの中で「まだ列にあるとき」だけ成立する。取り出された仕事の期限は成立しない |
+| I21 | `run` の期限付き待ち・取り消し・取り出す時の期限の断りの対象は、**Starting・Normal だけ**（`waits_with_deadline`）。Stop・Mute・Tick・Release は無期限に待つ。期限切れは、列のロックの中で「まだ列にあるとき」だけ成立する。取り出された仕事の期限は成立しない |
 | I22 | 断った仕事の閉包は、`run` では呼ばず（捨てる）、`post` では `Err(理由)` を渡して1回だけ呼ぶ。閉包が持つ `Pending` は、そこで落ちる |
 | I23 | 入口の種類は `class_of` の表の1か所で決まる。未知の名前は Starting。表と呼び出しの名前の一致は構造の試験が守る |
 | I24 | `interrupt` の計数器・`Pending`・`bundle_interrupt` は 2b では変えない。fence とは独立（二重の持ち主にならないよう、どちらも停止の入口が決める） |
 | I25 | `ControlError` の新しい3種は、入口で今の3種とは別の文言へ写す。今の3種（`Poisoned`・`Stopped`・`Reentrant`）の文言は変えない（K・`lock_failure_texts_are_fixed`） |
 | I26 | **取得を通したものは、必ず解放できる。** 取得と対になる解放の入口は Release で、Busy・Expired・fence で断られない。対の表と構造の試験（Y21）が守る |
 | I27 | **`StoppedFirst` は型で伝え、別の意味へ変換しない。** 変換してよいのは、閉包の最上位で `Err` を返して終わる位置だけ。IPC の結果を捨てる・畳む書き方は、区間の中か許可リストだけ（Y22） |
+| I29 | **状態を壊す失敗の処理は、入口で最初に `StoppedFirst` を見分け、何も壊さずにそのまま返す**（子の破棄・`restored`／`enabled`／`running` の更新・`error` の設定・接続を閉じる・`kill_engine`）。自分で作った途中のものの巻き戻しだけは、区間の中で行い、返すエラーは `StoppedFirst` のまま。壊す操作は `Fault`（`StoppedFirst` から作れない型）を要求する（12.7。Y31） |
 | I28 | 断る仕事も、取り出したら外側の `current` に置く。異常終了の回収は、停止の列・通常の列・`current` の全 `Run` の `tx` を先に落とす（I13 を2つの列へ広げる） |
 
 ### 12.13 変える箇所の一覧（`ファイル:関数`、今の行）
@@ -1197,7 +1225,10 @@ stateDiagram-v2
 | `audio.rs:531-532` | `live_output` の保存の失敗時の戻し | `cleanup` で包む |
 | `audio.rs:3039` | `require_identity_capability` | `is_stopped` を先に返す |
 | `audio/post_mix_start.rs:4-18,47-50,54,66-69` | `cancel_prepared_post_start`・`prepare_post_mix_start` | 後始末を `cleanup` で包む。`:54` の `?` を、区間の中の後始末の後に返す形へ |
-| `audio/mixing_bundle.rs:248-266` | 配信セットの適用の失敗の枝 | 全体を `cleanup` で包む |
+| `audio/mixing_bundle.rs:248-266`・`mixing.rs:342-346`・`live_bundle.rs:201-204`・`output_bundle.rs:126-131`・`process_bundle.rs:117-119` | 作業の失敗の後始末の枝（`stop().is_err()`→`kill_engine`） | 全体を `cleanup` で包む（健全な子を終了しない） |
+| `audio.rs`（新設） | `Failure`・`Fault`・`kill_engine_after_fault` | 12.7。壊す操作は `&Fault` を要求する |
+| `audio/post_mix.rs:823-897,1161-1181,753-787` | `State::stop`・`State::start`・`post_mix` の要求の失敗の処理・復元の失敗 | 規則 A（`Failure::of` で `StoppedFirst` を壊さずに返す）と規則 B（自分で作った途中の子だけを区間の中で巻き戻す）。`discard_child`／`discard_failed_child` の失敗用の呼び出しを `discard_after_fault(&Fault)` へ |
+| `audio/control/queue.rs`・`control.rs` | `waits_with_deadline(class)` | `Ticket::run` の期限付き待ち・取り消しと `take_next` の期限の断りの対象を Starting・Normal だけにする |
 | `audio/frontend_bootstrap.rs:146` | `prepare_warmup` の `.ok()` | `is_stopped` を返す |
 | `profile/plugin_chain.rs:12-62` | `ChainHost`・`load_plugin_chain` | `ChainError { Stopped, Failed }`。`Stopped` は中断して `Err`。試験の `ChainHost` 実装（`:72-84`）の戻りも合わせる |
 | `profile.rs:426,482` | `load_plugin_chain` の呼び出し | 戻りの型に合わせる（`?`） |
@@ -1219,14 +1250,14 @@ stateDiagram-v2
 - `audio/tests/actor_tests.rs:816-840`（X13）：(ii) の作り方（12.14）。**仮の `Entry::command("stop")`・`("tick")` を、本番の分類を通る入口（`Entry::command("stop_audio")`・`Entry::new(EntryKind::Scheduler, "poll_mode_vst")`）へ変える**（`queued_result` の `cmd("stop")`・`cmd("tick")`。`actor_tests.rs:801-805`）。仮の名前のままだと、未知の名前は Starting になり、停止の列を通らない。
 - `profile/plugin_chain.rs:72-84`：試験用の `ChainHost` の戻りの型（`ChainError`）。期待値は変えない。
 - `temporary_session.rs:521`：構造の試験の検索文字列を、新しい写しの関数の形に合わせる（期待「`exit` が閉包の外」は変えない）。
-- `audio/tests/actor_tests.rs` と新設の `audio/tests/stop_priority_tests.rs`：`Y1`〜`Y30`（12.14）。
+- `audio/tests/actor_tests.rs` と新設の `audio/tests/stop_priority_tests.rs`：`Y1`〜`Y34`（12.14）。
 
 ### 12.14 合格の条件と試験の形
 
 **合格の条件**
 1. 既存の試験が、12.13 の数行の変更（`Phase` の改名・`Completed`）と X13 の (ii)・構造の試験の検索文字列だけで通る。K 群（K11・K12 を含む）・`compat_tests`・モード VST の試験は、**結果の期待値が変わらない**。
-2. Y1〜Y30 が通る。
-3. 「壊して確かめる」の (a)〜(ad) で、対応する Y が落ちる。
+2. Y1〜Y34 が通る。
+3. 「壊して確かめる」の (a)〜(aj) で、対応する Y が落ちる。
 4. `npm run verify -- --static --rust` が通る。
 5. 実機（未実施）：開始・再起動・プロファイルの適用の最中に停止を押したとき、(i) 停止が次の IPC の前に効くこと、(ii) 並んでいた開始が実行されないこと、(iii) 画面に出る文言を確かめる。画面側が新しい3つの文言を過剰なトーストにしないか（V7）。W5（`docs/TESTING.md`）を測り直す（列が2つになるだけで、reader の通知の順は変わらない）。
 
@@ -1242,7 +1273,7 @@ stateDiagram-v2
 
 **変わらない（確認する）試験**：K2・K10（読み取りが先の操作の完了を待つ）、K11（`a.lock()`・`b.lock()`の順＝積んだ順。リースは Normal）、`lock_failure_texts_are_fixed`（今の3つの文言）、K8・poison・タイムアウトの試験、X1（FIFO。試験の名前は未知＝Starting だが、停止を積まないので影響なし）、X4〜X7・X9〜X12・X14、モード VST の `emergency_mute_and_stop_…`（直接のホスト）、`the_log_is_bounded`（256 件の上限のまま）。
 
-**足す試験（Y1〜Y30。置き場所は `audio/tests/stop_priority_tests.rs`。待ちは門で、時間切れは失敗の上限。60 秒・256 件は、列ごとの試験用の設定（`JobQueue` の項目。`thread_local!` ではない。待つスレッドが別なので）で縮める）**
+**足す試験（Y1〜Y34。置き場所は `audio/tests/stop_priority_tests.rs`。待ちは門で、時間切れは失敗の上限。60 秒・256 件は、列ごとの試験用の設定（`JobQueue` の項目。`thread_local!` ではない。待つスレッドが別なので）で縮める）**
 
 | ID | 名前の案 | 確かめること |
 |---|---|---|
@@ -1258,7 +1289,7 @@ stateDiagram-v2
 | Y10 | `y10_after_the_stop_every_ipc_outside_a_cleanup_section_is_refused_and_the_spawn_gate_stays_closed` | **ラッチが無い**ことの確認：止めた閉包がエラーを握りつぶして次の IPC を試みても、区間の外の IPC は何度でも `StoppedFirst` で、子へは1つも送られない（`stopped_seen` が増える）。区間（`cleanup`）の中の IPC だけが送られる。止まった後でも、子の起動（`ensure_engine_running`）は `StoppedFirst`。止める位置が `ensure_clear` の待ちの間でも、起動の直前の門で止まる。配信セットの適用の失敗の経路（`stop()`→`kill_engine`→`rollback_settings`）が、区間の中で今と同じ順で動く |
 | Y11 | `y11_the_checkpoint_is_inert_without_a_job_context` | `AudioHost` を直接使う・`HostLease` の中・実行のスレッド以外では、fence が上がっていても IPC は止まらない。配信ミックスの子（`exec_child`）の IPC は、実行のスレッドの上なら止まる |
 | Y12 | `y12_a_stop_does_not_interrupt_a_closure_waiting_for_a_reply` | 子の応答を待つ最中に Stop が届いても、応答（または期限）まで待ち、その後に次の IPC の前で止まる。待つ間も、ほかの `post`・`admit`・`records()` は戻る |
-| Y13 | `y13_tray_and_shortcut_mutes_take_the_interrupt_pending_before_they_wait` | トレイ・ショートカット（ミュート3種）の `post` を実行のスレッドを止めたまま呼ぶと、`pending_count` が増え `control_snapshot()` が失敗し、旧い `Witness` が失効する（コマンドの層の K12 と同じ）。**`Pending` は、(1) 閉包が実行されて終わる、(2) 受付に失敗する（`post` が `Err(Stopped)`・`Err(Busy)` を返す）、(3) `Stopped`・`Poisoned` で閉包が呼ばれる・捨てられる、(4) ショートカットの世代の不一致などの早期終了（`gate.permits` が偽・`intent_sequence` の不一致で `Ok(())` を返す。`shortcuts.rs:446-452`）の各経路で、必ず落ちる**（`pending_count` が戻る）。ミュート以外のショートカットは取らない。待たずに戻る |
+| Y13 | `y13_tray_and_shortcut_mutes_take_the_interrupt_pending_before_they_wait` | トレイ・ショートカット（ミュート3種）の `post` を実行のスレッドを止めたまま呼ぶと、`pending_count` が増え `control_snapshot()` が失敗し、旧い `Witness` が失効する（コマンドの層の K12 と同じ）。**`Pending` は、(1) 閉包が実行されて終わる、(2) 受付に失敗する（`post` が `Err(Stopped)` を返す。**Mute は数えないので `Busy` にならない**。試験の対象にしない）、(3) `Stopped`・`Poisoned` で閉包が呼ばれる・捨てられる、(4) ショートカットの世代の不一致などの早期終了（`gate.permits` が偽・`intent_sequence` の不一致で `Ok(())` を返す。`shortcuts.rs:446-452`）の各経路で、必ず落ちる**（`pending_count` が戻る）。ミュート以外のショートカットは取らない。待たずに戻る |
 | Y14 | `y14_the_phases_are_started_completed_and_refused_in_order` | `[Accepted, Started, Completed]`、断ったときは `[Accepted, Refused]`。`Completed` は返事の前。`Scheduler` は記録しない。経過時間が入る。90 秒（縮めた値）を超えたら警告が1回（打ち切らない） |
 | Y15 | `y15_every_entry_name_is_classified_exactly_once` | 12.4 の構造の試験。名前の表と、ソースの `Entry` の名前の一致。未知は Starting |
 | Y16 | `y16_control_errors_map_to_the_old_and_new_texts` | 今の3種は入口の `TEXT` のまま。`Busy`・`Expired`・`StoppedFirst` は新しい3つの文言（12.15）。`lock_failure_texts_are_fixed` と並べて固定 |
@@ -1270,11 +1301,15 @@ stateDiagram-v2
 | Y22 | `y22_ipc_results_are_never_discarded_or_converted_outside_cleanup_or_the_allow_list` | 12.7 の構造の試験。IPC を呼ぶ行の周りの `let _ =`・`.ok()`・`.is_ok()`・`Err(_) =>`・`unwrap_or` が、`cleanup(` の中か許可リスト（理由つき）だけにある。許可リストに無い新しい書き方で CI が落ちる |
 | Y23 | `y23_a_cut_during_the_post_mix_start_check_cleans_up_both_sides_and_the_next_start_works` | 配信側の開始の後の `PostMixStatus` で止める（`post_mix_start.rs:54`）。結果は `StoppedFirst`。**配信側が停止し、主側に `PostMixClear` が送られ、`post_attached` が下りる**。続く `Stop` の仕事の後、次回の開始が準備からやり直せて成功する（Y10・Y11 の確認を含む）。区間を外す改変で、主側の解除が残って落ちる |
 | Y24 | `y24_a_cut_plugin_chain_is_neither_missing_nor_successful` | 実際の `load_plugin_chain`（`AudioHost` の `ChainHost`）で、3つ目のプラグインの復元の前に止める。1・2つ目は読み込み済み、3つ目以降は **`missing` に数えられず**、結果は `Err`（途中で止めた文言）、成功の `ApplyProfileSummary` は出ない。試験用の `ChainHost`（`ChainError::Stopped`）の単体でも同じ |
-| Y25 | `y25_a_release_survives_a_full_queue_and_an_expired_wait` | **予約**：`begin_live_changes`（取得）が通った後、列を256件で満杯にし、さらに縮めた期限（200ms）を過ぎさせても、`end_live_changes`（単独・配信セットの両方）は `Busy`・`Expired` にならず実行され、**予約が消えて次の `begin_live_changes` が通る**。**更新**：`prepare_update` の後、`update.install` が失敗する・列が満杯になる・期限が過ぎるが重なっても、`finish_update_attempt` が実行され、`maintenance` が下りて、次の `start_audio` が（「更新を適用中のため」で断られず）進む。取得（Normal）は、満杯のとき `Busy` で断られ、そのとき予約は立たない |
+| Y25 | `y25_a_release_survives_a_full_queue_and_an_expired_wait` | **すべて実際の `Ticket::run`（`AudioControl::run`）経由で確かめる**（`push`・`take_next` の単体だけで済ませない）。**予約**：`begin_live_changes`（取得）が通った後、列を256件で満杯にし、さらに縮めた期限（200ms）を過ぎさせても、`end_live_changes`（単独のコマンドの入口と、配信セットの `end_live_changes_bundle` の入口の**両方**）は `Busy` にならず、**期限切れで呼び出し側に取り消されず**（`recv_timeout` を使わない）、待ち続けて実行され、**予約が消えて次の `begin_live_changes` が通る**。**更新**（`prepare_update` と `finish_update_attempt` も `Ticket::run` 経由）：`prepare_update` の後、`update.install` が失敗する・列が満杯になる・期限が過ぎるが重なっても、`finish_update_attempt` が実行され、`maintenance` が下りて、次の `start_audio` が（「更新を適用中のため」で断られず）進む。取得（Normal）は、満杯のとき `Busy` で断られ、そのとき予約は立たない |
 | Y26 | `y26_a_cleanup_stop_after_a_bad_started_reply_is_sent_in_place_before_any_queued_job` | 模擬の子が、機器 ID の不一致の `Started` を返す（`audio.rs:1662-1675`）。`Started` の応答を待っている間に、Mute を先に積み、続けて Stop を積む。検査の失敗の `Stop` が**その場で子へ送られ**（Mute の仕事・Stop の仕事より前）、誤った機器の音声が残らない。同じことを `Started` の応答の後に止まる3つの検査（`:1650,1655,1662`）で確かめる |
 | Y27 | `y27_an_abnormal_exit_releases_every_run_in_both_lanes_and_a_refused_current` | X14 の拡張。停止の列・通常の列・取り出し直後の `current`（**断る仕事**を含む）に `Run` を積んだ状態で、実行のスレッドを異常に終わらせる（`QueueLockHeld`・`AfterTake` の継ぎ目。断る仕事の返事を送る直前にも継ぎ目）。待っていた `run` がすべて `Err(Stopped)` で戻る（I28）。`post` は `Err(Stopped)` で1回だけ呼ばれる |
 | Y28 | `y28_a_start_failure_cleanup_never_waits_behind_the_stop_lane` | Y26 の補強。区間の `Stop` の送信の時点で、停止の列に Mute が10件並んでいても、後始末は列を通らない（実行のスレッドが列のロックを取らずに送る）。Stop の仕事は、10件の Mute の後に実行される（V10 の制約の確認） |
 | Y29 | `y29_warmup_and_the_conversion_sites_keep_the_stop_type` | `warmup`（`prepare_warmup` の `auto_gain(Status).ok()`）で止めたとき、`warmup_error`（「音声接続を確認できません」）が立たず、`StoppedFirst` が返る。`require_identity_capability`・`ensure_engine_running` の引き継ぎ・`load_plugin_chain`・比較のショートカットが、`StoppedFirst` を別の文言にしない（12.7 の表の全行を1つずつ） |
+| Y31 | `y31_destructive_handlers_take_a_fault_or_run_in_cleanup_or_are_allow_listed` | 12.7 の構造の試験。失敗の枝（`Err(`・`is_err()`・`if let Err`）の中の `discard_child`・`discard_failed_child`・`kill_engine`・`link.close(Intentional)`・`restored = false`・`enabled = false` が、`Fault` 経由・区間の中・許可リスト（理由つき）のどれかだけ。型の面では、`StoppedFirst` から `Fault` が作れないこと（コンパイルしない形は `compile_fail` の doc 試験で固定） |
+| Y32 | `y32_a_stop_right_after_post_mix_prepare_or_while_running_keeps_the_broadcast_child` | **(a)** 主側の `PostMixPrepare` が成功した直後に Stop を積む（`PostMixStart` が `StoppedFirst`）。**配信VSTの子は終了せず、`restored` と `enabled` が残り**、主側の `PostMixClear` と `post_attached` の解除が行われ、結果は `StoppedFirst`。続く Stop の後、次回の開始が**再復元なし**で成功する。**(b)** 配信側がすでに動いている状態で、`start` の `self.stop()` が `StoppedFirst` になる：子は終了せず、`running`・`restored` は変わらない。`:753` の `stop()?` の後の `discard_child` に進まない。区間（A の規則）を外す改変で、子が破棄されて落ちる |
+| Y33 | `y33_a_cut_post_mix_request_keeps_the_child_and_enabled` | `post_mix` の `Add`・`Gain`・`Bypass` の要求が `StoppedFirst` で止まる。接続は閉じられず、子・`enabled`・`restored`・`error` が変わらない（`post_mix.rs:1161-1181` の規則 A）。`RestoreSaved` が途中で止まった場合は、作りかけの子だけが捨てられ、結果は `StoppedFirst`（規則 B） |
+| Y34 | `y34_the_five_scope_failure_cleanups_do_not_kill_a_healthy_child` | `mixing`・`live_bundle`・`output_bundle`・`process_bundle`・`mixing_bundle` の作業が失敗した後始末（`stop().is_err()`→`kill_engine`）で、停止が先に行われていても、健全な子が終了しない（区間で `stop()` が送られ成功する）。`stop()` が本当に失敗したときだけ `kill_engine` する |
 | Y30 | `y30_a_release_stays_in_the_normal_lane_and_keeps_the_callers_order` | 同じ呼び出し側の「取得→（Starting の適用）→解放」が FIFO で保たれる。解放は停止の列へ入らず、前に受け付けた無関係な操作を追い越さない。長い閉包の後ろでも、無期限に待って実行される（取りこぼさない） |
 
 **壊して確かめる（一時的な改変）**：
@@ -1308,6 +1343,12 @@ stateDiagram-v2
 (ab) Mute に fence を上げさせる → Y3。
 (ac) トレイ・ショートカットの `Pending` を、早期終了の経路（ショートカットの世代の不一致）で落とさない → Y13。
 (ad) ショートカットの `StoppedFirst` を `ActionFailed` へ写す → Y20。
+(ae) **Release を期限付き待ちにする**（`waits_with_deadline` が Release に真）→ Y25（`Ticket::run` 経由の解放が取り消され、予約・`maintenance` が残る）。
+(af) `State::start`・`State::stop` の失敗の枝が `StoppedFirst` でも子を殺し `restored` を落とす（`Failure::of` を外す）→ Y32。
+(ag) `post_mix` の要求の失敗の処理が `StoppedFirst` でも接続を閉じ `discard_failed_child` する → Y33。
+(ah) 5か所の後始末の区間を外す（`stop()` が `StoppedFirst` で失敗し `kill_engine` する）→ Y34。
+(ai) 失敗の枝に `Fault` を要求しない `discard_child` を直に書く → Y31。
+(aj) 規則 B の巻き戻し（`post_mix_start.rs:47-50`）を区間の外へ出す → Y32(a)（主側の `PostMixClear` が欠ける）。
 
 ### 12.15 利用者から見て変わること
 
@@ -1351,7 +1392,7 @@ stateDiagram-v2
 | V10 | 停止のレーンの長さの上限 | 設けない（Stop・Mute は断らない・捨てない。人の操作の速さで入る。受付の入口がブロッキングスレッド 512 に縛られるのはコマンドの層だけ）。トレイ・ショートカットの連打は、12.17 の (h) に記録 |
 | V11 | 256 の根拠 | tokio のブロッキングスレッドの既定の上限 512 の半分。停止・ミュートのコマンドと、列の外で待つほかの入口（更新・移行など）が使うスレッドを残す。F1b の実測（4章）で見直す |
 | V12 | Release を停止の列に入れるか、通常の列のままにするか（統括の決定 1 の判断） | **通常の列のまま**（12.4）。同じ呼び出し側の順（取得→適用→解放）が FIFO で保たれ、前の無関係な操作を追い越さない。断られず無期限に待つので取りこぼさない。待ちが長いときの副作用（予約が残る時間）は、今の「解放が先の操作の後ろで待つ」と同じ |
-| V13 | 後始末の区間で包む箇所の洗い出し（12.7）と、変換の経路の一覧（12.7）の網羅 | 初版の一覧を実装の最初の作業にし、IPC を呼ぶ `let _ =`・`.ok()`・`Err(_)` を全部数え直す。漏れは Y22 の構造の試験と Y9・Y19・Y23・Y24・Y29 の実経路で検出する。一覧に無い変換が見つかったら、同じ PR で一覧と試験へ足す |
+| V13 | 後始末の区間で包む箇所の洗い出し（12.7）、変換の経路の一覧（12.7）、**状態を壊す失敗の処理の一覧（12.7。規則 A・B、`Failure`・`Fault`）**の網羅 | 初版の一覧を実装の最初の作業にし、IPC を呼ぶ `let _ =`・`.ok()`・`Err(_)` を全部数え直す。漏れは Y22 の構造の試験と Y9・Y19・Y23・Y24・Y29 の実経路で検出する。一覧に無い変換が見つかったら、同じ PR で一覧と試験へ足す |
 | V14 | `StoppedFirst` の型の置き場所と、`stopped_seen` の公開 | `audio.rs`（`AudioHost` の隣）に型と `is_stopped`。`stopped_seen` は試験専用（`#[cfg(test)]`）。製品の動きには使わない |
 
 ### 12.17 既知の狭い競合として残るもの
@@ -1403,6 +1444,9 @@ stateDiagram-v2
 | 中：`run_job` が返事を先に送るので、減算の前に次の操作が `Busy` になりうる | 返事の送信を減算・`Completed` の後へ。`AfterReply` の継ぎ目で Y6 | 12.5 |
 | 注記：拒否する仕事も外側の `current` に置く（I13） | 12.5・I28・Y27 | 12.5・12.12 |
 | 注記：V10 の制約（先着の Mute の件数だけ Stop が遅れる。流入中は通常列と Tick が進まない）。Mute は停止後も待機用の子を起動しうる | 12.17 の (h) に記載 | 12.17 |
+| 再レビュー（高）：`Release` が `Ticket::run` の期限付き待ちで取り消される | 期限付き待ち・取り消しの対象を Starting・Normal だけにし（`waits_with_deadline`）、Stop・Mute・Tick・Release は無期限。Y25 を `Ticket::run` 経由・両方の解放で。改変 (ae) | 12.5・12.12 の I21・12.14 |
+| 再レビュー（高）：`PostMixStatus` より前の停止が、正常な配信VSTの子を破棄する | 「状態を壊す失敗の処理」の側で守る規則（I29。規則 A・B、`Failure`・`Fault`）。`State::start`・`State::stop`・`post_mix` の要求の失敗・5か所の後始末を洗い出し、Y31（構造）・Y32〜Y34（実経路）。改変 (af)〜(aj) | 12.7・12.12 |
+| 再レビュー（注記）：Y13 の `Busy` は Mute の仕様上発生しない | 試験の記述から外した | 12.14 |
 | 注記：`Pending` の解放（実行・受付失敗・世代不一致の早期終了） | Y13 に4経路を明記 | 12.14 |
 | 注記：`broadcast_bundle` は `Entry::bundle` | 12.4・12.18 の 9 を訂正 | 12.18 |
 | 注記：X13 の仮の `stop`・`tick` | 本番の分類を通る入口へ（`stop_audio`・`Scheduler` の `poll_mode_vst`） | 12.13 の試験 |
