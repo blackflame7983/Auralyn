@@ -835,6 +835,22 @@ fn z16_queued_jobs_run_in_acceptance_order_in_both_lanes_whatever_order_things_a
         ["m1:ok", "m2:ok", "a:ok", "b:ok", "c:ok"],
         "停止の列が先で、どちらも受付の番号の順"
     );
+
+    // Stop が Mute より後に受け付けられたら、Mute の後（受付の順）。
+    let control = super::queue_support::control();
+    let hold = super::queue_support::hold(&control);
+    let stop_log = super::queue_support::log();
+    let (first, stop, second) = (
+        control.admit(cmd("set_global_mute")),
+        control.admit(stop_entry()),
+        control.admit(cmd("toggle_global_mute")),
+    );
+    second.post(record_into(&stop_log, "m2")).unwrap();
+    stop.post(record_into(&stop_log, "stop")).unwrap();
+    first.post(record_into(&stop_log, "m1")).unwrap();
+    hold.release();
+    wait_until("all three run", || entries(&stop_log).len() == 3);
+    assert_eq!(entries(&stop_log), ["m1:ok", "stop:ok", "m2:ok"]);
 }
 
 // Z17：本番の時間・網羅の match・表の一致・reaper が Child・Job を持たないこと。
@@ -1244,7 +1260,6 @@ fn z23_mutes_held_on_the_same_window_run_in_acceptance_order_even_when_the_actor
         let log = log();
         let unmute = rig.control.admit(cmd("set_global_mute"));
         let mute = rig.control.admit(cmd("toggle_global_mute"));
-        let stop = rig.control.admit(stop_entry());
         let later_unmute = rig.control.admit(cmd("global_shortcut_mute"));
         if push_reversed {
             later_unmute.post(record_into(&log, "late")).unwrap();
@@ -1258,9 +1273,7 @@ fn z23_mutes_held_on_the_same_window_run_in_acceptance_order_even_when_the_actor
         wait_until("held", || rig.control.queue_len() == 3);
         std::thread::sleep(WAIT);
         stuck.end();
-        // Stop は Mute より後に受け付けたので、Mute の後（受付の順）。Launch::None なので保留されない。
-        stop.post(record_into(&log, "stop")).unwrap();
-        wait_until("all run", || entries(&log).len() == 4);
+        wait_until("all run", || entries(&log).len() == 3);
         let order = entries(&log);
         let position = |name: &str| {
             order
