@@ -2,7 +2,6 @@
 use crate::ipc::{Command, Response};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const DEVICE_OPEN_SETTLING: Duration = Duration::from_secs(2);
@@ -36,22 +35,29 @@ pub(super) struct ExitPayload {
 struct InFlight {
     details: ExitPayload,
     started_at: Instant,
+    /// writer が書き込みを始めたか。書き込んでいない操作は、終了の原因にしない。
+    sent: bool,
 }
 
+/// 接続の操作の記録。`LinkCell` のロックの下でだけ読み書きする。
 #[derive(Default)]
-struct State {
+pub(super) struct OperationLog {
     in_flight: Option<InFlight>,
     awaiting: Option<ExitPayload>,
     settling: Option<InFlight>,
     plugins: HashMap<String, ExitPayload>,
+    /// 登録した操作が `Stop` で、まだ書き込みを始めていない。
+    stop_registered: bool,
 }
 
-#[derive(Default)]
-pub(super) struct Operations(Mutex<State>);
+impl OperationLog {
+    pub(super) fn begin_untracked(&mut self) {
+        self.stop_registered = false;
+    }
 
-impl State {
-    fn begin(&mut self, command: &Command, now: Instant) {
+    pub(super) fn begin(&mut self, command: &Command, now: Instant) {
         let state = self;
+        state.stop_registered = matches!(command, Command::Stop);
         if let Command::Start {
             host,
             input,
@@ -71,12 +77,9 @@ impl State {
             state.in_flight = Some(InFlight {
                 details,
                 started_at: now,
+                sent: false,
             });
             return;
-        }
-        if matches!(command, Command::Stop) {
-            // 利用者が止めた後の終了を、開始直後の障害と取り違えない。
-            state.settling = None;
         }
         let (op, id, path, class_id) = match command {
             Command::LoadPlugin { path, class_id } => {
@@ -126,11 +129,30 @@ impl State {
         state.in_flight = Some(InFlight {
             details,
             started_at: now,
+            sent: false,
         });
     }
 
-    fn response(&mut self, response: &Response, now: Instant) {
+    /// 書き込みを始めた。利用者が止めた後の終了を、開始直後の障害と取り違えない。
+    pub(super) fn mark_sent(&mut self) {
+        if let Some(pending) = self.in_flight.as_mut() {
+            pending.sent = true;
+        }
+        if std::mem::take(&mut self.stop_registered) {
+            self.settling = None;
+        }
+    }
+
+    /// 応答を待たずに、操作を打ち切る（書き込みの失敗）。
+    pub(super) fn abandon(&mut self) {
+        self.in_flight = None;
+        self.awaiting = None;
+        self.stop_registered = false;
+    }
+
+    pub(super) fn response(&mut self, response: &Response, now: Instant) {
         let state = self;
+        state.stop_registered = false;
         state.in_flight = None;
         let Some(mut details) = state.awaiting.take() else {
             return;
@@ -141,6 +163,7 @@ impl State {
                 state.settling = Some(InFlight {
                     details,
                     started_at: now,
+                    sent: true,
                 });
             }
             return;
@@ -166,13 +189,31 @@ impl State {
         }
     }
 
-    fn exit(&mut self, now: Instant) -> ExitPayload {
-        // 開始後の監視中でも、現在待っているVST操作を優先する。
-        let pending = self.in_flight.take().or_else(|| {
-            self.settling.take().filter(|pending| {
-                now.saturating_duration_since(pending.started_at) < DEVICE_OPEN_SETTLING
-            })
-        });
+    /// Hostの待機期限を過ぎても、応答まではドライバーが機器を開いている。
+    pub(super) fn timeout(&mut self) {
+        if self
+            .in_flight
+            .as_ref()
+            .is_some_and(|pending| pending.details.cause == "device_open")
+        {
+            return;
+        }
+        // 遅いload応答のIDは回収するが、待機終了後のクラッシュには結び付けない。
+        self.in_flight = None;
+    }
+
+    /// EOF の原因を採る。呼べるのは、接続を EOF で閉じる競りに勝った側だけ。
+    pub(super) fn exit(&mut self, now: Instant) -> ExitPayload {
+        // 開始後の監視中でも、書き込みを始めた現在のVST操作を優先する。
+        let pending = self
+            .in_flight
+            .take()
+            .filter(|pending| pending.sent)
+            .or_else(|| {
+                self.settling.take().filter(|pending| {
+                    now.saturating_duration_since(pending.started_at) < DEVICE_OPEN_SETTLING
+                })
+            });
         let Some(pending) = pending else {
             return ExitPayload {
                 cause: "unknown",
@@ -313,59 +354,20 @@ impl super::AudioHost {
         }
     }
 }
-impl Operations {
-    pub(super) fn begin(&self, command: &Command) {
-        if let Ok(mut state) = self.0.lock() {
-            state.begin(command, Instant::now());
-        }
-    }
-
-    pub(super) fn response(&self, response: &Response) {
-        if let Ok(mut state) = self.0.lock() {
-            state.response(response, Instant::now());
-        }
-    }
-
-    pub(super) fn timeout(&self) {
-        if let Ok(mut state) = self.0.lock() {
-            // Hostの待機期限を過ぎても、応答まではドライバーが機器を開いている。
-            if state
-                .in_flight
-                .as_ref()
-                .is_some_and(|pending| pending.details.cause == "device_open")
-            {
-                return;
-            }
-            // 遅いload応答のIDは回収するが、待機終了後のクラッシュには結び付けない。
-            state.in_flight = None;
-        }
-    }
-
-    /// EOF の原因の記録を取り出す。呼べるのは、接続を EOF で閉じる競りに勝った側だけ。
-    pub(super) fn take_exit(&self) -> ExitPayload {
-        self.0
-            .lock()
-            .ok()
-            .map(|mut state| state.exit(Instant::now()))
-            .unwrap_or_else(|| ExitPayload {
-                cause: "unknown",
-                ..Default::default()
-            })
-    }
-
+impl OperationLog {
     #[cfg(test)]
     pub(super) fn in_flight_for_test(&self) -> bool {
-        self.0.lock().unwrap().in_flight.is_some()
+        self.in_flight.is_some()
     }
 
     #[cfg(test)]
     pub(super) fn awaiting_for_test(&self) -> bool {
-        self.0.lock().unwrap().awaiting.is_some()
+        self.awaiting.is_some()
     }
 
     #[cfg(test)]
     pub(super) fn plugin_count_for_test(&self) -> usize {
-        self.0.lock().unwrap().plugins.len()
+        self.plugins.len()
     }
 }
 
@@ -377,6 +379,34 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    /// 書き込みを始めた操作だけを記録する、試験用の包み。
+    #[derive(Default)]
+    struct Operations(std::sync::Mutex<OperationLog>);
+
+    impl Operations {
+        fn begin(&self, command: &Command) {
+            let mut log = self.0.lock().unwrap();
+            log.begin(command, Instant::now());
+            log.mark_sent();
+        }
+
+        fn response(&self, response: &Response) {
+            self.0.lock().unwrap().response(response, Instant::now());
+        }
+
+        fn timeout(&self) {
+            self.0.lock().unwrap().timeout();
+        }
+
+        fn take_exit(&self) -> ExitPayload {
+            self.0.lock().unwrap().exit(Instant::now())
+        }
+    }
+
+    fn begin_sent(log: &mut OperationLog, command: &Command, now: Instant) {
+        log.begin(command, now);
+        log.mark_sent();
+    }
     fn load() -> Command {
         Command::LoadPlugin {
             path: "C:/VST/Echo.vst3".into(),
@@ -439,8 +469,8 @@ mod tests {
     #[test]
     fn start_in_flight_reports_device_opening_without_vst_identity() {
         let now = Instant::now();
-        let mut state = State::default();
-        state.begin(&start(), now);
+        let mut state = OperationLog::default();
+        begin_sent(&mut state, &start(), now);
         let payload = state.exit(now + Duration::from_millis(25));
         assert_eq!(
             serde_json::to_value(payload).unwrap(),
@@ -460,8 +490,8 @@ mod tests {
             (2000, "unknown"),
             (2001, "unknown"),
         ] {
-            let mut state = State::default();
-            state.begin(&start(), now);
+            let mut state = OperationLog::default();
+            begin_sent(&mut state, &start(), now);
             let responded = now + Duration::from_secs(5);
             state.response(&started(), responded);
             assert!(state.in_flight.is_none());
@@ -478,10 +508,10 @@ mod tests {
     #[test]
     fn vst_in_flight_takes_priority_over_settling() {
         let now = Instant::now();
-        let mut state = State::default();
-        state.begin(&start(), now);
+        let mut state = OperationLog::default();
+        begin_sent(&mut state, &start(), now);
         state.response(&started(), now);
-        state.begin(&load(), now);
+        begin_sent(&mut state, &load(), now);
         let payload = state.exit(now);
         assert_eq!(payload.cause, "vst_operation");
         assert_eq!(payload.op, Some("load"));
@@ -493,10 +523,10 @@ mod tests {
         let now = Instant::now();
         for command in [Command::GetDevices, load(), Command::Stop, start()] {
             for completed in [false, true] {
-                let mut state = State::default();
-                state.begin(&start(), now);
+                let mut state = OperationLog::default();
+                begin_sent(&mut state, &start(), now);
                 state.response(&started(), now);
-                state.begin(&command, now + Duration::from_secs(1));
+                begin_sent(&mut state, &command, now + Duration::from_secs(1));
                 if completed {
                     state.response(
                         &Response::Error("rejected".into()),
@@ -514,8 +544,8 @@ mod tests {
     #[test]
     fn failed_start_does_not_settle_and_timed_out_start_remains_opening_until_response() {
         let now = Instant::now();
-        let mut state = State::default();
-        state.begin(&start(), now);
+        let mut state = OperationLog::default();
+        begin_sent(&mut state, &start(), now);
         state.response(&Response::Error("rejected".into()), now);
         assert_eq!(state.exit(now).cause, "unknown");
 
@@ -537,7 +567,7 @@ mod tests {
                 host.reset_engine_reader();
                 link_seam::register_sent_operation(&host, &start());
                 if settling {
-                    link_seam::operation_response(&host, &started());
+                    link_seam::operation_response(&host, started());
                 }
                 let link = host.link.clone();
                 if dropping {
@@ -764,7 +794,7 @@ mod tests {
             super::super::AudioHost::new(std::env::temp_dir().join("auralyn-respawn-unit"));
         host.reset_engine_reader();
         link_seam::register_sent_operation(&host, &load());
-        link_seam::operation_response(&host, &loaded());
+        link_seam::operation_response(&host, loaded());
         link_seam::register_sent_operation(&host, &Command::OpenEditor { id: "id-a".into() });
         assert_eq!(link_seam::plugin_records(&host), 1);
         let old_link = host.link.clone();
@@ -779,15 +809,15 @@ mod tests {
             "旧い接続の記録は、作り直しで消えない"
         );
         assert_eq!(link_seam::plugin_records(&host), 0);
-        assert_eq!(link_seam::take_exit(&host)["cause"], "unknown");
+        assert_eq!(link_seam::exit_record(&host)["cause"], "unknown");
     }
 
     #[test]
     fn only_the_winner_of_the_eof_close_takes_the_exit_record() {
-        let operations = Operations::default();
-        let link = super::super::link::LinkState::open();
-        assert!(link.close(super::super::link::CloseCause::Eof));
-        assert_eq!(operations.take_exit().cause, "unknown");
+        let link = super::super::link::LinkCell::open();
+        let win = link.close_eof().expect("最初の EOF が勝つ");
+        assert_eq!(win.exit.cause, "unknown");
+        assert!(link.close_eof().is_none());
         assert!(!link.close(super::super::link::CloseCause::Eof));
     }
 

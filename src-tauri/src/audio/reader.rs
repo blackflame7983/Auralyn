@@ -6,9 +6,7 @@ use crate::audio::emit::Notifier;
 use std::process::ChildStdout;
 
 pub(super) struct Reader {
-    pub(super) link: Arc<LinkState>,
-    pub(super) operations: Arc<engine_exit::Operations>,
-    pub(super) replies: Arc<ReplySlot>,
+    pub(super) link: Arc<LinkCell>,
     pub(super) voice_activity: Arc<AtomicBool>,
     pub(super) notifier: Arc<Notifier>,
     pub(super) conditions: Arc<conditions::Conditions>,
@@ -43,8 +41,7 @@ impl Reader {
             if let Some(json_str) = l.strip_prefix("IPC:") {
                 match serde_json::from_str::<OutputMessage>(json_str) {
                     Ok(OutputMessage::Response(resp)) => {
-                        self.operations.response(&resp);
-                        if !self.replies.deliver_at(resp, received_at) {
+                        if !self.link.deliver_at(resp, received_at) {
                             log::warn!("Received Response but no one is waiting");
                         }
                     }
@@ -275,23 +272,18 @@ impl Reader {
         }
     }
 
-    /// stdout の終端（2.4）。先に接続を EOF で閉じる競りを行う。「閉じた」は `LinkState` だけで決まる。
-    /// 勝った側だけが、応答の待ちを閉じ、通知を出し、待ち手へ `Eof` を送る。
+    /// stdout の終端（2.4）。先に接続を EOF で閉じる競りを行う。「閉じた」は `LinkCell` だけで決まる。
+    /// 勝った側だけが、通知を出し、待ち手へ `Eof` を送る。
     pub(super) fn finish(&self) {
         log::warn!("Engine stdout closed.");
-        if !self.link.close(CloseCause::Eof) {
-            // 意図した停止、または Host の切り離しが先。通知は出さず、待ち手は切断で解放される。
-            drop(self.replies.close());
+        // 意図した停止、または Host の切り離しが先なら、通知は出さず、待ち手は切断で解放されている。
+        let Some(link::EofWin { waiter, exit }) = self.link.close_eof() else {
             return;
-        }
-        // 閉じてから待ちを閉じるまでの間に `begin` が通っても、writer は書き込みを始めず `Aborted` を返し、
-        // 呼び出し側は EOF の結果を待つ。ここで取り出す送り側が、その待ち手を含む。
+        };
         #[cfg(test)]
         if let Some(pause) = &self.pause {
             pause.wait_open();
         }
-        let waiter = self.replies.close();
-        let exit = self.operations.take_exit();
         log::error!("Audio engine exited: {exit:?}");
         self.conditions.engine_event(self.epoch, false);
         self.notifier.chain(|c| {
@@ -300,13 +292,14 @@ impl Reader {
             let _ = c.emit("audio-error", "Audio Engine Process Exited (Crash?)");
         });
         // 通知を出し終えてから、待っている呼び出しを解放する。
+        self.link.mark_notified();
         if let Some(waiter) = waiter {
             let _ = waiter.send(ReplyOutcome::Eof);
         }
     }
 }
 
-/// 試験の継ぎ目：`LinkState` を閉じた直後で、reader を止める。
+/// 試験の継ぎ目：`LinkCell` を閉じた直後で、reader を止める。
 #[cfg(test)]
 #[derive(Clone)]
 pub(super) struct Pause(Arc<(Mutex<bool>, std::sync::Condvar)>);

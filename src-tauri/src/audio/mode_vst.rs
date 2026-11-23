@@ -608,7 +608,7 @@ impl AudioHost {
                 }
             }
         }
-        // 接続を失っていたら、次のIPCもロールバックも始めない（応答を採る時点・次の段へ進む時点のどちらでも。接続の開閉は `LinkState` だけで決まる）。
+        // 接続を失っていたら、次のIPCもロールバックも始めない（応答を採る時点・次の段へ進む時点のどちらでも。接続の開閉は `LinkCell` だけで決まる）。
         if self.connection_lost() {
             self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
             return;
@@ -693,14 +693,14 @@ impl AudioHost {
         self.link.close(CloseCause::ReplyTimeout);
         self.fail_mode_transaction(tx, message.into(), true);
     }
-    /// 接続を失ったか。「閉じた」は LinkState だけで決まる（reader は先に LinkState を閉じる）。
+    /// 接続を失ったか。「閉じた」は LinkCell だけで決まる（reader は先に LinkCell を閉じる）。
     pub(super) fn connection_lost(&self) -> bool {
         !self.link.is_open()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
-        let receiver = self.pending_reply_tx.begin()?;
+        let receiver = self.link.begin(None)?;
         let Some(writer) = self.writer.as_ref() else {
-            self.pending_reply_tx.cancel();
+            self.link.cancel();
             return Err(anyhow!("音声エンジン入力がありません"));
         };
         let limit = writer::reply_limit(&command);
@@ -713,7 +713,7 @@ impl AudioHost {
         let done = match submitted {
             Ok(done) => done,
             Err(error) => {
-                self.pending_reply_tx.cancel();
+                self.link.cancel();
                 return Err(error.into());
             }
         };
@@ -1792,6 +1792,7 @@ mod tests {
             let mut host = host();
             let mut transaction = tx(Step::Restore(0));
             transaction.journaled = true;
+            host.set_link_for_test(true);
             transaction.pending = Some(Pending {
                 receiver: link_seam::begin_request(&host, None).unwrap(),
                 writer: None,
@@ -2787,9 +2788,10 @@ mod tests {
         });
         host.mode_vst.transaction = Some(transaction);
         host.link.close(CloseCause::Eof);
-        assert!(
-            link_seam::begin_request(&host, None).is_ok(),
-            "待ちはまだ開いている"
+        assert_eq!(
+            host.link.shape_for_test(),
+            crate::audio::link::Shape::Closed(CloseCause::Eof),
+            "接続は EOF で閉じている"
         );
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
@@ -2821,5 +2823,96 @@ mod tests {
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
         let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
+    }
+
+    /// 応答待ちの取引を持つホストと、EOF の競りに勝って止まっている reader。
+    fn tick_waiting_while_eof_is_paused() -> (
+        AudioHost,
+        Arc<emit::Recorder>,
+        reader::Pause,
+        std::thread::JoinHandle<()>,
+    ) {
+        let (mut host, recorder) = recorded_host();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        let epoch = host.conditions.new_engine();
+        let pause = reader::Pause::closed();
+        let mut eof_reader = link_seam::reader_for(&host, epoch);
+        eof_reader.pause = Some(pause.clone());
+        let finishing = link_seam::finish_eof(eof_reader);
+        let started = Instant::now();
+        while host.link.is_open() {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        (host, recorder, pause, finishing)
+    }
+
+    // T7（競合3 (b)）：reader が EOF の競りに勝って止まっている間に、別の入口が接続を捨てても、待ち手の送り側は
+    // reader の手に残る。tick の受け取りは、期限の中では `Empty`。解放して通知が出た後に `Eof`。回収は進む。
+    #[test]
+    fn t7_a_host_close_while_the_eof_is_paused_keeps_the_tick_waiting_for_the_notices() {
+        let (mut host, recorder, pause, finishing) = tick_waiting_while_eof_is_paused();
+        assert!(!host.drop_connection(CloseCause::Intentional));
+        assert!(host.writer.is_none() && host.child.is_none(), "回収は進む");
+        host.poll_mode_vst();
+        assert!(
+            host.mode_vst.busy(),
+            "期限の中では、通知を待って次の tick へ"
+        );
+        assert!(recorder.names().is_empty());
+        pause.release();
+        finishing.join().unwrap();
+        assert_eq!(
+            recorder.names(),
+            [
+                "audio-conditions-changed",
+                "audio-engine-exited",
+                "audio-error"
+            ]
+        );
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+    }
+
+    // T7：期限の処理は変えない。reader を解放しないまま期限に達すると、tick は今のとおり「応答が不明」で失敗する
+    // （通知より前でもよい。設計 9.10 の (g)）。
+    #[test]
+    fn t7_the_tick_deadline_still_fails_with_the_unknown_reply_message() {
+        let (mut host, _recorder, pause, finishing) = tick_waiting_while_eof_is_paused();
+        assert!(!host.drop_connection(CloseCause::Intentional));
+        host.mode_vst
+            .transaction
+            .as_mut()
+            .unwrap()
+            .pending
+            .as_mut()
+            .unwrap()
+            .sent = Instant::now() - Duration::from_secs(11);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        pause.release();
+        finishing.join().unwrap();
+    }
+
+    // T7：接続を捨てる側が競りに勝つ場合（reader より先）は、通知は出ず、待ち手は切断で解放される（今と同じ）。
+    #[test]
+    fn t7_when_the_host_close_wins_the_waiter_is_disconnected_and_no_notice_is_emitted() {
+        let (mut host, recorder) = recorded_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        let epoch = host.conditions.new_engine();
+        let eof_reader = link_seam::reader_for(&host, epoch);
+        assert!(host.drop_connection(CloseCause::Intentional));
+        link_seam::finish_eof(eof_reader).join().unwrap();
+        assert!(recorder.names().is_empty());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
     }
 }

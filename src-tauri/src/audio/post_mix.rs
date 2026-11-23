@@ -307,13 +307,13 @@ pub(super) struct State {
     /// 切断を処理して子を外した回数。公開の操作が、失敗の原因が切断かを見分ける。
     detached: u64,
     /// 直前に `rack()` が読んだ接続。次の `command()` が、その接続へだけ送る。
-    rack_pin: Option<Arc<LinkState>>,
+    rack_pin: Option<Arc<LinkCell>>,
     #[cfg(test)]
     after_exec_check: Option<ExecCheck>,
     /// 試験の継ぎ目：`command()` の送る前と、`snapshot` の最後の確認の前に呼ばれる。
     #[cfg(test)]
     between_ops: Option<ExecCheck>,
-    /// 試験の継ぎ目：公開の操作の失敗の処理で、`settle()` の後、`detached` を比べる前に呼ばれる。
+    /// 試験の継ぎ目：公開の操作の失敗の処理で、子の接続を閉じる競りの直前に呼ばれる。
     #[cfg(test)]
     after_failure_settle: Option<ExecCheck>,
     /// 試験の継ぎ目：次に `child()` が作る子として使う、台本つきの子（先頭から）。
@@ -807,6 +807,11 @@ impl State {
         self.enabled = false;
         self.running = false;
     }
+    fn discard_failed_child(&mut self) {
+        self.discard_child();
+        self.error =
+            Some("配信VSTの操作を完了できませんでした。保存状態を読み直してください".into());
+    }
     #[cfg(test)]
     pub(super) fn has_child_for_test(&self) -> bool {
         self.child.is_some()
@@ -1156,17 +1161,21 @@ impl AudioHost {
         if let Err(error) = result {
             // 切断（C2・EOF）のときは、子の回収と `restored`・`running` の更新が済んでいる。
             // `enabled` と保存した設定は残し、次の使用は保存した設定の明示の復元を通る。
-            // 子の接続が閉じていれば、どの段で見つけても、切断の後処理（`enabled` を残す）を通す。
-            state.settle();
+            // 接続を閉じる競りに勝ったときだけ、自分で捨てる（`enabled` を落とし、`error` を立てる）。
+            // 負けたなら、EOF・期限切れ・書き込みの失敗で閉じている。切断の後処理（`enabled` を残す）を通す。
             #[cfg(test)]
             if let (Some(hook), Some(child)) = (&state.after_failure_settle, &state.child) {
                 hook(child);
             }
-            if state.detached == detached_before {
-                state.discard_child();
-                state.error = Some(
-                    "配信VSTの操作を完了できませんでした。保存状態を読み直してください".into(),
-                );
+            let closed_by_us = state
+                .child
+                .as_ref()
+                .map(|child| child.link.close(CloseCause::Intentional));
+            match closed_by_us {
+                Some(false) => state.detach_with(None),
+                Some(true) => state.discard_failed_child(),
+                None if state.detached == detached_before => state.discard_failed_child(),
+                None => {}
             }
             return Err(error);
         }
