@@ -1,9 +1,10 @@
 import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect } from 'react';
+import { delay } from './internal/schedule';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { audioApi } from '../api/audio';
+import { audioApi, stopCallCount } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
 import { readAudioPreferences } from '../lib/audioPreferences';
 import { liveModesApi } from '../api/liveModes';
@@ -18,11 +19,11 @@ export function useAudioRecovery() {
         let exhausted = false;
         let startingGeneration: number | null = null;
         let generation = 0;
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        let cancelTimer: (() => void) | undefined;
         const cancel = () => {
             generation++;
             recovering = false;
-            if (timer) clearTimeout(timer);
+            cancelTimer?.();
         };
 
         const errors = listen<string>('audio-stream-error', event => {
@@ -31,17 +32,19 @@ export function useAudioRecovery() {
             const config = readAudioPreferences();
             if (!config) return;
             const snapshot = JSON.stringify(config);
+            const stopsAtError = stopCallCount();
             const current = ++generation;
             recovering = true;
             const valid = () => active && current === generation;
+            const stoppedByUser = () => stopCallCount() !== stopsAtError;
 
             const schedule = (attempt: number) => {
-                timer = setTimeout(() => void retry(attempt), attempt * 2000);
+                cancelTimer = delay(attempt * 2000, () => void retry(attempt));
             };
             const retry = async (attempt: number) => {
                 if (!valid()) return;
                 if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true'
-                    || JSON.stringify(readAudioPreferences()) !== snapshot) {
+                    || stoppedByUser() || JSON.stringify(readAudioPreferences()) !== snapshot) {
                     cancel();
                     return;
                 }
@@ -55,6 +58,8 @@ export function useAudioRecovery() {
                         if (!actual?.host || !actual.input || !actual.output || !actual.input_id || !actual.output_id || !actual.sample_rate || !actual.buffer_size) throw new Error('本番保護中の具体的なデバイス設定を確認できません');
                         recovery = { ...config, host: actual.host, input: actual.input, output: actual.output, inputId: actual.input_id, outputId: actual.output_id, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
                     }
+                    // 状態の取得を待つ間の手動の停止は、停止の通知より先に応答が届くことがある。
+                    if (stoppedByUser()) { cancel(); return; }
                     // ストリームだけを再開する。プロセスを破棄するとVSTとパラメーターも失う。
                     startingGeneration = current;
                     try {
@@ -65,8 +70,8 @@ export function useAudioRecovery() {
                         if (startingGeneration === current) startingGeneration = null;
                     }
                     if (!valid()) return;
-                    // 保護中は保持済み経路をそのまま再開し、古いUI選択でchを変更しない。
-                    if (!valid()) return;
+                    // 再開の Start の間に押された停止は、その後に実行されるので、成功とは伝えない。
+                    if (stoppedByUser()) { cancel(); return; }
                     recovering = false;
                     toast.success(t('audioNotices.reconnected'));
                 } catch {
@@ -86,7 +91,11 @@ export function useAudioRecovery() {
             });
             schedule(1);
         });
-        const started = listen('audio-started', () => { if (!recovering) exhausted = false; });
+        const started = listen('audio-started', () => {
+            // 自分のStart以外の開始は手動操作なので、待っている再開は要らない。
+            if (startingGeneration !== generation) cancel();
+            if (!recovering) exhausted = false;
+        });
         const stopped = listen('audio-stopped', () => {
             // 自分のStartも停止通知を出すため、要求中以外の停止だけをキャンセルとする。
             if (startingGeneration !== generation) cancel();
@@ -99,5 +108,5 @@ export function useAudioRecovery() {
                 void subscription.then(unlisten => unlisten()).catch(console.error);
             });
         };
-    }, []);
+    }, [t]);
 }

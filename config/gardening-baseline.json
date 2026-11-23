@@ -5271,20 +5271,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/hooks/useAudioRecovery.ts",
-      "rule": "auralyn/owned-timers",
-      "hash": "ef09b12a3185686bbc1f39d73a34642fb1e694a03ddfe72be36861600e0948c3",
-      "count": 1,
-      "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
-    },
-    {
-      "file": "src/hooks/useAudioRecovery.ts",
-      "rule": "react-hooks/exhaustive-deps",
-      "hash": "ef09b12a3185686bbc1f39d73a34642fb1e694a03ddfe72be36861600e0948c3",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/hooks/useLayoutMotion.ts",
       "rule": "auralyn/owned-timers",
       "hash": "abd7a217195f228fa239ba2f4ef0c2fd6b40e2567ef817466e58eaecc2e44a4a",
