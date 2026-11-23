@@ -2720,7 +2720,7 @@ stateDiagram-v2
 | `audio/control/context.rs`（新設） | `StoppedMidway`・`Boundary`・`Unit`・`JobContext`・`ContextScope`・`UnitGuard`・`check_stopped`・`begin_unit`・`stopped_after`・試験の継ぎ目 | 15.4。`JobClass::` を直接見ない（Y31） | 2c-1 |
 | `audio/control/class.rs:31-66` | `JobClass` | `interrupts_running`（6つ目。Starting だけ真） | 2c-1 |
 | `audio/control/queue.rs:98-106,126,166-193,312,365-403` | `QueueState`・`JobQueue`・`push`・`scan_lanes`・`verdict` | `fence` を `JobQueue` の `Arc<AtomicU64>` へ。`verdict` が `stopped_after` を使う | 2c-1 |
-| `audio/control/actor.rs:144-177` | `execute` | `begin_closure()` と並べて文脈を入れる。閉包の後に `stopped_seen` を計数・ログ | 2c-1 |
+| `audio/control/actor.rs:144-177` | `execute` | `begin_closure()` と並べて文脈を入れる。閉包の後に `stopped_seen` を計数・ログ （J-28 で置き換えた：`begin_closure` と閉包の中の10秒待ち・3回の判定は取り除いた） | 2c-1 |
 | `audio/control.rs:40-44,196-318` | `STOPPED_MIDWAY_TEXT`・`Admission` | 定数と `midway` の計数 | 2c-1 |
 | `audio.rs:1642-1699` | `start_internal_with_source` | S8b〜S8g・S9（`cancel_prepared_post_start` への合流） | 2c-1 |
 | `audio.rs:2170-2171` | `set_output_gain` | S7 | 2c-1 |
