@@ -19,8 +19,8 @@ pub(crate) use queue::ActorPoint;
 pub(crate) use class::{class_of, launch_of, RequestKind};
 #[cfg(test)]
 pub(crate) use class::{
-    request_class as request_class_of, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS, REQUEST_CLASSES,
-    REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
+    request_class as request_class_of, request_launch, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS,
+    REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
 };
 pub use class::{JobClass, Launch};
 
@@ -410,6 +410,8 @@ impl AudioControl {
     pub fn admit(&self, entry: Entry) -> Ticket<'_> {
         let class = class_of(entry);
         let accepted_at = Instant::now();
+        // 見えている記録の番号は、受付を確定する前に固定する。受付の間に足された記録では保留しない。
+        let known = self.shared.queue.store().last_id();
         let seq = self.shared.admission.accept(entry);
         Ticket {
             control: self,
@@ -417,7 +419,7 @@ impl AudioControl {
             entry,
             class,
             launch: launch_of(entry),
-            known: self.shared.queue.store().last_id(),
+            known,
             accepted_at,
         }
     }

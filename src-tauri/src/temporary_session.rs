@@ -223,7 +223,7 @@ pub(crate) async fn acknowledge_session_review(
         if !observation.running || observation.stream_failed {
             return Err("明示開始後の音声処理を確認できません".into());
         }
-        acknowledge(&mode)
+        crate::commands::run_blocking(move || acknowledge(&mode)).await
     }
     .await
 }
@@ -286,7 +286,7 @@ pub(crate) async fn restart_temporary_session(
         None
     };
     let state = app.state::<crate::audio::AudioState>().0.clone();
-    async move {
+    crate::commands::detached(async move {
         state
             .run_async(
                 crate::audio::Entry::new(
@@ -354,7 +354,7 @@ pub(crate) async fn restart_temporary_session(
             .map_err(|error| error.text("音声状態を取得できません"))??;
         app.exit(0);
         Ok(())
-    }
+    })
     .await
 }
 

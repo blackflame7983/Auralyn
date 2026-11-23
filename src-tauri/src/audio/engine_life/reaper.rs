@@ -24,7 +24,7 @@ impl Source {
     fn wait(&self, slice: Duration) -> Result<bool, WaitFailed> {
         match self {
             Self::Poll => {
-                std::thread::sleep(slice.min(STEP));
+                std::thread::sleep(slice);
                 Ok(true)
             }
             #[cfg(test)]
@@ -157,6 +157,7 @@ fn run(weak: &Weak<Store>, id: u64, source: &Source, killed_at: Instant) {
             (last_kill + timing.retry_kill)
                 .saturating_duration_since(now)
                 .min(timing.rescan)
+                .min(STEP)
         } else {
             timing.rescan
         };

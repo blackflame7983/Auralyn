@@ -203,48 +203,51 @@ pub(crate) async fn analyze_voice_check(
         .app_cache_dir()
         .map_err(|e| e.to_string())?
         .join("voice-analysis");
-    let workspace =
-        super::run_blocking(move || AnalysisWorkspace::new(root).map_err(|e| e.to_string()))
-            .await?;
-    let raw_path = workspace.0.join("raw.wav");
-    let processed_path = workspace.0.join("processed.wav");
-    let raw_export = raw_path.to_string_lossy().to_string();
-    let processed_export = processed_path.to_string_lossy().to_string();
-    let exported = state
-        .run_async(
-            audio::Entry::command("analyze_voice_check"),
-            move |host| -> Result<_, String> {
-                let buffer_size = host.get_state().config.as_ref().and_then(|c| c.buffer_size);
-                host.export_voice_check(raw_export, "raw".to_string())
-                    .map_err(|e| e.to_string())?;
-                host.export_voice_check(processed_export, "processed".to_string())
-                    .map_err(|e| e.to_string())?;
-                Ok(buffer_size)
-            },
-        )
+    super::detached(async move {
+        let workspace =
+            super::run_blocking(move || AnalysisWorkspace::new(root).map_err(|e| e.to_string()))
+                .await?;
+        let raw_path = workspace.0.join("raw.wav");
+        let processed_path = workspace.0.join("processed.wav");
+        let raw_export = raw_path.to_string_lossy().to_string();
+        let processed_export = processed_path.to_string_lossy().to_string();
+        let exported = state
+            .run_async(
+                audio::Entry::command("analyze_voice_check"),
+                move |host| -> Result<_, String> {
+                    let buffer_size = host.get_state().config.as_ref().and_then(|c| c.buffer_size);
+                    host.export_voice_check(raw_export, "raw".to_string())
+                        .map_err(|e| e.to_string())?;
+                    host.export_voice_check(processed_export, "processed".to_string())
+                        .map_err(|e| e.to_string())?;
+                    Ok(buffer_size)
+                },
+            )
+            .await
+            .map_err(|error| error.text("Failed to lock audio state"));
+        super::run_blocking(move || {
+            let _workspace = workspace;
+            let buffer_size = exported??;
+
+            let loaded = audio_analysis::load_wav_interleaved_f32(&raw_path).and_then(|raw| {
+                audio_analysis::load_wav_interleaved_f32(&processed_path).map(|proc| (raw, proc))
+            });
+            let ((raw_samples, sr_raw), (processed_samples, sr_proc)) =
+                loaded.map_err(|e| e.to_string())?;
+
+            if sr_raw != sr_proc {
+                return Err("Raw/Processed のサンプルレートが一致しません".to_string());
+            }
+
+            let ctx = audio_analysis::AnalysisContext { buffer_size };
+            Ok(audio_analysis::analyze_voice_check_buffers(
+                &raw_samples,
+                &processed_samples,
+                sr_raw,
+                &ctx,
+            ))
+        })
         .await
-        .map_err(|error| error.text("Failed to lock audio state"));
-    super::run_blocking(move || {
-        let _workspace = workspace;
-        let buffer_size = exported??;
-
-        let loaded = audio_analysis::load_wav_interleaved_f32(&raw_path).and_then(|raw| {
-            audio_analysis::load_wav_interleaved_f32(&processed_path).map(|proc| (raw, proc))
-        });
-        let ((raw_samples, sr_raw), (processed_samples, sr_proc)) =
-            loaded.map_err(|e| e.to_string())?;
-
-        if sr_raw != sr_proc {
-            return Err("Raw/Processed のサンプルレートが一致しません".to_string());
-        }
-
-        let ctx = audio_analysis::AnalysisContext { buffer_size };
-        Ok(audio_analysis::analyze_voice_check_buffers(
-            &raw_samples,
-            &processed_samples,
-            sr_raw,
-            &ctx,
-        ))
     })
     .await
 }

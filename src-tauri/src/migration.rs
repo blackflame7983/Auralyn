@@ -470,7 +470,7 @@ pub async fn apply_settings(
     };
     validate(&bundle)?;
     let audio = app.state::<crate::audio::AudioState>().0.clone();
-    async move {
+    crate::commands::detached(async move {
         let _guard = guard;
         audio
             .run_async(
@@ -502,7 +502,7 @@ pub async fn apply_settings(
             )
             .await
             .map_err(|error| error.text("音声状態を取得できません"))?
-    }
+    })
     .await
 }
 

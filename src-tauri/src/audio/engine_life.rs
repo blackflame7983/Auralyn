@@ -248,7 +248,10 @@ impl Store {
     /// 窓が開いている記録。`slots` の短い読み取りだけで、確認も `kill()` も `Drop` もしない。
     pub(super) fn open_windows(&self, now: Instant) -> Vec<OpenWindow> {
         let deadline = self.timing().deadline;
-        let slots = self.lock();
+        // 窓を読めない（ロックが poison した）ときは、窓が閉じていると見なす。保留せず、再確認が答える。
+        let Ok(slots) = self.slots.lock() else {
+            return Vec::new();
+        };
         [Role::Primary, Role::PostMix]
             .into_iter()
             .flat_map(|role| {

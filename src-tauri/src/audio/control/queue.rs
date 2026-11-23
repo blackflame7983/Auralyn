@@ -110,6 +110,8 @@ struct QueueState {
 pub(crate) enum ActorPoint {
     /// 列のロックを持ったまま、仕事を取り出す直前。
     QueueLockHeld,
+    /// 列のロックの中で、記録の窓を読んだ直後。待機に入る前。
+    AfterWindowRead,
     /// 取り出した仕事を`current`へ置いた直後。
     AfterTake,
     /// 返事を送る・断りを伝える直前（減算と記録の後）。
@@ -213,6 +215,7 @@ impl JobQueue {
             self.run_seam(ActorPoint::QueueLockHeld);
             let now = Instant::now();
             let windows = self.store.open_windows(now);
+            self.run_seam(ActorPoint::AfterWindowRead);
             let scan = scan_lanes(&state, &windows, now);
             if let Some((lane, at, taken)) = scan.picked {
                 let queue = match lane {

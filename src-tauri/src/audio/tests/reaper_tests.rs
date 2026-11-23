@@ -799,22 +799,49 @@ fn z14_a_job_is_held_only_by_the_window_of_the_role_it_launches() {
         .post(cmd("load_plugin"), launching(&log, "primary"))
         .unwrap();
     rig.control
-        .post(cmd("start_audio"), launching(&log, "both"))
+        .post(cmd("start_audio"), launching(&log, "start"))
         .unwrap();
-    wait_until("the primary-only job runs", || {
-        entries(&log).contains(&"primary:true".to_owned())
-    });
+    rig.control
+        .post(cmd("live_modes"), launching(&log, "live_modes"))
+        .unwrap();
+    rig.control
+        .post(cmd("noise_measurement"), launching(&log, "noise"))
+        .unwrap();
+    wait_until("the primary-only jobs run", || entries(&log).len() == 4);
     std::thread::sleep(WAIT);
     assert_eq!(
         entries(&log),
-        ["primary:true"],
-        "配信ミックスの窓は、主だけを起動する仕事を止めない"
+        [
+            "primary:true",
+            "start:true",
+            "live_modes:true",
+            "noise:true"
+        ],
+        "配信ミックスの窓は、主だけを起動する仕事（start_audio・live_modes を含む）を止めない"
     );
     stuck.end();
-    wait_until("the others run after the window", || {
-        entries(&log).len() == 3
+    wait_until("the post-mix job runs after the window", || {
+        entries(&log).len() == 5
     });
-    assert_eq!(&entries(&log)[1..], ["post_mix:true", "both:true"]);
+    assert_eq!(entries(&log)[4], "post_mix:true");
+
+    // 既存の子へ送るだけの要求（noise_measurement）は、主の窓が開いていても保留されない。
+    let rig = Rig::new(Duration::from_millis(2500));
+    let stuck = rig.stick(Role::Primary);
+    let log = super::queue_support::log();
+    rig.control
+        .post(cmd("live_modes"), launching(&log, "live_modes"))
+        .unwrap();
+    rig.control
+        .post(cmd("noise_measurement"), launching(&log, "noise"))
+        .unwrap();
+    wait_until("the send-only request runs", || {
+        entries(&log) == ["noise:false"]
+    });
+    stuck.end();
+    wait_until("the launching request runs after the window", || {
+        entries(&log).len() == 2
+    });
 }
 
 // Z15：reaper が死んでも、失敗し続けても、生成できなくても、誰も固まらず、監視されない記録も保留の対象のまま。
@@ -962,6 +989,30 @@ fn z17_the_production_timing_and_the_structure_are_fixed() {
     assert_eq!(
         super::control::launch_of(Entry::command("a_name_nobody_registered")),
         Launch::Both
+    );
+    for (name, launch) in [
+        ("start_audio", Launch::Primary),
+        ("noise_measurement", Launch::None),
+        ("live_modes", Launch::Primary),
+        ("mixing", Launch::Primary),
+    ] {
+        assert_eq!(
+            super::control::launch_of(Entry::command(name)),
+            launch,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        super::control::request_launch("live_modes", "Snapshot"),
+        Launch::Primary
+    );
+    assert_eq!(
+        super::control::request_launch("mixing", "Configure"),
+        Launch::Primary
+    );
+    assert_eq!(
+        super::control::request_launch("noise_measurement", "Start"),
+        Launch::None
     );
     assert_eq!(
         super::control::launch_of(Entry::new(EntryKind::Scheduler, "anything")),
@@ -1540,4 +1591,142 @@ fn z26_a_mute_that_reaps_a_c5_child_in_its_own_closure_waits_in_the_actor_and_su
         [0],
         "窓の中の失敗は数えない"
     );
+}
+
+// Z27：受付の確定と known の取得は同じ境界。受付の間に足された記録では保留しない（I46）。
+#[test]
+fn z27_a_record_added_while_the_acceptance_is_being_recorded_does_not_hold_the_job() {
+    let rig = Rig::new(Duration::from_secs(3));
+    let store = rig.store.clone();
+    let made = Arc::new(Mutex::new(Vec::<Stuck>::new()));
+    let (sink, armed) = (made.clone(), Arc::new(AtomicBool::new(false)));
+    let flag = armed.clone();
+    rig.control.admission().set_hook(Arc::new(move |point| {
+        if matches!(point, super::control::TestPoint::AfterSeq { .. })
+            && flag.swap(false, Ordering::SeqCst)
+        {
+            sink.lock().unwrap().push(stick(&store, Role::Primary));
+        }
+    }));
+    let log = log();
+    armed.store(true, Ordering::SeqCst);
+    let started = Instant::now();
+    rig.control
+        .post(cmd("load_plugin"), launching(&log, "job"))
+        .unwrap();
+    wait_until("the job runs", || entries(&log).len() == 1);
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "受付の間に足された記録の窓（3秒）では保留されない"
+    );
+    for stuck in made.lock().unwrap().iter() {
+        stuck.end();
+    }
+}
+
+// Z28：窓を読んだ後・待機に入る前に通知（記録の消去）が来ても、保留は有限時間で解ける。
+#[test]
+fn z28_a_ring_between_the_window_read_and_the_wait_still_releases_the_hold() {
+    let rig = Rig::new(Duration::from_secs(5));
+    let stuck = rig.stick(Role::Primary);
+    let log = log();
+    rig.control
+        .post(cmd("load_plugin"), launching(&log, "a"))
+        .unwrap();
+    std::thread::sleep(WAIT);
+    let armed = Arc::new(AtomicBool::new(true));
+    let (flag, ender) = (armed.clone(), stuck.clone());
+    rig.control.set_actor_seam(Arc::new(move |point| {
+        if point == ActorPoint::AfterWindowRead && flag.swap(false, Ordering::SeqCst) {
+            let ender = ender.clone();
+            std::thread::spawn(move || ender.end());
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    }));
+    let started = Instant::now();
+    rig.control
+        .post(cmd("set_bypass"), launching(&log, "b"))
+        .unwrap();
+    wait_until("both held jobs run", || entries(&log).len() == 2);
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "窓の期限（5秒）より前に、取りこぼさず解ける"
+    );
+}
+
+// Z29：呼び出し元の future を捨てても、後処理・所有物を持つ入口の本体は最後まで進む（detached）。
+#[test]
+fn z29_a_detached_entry_finishes_its_aftermath_even_if_the_caller_is_dropped() {
+    let (host, observer) = scripted_parts([]);
+    let control = AudioControl::new(host);
+    let runtime = runtime();
+    struct Guard(Arc<AtomicBool>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let guard_dropped = Arc::new(AtomicBool::new(false));
+    let guard = Guard(guard_dropped.clone());
+    let worker = control.clone();
+    let caller = runtime.spawn(async move {
+        crate::commands::detached(async move {
+            let _guard = guard;
+            worker
+                .run_async(cmd("prepare_update"), |host| host.prepare_update().is_ok())
+                .await
+                .map_err(|error| error.text("x"))?;
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            worker
+                .run_async(cmd("finish_update_attempt"), |host| {
+                    host.finish_update_attempt()
+                })
+                .await
+                .map_err(|error| error.text("x"))?;
+            Ok(())
+        })
+        .await
+    });
+    wait_until("the update is prepared", || {
+        control.admission().accepted_of(EntryKind::Command) >= 1
+    });
+    caller.abort();
+    let _ = runtime.block_on(caller);
+    assert!(
+        !guard_dropped.load(Ordering::SeqCst),
+        "所有物は処理の完了まで保たれる"
+    );
+    wait_until("the aftermath runs", || {
+        guard_dropped.load(Ordering::SeqCst)
+    });
+    let maintenance = control.run(normal(), |host| host.maintenance).unwrap();
+    assert!(!maintenance, "取り消されても maintenance は解除される");
+    let _ = std::fs::remove_dir_all(&observer.dir);
+}
+
+// Z30：後処理・所有物を持つ入口は、共通の口（detached）を使う。
+#[test]
+fn z30_entries_with_aftermath_use_the_detached_door() {
+    for (file, function) in [
+        ("updates.rs", "pub async fn install_update"),
+        (
+            "temporary_session.rs",
+            "pub(crate) async fn restart_temporary_session",
+        ),
+        ("migration.rs", "pub async fn apply_settings"),
+        (
+            "commands/voice_check.rs",
+            "pub(crate) async fn analyze_voice_check",
+        ),
+    ] {
+        let text = production_source(&src().join(file));
+        let start = text
+            .find(function)
+            .unwrap_or_else(|| panic!("{file} に {function} が無い"));
+        let end = text[start..].find("\n}\n").unwrap() + start;
+        assert!(
+            text[start..end].contains("detached("),
+            "{file} の {function} が detached を使わない"
+        );
+    }
 }
