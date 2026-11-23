@@ -1299,6 +1299,14 @@ fn z22_callers_are_inventoried_and_the_pool_threads_never_hold_the_queue() {
     let body = &control[start..end];
     assert!(!body.contains("spawn_blocking"), "run_async がプールを使う");
     assert!(!body.contains(".lock("), "run_async が Mutex を取る");
+    // 拒否時の `drop(job)` は、列のロックを放してから行う。
+    let queue = production_source(&src().join("audio/control/queue.rs"));
+    let start = queue.find("pub(super) fn push").unwrap();
+    let body = &queue[start..start + queue[start..].find("\n    }\n").unwrap()];
+    assert!(
+        body.find("drop(state);").unwrap() < body.find("drop(job);").unwrap(),
+        "push は列のロックを放してから job を落とす"
+    );
     let wait = production_source(&src().join("audio/control.rs"));
     let start = wait.find("async fn wait_reply_async").unwrap();
     let end = wait[start..].find("\n    }\n").unwrap() + start;
