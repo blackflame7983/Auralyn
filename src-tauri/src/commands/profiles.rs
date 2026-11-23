@@ -112,7 +112,7 @@ pub(crate) async fn save_profile(
                     presets::save_preset(&config_dir, &name, &preset)
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -163,7 +163,7 @@ pub(crate) async fn apply_profile(
                     )
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }
@@ -210,7 +210,7 @@ pub(crate) async fn restore_backup_profile(
                     )
                 },
             )
-            .map_err(|_| "Failed to lock audio state")?
+            .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await
 }

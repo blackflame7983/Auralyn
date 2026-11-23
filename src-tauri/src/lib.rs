@@ -352,10 +352,10 @@ pub fn run() {
                     }
                     "mute_toggle" => {
                         if let Some(audio_state) = app.try_state::<audio::AudioState>() {
-                            let _ = audio_state.0.post(
-                                audio::Entry::new(audio::EntryKind::Tray, "mute_toggle"),
-                                audio::tray_mute_toggle,
-                            );
+                            let conditions = app
+                                .try_state::<audio::conditions::ConditionState>()
+                                .map(|conditions| conditions.0.clone());
+                            audio::post_tray_mute(&audio_state.0, conditions.as_ref());
                         }
                     }
                     "quit" => quit_app(app.clone()),

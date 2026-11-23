@@ -128,7 +128,7 @@ fn granted(control: &AudioControl, name: &str) -> Vec<u64> {
         .admission()
         .records()
         .iter()
-        .filter(|r| r.entry.name == name && r.phase == Phase::LockGranted)
+        .filter(|r| r.entry.name == name && r.phase == Phase::Started)
         .map(|r| r.seq)
         .collect()
 }
@@ -206,7 +206,7 @@ fn x1_jobs_run_in_the_order_they_were_queued() {
         .admission()
         .records()
         .iter()
-        .filter(|r| r.phase == Phase::LockGranted && ["A", "B"].contains(&r.entry.name))
+        .filter(|r| r.phase == Phase::Started && ["A", "B"].contains(&r.entry.name))
         .map(|r| r.entry.name)
         .collect();
     assert_eq!(granted, ["B", "A"], "実行の順は積んだ順（K11）");
@@ -291,7 +291,7 @@ fn x3_post_returns_while_the_actor_is_busy_and_runs_later() {
     );
     assert_eq!(
         phases(&control, "mute_toggle"),
-        [Phase::Accepted, Phase::LockGranted]
+        [Phase::Accepted, Phase::Started, Phase::Completed]
     );
 }
 
@@ -568,7 +568,7 @@ fn x7_the_scheduler_ticks_through_the_actor_and_never_piles_up() {
     });
 }
 
-// X8：止めている間は`Accepted`だけ。実行のスレッドが取り出した後に`LockGranted`が付き、閉包はその後に始まる。
+// X8：止めている間は`Accepted`だけ。実行のスレッドが取り出した後に`Started`が付き、閉包はその後に始まる。閉包が戻ると`Completed`が付く。
 #[test]
 fn x8_the_record_is_accepted_then_granted_when_the_actor_takes_it() {
     let control = control();
@@ -583,8 +583,12 @@ fn x8_the_record_is_accepted_then_granted_when_the_actor_takes_it() {
     assert_eq!(phases(&control, "a"), [Phase::Accepted]);
     hold.release();
     let seen = seen_rx.recv_timeout(GATE).expect("閉包が実行されなかった");
-    assert_eq!(seen.len(), 1, "閉包が始まる時点で LockGranted は記録済み");
-    assert_eq!(phases(&control, "a"), [Phase::Accepted, Phase::LockGranted]);
+    assert_eq!(seen.len(), 1, "閉包が始まる時点で Started は記録済み");
+    control.run(cmd("sync"), |_| ()).unwrap();
+    assert_eq!(
+        phases(&control, "a"),
+        [Phase::Accepted, Phase::Started, Phase::Completed]
+    );
 }
 
 // X9：待ち手は何も持たない。列のロックは葉で、取り出しの間も回収の間も持たない。
@@ -782,11 +786,23 @@ fn direct_result(stop_first: bool) -> (String, Vec<String>) {
     result
 }
 
-fn queued_result(stop_first: bool) -> (String, Vec<String>) {
+/// 停止と tick を積む形。本番の分類を通る入口（`stop_audio`・Scheduler の`poll_mode_vst`）を使う。
+#[derive(Clone, Copy)]
+enum Queued {
+    /// 実行のスレッドを止めて`[stop, tick]`を積む。
+    StopThenTick,
+    /// 実行のスレッドを止めて`[tick, stop]`を積む。停止の列が先なので、停止が先に実行される。
+    TickThenStop,
+    /// tick を走らせたまま（門で止めて）停止を積む。tick が終わった後に停止が実行される。
+    StopWhileTickRuns,
+}
+
+fn queued_result(case: Queued) -> (String, Vec<String>) {
     let (mut host, observer) = scripted_parts([]);
     install_completing_switch(&mut host);
     let control = AudioControl::new(host);
-    let hold = hold(&control);
+    let stop_entry = || Entry::command("stop_audio");
+    let tick_entry = || Entry::new(EntryKind::Scheduler, "poll_mode_vst");
     let stop = |host: Result<&mut AudioHost, ControlError>| {
         if let Ok(host) = host {
             let _ = host.stop();
@@ -797,25 +813,47 @@ fn queued_result(stop_first: bool) -> (String, Vec<String>) {
             host.poll_mode_vst();
         }
     };
-    if stop_first {
-        control.post(cmd("stop"), stop).unwrap();
-        control.post(cmd("tick"), tick).unwrap();
-    } else {
-        control.post(cmd("tick"), tick).unwrap();
-        control.post(cmd("stop"), stop).unwrap();
+    match case {
+        Queued::StopThenTick | Queued::TickThenStop => {
+            let hold = hold(&control);
+            if matches!(case, Queued::StopThenTick) {
+                control.post(stop_entry(), stop).unwrap();
+                control.post(tick_entry(), tick).unwrap();
+            } else {
+                control.post(tick_entry(), tick).unwrap();
+                control.post(stop_entry(), stop).unwrap();
+            }
+            hold.release();
+        }
+        Queued::StopWhileTickRuns => {
+            let (entered_tx, entered_rx) = mpsc::channel();
+            let (release_tx, release_rx) = mpsc::channel::<()>();
+            control
+                .post(tick_entry(), move |host| {
+                    let _ = entered_tx.send(());
+                    let _ = release_rx.recv_timeout(GATE);
+                    tick(host);
+                })
+                .unwrap();
+            entered_rx
+                .recv_timeout(GATE)
+                .expect("tick が始まらなかった");
+            control.post(stop_entry(), stop).unwrap();
+            let _ = release_tx.send(());
+        }
     }
-    hold.release();
     let state = control.run(cmd("read"), |host| switch_state(host)).unwrap();
     let result = (state, observer.recorder.names());
     let _ = std::fs::remove_dir_all(&observer.dir);
     result
 }
 
-// X13：完了を確定できる tick と停止の順差（11.8）。列の順で、両方の結果を固定する。
+// X13：完了を確定できる tick と停止の順差（11.8）。(i) 停止を先に積むと切替を取り消す。(ii) tick を
+// 走らせたまま停止を積むと、tick が先に確定して通常の停止になる（J-18：実行中は割り込まない）。
+// (iii) 列の順が`[tick, stop]`でも、停止の列が先なので(i)と同じ結果になる。
 #[test]
-fn x13_a_stop_queued_before_a_completing_tick_cancels_the_switch_and_the_reverse_order_stops_normally(
-) {
-    let stop_first = queued_result(true);
+fn x13_y17_a_stop_cancels_the_switch_unless_the_tick_is_already_running() {
+    let stop_first = queued_result(Queued::StopThenTick);
     assert_eq!(stop_first, direct_result(true), "停止が先：取り消し");
     assert!(
         stop_first.0.contains("recovery_required")
@@ -824,19 +862,24 @@ fn x13_a_stop_queued_before_a_completing_tick_cancels_the_switch_and_the_reverse
         "停止が先は、切替を取り消して子を終了する: {}",
         stop_first.0
     );
-    let tick_first = queued_result(false);
+    let tick_running = queued_result(Queued::StopWhileTickRuns);
     assert_eq!(
-        tick_first,
+        tick_running,
         direct_result(false),
-        "tick が先：確定の後に通常の停止"
+        "走っている tick が先：確定の後に通常の停止"
     );
     assert!(
-        tick_first.0.contains("status=None")
-            && !tick_first.0.contains("利用者が音声を停止しました"),
-        "tick が先は、切替が確定する: {}",
-        tick_first.0
+        tick_running.0.contains("status=None")
+            && !tick_running.0.contains("利用者が音声を停止しました"),
+        "走っている tick は、切替が確定する: {}",
+        tick_running.0
     );
-    assert_ne!(stop_first.0, tick_first.0);
+    assert_ne!(stop_first.0, tick_running.0);
+    assert_eq!(
+        queued_result(Queued::TickThenStop),
+        stop_first,
+        "列の順が[tick, stop]でも、停止の列が先に実行される"
+    );
 }
 
 // 異常終了の共通の準備：実行のスレッドを止めておき、`QueueLockHeld`で panic させる準備をする。

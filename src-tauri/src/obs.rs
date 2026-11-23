@@ -59,7 +59,7 @@ impl ReachTone for AudioState {
                     })
                 },
             )
-            .map_err(|_| "音声状態を取得できません".to_string())?
+            .map_err(|error| error.text("音声状態を取得できません").to_string())?
         })
         .await
         .map_err(|e| e.to_string())?
@@ -81,7 +81,7 @@ impl ReachTone for AudioState {
                     })
                 },
             )
-            .map_err(|_| "音声状態を取得できません".to_string())?
+            .map_err(|error| error.text("音声状態を取得できません").to_string())?
         })
         .await
         .map_err(|e| e.to_string())?

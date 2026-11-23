@@ -293,7 +293,7 @@ fn k12_stop_audio_registers_its_pending_before_waiting_for_the_lock() {
         drop(holder);
         // ロックを得て、子へ`Stop`を送った。応答は試験が止めているので、ハンドラは終わっていない。
         wait_until(|| f.sent().iter().any(|name| name == "Stop"));
-        wait_until(|| entry_phases(&f, "stop_audio") == [Phase::Accepted, Phase::LockGranted]);
+        wait_until(|| entry_phases(&f, "stop_audio") == [Phase::Accepted, Phase::Started]);
         assert!(!stop.is_finished(), "ハンドラは子の応答を待っている");
         assert!(
             conditions.control_snapshot().is_err(),
@@ -464,6 +464,47 @@ fn lock_failure_texts_are_fixed() {
         run(get_saved_audio_config(app.state())).unwrap_err(),
         "音声設定を取得できません"
     );
+}
+
+// Y16：新しい3つの断りは、入口ごとの文言ではなく、承認済みの共通の文言になる。今の3種（上）は変わらない。
+#[test]
+fn y16_busy_expired_and_stopped_first_map_to_the_approved_texts_at_the_commands() {
+    let f = Fixture::new([]);
+    let app = mock(&f);
+    let long = Duration::from_secs(3600);
+    f.control
+        .run(audio::Entry::command("get_audio_state"), |_| ())
+        .unwrap();
+    f.control.set_limits(1, long, long, long);
+    let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
+    assert_eq!(
+        run(get_audio_state(app.state())).unwrap_err(),
+        audio::control::BUSY_TEXT
+    );
+    drop(holder);
+    f.control
+        .set_limits(256, Duration::from_millis(50), long, long);
+    let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
+    assert_eq!(
+        run(get_audio_state(app.state())).unwrap_err(),
+        audio::control::EXPIRED_TEXT
+    );
+    drop(holder);
+    f.control.set_limits(256, long, long, long);
+    let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
+    std::thread::scope(|scope| {
+        let state = app.state();
+        let start = scope.spawn(move || run(start_audio(state, options(), None)));
+        wait_until(|| entry_phases(&f, "start_audio") == [audio::control::Phase::Accepted]);
+        f.control
+            .post(audio::Entry::command("stop_audio"), |_| ())
+            .unwrap();
+        drop(holder);
+        assert_eq!(
+            start.join().unwrap().unwrap_err(),
+            audio::control::STOPPED_FIRST_TEXT
+        );
+    });
 }
 
 // D3：再起動は`audio-engine-exited`・`audio-error`を出さない。新しい接続を開始する。

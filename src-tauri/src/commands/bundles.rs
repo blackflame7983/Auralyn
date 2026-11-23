@@ -603,7 +603,7 @@ async fn validate_checked(
                 Ok(())
             },
         )
-        .map_err(|_| "音声状態を取得できません")?
+        .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await
 }
@@ -1991,7 +1991,7 @@ async fn capture_async(host: audio::AudioControl) -> Result<(Captured, ControlWi
             audio::Entry::bundle("capture_async"),
             move |host| -> Result<_, String> { capture(host) },
         )
-        .map_err(|_| "音声状態を取得できません")?
+        .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await
 }
@@ -2097,7 +2097,7 @@ pub(crate) async fn broadcast_bundle(
                                 host.process_snapshot_supported().map_err(|e| e.to_string())
                             },
                         )
-                        .map_err(|_| "音声状態を取得できません")?
+                        .map_err(|error| error.text("音声状態を取得できません"))?
                 })
                 .await?;
             } else if categories.include_audio_config && captured.process.is_some() {
@@ -2126,7 +2126,7 @@ pub(crate) async fn broadcast_bundle(
                                 .map_err(|e| e.to_string())
                             },
                         )
-                        .map_err(|_| "音声状態を取得できません")?
+                        .map_err(|error| error.text("音声状態を取得できません"))?
                 })
                 .await?;
             } else if categories.include_audio_config
@@ -2384,7 +2384,7 @@ pub(crate) async fn broadcast_bundle(
                                 .map_err(|e| e.to_string())
                             },
                         )
-                        .map_err(|_| "音声状態を取得できません")?
+                        .map_err(|error| error.text("音声状態を取得できません"))?
                 })
                 .await?;
             }
@@ -2413,7 +2413,7 @@ pub(crate) async fn broadcast_bundle(
                                 .map_err(|e| e.to_string())
                             },
                         )
-                        .map_err(|_| "音声状態を取得できません")?
+                        .map_err(|error| error.text("音声状態を取得できません"))?
                 })
                 .await?;
             }
@@ -2492,12 +2492,12 @@ pub(crate) async fn broadcast_bundle(
             let token = super::run_blocking(move || {
                 host_begin
                     .run(
-                        audio::Entry::bundle("broadcast_bundle"),
+                        audio::Entry::bundle("begin_live_changes_bundle"),
                         move |host| -> Result<_, String> {
                             host.begin_live_changes().map_err(|e| e.to_string())
                         },
                     )
-                    .map_err(|_| "音声状態を取得できません")?
+                    .map_err(|error| error.text("音声状態を取得できません"))?
             })
             .await?;
             // Endはこのcommandが取得したtokenだけをfinally相当で解放する。
@@ -2513,12 +2513,12 @@ pub(crate) async fn broadcast_bundle(
             .await;
             let end = super::run_blocking(move || {
                 host.run(
-                    audio::Entry::bundle("broadcast_bundle"),
+                    audio::Entry::bundle("end_live_changes_bundle"),
                     move |host| -> Result<_, String> {
                         host.end_live_changes(token).map_err(|e| e.to_string())
                     },
                 )
-                .map_err(|_| "音声状態を取得できません")?
+                .map_err(|error| error.text("音声状態を取得できません"))?
             })
             .await;
             if let Err(error) = end {
@@ -2580,23 +2580,23 @@ pub(crate) async fn broadcast_bundle(
             let token = super::run_blocking(move || {
                 host_begin
                     .run(
-                        audio::Entry::bundle("broadcast_bundle"),
+                        audio::Entry::bundle("begin_live_changes_bundle"),
                         move |host| -> Result<_, String> {
                             host.begin_live_changes().map_err(|e| e.to_string())
                         },
                     )
-                    .map_err(|_| "音声状態を取得できません")?
+                    .map_err(|error| error.text("音声状態を取得できません"))?
             })
             .await?;
             let result = undo_owned(&root, host.clone(), &obs, history).await;
             let end = super::run_blocking(move || {
                 host.run(
-                    audio::Entry::bundle("broadcast_bundle"),
+                    audio::Entry::bundle("end_live_changes_bundle"),
                     move |host| -> Result<_, String> {
                         host.end_live_changes(token).map_err(|e| e.to_string())
                     },
                 )
-                .map_err(|_| "音声状態を取得できません")?
+                .map_err(|error| error.text("音声状態を取得できません"))?
             })
             .await;
             if let Err(error) = end {
@@ -2762,7 +2762,7 @@ async fn apply_owned(
                     Ok((summary, witness))
                 },
             )
-            .map_err(|_| "音声状態を取得できません")?
+            .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await;
     let (summary, applied_witness) = match applied {
@@ -2829,10 +2829,10 @@ async fn apply_owned(
         let witness = super::run_blocking(move || {
             conditions_host
                 .run(
-                    audio::Entry::bundle("apply_owned"),
+                    audio::Entry::bundle("snapshot_conditions"),
                     move |host| -> Result<_, String> { host.conditions().snapshot() },
                 )
-                .map_err(|_| "音声状態を取得できません")?
+                .map_err(|error| error.text("音声状態を取得できません"))?
         })
         .await;
         let result = match witness {
@@ -2927,7 +2927,7 @@ async fn undo_owned(
                     Ok(summary)
                 },
             )
-            .map_err(|_| "音声状態を取得できません")?
+            .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await;
     let summary = match summary {

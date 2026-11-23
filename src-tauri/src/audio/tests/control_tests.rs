@@ -13,26 +13,36 @@ fn summary(control: &AudioControl) -> Vec<(u64, &'static str, Phase)> {
         .admission()
         .records()
         .iter()
+        .filter(|record| record.entry.name != "sync")
         .map(|record| (record.seq, record.entry.name, record.phase))
         .collect()
 }
 
+/// リースを手放した後の`Completed`は実行のスレッドが記録するので、続けて1件通して記録を確定させる。
+fn settle(control: &AudioControl) {
+    control.run(Entry::command("sync"), |_| ()).unwrap();
+}
+
 #[test]
-fn lock_records_the_acceptance_then_the_grant_with_the_entry_name() {
+fn lock_records_the_acceptance_then_the_start_and_the_completion_with_the_entry_name() {
     let control = control();
     drop(control.lock(Entry::command("a")).unwrap());
+    settle(&control);
     drop(
         control
             .lock(Entry::new(EntryKind::Tray, "mute_toggle"))
             .unwrap(),
     );
+    settle(&control);
     assert_eq!(
         summary(&control),
         [
             (1, "a", Phase::Accepted),
-            (1, "a", Phase::LockGranted),
-            (2, "mute_toggle", Phase::Accepted),
-            (2, "mute_toggle", Phase::LockGranted),
+            (1, "a", Phase::Started),
+            (1, "a", Phase::Completed),
+            (3, "mute_toggle", Phase::Accepted),
+            (3, "mute_toggle", Phase::Started),
+            (3, "mute_toggle", Phase::Completed),
         ]
     );
     assert_eq!(control.admission().accepted_of(EntryKind::Tray), 1);
@@ -62,7 +72,7 @@ fn k11_the_result_follows_the_lock_order_not_the_recorded_acceptance_order() {
         .collect();
     let granted: Vec<_> = log
         .iter()
-        .filter(|(_, _, phase)| *phase == Phase::LockGranted)
+        .filter(|(_, _, phase)| *phase == Phase::Started)
         .map(|(_, name, _)| *name)
         .collect();
     assert_eq!(&accepted[..2], ["A", "B"], "記録は A→B のまま");

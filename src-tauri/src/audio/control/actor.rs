@@ -2,15 +2,17 @@
 //!
 //! 所有するもの（ホスト・取り出し済みの仕事・列から取り出した残件）は、すべて外側の`catch_unwind`の
 //! 外の変数が持つ。内側のループは借りるか、外の変数との間で出し入れするだけで、所有したまま
-//! panic しうる区間を作らない。
-use super::queue::{Job, JobKind, JobQueue, Payload, PostFn, Reply, RunFn};
-use super::{Admission, ControlError};
+//! panic しうる区間を作らない。実行する仕事も断る仕事も、取り出したら`current`に置く。
+use super::class::{is_start_request, JobClass};
+use super::queue::{ActorPoint, Job, JobKind, JobQueue, Payload, PostFn, Reply, RunFn, Taken};
+use super::{Admission, ControlError, Entry, Phase};
 use crate::audio::AudioHost;
 use std::cell::Cell;
 use std::io;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
+use std::time::Instant;
 
 const STACK_SIZE: usize = 4 * 1024 * 1024;
 
@@ -65,6 +67,45 @@ fn actor_main(queue: &JobQueue, admission: &Admission, host: AudioHost) {
     }
 }
 
+/// 仕事の終わりの記録。数を下げ、`Completed`か`Refused`を記録する。返事は、この後で送る。
+struct Finish<'a> {
+    queue: &'a JobQueue,
+    admission: &'a Admission,
+    seq: u64,
+    entry: Entry,
+    class: JobClass,
+}
+
+impl Finish<'_> {
+    fn completed(&self, started: Instant) {
+        self.queue.complete(self.class);
+        let elapsed = started.elapsed();
+        self.admission
+            .record(self.seq, self.entry, Phase::Completed, Some(elapsed));
+        let limits = self.queue.limits();
+        let slow = if is_start_request(self.entry) {
+            limits.slow_start
+        } else {
+            limits.slow
+        };
+        if elapsed >= slow {
+            self.admission.note_slow();
+            log::warn!(
+                "audio operation {} took {} ms (seq {})",
+                self.entry.name,
+                elapsed.as_millis(),
+                self.seq
+            );
+        }
+    }
+
+    fn refused(&self) {
+        self.queue.complete(self.class);
+        self.admission
+            .record(self.seq, self.entry, Phase::Refused, None);
+    }
+}
+
 fn serve(
     queue: &JobQueue,
     admission: &Admission,
@@ -72,48 +113,74 @@ fn serve(
     current: &mut Option<Job>,
 ) {
     let mut poisoned = false;
-    while queue.take_next(current) {
-        #[cfg(test)]
-        queue.run_seam(super::queue::ActorPoint::AfterTake);
-        if let Some(job) = current.as_ref() {
-            admission.push_granted(job.seq, job.entry);
-        }
+    while let Some(taken) = queue.take_next(current) {
+        queue.run_seam(ActorPoint::AfterTake);
         let Some(job) = current.take() else { continue };
-        let outcome = catch_unwind(AssertUnwindSafe(|| execute(job, host, &mut poisoned)));
+        let finish = Finish {
+            queue,
+            admission,
+            seq: job.seq,
+            entry: job.entry,
+            class: job.class,
+        };
+        let outcome = catch_unwind(AssertUnwindSafe(|| match taken {
+            Taken::Run => {
+                admission.record(job.seq, job.entry, Phase::Started, None);
+                execute(job.kind, &finish, queue, host, &mut poisoned)
+            }
+            Taken::Refuse(error) => {
+                finish.refused();
+                refuse(job.kind, error, queue)
+            }
+        }));
         if !matches!(outcome, Ok(Outcome::Done)) {
             poisoned = true;
         }
     }
 }
 
-fn execute(job: Job, host: &mut Option<Box<AudioHost>>, poisoned: &mut bool) -> Outcome {
-    match job.kind {
-        JobKind::Run { tx, f } => run_job(tx, f, host, *poisoned),
-        JobKind::Post { f } => post_job(f, host, *poisoned),
+fn execute(
+    kind: JobKind,
+    finish: &Finish<'_>,
+    queue: &JobQueue,
+    host: &mut Option<Box<AudioHost>>,
+    poisoned: &mut bool,
+) -> Outcome {
+    let started = Instant::now();
+    match kind {
+        JobKind::Run { tx, f } => {
+            let (reply, outcome) = run_job(f, host, *poisoned);
+            finish.completed(started);
+            reply_to(queue, &tx, reply);
+            outcome
+        }
+        JobKind::Post { f } => {
+            let outcome = post_job(f, host, *poisoned);
+            finish.completed(started);
+            outcome
+        }
         #[cfg(test)]
-        JobKind::Lease(lease) => lease_job(lease, host, poisoned),
+        JobKind::Lease(lease) => {
+            let outcome = lease_job(lease, host, poisoned);
+            finish.completed(started);
+            outcome
+        }
     }
 }
 
-fn run_job(
-    tx: std::sync::mpsc::SyncSender<Reply>,
-    f: RunFn,
-    host: &mut Option<Box<AudioHost>>,
-    poisoned: bool,
-) -> Outcome {
+fn reply_to(queue: &JobQueue, tx: &std::sync::mpsc::SyncSender<Reply>, reply: Reply) {
+    queue.run_seam(ActorPoint::BeforeReply);
+    let _ = tx.send(reply);
+    queue.run_seam(ActorPoint::AfterReply);
+}
+
+fn run_job(f: RunFn, host: &mut Option<Box<AudioHost>>, poisoned: bool) -> (Reply, Outcome) {
     let Some(host) = host.as_deref_mut().filter(|_| !poisoned) else {
-        let _ = tx.send(Reply::Poisoned);
-        return Outcome::Done;
+        return (Reply::Poisoned, Outcome::Done);
     };
     match catch_unwind(AssertUnwindSafe(|| f(host))) {
-        Ok(output) => {
-            let _ = tx.send(Reply::Done(output));
-            Outcome::Done
-        }
-        Err(payload) => {
-            let _ = tx.send(Reply::Panicked(payload));
-            Outcome::Panicked
-        }
+        Ok(output) => (Reply::Done(output), Outcome::Done),
+        Err(payload) => (Reply::Panicked(payload), Outcome::Panicked),
     }
 }
 
@@ -132,6 +199,37 @@ fn post_job(f: PostFn, host: &mut Option<Box<AudioHost>>, poisoned: bool) -> Out
             );
             discard(payload);
             Outcome::Panicked
+        }
+    }
+}
+
+/// 実行せずに断る。閉包は`run`では呼ばずに捨て、`post`では`Err(理由)`で1回だけ呼ぶ。
+fn refuse(kind: JobKind, error: ControlError, queue: &JobQueue) -> Outcome {
+    match kind {
+        JobKind::Run { tx, f } => {
+            drop(f);
+            reply_to(queue, &tx, Reply::Refused(error));
+            Outcome::Done
+        }
+        JobKind::Post { f } => {
+            queue.run_seam(ActorPoint::BeforeReply);
+            let result = catch_unwind(AssertUnwindSafe(|| f(Err(error))));
+            match result {
+                Ok(()) => Outcome::Done,
+                Err(payload) => {
+                    log::error!(
+                        "a refused audio operation panicked: {}",
+                        payload_text(payload.as_ref())
+                    );
+                    discard(payload);
+                    Outcome::Panicked
+                }
+            }
+        }
+        #[cfg(test)]
+        JobKind::Lease(lease) => {
+            let _ = lease.grant.send(Err(error));
+            Outcome::Done
         }
     }
 }

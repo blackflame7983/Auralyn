@@ -168,7 +168,7 @@ pub async fn install_update(
                 crate::audio::Entry::new(crate::audio::EntryKind::Update, "prepare_update"),
                 |host| host.prepare_update().map_err(|e| e.to_string()),
             )
-            .map_err(|_| "音声状態を取得できません")??;
+            .map_err(|error| error.text("音声状態を取得できません"))??;
         // Windowsではインストーラー起動後にプロセス終了する。Dropに後片付けを任せない。
         let result = update.install(bytes).map_err(|e| {
             format!("更新できませんでした。音声は停止しています。音声設定から再開してください: {e}")
