@@ -2,12 +2,12 @@
 //! 行 ID は docs/plans/audio-session-acceptance.md の K 群と、F1a で固定する行（A・B・C・D 群）。
 //! 通知の順序は、実際の読み取りスレッドが`emit`を呼んだ順序（Rust 側の事実。WebView に届く順序ではない）。
 use super::compat_support::*;
+use super::control::HostLease;
 use super::*;
-use std::sync::MutexGuard;
 
 const CC: &str = "audio-conditions-changed";
 
-fn host(f: &Fixture) -> MutexGuard<'_, AudioHost> {
+fn host(f: &Fixture) -> HostLease<'_> {
     f.control
         .lock(control::Entry::command("compat_test"))
         .unwrap()

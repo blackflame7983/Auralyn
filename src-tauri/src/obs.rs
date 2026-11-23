@@ -47,16 +47,19 @@ impl ReachTone for AudioState {
     async fn play(&self, duration_ms: u32) -> Result<ReachReceipt, String> {
         let host = self.0.clone();
         tokio::task::spawn_blocking(move || {
-            let mut host = host
-                .lock(Entry::new(EntryKind::Obs, "play"))
-                .map_err(|_| "音声状態を取得できません".to_string())?;
-            let witness = host
-                .begin_obs_reach_tone(duration_ms)
-                .map_err(|e| e.to_string())?;
-            Ok(ReachReceipt {
-                witness,
-                config: host.get_state().config,
-            })
+            host.run(
+                Entry::new(EntryKind::Obs, "play"),
+                move |host| -> Result<_, String> {
+                    let witness = host
+                        .begin_obs_reach_tone(duration_ms)
+                        .map_err(|e| e.to_string())?;
+                    Ok(ReachReceipt {
+                        witness,
+                        config: host.get_state().config,
+                    })
+                },
+            )
+            .map_err(|_| "音声状態を取得できません".to_string())?
         })
         .await
         .map_err(|e| e.to_string())?
@@ -66,16 +69,19 @@ impl ReachTone for AudioState {
         let host = self.0.clone();
         let witness = receipt.witness.clone();
         tokio::task::spawn_blocking(move || {
-            let mut host = host
-                .lock(Entry::new(EntryKind::Obs, "stop"))
-                .map_err(|_| "音声状態を取得できません".to_string())?;
-            let witness = host
-                .finish_obs_reach_tone(&witness)
-                .map_err(|e| e.to_string())?;
-            Ok(ReachReceipt {
-                witness,
-                config: host.get_state().config,
-            })
+            host.run(
+                Entry::new(EntryKind::Obs, "stop"),
+                move |host| -> Result<_, String> {
+                    let witness = host
+                        .finish_obs_reach_tone(&witness)
+                        .map_err(|e| e.to_string())?;
+                    Ok(ReachReceipt {
+                        witness,
+                        config: host.get_state().config,
+                    })
+                },
+            )
+            .map_err(|_| "音声状態を取得できません".to_string())?
         })
         .await
         .map_err(|e| e.to_string())?

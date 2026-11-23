@@ -310,7 +310,7 @@ pub fn run() {
                 audio_host.require_explicit_start();
             }
             app.manage(audio::conditions::ConditionState(audio_host.conditions()));
-            app.manage(audio::AudioState(audio::AudioControl::new(audio_host)));
+            app.manage(audio::AudioState(audio::AudioControl::try_new(audio_host)?));
             let state = app.state::<audio::AudioState>();
             state.0.start_mode_vst_scheduler();
 
@@ -352,12 +352,10 @@ pub fn run() {
                     }
                     "mute_toggle" => {
                         if let Some(audio_state) = app.try_state::<audio::AudioState>() {
-                            if let Ok(mut host) = audio_state
-                                .0
-                                .lock(audio::Entry::new(audio::EntryKind::Tray, "mute_toggle"))
-                            {
-                                let _ = host.toggle_global_mute();
-                            }
+                            let _ = audio_state.0.post(
+                                audio::Entry::new(audio::EntryKind::Tray, "mute_toggle"),
+                                audio::tray_mute_toggle,
+                            );
                         }
                     }
                     "quit" => quit_app(app.clone()),
@@ -385,25 +383,24 @@ pub fn run() {
             // Clone the handle to pass to the thread
             let handle = app.handle().clone();
 
-            // Lock and set the emitter
-            if let Ok(mut host) = state.0.lock(audio::Entry::new(
-                audio::EntryKind::Startup,
-                "set_event_emitter",
-            )) {
-                host.set_event_emitter(handle);
-            }
+            // Set the emitter
+            let _ = state.0.run(
+                audio::Entry::new(audio::EntryKind::Startup, "set_event_emitter"),
+                move |host| host.set_event_emitter(handle),
+            );
 
             // Warmup Audio Engine (Spawn Sidecar in Background)
             let host_clone = state.0.clone();
             std::thread::spawn(move || {
-                if let Ok(mut host) =
-                    host_clone.lock(audio::Entry::new(audio::EntryKind::Warmup, "warmup"))
-                {
-                    log::info!("Warming up Audio Engine...");
-                    if let Err(e) = host.warmup() {
-                        log::error!("Failed to warmup audio engine: {}", e);
-                    }
-                }
+                let _ = host_clone.run(
+                    audio::Entry::new(audio::EntryKind::Warmup, "warmup"),
+                    |host| {
+                        log::info!("Warming up Audio Engine...");
+                        if let Err(e) = host.warmup() {
+                            log::error!("Failed to warmup audio engine: {}", e);
+                        }
+                    },
+                );
             });
 
             Ok(())

@@ -4,7 +4,7 @@
     {
       "file": "src-tauri/src/audio.rs",
       "rule": "rust/suppression",
-      "hash": "3114d6edd833a92f453d101599be5ee1eff420b4a961491b6babc445a7c0724c",
+      "hash": "b6f09b02979e4ad6c4006a07d37cb2d380e14977971d8552636320a29a2992f2",
       "count": 8,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },
@@ -88,7 +88,7 @@
     {
       "file": "src-tauri/src/commands/profiles.rs",
       "rule": "rust/suppression",
-      "hash": "fa1899238b21ea9436714d62ba77a157ee6b347e6b1355026b390fb05945ebd8",
+      "hash": "0b62a091c44875b786774420a5d41b58f16e2ce2ed0281b789b1638e9932eb06",
       "count": 1,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },

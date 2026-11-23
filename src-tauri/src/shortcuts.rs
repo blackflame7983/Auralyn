@@ -6,7 +6,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Mutex,
+        Arc, Mutex, OnceLock,
     },
     time::{Duration, Instant},
 };
@@ -70,7 +70,13 @@ impl std::fmt::Display for ShortcutError {
 }
 impl std::error::Error for ShortcutError {}
 #[derive(Default)]
-pub struct Shortcuts(pub Mutex<Status>, AtomicBool, AtomicU64, Mutex<CaptureGate>);
+pub struct Shortcuts(
+    pub Mutex<Status>,
+    AtomicBool,
+    AtomicU64,
+    Mutex<CaptureGate>,
+    OnceLock<crate::audio::AudioControl>,
+);
 
 #[derive(Default)]
 struct CaptureGate {
@@ -246,6 +252,9 @@ pub fn initialize(app: &AppHandle) {
     if app.state::<Shortcuts>().1.swap(true, Ordering::AcqRel) {
         return;
     }
+    if let Some(audio) = app.try_state::<crate::audio::AudioState>() {
+        let _ = app.state::<Shortcuts>().4.set(audio.0.clone());
+    }
     let result = (|| -> Result<(), ShortcutError> {
         let root = app
             .path()
@@ -415,125 +424,168 @@ pub fn dispatch(app: AppHandle, id: u32) {
     } else {
         0
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        let result = (|| -> anyhow::Result<()> {
-            let audio = app.state::<crate::audio::AudioState>();
-            let mut host = audio
-                .0
-                .lock(crate::audio::Entry::new(
-                    crate::audio::EntryKind::Shortcut,
-                    "global_shortcut",
-                ))
-                .map_err(|_| ShortcutError::AudioStateUnavailable)?;
-            // 開始前に待機していた操作は、入力開始後に実行しない。
-            let shortcuts = app.state::<Shortcuts>();
-            let mut gate = shortcuts
-                .3
-                .lock()
-                .map_err(|_| ShortcutError::StateUnavailable)?;
-            if !gate.permits(generation, Instant::now()) {
-                return Ok(());
-            }
-            match action {
-                Action::SingingOn | Action::TalkOn => {
-                    if intent_sequence != app.state::<Shortcuts>().2.load(Ordering::Acquire) {
-                        return Ok(());
-                    }
-                    use crate::audio_engine::live_modes::{Intent, Request};
-                    let epoch = host.live_modes(Request::Snapshot)?.epoch;
-                    let intent = Intent {
-                        client_id: "shortcuts".into(),
-                        sequence: intent_sequence,
-                        expected_epoch: epoch,
-                    };
-                    let request = if action == Action::SingingOn {
-                        Request::SingingOn { intent }
-                    } else {
-                        Request::TalkOn { intent }
-                    };
-                    host.live_modes(request)?;
-                }
-                Action::MuteToggle => host.toggle_global_mute()?,
-                Action::MuteOn => host.set_global_mute(true)?,
-                Action::MuteOff => host.set_global_mute(false)?,
-                Action::BypassToggle | Action::BypassOn | Action::BypassOff => {
-                    // 止まっているあいだは比較の切り替えを送らず、フラグも変えない。
-                    // プロセスが無い、または適用中の設定が無いときは、状態の照会もしない。
-                    let info = host.get_state();
-                    let (stream_running, stream_failed) =
-                        if info.is_running && info.config.is_some() {
-                            match host.auto_gain(crate::audio_engine::auto_gain::Request::Status) {
-                                Ok(status) => (status.running, status.stream_failed),
-                                // 画面の取得失敗と同じく、動いていないものとして扱う。通知は出さない。
-                                Err(_) => (false, false),
-                            }
-                        } else {
-                            (false, false)
-                        };
-                    let audio_running = shortcut_audio_running(
-                        info.is_running,
-                        info.config.is_some(),
-                        stream_running,
-                        stream_failed,
-                    );
-                    let current_bypass = if audio_running && matches!(action, Action::BypassToggle)
-                    {
-                        host.get_engine_runtime_stats()?.global_bypass
-                    } else {
-                        false
-                    };
-                    match compare_shortcut_bypass(audio_running, &action, current_bypass) {
-                        Some(active) => host.set_global_bypass(active)?,
-                        None => {
-                            log::info!(
-                                "音声が止まっているため、比較のショートカットを無視しました"
-                            );
-                        }
-                    }
-                }
-                Action::NoiseToggle => {
-                    let next = noise_toggle(&host.get_engine_runtime_stats()?);
-                    host.set_noise_control_config(
-                        next.enabled,
-                        next.mode.clone(),
-                        next.strength,
-                        next.voice_guard,
-                    )?;
-                    app.emit("shortcut-noise-toggled", next)?;
-                }
-                Action::GainUp | Action::GainDown => {
-                    let status = host.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
-                    if status.stream_failed || (status.running && !status.settled) {
-                        return Err(ShortcutError::GainPending.into());
-                    }
-                    let next = (status.gain
-                        + if action == Action::GainUp {
-                            0.01
-                        } else {
-                            -0.01
-                        })
-                    .clamp(0.0, 2.0);
-                    host.set_output_gain(next)?;
-                    if !status.running {
-                        app.emit("shortcut-stopped-gain", next * 100.0)?;
-                    } else {
-                        let intent = host.shortcut_gain_intent(next)?;
-                        app.emit("shortcut-output-gain", intent)?;
-                    }
-                }
-            }
-            Ok(())
-        })();
-        if let Err(error) = result {
-            let notice = error
-                .downcast_ref::<ShortcutError>()
-                .cloned()
-                .unwrap_or_else(|| ShortcutError::ActionFailed {
-                    detail: error.to_string(),
-                });
-            let _ = app.emit("shortcut-error", notice);
-        }
+    let audio = app.state::<Shortcuts>().4.get().cloned();
+    let notify_app = app.clone();
+    let notify: Notifier = Arc::new(move |notice| {
+        let _ = notify_app.emit("shortcut-error", notice);
     });
+    let spawn: Spawner = Arc::new(|job| {
+        tauri::async_runtime::spawn_blocking(job);
+    });
+    let Some(audio) = audio else {
+        notify_shortcut_error_off_callback(&spawn, notify, ShortcutError::AudioStateUnavailable);
+        return;
+    };
+    post_shortcut_work(&audio, notify, spawn, move |host| {
+        // 開始前に待機していた操作は、入力開始後に実行しない。
+        let shortcuts = app.state::<Shortcuts>();
+        let mut gate = shortcuts
+            .3
+            .lock()
+            .map_err(|_| ShortcutError::StateUnavailable)?;
+        if !gate.permits(generation, Instant::now()) {
+            return Ok(());
+        }
+        match action {
+            Action::SingingOn | Action::TalkOn => {
+                if intent_sequence != app.state::<Shortcuts>().2.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+                use crate::audio_engine::live_modes::{Intent, Request};
+                let epoch = host.live_modes(Request::Snapshot)?.epoch;
+                let intent = Intent {
+                    client_id: "shortcuts".into(),
+                    sequence: intent_sequence,
+                    expected_epoch: epoch,
+                };
+                let request = if action == Action::SingingOn {
+                    Request::SingingOn { intent }
+                } else {
+                    Request::TalkOn { intent }
+                };
+                host.live_modes(request)?;
+            }
+            Action::MuteToggle => host.toggle_global_mute()?,
+            Action::MuteOn => host.set_global_mute(true)?,
+            Action::MuteOff => host.set_global_mute(false)?,
+            Action::BypassToggle | Action::BypassOn | Action::BypassOff => {
+                // 止まっているあいだは比較の切り替えを送らず、フラグも変えない。
+                // プロセスが無い、または適用中の設定が無いときは、状態の照会もしない。
+                let info = host.get_state();
+                let (stream_running, stream_failed) = if info.is_running && info.config.is_some() {
+                    match host.auto_gain(crate::audio_engine::auto_gain::Request::Status) {
+                        Ok(status) => (status.running, status.stream_failed),
+                        // 画面の取得失敗と同じく、動いていないものとして扱う。通知は出さない。
+                        Err(_) => (false, false),
+                    }
+                } else {
+                    (false, false)
+                };
+                let audio_running = shortcut_audio_running(
+                    info.is_running,
+                    info.config.is_some(),
+                    stream_running,
+                    stream_failed,
+                );
+                let current_bypass = if audio_running && matches!(action, Action::BypassToggle) {
+                    host.get_engine_runtime_stats()?.global_bypass
+                } else {
+                    false
+                };
+                match compare_shortcut_bypass(audio_running, &action, current_bypass) {
+                    Some(active) => host.set_global_bypass(active)?,
+                    None => {
+                        log::info!("音声が止まっているため、比較のショートカットを無視しました");
+                    }
+                }
+            }
+            Action::NoiseToggle => {
+                let next = noise_toggle(&host.get_engine_runtime_stats()?);
+                host.set_noise_control_config(
+                    next.enabled,
+                    next.mode.clone(),
+                    next.strength,
+                    next.voice_guard,
+                )?;
+                app.emit("shortcut-noise-toggled", next)?;
+            }
+            Action::GainUp | Action::GainDown => {
+                let status = host.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+                if status.stream_failed || (status.running && !status.settled) {
+                    return Err(ShortcutError::GainPending.into());
+                }
+                let next = (status.gain
+                    + if action == Action::GainUp {
+                        0.01
+                    } else {
+                        -0.01
+                    })
+                .clamp(0.0, 2.0);
+                host.set_output_gain(next)?;
+                if !status.running {
+                    app.emit("shortcut-stopped-gain", next * 100.0)?;
+                } else {
+                    let intent = host.shortcut_gain_intent(next)?;
+                    app.emit("shortcut-output-gain", intent)?;
+                }
+            }
+        }
+        Ok(())
+    });
+}
+
+pub(crate) type Notifier = Arc<dyn Fn(ShortcutError) + Send + Sync>;
+pub(crate) type Spawner = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
+
+fn shortcut_notice(error: &anyhow::Error) -> ShortcutError {
+    error
+        .downcast_ref::<ShortcutError>()
+        .cloned()
+        .unwrap_or_else(|| ShortcutError::ActionFailed {
+            detail: error.to_string(),
+        })
+}
+
+/// OS のコールバックの上では`emit`を呼ばない（Tauri の`emit`は競合すると止まる）。通知は別のスレッドへ渡す。
+/// ランタイムが終わった後の`spawn_blocking`の panic はコールバックへ抜けさせず、通知を諦める。
+pub(crate) fn notify_shortcut_error_off_callback(
+    spawn: &Spawner,
+    notify: Notifier,
+    error: ShortcutError,
+) {
+    let job: Box<dyn FnOnce() + Send> = Box::new(move || notify(error));
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spawn(job))).is_err() {
+        log::warn!("ショートカットのエラー通知を出せませんでした");
+    }
+}
+
+/// ショートカットの本体を実行のスレッドへ積んで、待たずに戻る。積めない・実行できないときは、
+/// コールバックの外で`AudioStateUnavailable`を通知する。
+pub(crate) fn post_shortcut_work(
+    control: &crate::audio::AudioControl,
+    notify: Notifier,
+    spawn: Spawner,
+    work: impl FnOnce(&mut crate::audio::AudioHost) -> anyhow::Result<()> + Send + 'static,
+) {
+    let (closure_notify, closure_spawn) = (notify.clone(), spawn.clone());
+    let posted = control.post(
+        crate::audio::Entry::new(crate::audio::EntryKind::Shortcut, "global_shortcut"),
+        move |host| match host {
+            Ok(host) => {
+                if let Err(error) = work(host) {
+                    closure_notify(shortcut_notice(&error));
+                }
+            }
+            Err(_) => notify_shortcut_error_off_callback(
+                &closure_spawn,
+                closure_notify,
+                ShortcutError::AudioStateUnavailable,
+            ),
+        },
+    );
+    if posted.is_err() {
+        notify_shortcut_error_off_callback(&spawn, notify, ShortcutError::AudioStateUnavailable);
+    }
 }
 
 #[cfg(test)]
@@ -817,5 +869,135 @@ mod tests {
         b = defaults();
         b[1].action = Action::MuteToggle;
         assert!(validate(&b).is_err());
+    }
+
+    fn notice_log() -> (
+        Notifier,
+        Arc<Mutex<Vec<ShortcutError>>>,
+        std::sync::mpsc::Sender<()>,
+    ) {
+        let log: Arc<Mutex<Vec<ShortcutError>>> = Arc::default();
+        let (release, gate) = std::sync::mpsc::channel::<()>();
+        let gate = Mutex::new(gate);
+        let sink = log.clone();
+        let notify: Notifier = Arc::new(move |notice| {
+            let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(10));
+            sink.lock().unwrap().push(notice);
+        });
+        (notify, log, release)
+    }
+
+    fn thread_spawner() -> Spawner {
+        Arc::new(|job| {
+            std::thread::spawn(job);
+        })
+    }
+
+    fn control() -> crate::audio::AudioControl {
+        crate::audio::AudioControl::new(crate::audio::AudioHost::new(
+            std::env::temp_dir().join(format!("auralyn-shortcut-{}", std::process::id())),
+        ))
+    }
+
+    fn returns_within_the_gate(what: &str, f: impl FnOnce() + Send + 'static) {
+        let (done, wait) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            f();
+            let _ = done.send(());
+        });
+        wait.recv_timeout(Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("時間内に戻らなかった: {what}"));
+    }
+
+    fn wait_for(log: &Arc<Mutex<Vec<ShortcutError>>>, len: usize) {
+        let started = Instant::now();
+        while log.lock().unwrap().len() < len {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "通知が出なかった"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    // X11：閉じた列への`post`は、通知の発行が止まっていても、コールバックを塞がない。通知は別のスレッドで1回出る。
+    #[test]
+    fn x11_a_closed_queue_notifies_off_the_callback_and_never_blocks_it() {
+        let control = control();
+        control.close_for_test();
+        let (notify, log, release) = notice_log();
+        let called = Arc::new(AtomicBool::new(false));
+        let flag = called.clone();
+        let spawn = thread_spawner();
+        returns_within_the_gate("post_shortcut_work on a closed queue", move || {
+            post_shortcut_work(&control, notify, spawn, move |_| {
+                flag.store(true, Ordering::SeqCst);
+                Ok(())
+            });
+        });
+        assert!(log.lock().unwrap().is_empty(), "通知の発行は止まっている");
+        assert!(!called.load(Ordering::SeqCst), "閉じた列では本体を呼ばない");
+        release.send(()).unwrap();
+        wait_for(&log, 1);
+        assert_eq!(*log.lock().unwrap(), [ShortcutError::AudioStateUnavailable]);
+    }
+
+    // X11：poison した後も、本体は呼ばれず、`AudioStateUnavailable`が1回だけ出る。実行のスレッドの上では`emit`しない。
+    #[test]
+    fn x11_a_poisoned_control_maps_to_audio_state_unavailable_off_the_callback() {
+        let control = control();
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            control.run(crate::audio::Entry::command("poison"), |_| -> () {
+                panic!("poison the audio state")
+            })
+        }));
+        assert!(poisoned.is_err());
+        let (notify, log, release) = notice_log();
+        release.send(()).unwrap();
+        let called = Arc::new(AtomicBool::new(false));
+        let flag = called.clone();
+        post_shortcut_work(&control, notify, thread_spawner(), move |_| {
+            flag.store(true, Ordering::SeqCst);
+            Ok(())
+        });
+        wait_for(&log, 1);
+        assert_eq!(*log.lock().unwrap(), [ShortcutError::AudioStateUnavailable]);
+        assert!(!called.load(Ordering::SeqCst));
+    }
+
+    // X11：`spawn_blocking`が使えないとき（ランタイムの終了後）も、コールバックへ panic を抜けさせない。
+    #[test]
+    fn x11_a_failing_spawner_never_panics_into_the_callback() {
+        let control = control();
+        control.close_for_test();
+        let (notify, log, _release) = notice_log();
+        let spawn: Spawner = Arc::new(|_| panic!("the runtime is gone"));
+        post_shortcut_work(&control, notify, spawn, |_| Ok(()));
+        assert!(log.lock().unwrap().is_empty());
+    }
+
+    // 本体の失敗は、実行のスレッドの上で今と同じ文言の通知になる。`ShortcutError`はそのまま、それ以外は`ActionFailed`。
+    #[test]
+    fn a_failing_body_is_reported_with_the_same_notices() {
+        let control = control();
+        let (notify, log, release) = notice_log();
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        post_shortcut_work(&control, notify.clone(), thread_spawner(), |_| {
+            Err(ShortcutError::GainPending.into())
+        });
+        post_shortcut_work(&control, notify, thread_spawner(), |_| {
+            Err(anyhow::anyhow!("detail"))
+        });
+        wait_for(&log, 2);
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                ShortcutError::GainPending,
+                ShortcutError::ActionFailed {
+                    detail: "detail".into()
+                }
+            ]
+        );
     }
 }

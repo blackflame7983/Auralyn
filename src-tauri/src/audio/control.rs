@@ -1,14 +1,53 @@
-//! 音声状態への入口。`AudioHost`の`Mutex`を取る場所をここへ集め、受付の順序を記録する。
+//! 音声状態への入口。`AudioHost`は1本の実行のスレッドが持ち、入口は`run`（結果を待つ）か
+//! `post`（待たない）で閉包を渡す。受付の順序と、実行のスレッドが取り出した順序を記録する。
 //!
-//! 記録は受付の順序と、実際にロックを得た順序を残すだけである。操作の並べ替えにも、
-//! 利用者から見た勝ち負けにも使わない。ロックの種類・保持の長さ・実行するスレッドは変えない。
+//! 記録は受付の順序と取り出した順序を残すだけである。操作の並べ替えにも、利用者から見た勝ち負けにも
+//! 使わない。仕事は積んだ順（FIFO）に1件ずつ実行する。
+mod actor;
+#[cfg(test)]
+mod lease;
+mod queue;
+
+#[cfg(test)]
+pub(crate) use lease::HostLease;
+#[cfg(test)]
+pub(crate) use queue::ActorPoint;
+
 use super::{engine_life, AudioHost};
+use queue::{Job, JobKind, JobQueue, Payload, Reply};
 use std::collections::VecDeque;
+use std::fmt;
+use std::io;
+use std::panic::resume_unwind;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LockResult, Mutex, MutexGuard, Weak};
-use std::thread;
+use std::sync::mpsc::sync_channel;
+use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::thread::{self, JoinHandle, ThreadId};
 use std::time::Duration;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ControlError {
+    /// 閉包が panic した後。以後の仕事は実行しない。
+    Poisoned,
+    /// 列が閉じた、または実行のスレッドが止まった。
+    Stopped,
+    /// 実行のスレッドの上から`run`を呼んだ。
+    Reentrant,
+}
+
+impl fmt::Display for ControlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Poisoned => "audio control is poisoned",
+            Self::Stopped => "audio control has stopped",
+            Self::Reentrant => "audio control was entered from its own thread",
+        })
+    }
+}
+
+impl std::error::Error for ControlError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EntryKind {
@@ -162,69 +201,142 @@ impl Admission {
     }
 }
 
-/// 受け付けたが、まだロックを取っていない操作。
+/// 受け付けたが、まだ列へ積んでいない操作。
 pub struct Ticket<'a> {
     control: &'a AudioControl,
     seq: u64,
     entry: Entry,
 }
 
+struct Shared {
+    queue: Arc<JobQueue>,
+    admission: Arc<Admission>,
+    actor: Mutex<Option<JoinHandle<()>>>,
+    actor_id: ThreadId,
+}
+
+impl Drop for Shared {
+    fn drop(&mut self) {
+        self.queue.close();
+        let handle = self
+            .actor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(handle) = handle {
+            if thread::current().id() != self.actor_id {
+                let _ = handle.join();
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AudioControl {
-    host: Arc<Mutex<AudioHost>>,
-    admission: Arc<Admission>,
+    shared: Arc<Shared>,
 }
 
 pub struct WeakAudioControl {
-    host: Weak<Mutex<AudioHost>>,
-    admission: Arc<Admission>,
+    shared: Weak<Shared>,
 }
 
 impl WeakAudioControl {
     pub fn upgrade(&self) -> Option<AudioControl> {
         Some(AudioControl {
-            host: self.host.upgrade()?,
-            admission: self.admission.clone(),
+            shared: self.shared.upgrade()?,
         })
     }
 }
 
 impl AudioControl {
+    /// 実行のスレッドを起動して、ホストを渡す。
+    pub fn try_new(host: AudioHost) -> io::Result<Self> {
+        let queue = Arc::new(JobQueue::new());
+        let admission = Arc::new(Admission::new());
+        let handle = actor::spawn(queue.clone(), admission.clone(), host)?;
+        Ok(Self {
+            shared: Arc::new(Shared {
+                queue,
+                admission,
+                actor_id: handle.thread().id(),
+                actor: Mutex::new(Some(handle)),
+            }),
+        })
+    }
+
+    #[cfg(test)]
     pub fn new(host: AudioHost) -> Self {
-        Self {
-            host: Arc::new(Mutex::new(host)),
-            admission: Arc::new(Admission::new()),
-        }
+        Self::try_new(host).expect("the audio control thread starts")
     }
 
     pub fn admission(&self) -> &Admission {
-        &self.admission
+        &self.shared.admission
     }
 
     pub fn downgrade(&self) -> WeakAudioControl {
         WeakAudioControl {
-            host: Arc::downgrade(&self.host),
-            admission: self.admission.clone(),
+            shared: Arc::downgrade(&self.shared),
         }
     }
 
-    /// 受付だけを行う。ロックを取る操作は、返された`Ticket`の`lock`で行う。
+    /// 受付だけを行う。列へ積む操作は、返された`Ticket`の`run`・`post`で行う。
     pub fn admit(&self, entry: Entry) -> Ticket<'_> {
         Ticket {
             control: self,
-            seq: self.admission.accept(entry),
+            seq: self.shared.admission.accept(entry),
             entry,
         }
     }
 
-    /// 受付を記録してからロックを取る。ロックを待つ順序は`Mutex`が決める。
-    pub fn lock(&self, entry: Entry) -> LockResult<MutexGuard<'_, AudioHost>> {
+    /// 受付を記録し、実行のスレッドで閉包が終わるまで待って結果を返す。
+    pub fn run<R: Send + 'static>(
+        &self,
+        entry: Entry,
+        f: impl FnOnce(&mut AudioHost) -> R + Send + 'static,
+    ) -> Result<R, ControlError> {
+        self.admit(entry).run(f)
+    }
+
+    /// 受付を記録し、列へ積んで待たずに戻る。積めなければ閉包を呼ばずに`Err(Stopped)`を返す。
+    pub fn post(
+        &self,
+        entry: Entry,
+        f: impl FnOnce(Result<&mut AudioHost, ControlError>) + Send + 'static,
+    ) -> Result<(), ControlError> {
+        self.admit(entry).post(f)
+    }
+
+    /// 試験専用：実行のスレッドからホストを箱ごと借りる。
+    #[cfg(test)]
+    pub(crate) fn lock(&self, entry: Entry) -> Result<HostLease<'_>, ControlError> {
         self.admit(entry).lock()
     }
 
     /// ロックを取らない入口（アプリの終了の要求など）を記録する。
     pub fn note(&self, entry: Entry) {
-        self.admission.accept(entry);
+        self.shared.admission.accept(entry);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn close_for_test(&self) {
+        self.shared.queue.close();
+    }
+
+    /// 試験専用：列が閉じたかを、AudioControlを持たずに見る。
+    #[cfg(test)]
+    pub(crate) fn closed_probe(&self) -> impl Fn() -> bool + Send + 'static {
+        let queue = self.shared.queue.clone();
+        move || queue.is_closed()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue_len(&self) -> usize {
+        self.shared.queue.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_actor_seam(&self, seam: Arc<dyn Fn(ActorPoint) + Send + Sync>) {
+        self.shared.queue.set_seam(seam);
     }
 
     /// モード VST の10msごとの更新。`Weak`で持ち、アプリの状態が破棄されたら止まる。
@@ -233,9 +345,12 @@ impl AudioControl {
         thread::spawn(move || loop {
             thread::sleep(Duration::from_millis(10));
             let Some(control) = weak.upgrade() else { break };
-            if let Ok(mut host) = control.lock(Entry::new(EntryKind::Scheduler, "poll_mode_vst")) {
-                host.poll_mode_vst();
-            };
+            match control.run(Entry::new(EntryKind::Scheduler, "poll_mode_vst"), |host| {
+                host.poll_mode_vst()
+            }) {
+                Ok(()) | Err(ControlError::Poisoned) => {}
+                Err(ControlError::Stopped | ControlError::Reentrant) => break,
+            }
         });
     }
 }
@@ -245,10 +360,72 @@ impl<'a> Ticket<'a> {
         self.seq
     }
 
-    pub fn lock(self) -> LockResult<MutexGuard<'a, AudioHost>> {
-        let result = self.control.host.lock();
-        self.control.admission.push_granted(self.seq, self.entry);
-        result
+    fn job(self, kind: JobKind) -> Job {
+        Job {
+            seq: self.seq,
+            entry: self.entry,
+            kind,
+        }
+    }
+
+    /// 実行のスレッドの上からの待ちは、列へ積まずに`Err(Reentrant)`で戻る。
+    fn guard_reentrancy(&self) -> Result<(), ControlError> {
+        if actor::on_actor() {
+            log::error!(
+                "audio entry {} was entered from the audio control thread",
+                self.entry.name
+            );
+            return Err(ControlError::Reentrant);
+        }
+        Ok(())
+    }
+
+    pub fn run<R: Send + 'static>(
+        self,
+        f: impl FnOnce(&mut AudioHost) -> R + Send + 'static,
+    ) -> Result<R, ControlError> {
+        self.guard_reentrancy()?;
+        let (tx, rx) = sync_channel(1);
+        let queue = &self.control.shared.queue;
+        let run = Box::new(move |host: &mut AudioHost| Box::new(f(host)) as Payload);
+        queue.push(self.job(JobKind::Run { tx, f: run }))?;
+        match rx.recv() {
+            Ok(Reply::Done(output)) => output
+                .downcast::<R>()
+                .map(|output| *output)
+                .map_err(|_| ControlError::Stopped),
+            Ok(Reply::Panicked(payload)) => resume_unwind(payload),
+            Ok(Reply::Poisoned) => Err(ControlError::Poisoned),
+            Err(_) => Err(ControlError::Stopped),
+        }
+    }
+
+    pub fn post(
+        self,
+        f: impl FnOnce(Result<&mut AudioHost, ControlError>) + Send + 'static,
+    ) -> Result<(), ControlError> {
+        let queue = self.control.shared.queue.clone();
+        queue.push(self.job(JobKind::Post { f: Box::new(f) }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lock(self) -> Result<HostLease<'a>, ControlError> {
+        self.guard_reentrancy()?;
+        let (grant_tx, grant_rx) = sync_channel(1);
+        let (back_tx, back_rx) = sync_channel(1);
+        let lease = lease::LeaseGrant {
+            grant: grant_tx,
+            back: back_rx,
+        };
+        self.control
+            .shared
+            .queue
+            .push(self.job(JobKind::Lease(lease)))?;
+        match grant_rx.recv() {
+            Ok(Ok(host)) => Ok(HostLease::new(host, back_tx)),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(ControlError::Stopped),
+        }
     }
 }
 

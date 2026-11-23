@@ -31,7 +31,7 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     }
 }
 
-fn lock_host(f: &Fixture) -> std::sync::MutexGuard<'_, AudioHost> {
+fn lock_host(f: &Fixture) -> super::control::HostLease<'_> {
     f.control
         .lock(control::Entry::command("reply_deadline_test"))
         .unwrap()
