@@ -276,14 +276,14 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
         |host, _calls| {
             host.last_config_path = root.join("last_audio_config.json");
             host.mixing = crate::audio::mixing::State::new(&root);
-            host.post_mix = reaper_seam::post_mix_state(&host, &root);
+            host.post_mix = reaper_seam::post_mix_state(host, &root);
             host.mixing.selected = Some(Start {
                 config: mixing_config("wasapi:one"),
                 target: None,
             });
             host.is_global_muted = true;
             post_child.post_role = true;
-            reaper_seam::share(&host, &mut post_child);
+            reaper_seam::share(host, &mut post_child);
             post_child.ensure_engine_running().unwrap();
             host.post_mix.child = Some(Box::new(post_child));
             host.post_mix.restored = true;
@@ -299,7 +299,7 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
                 "ロールバックで State が差し替わっている"
             );
             assert_eq!(
-                reaper_seam::pending(&host, Role::PostMix),
+                reaper_seam::pending(host, Role::PostMix),
                 1,
                 "終わらない子は、その時点で主の記録に残っている"
             );
