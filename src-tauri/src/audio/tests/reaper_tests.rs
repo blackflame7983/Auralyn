@@ -737,6 +737,33 @@ fn z13_no_wait_or_bell_happens_while_the_slots_lock_is_held_and_removals_do_not_
     );
     assert_eq!(store.held_drops(), 0, "Child・Job は slots の外で落とす");
 
+    // 消した4つの経路は、消した後に列を起こす。
+    let store = Arc::new(Store::default());
+    let rings = Arc::new(AtomicUsize::new(0));
+    let counter = rings.clone();
+    store.bell().register(Box::new(move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+    }));
+    for path in ["ensure_clear", "recheck", "probe_unwatched", "finish"] {
+        let stuck = stick(&store, Role::Primary);
+        stuck.kill_now();
+        let before = rings.load(Ordering::SeqCst);
+        match path {
+            "ensure_clear" => store.ensure_clear(Role::Primary).unwrap(),
+            "recheck" => store.recheck().unwrap(),
+            "probe_unwatched" => {
+                store.mark_unwatched(stuck.id);
+                store.probe_unwatched();
+            }
+            _ => store.finish(stuck.id),
+        }
+        assert_eq!(store.pending(Role::Primary), 0, "{path}");
+        assert!(
+            rings.load(Ordering::SeqCst) > before,
+            "{path} は消した後に列を起こす"
+        );
+    }
+
     let text = production_source(&src().join("audio/engine_life.rs"));
     for name in ["pub(super) fn finish", "fn take"] {
         let start = text.find(name).unwrap();
