@@ -954,6 +954,7 @@ thread::spawn(move || loop {
 | `start_voice_check` | `stop_voice_check` | |
 | `play_voice_check` | `stop_voice_check_playback` | |
 | OBS の `play`（`obs.rs:51`） | OBS の `stop`（`obs.rs:73`） | `EntryKind::Obs` |
+| `live_modes(Arm)` | `live_modes(Disarm)` | 要求の単位（V13 の数え直しで足した） |
 
 Release は、2b では、取り出す時の断り（fence）・上限・期限のどれも受けない。子の起動の門（2c。12.20）が入るときは、Release にも効かせる（取り消しだけのために子を起動しない）。
 
@@ -977,20 +978,22 @@ Release は、2b では、取り出す時の断り（fence）・上限・期限�
 | 入口 | 要求 | Normal（断らない・割り込まない） | Starting |
 |---|---|---|---|
 | `post_mix`（`commands/audio.rs:6`） | `post_mix::Request` | `Snapshot`・`Remove`・`Reorder`・`Bypass`・`Mute`・`Gain`・`Editor`・`Save`・`Reload`・`Reset`・`Enable` | `RestoreSaved`・`Add`（子を起動・復元する） |
-| `mixing`（`:175`） | `mixing::Request` | `Snapshot`・`Reset` ほか読み取りと保存 | 開始・復元・選択の適用 |
-| `live_modes`（`:1423`） | `live_modes::Request` | `Snapshot` | `SingingOn`・`TalkOn` ほか切替・復元 |
+| `mixing`（`:175`） | `mixing::Request` | `Snapshot`・`Levels`・`Reload`・`Reset`（実装時に変種を数え直した。V13） | `Configure`（入力元の選択の適用。子を起動する） |
+| `live_modes`（`:1423`） | `live_modes::Request` | `Snapshot`・`Save`・`BindProfile`（保存。子の起動を伴う `Save` も保存の操作なので断らない） | **Release**：`Disarm`（保護の解除。`Arm` の対）。**Starting**：`SingingOn`・`TalkOn`・`Arm`・`Recover` |
 | `session_rack`（`:584`） | `SessionRackRequest` | 読み取り（`Snapshot`）・`Retain`・**`Add`（予約の中で走る復元の一部。停止で断らない。Sol の3回目の指摘）** | **Release**：`Finish`（予約の解放）。**Starting**：`Begin`（予約を取る） |
 | `builtin_effects`（`:1142`） | `builtin::Request` | 読み取り | `Apply`・`Undo`・`Redo`・`ApplyProposal` |
 | `auto_gain`（`:1201`） | `auto_gain::Request` | `Status`・`Devices` | **Release**：`Cancel`・`StopPreview`（録音・試聴を止める）。**Starting**：`Initialize`・`Begin`・`Preview`・`Apply`・`Restore`・`UndoHistory`・`RedoHistory` |
 | `noise_measurement`（`:1497`） | `noise_learning::Request` | `Snapshot`・`Invalidate`・`Approve` | **Release**：`Cancel`。**Starting**：`Start` |
-| `voice_check_preview`（`voice_check.rs:10`。`Request.action`） | `preview::Action` | 読み取り（`CandidateStatus` ほか） | **Release**：`Stop`・`Close`・`CancelCandidate`（候補とその試聴を片付ける。`voice_check_preview.rs:105,1207`）。**Starting**：再生・開始の要求と、候補を作る `PrepareCandidate`・`PrepareProposal`・`PrepareNoise` |
-| `audio_frontend_bootstrap`（`:298`） | `frontend_bootstrap::Request` | 読み取り | 開始を伴うもの |
+| `voice_check_preview`（`voice_check.rs:10`。`Request.action`） | `preview::Action` | `Open`・`Status`・`HistoryStatus`・`Devices`・`CandidateStatus`（セッションの取得と読み取り） | **Release**：`Stop`・`Close`・`CancelCandidate`（候補とその試聴を片付ける。`voice_check_preview.rs:105,1207`）。**Starting**：`Start`・`Update`・`ApplyNoise`・`UndoNoise`・`RedoNoise`（再生・適用）と、候補を作る `PrepareCandidate`・`PrepareProposal`・`PrepareNoise` |
+| `audio_frontend_bootstrap`（`:298`） | `frontend_bootstrap::Request`（列挙ではなく構造体。`config: Option<Config>`） | 自動開始の設定が無い・`host` が空（開始しない。`Attached`・`Inactive` を返すだけ） | 自動開始の設定がある（`WithConfig`。開始を伴う） |
 | `peak_protection`（`:118`）・`broadcast_true_peak`（`:137`）・`live_output`（`:156`） | `Option<Config>` | `None`（読み取り） | `Some`（適用） |
 | `set_loudness_measurement`（`:1163`） | `Option<u64>` | — | **Release**：`None`（計測の解除）。**Starting**：`Some`（開始） |
-| ショートカット（`global_shortcut`） | 動作 | 比較の読み取り | モード・ゲイン・ノイズ・比較の切替（ミュートは Mute） |
+| ショートカット（`global_shortcut`） | 動作 | （分けない。1回の押下は1つの仕事で、比較の動作も状態の読み取りの後に切替を行う） | ミュート以外の動作はすべて Starting（`global_shortcut`）。ミュートの3動作は Mute（`global_shortcut_mute`） |
 | `enumerate_devices_async`・`broadcast_bundle`・`apply_owned` | 段・用途 | 12.4 の改名（Release・Normal へ分ける） | `apply_owned`（適用）だけ |
 
 要求の列挙は `match` で `_ =>` を使わず（V15）、要求を足すと分類の漏れがコンパイルで見つかる。
+
+**実装時の数え直し（V13・V15。2026-11-23）**：各入口の本体と要求の列挙を今のコードで読み直した。上の表のうち、設計書の初版と違ったものは次の4点。(1) `live_modes` の `Disarm` は、`Arm`（本番保護の有効化）の対になる解除なので **Release**（初版は「ほか切替・復元」の Starting）。`Save`・`BindProfile` は定義の保存なので Normal、`Recover`・`Arm` は Starting。(2) `audio_frontend_bootstrap` の要求は列挙ではなく構造体なので、自動開始の設定の有無（`host` が空でない `config`）で決める。(3) ショートカットは、1回の押下が1つの仕事（比較の動作も状態の読み取りの後に切替をする）なので、ミュート以外は全部 Starting にした。(4) `voice_check_preview` の `Open` は録音の試聴の取得ではなくセッションの取得だけなので Normal（`Close` が対の解放）、`ApplyNoise`・`UndoNoise`・`RedoNoise`・`Update` は適用なので Starting。`mixing` の `Levels`・`Reload`・`Reset` は Normal（`Configure` だけが子を起動して選択を適用する）。名前で決める入口は、数え直した結果、Starting の名前が32、要求で決める入口が10で、合計42のまま。`voice_check.rs` の `export_voice_check_wav`・`export_voice_check`・`analyze_voice_check` は Normal。予約・区間を取ってから中で複数の操作を積む入口は、`session_rack` のほかに見つからなかった（配信セットの `begin_live_changes_bundle`〜`end_live_changes_bundle` の間は別の入口 `apply_owned`・`undo_owned` が走り、更新の `prepare_update`〜`finish_update_attempt` の間は音声の入口を積まない）。要求の分類は `class.rs` の `REQUEST_CLASSES` に、要求を名前に直す関数は `request_class.rs` に置いた。
 
 **名前の表（既定）**：`class.rs` の `fn class_of(entry: Entry) -> JobClass`（名前の `match`。要求で決める入口の既定は Normal）。`admit` で受付の番号と一緒に決め、`Job` に持たせる。**未知の名前は Starting**。名前の前に、`EntryKind` で決まるものがある（`Scheduler` は Tick、`Tray` は Mute）。付け忘れても、停止の後に開始するほうへは倒さない。試験の名前 `"a"`・`"holder"` などは Starting になるが、停止を積まない試験では結果が変わらない）。ショートカットは、押された動作がミュートなら名前を `"global_shortcut_mute"`、そうでなければ `"global_shortcut"` にして `post` する（`post_shortcut_work` に `Entry` を渡す）。
 
@@ -1335,6 +1338,7 @@ stateDiagram-v2
 10. `temporary_session.rs:521` の構造の試験が、`.map_err(|_| "音声状態を取得できません")??;` の文字列そのものを探している。写しの関数へ差し替える PR で、この文字列を更新する。期待（`exit` が閉包の外）は変えない。
 11. 11.8 の「scheduler の優先度は 2b で決める」（U8）と、11.16 の U9 の「完了の記録」は、12.10 で決めた。11.16 の U8・U9 を「決定済み（12章）」へ読み替える。
 12. 現行の `run_job`（`actor.rs:98-118`）は、閉包の直後に `tx.send` で返事を送る。件数の減算を返事の前に置くため、順を直す（12.5）。
+13. **実装時に設計書から変えた点（2026-11-23。F1b-0b-2b の実装）**：(a) `fence` は `Arc<AtomicU64>` ではなく、列の状態（`QueueState`）の `u64`。積む時も取り出す時も列のロックの中でだけ読み書きするので、別の同期は要らない。(b) トレイのミュートは `lib.rs` の中ではなく、試験できる `audio::post_tray_mute`（`conditions` を渡す）へ出し、ショートカットは `post_shortcut_work` が動作（`&Action`）と `conditions` を受けて、入口の名前と `Pending` を決める（`dispatch` から呼ぶ配線も試験の対象）。(c) 要求の種類は、各要求の関数が変種の名前を返し、種類は `REQUEST_CLASSES` の表で決める（表の漏れ・古さは Y21 がソースの列挙と照合して落とす）。(d) 試験の置き場所：道具は `queue_support.rs`、Y1〜Y8・Y12・Y14・Y18 は `stop_priority_tests.rs`、Y13（トレイ）・Y25・Y27・Y30・Y32・Y35 は `release_tests.rs`、Y15・Y21・Y31・Y33 は `class_tests.rs`、Y13（ショートカット）・Y20 は `shortcuts.rs`、Y16 は `compat_tests.rs`。Y17 は X13 の3つの場合（`x13_y17_…`）に統合した（`queued_result` の道具が `actor_tests.rs` の中にあるため）。(e) `localize_audio_error` は `StoppedFirst` の文言を「オーディオエラーが発生しました。詳細: …」で包む。2b は `StoppedFirst` を IPC に混ぜないので影響は無いが、2c が IPC から出す前に、`engine_life` の日本語の最終文言のように、包まずに返す扱いを足す。(f) `ActorPoint` に `BeforeReply`・`AfterReply` を足した（返事の直前・直後の継ぎ目。Y6・Y27 が使う）。
 
 ### 12.19 Sol の設計レビュー（BLOCK）への対応（統括の決定 2026-11-23）
 
