@@ -1,6 +1,6 @@
 # F1b-0b セッションの中心部の作り直しの設計（第1版・骨子）
 
-状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。統括の承認待ち。要承認の候補1つと未決 O1〜O10 を14.14・14.15 に挙げた）まで書いた。
+状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。Sol のレビュー BLOCK を受けた第2版。要承認の候補は無い。推奨で残る未決は O11 を14.15 に挙げた）まで書いた。
 
 前提の文書：
 - 今の事実：`audio-session-f1b0b-inventory.md`（bcd2dca2 の時点。以下「洗い出し」）。
@@ -1991,32 +1991,34 @@ if failed → Err(error(slots))                             // repeated は、�
 
 前提：コードは main `e09b42ba`（F1b-0b-3 の PR #848 をマージした後）。`ファイル:行` は `src-tauri/src/` を基準にし、今のコードで確かめ直した（5章・7.3・9.10 の行は動いている。食い違いは 14.18）。7.3（N2 の完全な形。必須3）、9章（`LinkCell`。E1〜E17・9.3 のロックの規則）、9.10 の (d)(e)(h)、10章の U6・U8、8章の S6、F1b-0a-1 の I3（回収は通知を待たない）、13章までの不変条件（I1〜I47）を変えない。承認済みの範囲は `audio-session-f1b0-changes.md` の N2（古い接続の通知を出さない。古い値が一瞬表示されなくなる）。
 
+**この章は、Sol のレビュー（82a4c26e。判定 BLOCK。7点）を受けて書き直した第2版。** 第1版の方式（閉じる側が通知の列のロック `order` を無期限に待つ掃き切り・EOF の列を待つ `await_eof_notices`）は取り消した。7点への対応は 14.19 にまとめた。方針は次の2つ。(A) **実行のスレッドは、通知の列のロックや `emit` を、上限なしに待たない**（14.9 の調査のとおり、`emit` が詰まらないとは言い切れない）。(B) **閉鎖と状態の変更を不可分にし、掃き切りは上限つき・回収の後**にする。
+
 ### 14.1 答えの要約（決めること 1〜8）
 
 | # | 決めること | 答え |
 |---|---|---|
-| 1 | 7.3 の2案の選択 | **案1（閉じる側が、子を回収した後に、通知の列のロック `order` を1度通して、進行中の旧い列を掃き切る）を採る**。案2（通知の側の「有効な接続」を `order` の下で更新する）は採らない。理由：(1)「閉じた」の正本を `LinkCell` 1つに保てる（U6）。案2は `Notifier` に2つ目の正本を持たせ、閉じる側が両方を更新し忘れると、今ある鏡の確認まで外れる。案1は掃き切りを忘れても、今の確認（鏡）は残る。(2) `Reader` の組み立て・試験の窓口を変えない（案2は接続の識別子を reader・`Notifier` へ通す）。(3) どちらも、閉じる側が `order` を待つ点は同じで、待つ危険は増えない（14.9） |
-| 2 | 案1だけで足りない部分 | 掃き切りは「列を出す側」の窓しか閉じない。**列の前に reader が行う状態の変更（`conditions.engine_event`・`engine_changed`・`voice_activity.store`）は列の外にあり、閉じた後も行われうる**（5.の窓）。そこで、**状態の変更と通知の発行を、`order` の下の1つの区間（接続の確認の後）に入れる**。閉じた接続の reader は、状態も通知も、何も変えない |
-| 3 | 掃き切りの置き場所 | 閉じる側が**子を回収した後**（I3 を守る。回収は通知を待たない）。`drop_connection` の末尾・`ensure_engine_running` の「子がもう終わっていた」経路・`reset_engine_reader` の3か所。`Drop`・終了の経路ではしない（終了を通知の発行で止めない） |
-| 4 | `voice_activity` と epoch の窓 | 副作用を `order` の下へ移すので、**閉じた後の `store(true)` も、古い `engine_epoch` のままの `engine_event` も起きない**。S6 の期待値を `false` へ反転する。`engine_epoch` の更新点（`new_engine`・`retire_engine`）は変えない |
-| 5 | (h)：復旧の通知と EOF の列の順 | EOF で閉じた接続について、ホストが通知（保持した通知の出し直し）を出す前に、reader の EOF の列を出し終えるのを**上限つきで待つ**（9.5 と同じ `EOF_WAIT`。接続ごとに1回だけ待ち、警告も1回）。置く場所は `fail_mode_transaction`（VST 切替の失敗）と、すでにある `reply_timed_out`（1つの補助 `await_eof_notices` にまとめる）。閉じた接続への `begin` は今のとおり `CLOSED` で断る（E3）。登録は起きない |
-| 6 | 配信ミックスの子 | 同じ reader・同じ規則。ただし**子の `Notifier` には、今も `emitter` が付いていない**（`audio.rs:570`。`set_event_emitter` は主だけ。`lib.rs:388-390`）ので、本番では通知は空に出る。子の `conditions`・`voice_activity` も子だけが持つ。この段は変えない（14.15 の O6） |
-| 7 | 利用者から見て変わること | N2（承認済み）。**要承認の候補が1つ**：VST 切替の途中でエンジンが落ちたとき、復旧の案内の前に最大2秒（通常はミリ秒）待つ場合がある（14.14） |
-| 8 | 試験 | `Q1`〜`Q15`。期待値が変わる既存の試験は S6 の1本だけ。試験専用の継ぎ目を足す（`Notifier` の掃き切りの回数、`send_mode_command` の `begin` の直前）。壊して確かめる項目は (a)〜(m) |
+| 1 | 7.3 の2案の選択 | **案1を、次の形に直して採る（案1′）**。閉じる側は `order` を待たず、**`LinkCell` の中で数える「通知の列に入っている reader の数」が 0 になるのを、上限（200ms）つきで待つ**。案1の「`order` を1度通す」は採らない（`emit` が詰まれば無期限になる。14.9）。案2（有効な接続を `order` の下で更新）は採らない。理由は 14.5 |
+| 2 | 指摘1（W1〜W5）：境界の決め方 | **確認と状態の変更を、閉鎖に対して不可分にする**。reader は、`LinkCell` のロックの下で「閉じていないことの確認 → 状態の変更（`engine_event`・`engine_changed`・`voice_activity.store`。ロックを取らない原子操作だけ）→ 列に入った印を足す」を1回で行う（`LinkCell::enter`）。`close` が戻った後は、旧い reader の状態の変更は起きない。加えて、`ensure_engine_running` の3経路は、接続を閉じて回収した後に**切断状態を確定する**（`running=false`・`voice_activity=false`。epoch を進める）ので、`ensure_clear` が失敗しても `running=true` は残らない |
+| 3 | 指摘2：`Drop` | **回収だけを行う経路（`drop_connection`・`close_connection`）と、回収の後に確定・待ちを行う呼び出し（`settle_disconnected`・`quiesce_closed_link`。新設）を分ける**。`Drop`・`release_engine`・`take_engine_for_shutdown` は前者だけ。待たない |
+| 4 | 指摘3：待ちの方針 | 閉じる側（実行のスレッド）が待つのは、`LinkCell` の `Condvar` の**上限つきの待ちだけ**（`QUIESCE_WAIT` = 200ms）。`order`・`emit` は待たない。待つのは、回収・切断状態の確定の**後**。上限を過ぎたら警告を1回出して進む。R3 のログは、ロックの外 |
+| 5 | 指摘4：(h) | **この段から外す**。main で順が崩れても、画面の状態は最終的に正しい（14.8 の根拠）。`await_eof_notices` は設計から消した。9.10 の (h) は、既知の競合として残す（14.16 の (d)）。**要承認の候補は無い** |
+| 6 | 配信ミックスの子 | 同じ reader・同じ規則。ただし**子の `Notifier` には、今も `emitter` が付いていない**（`audio.rs:570`。`set_event_emitter` は主だけ。`lib.rs:388-390`）ので、本番では通知は空に出る。子の `Conditions`・`voice_activity` は子だけが持つ。この段は変えない |
+| 7 | 利用者から見て変わること | N2（承認済み）と、その副産物（14.14）。**要承認の候補は無い**。確認事項が1つ：閉じる側が、通知の発行が詰まっているときに限り、最大200ms 待つ |
+| 8 | 試験 | `Q1`〜`Q11`。期待値が変わる既存の試験は S6 の1本だけ。継ぎ目は「確認の直後・状態の変更の前」（`LinkCell::enter` の中）を含む。壊して確かめる項目は (a)〜(l) |
 
 ### 14.2 範囲
 
 やること：
-- reader の状態の変更を、通知の列の区間（`order` を取り、接続を確かめた後）へ移す（14.6）。
-- `Notifier::sweep`（掃き切り）と、閉じる側の3か所の呼び出し（14.6）。
-- EOF の列を待つ補助 `await_eof_notices` と、その `LinkCell::wait_notified` の「上限を過ぎたら、その接続では待たない」（14.8）。
+- reader の状態の変更を、`LinkCell::enter`（閉鎖と不可分）へ移す（14.6）。
+- `LinkCell::quiesce`（上限つきの待ち）と、閉じる側の経路の整理（`quiesce_closed_link`・`settle_disconnected`。14.6）。
+- 接続を閉じた後の切断状態の確定（`ensure_engine_running` の3経路。14.7）。
 - S6 の反転、試験の足し方、構造の試験（14.13）。
 
 やらないこと：
-- J-20（一歩ごとの期限。2c）。通知の名前・中身・数・間引きなし（PRE-F1b-12 (1)）。EOF の通知3件の名前・中身・順（K13）。`engine_generation` の更新点。`engine_epoch` の更新点。読み取りが先の操作の完了を待つ境界（K2・K10）。
-- 子との IPC・エラーの文言・`EOF_WAIT`（2秒）の値・`LinkCell` の状態と遷移（E1〜E17）。`LinkCell` のロックの規則（9.3）。
-- `Drop`・終了の経路での待ち（14.9）。reaper・`Store` の変更（I30〜I47）。
-- EOF に勝った reader の通知の列の扱い（14.16 の (c)）、EOF で `voice_activity` が残ること（14.15 の O4）。
+- J-20（一歩ごとの期限。2c）。通知の名前・中身・数・間引きなし（PRE-F1b-12 (1)）。EOF の通知3件の名前・中身・順（K13：`reader.rs:289-297`のとおり、**EOF の通知の列を出し終え（`:289-293`）、`mark_notified`（`:295`）の後に、待ち手へ `Eof` を送る（`:297`）**）。`engine_generation` の更新点。`engine_epoch` の更新点（`new_engine`・`retire_engine` の呼び出し元を足す箇所は 14.7 のとおり）。読み取りが先の操作の完了を待つ境界（K2・K10）。
+- 子との IPC・エラーの文言・`EOF_WAIT`（2秒）の値と、`reply_timed_out` の中の `wait_notified`（F1b-0b-1 の 9.5。**変えない**。`LinkCell::wait_notified` に「一度きり」の印は足さない。既存 T6 〔`link_cell_tests.rs`〕の「期限切れの後に、別の待ち手が成功する」を壊さないため）。`LinkCell` の状態と遷移（E1〜E17）。
+- `hold_notices` の保持した通知の出し直しと `notice` の `order` の待ち（今も `order` を無期限に待つ。main と同じ。14.16 の (b)）。reaper・`Store` の変更（I30〜I47）。
+- EOF に勝った reader の通知の列の扱い（14.16 の (c)）、EOF で `voice_activity` が残ること（14.15 の O4）、(h) の順の保証（14.8）。
 
 ### 14.3 今の事実（確かめ直したもの）
 
@@ -2024,15 +2026,16 @@ if failed → Err(error(slots))                             // repeated は、�
 - **状態の変更が列の外にある**：`conditions.engine_changed`（`reader.rs:86`）・`engine_event`（`:101,133,170`）・`voice_activity.store`（`:193`）は、`chain_if` の**前**で行う。`engine_event` は、`engine_epoch` が自分の epoch と同じときだけ、`running` と `revision` を変える（`conditions.rs:134-150`）。`engine_changed` も同じ（`:152-161`）。
 - **EOF の勝者**：`finish`（`:277-299`）は、`close_eof`（`:280`）に勝つと、`engine_event(epoch, false)`（`:288`）→ 確認なしの `Notifier::chain`（`:289-293`）→ `mark_notified`（`:295`）→ 待ち手へ `Eof`（`:297`）の順。
 - **閉じる側（接続を閉じる箇所。製品のコード）**：`close_connection`（`audio.rs:710-714`。呼び出し：`:887`〔動いていた子が終わっていた〕・`:899,905`〔`drop_connection` 経由〕・`:1057`〔`reset_engine_reader`〕・`:2814`〔`kill_primary_engine`〕・`:2954,2982`〔`Drop`・終了〕）、`reply_timed_out` の `close(ReplyTimeout)`（`:1152`）、`cut_off` の `close(cause)`（`:1179`）、`fail_mode_deadline`（`mode_vst.rs:693`）、配信ミックスの失敗の処理（`post_mix.rs:1170-1173`）。**どれも実行のスレッドの上**（`AudioHost` の `&mut self` の経路。tick も実行のスレッド）。writer・reaper・reader は接続を閉じない（reader は `close_eof` だけ。writer の `close` は試験だけ。`writer.rs:376`）。`LinkCell::close(CloseCause::Eof)` を呼ぶ製品のコードは無い（`close_eof` だけ）。
+- **`drop_connection` を通る `Drop` 系の経路**：配信ミックスの子の破棄は `AudioHost::drop`（`audio.rs:2947-2972`）の `post_role` の枝（`:2956-2959`）→ `release_engine`（`:2977-2979`）→ `drop_connection`。子を外す側も `release_engine`（`post_mix.rs:478-481,920-922`）を通る。主の終了は `take_engine_for_shutdown`（`:2981-2986`）→ `close_connection` だけ。
 - **`engine_epoch` の更新点**：`new_engine`（`audio.rs:913`）と `retire_engine`（`:2806` の `kill_primary_engine`、`:2955` の `Drop`）だけ。**`close_connection`・`drop_connection` は更新しない**（`:710-724`）。`kill_primary_engine` は、先に epoch を進め（`:2806`）、その後で接続を閉じ（`:2814`、`drop_connection`）、`voice_activity.store(false)`（`:2815`）。
-- **epoch が古いままになる区間**：`ensure_engine_running` の3か所（`:887,899,905`）は、接続を閉じても epoch を進めない。epoch が進むのは `ensure_clear`（`:911`）を通った後の `new_engine`（`:913`）。`ensure_clear` は、13章の後は、同じ閉包が作った記録だけを窓の終わりまで待つ（`engine_life.rs:274-318`。C5）。失敗（`engine_unconfirmed`）で戻れば、`new_engine` は呼ばれず、epoch は古いまま残る。
+- **epoch が古いままになる区間**：`ensure_engine_running` の3か所（`:887,899,905`）は、接続を閉じても epoch を進めず、`running` も触らない。epoch が進むのは `ensure_clear`（`:911`）を通った後の `new_engine`（`:913`）。`ensure_clear` は、13章の後は、同じ閉包が作った記録だけを窓の終わりまで待つ（`engine_life.rs:274-318`。C5）。**失敗（`engine_unconfirmed`）で戻れば、`new_engine` は呼ばれず、epoch も `running` も古いまま残る**。
 - **`voice_activity`**：`Arc<AtomicBool>`。host が持ち（`audio.rs:290`）、接続ごとに新しく作って reader へ渡す（`:932-935`）。読む場所は `check_can_interrupt`（`:2750`。更新・移行の前の確認）。立てる場所は reader（`reader.rs:193`）と host（`audio.rs:2399,2490`）。下げる場所は `kill_primary_engine`（`:2815`）と、次の開始での作り直し（`:932`）。**停止（`kill_primary_engine`）の後に、旧い reader の通過済みの1行が `store(true)` すると、次の開始まで残る**（S6）。
 - **通知の保持**：`hold_notices`（`audio.rs:677-703`）は、回収の間の host の通知を保持し、回収の後に1つの列で出す（`:695-701`。`order` を取る）。`kill_primary_engine` は常に1件以上を保持する（`:2807`）。回収（子の `kill`・確認）は、通知の列を待たない（F1b-0a-1 の I3。`t6_…while_the_reader_is_stuck…`〔`mode_vst.rs:2699`・`link_tests.rs:363`〕が固定）。
-- **EOF の待ち**：`reply_timed_out` は、EOF に負けたときだけ、回収の後に `link.wait_notified(now + eof_wait())`（`:1160-1165`）。`eof_wait` は2秒（`writer.rs:16,40-46`）。上限を過ぎたら警告を1回（`:28-32`）。
-- **(h) の経路**：tick（`poll_mode_vst`）は、最後の `connection_lost()`（`mode_vst.rs:628`）の後、`mode_step_command` → `send_mode_command`（`:700-726`）の `self.link.begin(None)?`（`:701`）。EOF が `:628` の後に勝つと、`begin` は `CLOSED`（E3）。`:678-687` の枝が、文言を `ENGINE_EXITED` にそろえて `fail_mode_transaction(…, ambiguous = true)`（`:831-863`）へ進む。`fail_mode_transaction` は `hold_notices` の中で `cancel_mode_vst` と `kill_engine` を行い、保持した復旧の通知（`global-mute-changed`・`live-modes-invalidated`・`session-rack-change-cancelled` など）を、回収の後の1つの列で出す。reader の EOF の列（`:289`）と、この列は、同じ `order` を取り合う。**どちらが先かは決まっていない**。
-- **配信ミックスの子**：`post_mix_child_host`（`control.rs:713-716`）→ `AudioHost::with_retired`（`audio.rs:557-606`）が、子ごとに新しい `Notifier::default()` を作る（`:570`）。`post_mix.rs` に `emitter` の設定は無く、`set_event_emitter` を呼ぶのは主だけ（`lib.rs:388-390`）。`Chain::emit` は `emitter` が無ければ何もしない（`emit.rs:76-82`）。子の reader は、同じ `reader.rs` の同じ経路で、**子自身の `Notifier`・`Conditions`・`voice_activity`** だけを触る。接続を閉じるのは、子の `link.close(Intentional)`（`post_mix.rs:1173`）と、子の `release_engine`・`kill_engine`（`:480,921,804`）。
-- **`Notifier` の規則**（`emit.rs:58-64`）：`order` を持つ間に取ってよいのは `emitter` だけ。ほかのロックを取らず、IPC・応答の待ちをせず、通知の関数へ再び入らない。Rust 側の `listen` は無い（`.listen(` の使用なし）ので、`emit` が実行のスレッドを待つことは無い。
-- **試験**：`Recorder::block_after`（`emit.rs:187`）・`arrivals_for_test`（`:127`）・`Reader::pause`（`reader.rs:283-286,302-324`）・`waits_entered_for_test`（`link.rs:299`）・`set_eof_wait_for_test`（`writer.rs:50`）・`link_seam`（`audio/tests/link_seam.rs`）。S6 は `link_tests.rs:870-885`。
+- **EOF の待ち（F1b-0b-1。変えない）**：`reply_timed_out` は、EOF に負けたときだけ、回収の後に `link.wait_notified(now + eof_wait())`（`:1160-1165`）。`eof_wait` は2秒（`writer.rs:16,40-46`）。
+- **(h) の経路**：tick（`poll_mode_vst`）は、最後の `connection_lost()`（`mode_vst.rs:628`）の後、`mode_step_command` → `send_mode_command`（`:700-726`）の `self.link.begin(None)?`（`:701`）。EOF が `:628` の後に勝つと、`begin` は `CLOSED`（E3）。`:678-687` の枝が、文言を `ENGINE_EXITED` にそろえて `fail_mode_transaction(…, ambiguous = true)`（`:831-863`）へ進む。`fail_mode_transaction` は `hold_notices` の中で `cancel_mode_vst` と `kill_engine` を行い、保持した復旧の通知を、回収の後の1つの列で出す。reader の EOF の列（`:289`）と、この列は、同じ `order` を取り合う。**どちらが先かは決まっていない**（14.8）。
+- **配信ミックスの子**：`post_mix_child_host`（`control.rs:713-716`）→ `AudioHost::with_retired`（`audio.rs:557-606`）が、子ごとに新しい `Notifier::default()` を作る（`:570`）。`post_mix.rs` に `emitter` の設定は無く、`set_event_emitter` を呼ぶのは主だけ（`lib.rs:388-390`）。`Chain::emit` は `emitter` が無ければ何もしない（`emit.rs:76-82`）。子の reader は、同じ `reader.rs` の同じ経路で、**子自身の `Notifier`・`Conditions`・`voice_activity`** だけを触る。
+- **`Notifier` の規則**（`emit.rs:58-64`）：`order` を持つ間に取ってよいのは `emitter` だけ。ほかのロックを取らず、IPC・応答の待ちをせず、通知の関数へ再び入らない。
+- **試験**：`Recorder::block_after`（`emit.rs:187`）・`arrivals_for_test`（`:127`）・`Reader::pause`（`reader.rs:283-286,302-324`）・`waits_entered_for_test`（`link.rs:299`）・`set_eof_wait_for_test`（`writer.rs:50`）・`link_seam`（`audio/tests/link_seam.rs`）・`before_begin_hook`（`audio.rs:1065-1066`）。S6 は `link_tests.rs:870-885`。
 
 ### 14.4 古い接続から通知が出うる経路の洗い出しと、窓の一覧
 
@@ -2042,7 +2045,7 @@ if failed → Err(error(slots))                             // repeated は、�
 |---|---|---|---|---|---|
 | R1 | `ControlStall` | `audio-control-stall` | `:64-84` | なし | 接続の確認（`chain_if`）だけ |
 | R2 | `MixingSourceFailed`・`MixingOutputFailed` | `audio-conditions-changed`・`mixing-source-failed`／`mixing-output-failed` | `:85-98` | `engine_changed(epoch)`（`:86`。`revision` を進める） | epoch ＋ 接続 |
-| R3 | `Error` | `audio-conditions-changed`・`audio-stream-error` | `:100-109` | `engine_event(epoch, false)`（`:101`） | epoch ＋ 接続 |
+| R3 | `Error` | `audio-conditions-changed`・`audio-stream-error` | `:100-109` | `engine_event(epoch, false)`（`:101`）。同期のログ（`:104`） | epoch ＋ 接続 |
 | R4 | `LevelMeter` | `audio-level` | `:110-128` | なし | 接続だけ |
 | R5 | `Stopped` | `audio-conditions-changed`・`audio-stopped` | `:129-152` | `engine_event(epoch, false)`（`:133`） | epoch ＋ 接続 |
 | R6 | `Loudness` | `audio-loudness` | `:153-157` | なし | 接続だけ |
@@ -2055,287 +2058,332 @@ if failed → Err(error(slots))                             // repeated は、�
 | R13 | `VoiceCheckEnvelope` | `voice-check-envelope` | `:253-271` | なし | 接続だけ |
 
 - 洗い出し 4章 N2 と `audio-session-f1b0-changes.md` の N2 は「9種」と書く。今のコードの `handle_event` は、通知を出す変種が14（上の13か所）で、通知の名前は15種（`audio-conditions-changed` を共有）。数は文書の概数で、設計は上の13か所を対象にする（14.18）。
-- **EOF の列**（`finish`。`reader.rs:277-299`）：`audio-conditions-changed`・`audio-engine-exited`・`audio-error`。**閉じた接続の通知ではなく、閉じた原因そのもの**（`close_eof` に勝った reader だけが出す）。確認は無い（正しい）。窓は、host の通知との順（W6）と、epoch が古いままのとき（W7）だけ。
-- **host が接続の閉鎖に伴って出す通知**（`reply_timed_out` の `audio-error`〔`audio.rs:1169`〕・`cut_off`〔`:1190`〕・`hold_notices` の保持した通知）：旧い接続の通知ではない。閉じる競りに**勝った1回だけ**出る（9.2 の競合3）。順の保証だけが対象（W6）。
+- **EOF の列**（`finish`。`reader.rs:277-299`）：`audio-conditions-changed`・`audio-engine-exited`・`audio-error`。閉じた接続の通知ではなく、**閉じた原因そのもの**（`close_eof` に勝った reader だけが出す）。確認は無い（正しい）。窓は W6（host の通知との相対順）と W7（epoch が古いとき）だけで、この段は閉じない。
+- **host が接続の閉鎖に伴って出す通知**（`reply_timed_out` の `audio-error`〔`audio.rs:1169`〕・`cut_off`〔`:1190`〕・`hold_notices` の保持した通知）：旧い接続の通知ではない。閉じる競りに**勝った1回だけ**出る（9.2 の競合3）。
 - 応答（`deliver_at`）は通知ではなく、`LinkCell` の下で閉じた接続を拒む（E9）。対象外。
 
 **窓の一覧**
 
-| 窓 | 起きること | 今 | 閉じ方（14.6〜14.8） |
+| 窓 | 起きること | 今 | この段の扱い |
 |---|---|---|---|
-| W1 | reader が行頭の確認（`:31`）を通過 → 閉じる側が接続を閉じる → reader が `chain_if` の確認の前に状態を変える（R2・R3・R5・R8・R9） | 状態が変わる。通知は確認で止まる | 状態の変更を `order` の下の確認の後へ移す |
-| W2 | W1 の続き。`engine_event` が通った後、`chain_if` の確認が走る | 状態だけ変わり、通知は出ない（不整合） | 同上（状態と通知が一緒に出る・一緒に出ない） |
-| W3 | `chain_if` の確認（開いている）を通過 → 閉じる側が閉じて戻る → reader が列を出し終える | 閉じる側が戻った後に、旧い列が1つ出うる（9.10 の (d)） | 閉じる側が、回収の後に `sweep` で待つ |
-| W4 | `ensure_engine_running` の3経路が接続を閉じてから `new_engine` までの間（`ensure_clear` を含む。失敗すれば `new_engine` は来ない）、epoch は古いまま | 旧い reader の通過済みの行の `engine_event` が、`running`・`revision` を変える（9.10 の (e)） | W1・W2 と同じ。接続を閉じた後は、epoch が古くても何も変わらない |
-| W5 | `kill_primary_engine` の `store(false)`（`:2815`）の後に、旧い reader の `store(true)`（`:193`） | 次の開始まで `check_can_interrupt` が「ボイスチェックの録音・試聴を終了してから更新してください」で止まる（S6） | W1・W2 と同じ。`store(false)` は掃き切りの後 |
-| W6 | EOF の勝者が列を出す前に、host が保持した通知を出す（tick の `begin` が `CLOSED`。(h)） | host の列が先に出うる | `await_eof_notices`（14.8） |
+| W1 | reader が行頭の確認（`:31`）を通過 → 閉じる側が接続を閉じる → reader が `chain_if` の前に状態を変える（R2・R3・R5・R8・R9） | 状態が変わる。通知は確認で止まる | **閉じる**：状態の変更を `LinkCell::enter`（閉鎖と不可分）へ。`close` が戻った後は起きない |
+| W2 | W1 の続き。状態が変わった後、`chain_if` の確認が走る | 状態だけ変わり、通知は出ない（不整合） | `close` より前に `enter` を通った事象は、状態が変わり、通知は確認で落ちうる（事象は閉鎖より前。14.7）。閉じる側の確定（`running=false` など）が後から上書きする |
+| W3 | `chain_if` の確認（開いている）を通過 → 閉じる側が閉じて戻る → reader が列を出し終える | 閉じる側が戻った後に、旧い列が1つ出うる（9.10 の (d)） | **閉じる**（上限つき）：閉じる側が、回収・確定の後に、`enter` した reader の数が 0 になるのを最大200ms 待つ。上限を過ぎれば残る（14.16 の (a)） |
+| W4 | `ensure_engine_running` の3経路が接続を閉じてから `new_engine` までの間（`ensure_clear` を含む。失敗すれば `new_engine` は来ない）、epoch は古いまま | 旧い reader の通過済みの行の `engine_event` が、`running`・`revision` を変える（9.10 の (e)）。`ensure_clear` が失敗すれば、`running=true` が残る | **閉じる**：W1 と同じ不可分。加えて、閉じた後に切断状態を確定する（`running=false`・epoch を進める。14.7） |
+| W5 | `kill_primary_engine` の `store(false)`（`:2815`）の後に、旧い reader の `store(true)`（`:193`） | 次の開始まで `check_can_interrupt` が「ボイスチェックの録音・試聴を終了してから更新してください」で止まる（S6） | **閉じる**：W1 と同じ不可分 |
+| W6 | EOF の勝者が列を出す前に、host が保持した通知を出す（tick の `begin` が `CLOSED`。(h)） | host の列が先に出うる | **閉じない**（既知の競合。14.8・14.16 の (d)） |
 | W7 | EOF の勝者が、epoch が古いのに列を出す（`kill_primary_engine` の `:2806` と `:2814` の間に子が終わった場合） | 出る | 残す（14.16 の (c)） |
 
 ### 14.5 2案の比較と推奨（7.3）
 
-| 観点 | 案1：閉じた後に `order` を1度通して、旧い列を掃き切る（推奨） | 案2：有効な接続を `order` の下で更新する |
-|---|---|---|
-| 使う API | `Notifier::sweep()`（新設。`order` を取って放す）。`chain_if`・`LinkCell` の鏡は今のまま | `Notifier` に `active: Option<接続の識別子>` を持たせ、`order` の中身にする。`chain_if_current(識別子, 列)`・`activate`・`deactivate`。`Reader` と `LinkCell` に識別子を通す |
-| 「閉じた」の正本 | `LinkCell` 1つ（U6） | `LinkCell` と `Notifier` の2つ。`close` と `deactivate` の間にずれる区間ができ、どちらを見るかを決め直す必要がある |
-| 更新し忘れたとき | 掃き切りを忘れても、今の鏡の確認が残る（今の窓に戻るだけ） | `deactivate` を忘れると、旧い列が**確認なしで**通る（今より悪い） |
-| 残る窓 | W3 は閉じる。掃き切りの外の経路（`Drop`・終了）は、14.9 の理由で意図して残す | 同じ（更新の外の経路） |
-| 閉じる側が待つもの | `order` 1つ（reader が列を出す間だけ。`emitter` を短く取るだけ） | 同じ（更新に `order` が要る） |
-| デッドロックの危険 | 14.9 の表のとおり、輪にならない | 同じ |
-| 状態の変更（W1・W2・W5） | 別に、`order` の下へ移す必要がある | 同じ（案2でも、状態の変更は確認の外にある） |
-| 変える範囲 | `emit.rs` に1関数、`audio.rs` に3か所、`reader.rs` の閉包の中身 | `emit.rs` の構造、`Reader`・`AudioHost`・試験の窓口・`reader_for`（8.1 の窓口の組み立て） |
+7.3 の2案に、第1版の案1の問題（`order` の待ちが無期限）を直した案1′を加えて比べる。
 
-**推奨：案1。** 追加の決め：状態の変更（`engine_event`・`engine_changed`・`voice_activity`）は、案を問わず `order` の下へ移す（14.6）。案2を選ぶ場合は、この表の「更新し忘れたとき」の差と、`Reader` の組み立ての変更を、統括が承知した上で選ぶ（14.15 の O1）。
+| 観点 | 案1：閉じた後に `order` を1度通す（第1版。**取り下げ**） | 案1′：閉鎖と不可分な `enter`＋上限つきの待ち（**推奨**） | 案2：有効な接続を `order` の下で更新する |
+|---|---|---|---|
+| 使う API | `Notifier::sweep()`（`order` を取って放す） | `LinkCell::enter(効果)`・`EmitGuard`・`LinkCell::quiesce(期限)`（いずれも `LinkCell`。`Notifier` は変えない） | `Notifier` の中身を `order` の下の `active` にし、`chain_if_current`・`activate`・`deactivate`。`Reader` と `LinkCell` に識別子を通す |
+| 閉じる側が待つもの | **`order`（無期限）**。`emit` が詰まれば止まる | **`LinkCell` の `Condvar` だけ。上限200ms** | `order`（無期限） |
+| 状態の変更（W1・W2・W4・W5） | 別に、`order` の下へ移す必要がある。閉じる側が先に `store(false)` する順の制約が付く | **`close` と同じ `LinkCell` のロックの下で確認と同時に行う**。順の制約が無い | 同上（案2でも状態の変更は確認の外） |
+| `ensure_clear` が失敗して戻る経路 | 通知前に返れた経路に、`order` の無期限の待ちが入る | 待ちは上限つきで、回収・確定の後。失敗の応答を止めない | 同上 |
+| 「閉じた」の正本 | `LinkCell` 1つ | `LinkCell` 1つ | `LinkCell` と `Notifier` の2つ |
+| 更新し忘れたとき | 掃き切りを忘れても、今の鏡の確認が残る | 待ちを忘れても、状態は不可分で守られ、通知は今の鏡の確認が残る | `deactivate` を忘れると、旧い列が確認なしで通る |
+| 残る窓 | W3 は閉じる。`order` が詰まれば閉じる側も詰まる | W3 は、通知の発行が200ms を超えて詰まる場合だけ残る | 同じ |
+| 変える範囲 | `emit.rs` に1関数、`audio.rs` に3か所、`reader.rs` | `link.rs` に3関数、`reader.rs` の閉包、`audio.rs` に2関数（`quiesce_closed_link`・`settle_disconnected`）と呼び出しの追加 | `Reader`・`AudioHost`・窓口の組み立て |
 
-### 14.6 設計：状態と通知を1つの区間に入れる・掃き切る
+**推奨：案1′。** 理由は、(1) 実行のスレッドが `order`・`emit` を上限なしに待たない（14.9）。(2) 状態の変更が閉鎖と不可分で、掃き切りの前後の順の制約（`store(false)` を待ちの後に置くなど）が要らない。(3)「閉じた」の正本が `LinkCell` 1つのまま（U6）。(4) `Notifier`・`Reader` の組み立て・窓口を変えない。案1・案2を選ぶ場合は、14.15 の O1 のとおり、統括が差を承知した上で選ぶ。
+
+### 14.6 設計：`enter`・`quiesce`・閉じる側の経路
+
+**`LinkCell` に足すもの（`link.rs`）**
+
+```text
+Inner に足す：emitting: u32（`enter` した reader の数）。quiesce_warned: bool（警告を接続ごとに1回）。
+LinkCell に足す：quiet: Condvar（`emitting` が 0 になったことを知らせる。`inner` と組む）
+
+enter(効果: FnOnce() -> bool) -> Option<EmitGuard>:       // reader が、状態の変更と通知の前に1回
+    inner のロックを取る
+    Closed なら None（効果は呼ばない）
+    効果() が false なら None（epoch が古い等。今の `engine_event` の false と同じ）
+    emitting += 1；Some(EmitGuard)
+EmitGuard の Drop: inner のロックを取り emitting -= 1；0 なら quiet.notify_all
+
+quiesce(期限: Instant) -> bool:                           // 閉じる側が、`close` の後に
+    inner のロックを取り、`emitting == 0` か期限までを Condvar::wait_timeout のループで待つ（起きるたびに確かめ直す）
+    期限を過ぎたら、quiesce_warned が偽なら立てて警告1回、false を返す。0 なら true
+```
+- **効果はロックを取らない原子操作だけ**：`conditions.engine_event`・`engine_changed`（`conditions.rs:134-161`）・`voice_activity.store`。9.3 の「`LinkCell` のロックは葉。持つ間はメモリの更新と待たない `mpsc` の送信・破棄だけ」の範囲内で、**ログ・`emit`・I/O・ほかのロックを、効果に入れない**（構造の試験 Q11）。`Condvar::wait_timeout`（`quiesce`）は、`wait_notified` に続く2つ目の例外で、待つ間はロックを放す。
+- `EmitGuard` は、`LinkCell` の `Arc` の借用ではなく `Arc` の複製を持つ（reader の `handle_event` の中で、`chain_if` の**外**で作り、外で落とす）。**`order` を持つ間に `LinkCell` のロックを取らない**（9.3。変えない）。
+- `quiesce` は、`close` と別のロックの区間（`close` の戻りの後）。`close` が戻った後に `enter` する reader は無いので、`emitting` は増えず、減るだけ。待ちは必ず終わる（上限つき）。
 
 **reader（`reader.rs`）**
 
 ```text
-今：  if !conditions.engine_event(epoch, true) { return }     // 列の外。閉じても通る
-      emit_chain(|c| { c.emit(...) })                          // order → 鏡 → 発行
-新：  emit_chain(|c| {                                         // order → 鏡（閉じていれば何もしない）
-          if !conditions.engine_event(epoch, true) { return }  // 区間の中。閉じた接続は、ここへ来ない
-          c.emit(...)
-      })
+今：  if !conditions.engine_event(epoch, true) { return }        // 閉鎖と無関係
+      emit_chain(|c| { c.emit(...) })                            // order → 鏡 → 発行
+新：  let Some(_guard) = link.enter(|| conditions.engine_event(epoch, true)) else { return };
+      log（R3）                                                    // ロックの外（`LinkCell` も `order` も持たない）
+      emit_chain(|c| { c.emit(...) })                              // order → 鏡（閉じていれば出さない）→ 発行
+      // `_guard` は `emit_chain` の後、`order` を放した後に落ちる
 ```
-- 対象は R2・R3・R5・R8（`engine_changed`／`engine_event`）と R9（`voice_activity.store`）。R1・R4・R6・R7・R10〜R13 は状態を持たないので、形は変わらない。
-- `Error`（R3）のログ（`log::error!("[Engine] {}", s)`。`:104`）は、照合の後に出る位置のまま、閉包の中へ移る。**閉じた接続の `Error` は、ログも出なくなる**（今は epoch が同じなら出る。通知ではない）。
-- `engine_event`・`engine_changed` は、ロックを取らない原子操作だけ（`conditions.rs:134-161`）。`order` を持つ間にしてよいことの規則（`emit.rs:61-63`）を、「`emitter` の短い取得と、ロックを取らない原子操作（`conditions`・`voice_activity`）」へ言い直す。`LinkCell` のロックは、今までどおり取らない（鏡の `Acquire` の読み取りだけ）。
-- **EOF の勝者**（`finish`）は、`order` を放した後に `mark_notified`（今のまま）。`engine_event(epoch, false)`（`:288`）と、確認なしの列は、今のまま（14.16 の (c)）。
-- `chain_if` のシグネチャは変えない。epoch が古いときの列は、今は `order` を取らずに戻るが、新しい形では取って戻る（`arrivals_for_test` の数が増える。試験の読み替えは 14.13）。
+- 効果：R2＝`engine_changed(epoch)`、R3・R5＝`engine_event(epoch, false)`、R8＝`engine_event(epoch, true)`、R9＝`voice_activity.store(…)`（常に真を返す）、それ以外（R1・R4・R6・R7・R10〜R13）＝`|| true`（数えるだけ）。
+- **R3 のログ（`:104`）は `enter` の後・`emit_chain` の前の、どのロックも持たない位置**。`order` の中にも、`LinkCell` の中にも置かない（Sol の指摘3）。閉じた接続の `Error` は、`enter` が `None` なので、ログも出なくなる（今は epoch が同じなら出る。通知ではない）。
+- `emit_chain`（`:25-27`）・`chain_if` のシグネチャは変えない。`enter` が成功した後に接続が閉じた場合は、鏡の確認（`chain_if`）が列を止める（`t9` の2本目のとおり。通知は出ず、`enter` で変わった状態は、事象が閉鎖より前だったものとして残る。14.7）。
+- **EOF の勝者**（`finish`）は、`enter` の外のまま（`close_eof` が閉鎖そのものを決めた勝者）。今のとおり（14.16 の (c)）。
 
-**掃き切り（`emit.rs`）**
+**閉じる側の経路（`audio.rs`）**
 
-```text
-Notifier::sweep(&self):                       // order を1度取って放す。何も出さない
-    drop(self.order.lock() を poison は into_inner で進める)
-```
-- 意味：`sweep` が戻った時点で、(i) `sweep` の前に `order` を取っていた列は出し終わっている。(ii) その後に `order` を取る列は、`close` が書いた鏡（`Release`。`link.rs:240`）を、`Mutex` の受け渡しを通して見る（閉じていれば何もしない）。したがって、**`close` が戻った接続の旧い列は、`sweep` が戻った後は出ない**。
-- 試験用に、`sweeps_for_test`（戻った回数）と `sweep_arrivals_for_test`（`order` を取る直前に着いた回数。`arrivals` と同じ型）を足す。
-- `Notifier` の関数へ再び入らない規則（`emit.rs:62`）に従い、**`chain`・`chain_if` の閉包の中では呼ばない**（構造の試験 Q14 が、呼び出し箇所を固定する）。
-
-**閉じる側の3か所（実行のスレッド）**
-
-| 場所 | 変更 | 理由 |
+| 経路 | 内容 | 使う場所 |
 |---|---|---|
-| `drop_connection`（`audio.rs:717-724`）の末尾 | `close_connection` と `retire_engine`（子の `kill`・確認）の**後**に `self.emitter.sweep()` | I3（回収は通知を待たない）を守る。`kill_primary_engine`（`:2814`）・`ensure_engine_running` の `:899,905`・`release_engine`・`reply_timed_out`・`cut_off`・`fail_mode_deadline`・配信ミックスの失敗の処理は、すべてここを通る |
-| `ensure_engine_running` の `:887`（子がすでに終わっていた） | `close_connection` の直後に `sweep` | `retire_engine` を通らないため |
-| `reset_engine_reader`（`:1055-1059`） | `close_connection` が**勝ったとき**だけ `sweep`（すでに閉じていれば、閉じた者が掃き切っている） | 旧い接続が開いたまま残っていた場合（`child` が無い試験）への備え |
+| `close_connection` | `link.close(cause)` と `writer = None` だけ（今のまま） | `Drop`・`take_engine_for_shutdown` |
+| `drop_connection` | `close_connection` ＋ `retire_engine`（子の `kill`・確認。今のまま。**待たない**） | `release_engine`（配信ミックスの子の破棄・外し）、`Drop` の子 |
+| **`quiesce_closed_link`（新設）** | `self.link.quiesce(now + QUIESCE_WAIT)` だけ（待ち。確定はしない） | 下の3か所 |
+| **`settle_disconnected`（新設）** | 切断状態の確定（14.7）：`conditions.retire_engine()`・`voice_activity.store(false)` | `ensure_engine_running` の `:887,899,905` |
+| `kill_primary_engine` | `drop_connection`（`:2814`）の後、今の `store(false)`（`:2815`）の前に `quiesce_closed_link`（確定は今ある：`:2806,2815`） | — |
+| `ensure_engine_running` の `:899,905` | `drop_connection` → `settle_disconnected` → `quiesce_closed_link`（**回収・確定・待ちの順**。待ちは最後） | — |
+| **`:887`（子がすでに終わっていた）** | `close_connection` → `settle_disconnected` → `quiesce_closed_link`（`retire_engine` は無い） | — |
+| `reset_engine_reader`（`:1055-1059`） | `close_connection` が**勝ったとき**だけ `quiesce`（確定はしない。直後に `new_engine` が済んでいる） | 開いていた接続が残っていた場合（`child` が無い試験）への備え |
 
-- **`kill_primary_engine`**：`drop_connection` の末尾で掃き切った後に `voice_activity.store(false)`（`:2815`）が来る順を変えない。epoch の更新（`:2806`）・`close`（`:2814`）の順も変えない。
-- **`Drop`・`take_engine_for_shutdown`（`:2954,2982`）は掃き切らない**：終了を、通知の発行の詰まりで止めない（`t13_drop_returns_within_the_shared_window…`〔`link_tests.rs:566`〕の趣旨）。
-- 閉じる側が掃き切りで `order` を待つのは、`hold_notices` の保持した通知を出すときに `order` を待つ（F1b-0a-1 の既知の範囲）のと同じ場所・同じ性質で、**新しい種類の待ちではない**（14.9・14.16 の (b)）。
+- `reply_timed_out`・`cut_off`・`fail_mode_deadline`・配信ミックスの失敗の処理（`post_mix.rs:1170-1173`）は、今の呼び出しのまま `kill_engine`／`kill_primary_engine`（→ 回収の後に `quiesce_closed_link`）または `release_engine`（→ `drop_connection`。待たない）を通る。
+- `QUIESCE_WAIT` = **200ms**（`writer.rs` の `EOF_WAIT` の隣に置く。`set_quiesce_wait_for_test` を足す。通常は通知1列の発行〔ミリ秒以下〕を待つだけ）。値は推奨で、実装の試験で見直す（14.15 の O11）。
+- **回収と失敗の応答は、追加の待ちより先**：待ちは、子の `kill`・確認・記録（`retire_engine`）を終え、切断状態を確定した後に行う。`cut_off`・`reply_timed_out` の失敗の結果は、`kill_*` が戻った後に作る今の順のまま。最大200ms の遅れが加わるのは、通知の発行が詰まっているときだけ（14.14）。
+- **配信ミックスの子**：子の `link` に対して、子の `drop_connection`（と、必要なら `quiesce_closed_link`）が働く（`quiesce` は子の `LinkCell` だけを見る。主の `LinkCell`・`Notifier` は待たない）。
 
-### 14.7 `voice_activity` と epoch の窓の閉じ方（S6 の反転）
+### 14.7 切断状態の確定・`voice_activity` と epoch の窓（S6 の反転）
 
-- **W5（`voice_activity`）**：R9 の `store` が `order` の下の確認の後へ移る。`kill_primary_engine` は、`close`（`:2814`）→ 回収 → `sweep` → `store(false)`（`:2815`）の順。**`close` の後に始まる列は何も変えず、`close` の前に始まった列は `sweep` の戻りまでに終わる**ので、`store(false)` の後に `store(true)` は来ない。S6（`link_tests.rs:873`）は、`close` の後に `VoiceCheckState` を渡して `voice_activity == false` を確かめる形へ変える。
-- **W4（古い epoch の `engine_event`）**：`engine_epoch` の更新点は変えない。`ensure_engine_running` の3経路は、接続を閉じて `sweep` した後は、旧い reader の状態の変更が一切起きない。`ensure_clear` が長く待っても（C5）、失敗して `new_engine` が来なくても、epoch が古いまま旧い reader が `running`・`revision` を変えることは無い。**`close` より前に完了していた変更は、そのまま残る**（接続が開いていた間の事実で、今も同じ）。
+- **不可分の意味**：`close`（`LinkCell` のロックの下）と `enter`（同じロックの下）は、どちらかが先に完了する。`enter` が先なら、状態の変更は `close` より前の事象として完了し、`close` はそのロックを待つ。`close` が先なら、`enter` は `None`（状態は変わらない）。したがって、**`close` が戻った後に、旧い reader が状態を変えることは無い**（I48）。
+- **W5（`voice_activity`）**：`kill_primary_engine` は、`close`（`:2814`）→ 回収 → `quiesce` →（今の）`store(false)`（`:2815`）。`close` の後に `store(true)` は来ない。S6 は `false` に反転する。
+- **W4（古い epoch の `engine_event`）と `ensure_clear` の失敗**：`ensure_engine_running` の3経路は、接続を閉じて回収した後に、**切断状態を確定する**：`conditions.retire_engine()`（epoch を進め、`running=false`・`revision` を進める。通知は出さない）と `voice_activity.store(false)`。`new_engine`（`:913`）は、今までどおり後から来る（epoch はさらに1つ進む。単調で、reader の epoch は `new_engine` の戻り値）。これにより、**`ensure_clear` が失敗して `new_engine` が来なくても、`running=true` は残らない**（I50）。今は、残る（W4）。
+- 確定の呼び出し元の整理：`kill_primary_engine` は、今すでに `retire_engine`（`:2806`）と `store(false)`（`:2815`）を行うので、足さない。`Drop` は、`retire_engine`（`:2955`）が今ある。`reset_engine_reader` は `new_engine` の後なので足さない。
+- **`close` より前に完了した状態の変更は残る**（事象が閉鎖より前）。閉じる側が `retire_engine`・`store(false)` で上書きする経路では消える。W2（状態が変わって通知が落ちる）は、閉鎖より前の事象の状態を、確定が上書きするので、画面に残る誤りにならない。
 - 配信ミックスの子：同じ規則が、子の `Conditions`・`voice_activity` に対して効く。子の `Notifier` には `emitter` が無いので、通知は出ない（14.3）。
 
-### 14.8 (h)：復旧の通知と EOF の列の順
+### 14.8 (h)：復旧の通知と EOF の列の順（この段から外す）
 
-**`await_eof_notices(&self)`（`audio.rs`。新設。`reply_timed_out` の `:1160-1165` の中身を取り出す）**
+**今の main で、順が崩れたときに起きること（確かめたもの）**
 
-```text
-let link = self.link.clone();                         // 閉じた時点の接続（差し替わっても同じ接続を待つ）
-if link.cause() == Some(Eof) && !link.wait_notified(now + eof_wait()) { warn_eof_wait_exceeded() }
-```
-- `LinkCell::wait_notified`（`link.rs:256-273`）に、**上限を過ぎて `false` を返したら、その接続では以後すぐ `false` を返す**印を足す（`Inner` に1項目。`close_eof` の勝者が通知を出し終えるまでの待ちを、接続ごとに最大 `EOF_WAIT` の1回に抑える。警告も1回）。取りこぼしの起床は、今のとおり、`Condvar` の `wait_timeout` を、`eof_notified` と期限を確かめ直すループで待つ（E17）。
-- **呼ぶ場所（2か所）**：(1) `reply_timed_out`（今ある呼び出しを置き換える。結果・文言は同じ）。(2) `fail_mode_transaction`（`mode_vst.rs:831`）の最後の枝（巻き戻しの予約をしない枝）の先頭。`hold_notices` の**前**。保持した通知は、回収の後の1つの列で出るので、その列より前に EOF の列が出ている。
-- **EOF の列を待たない場合**：原因が `Eof` でない（`Intentional`・`WriteFailed`・`WriteTimeout`・`ReplyTimeout`）接続。reader が `close_eof` に負けたので、EOF の列は出ない。
-- **試験専用の `close(Eof)`**（reader がいない。`mode_vst.rs` の試験に7か所：`:2366,2405,2752,2778,2797,2819,2848`。`link_seam::win_eof` が3か所：`:2344,2378,2393`）は、通知を出す reader がいないので、新しい待ちで2秒止まらないようにする：`close(Eof)` は `eof_notified = true` で閉じ（製品に `close(Eof)` の呼び出しは無い。14.3）、窓口の `win_eof` は `mark_notified` も呼ぶ。reader がいる試験（`cas_eof`・`finish_eof`・`Reader::pause`）は、今のとおり待つ。
-- **閉じた接続への `begin`**：`LinkCell::begin` は `Closed` で `Err(Closed)`（E3）。待ちの登録も、操作の記録も起きない。tick の `send_mode_command`（`:700-701`）は、そのまま `CLOSED` を返し、`:678-687` が `ENGINE_EXITED` の文言で `fail_mode_transaction` へ進む。この段は、この経路が (1) 何も登録しないこと、(2) 復旧の通知が EOF の列より先に出ないこと、を試験で固定する（Q8）。
-- **`cut_off` が EOF に負けた場合**（`audio.rs:1178-1197`）は、今の順のまま（`await_eof_notices` を呼ばない）。応答の結果が `ENGINE_EXITED` ではなく書き込みの失敗なので、K13 の「待ち手の解放が通知より先」の対象ではない。保持した通知と EOF の列の順は、14.16 の (f)、14.15 の O3。
+- 崩れる場面：tick が最後の接続の確認（`mode_vst.rs:628`）を通った後に EOF が勝ち、`begin` が `CLOSED` になる（14.3）。host が保持した復旧の通知（`live-modes-invalidated`・`global-mute-changed`・`session-rack-change-cancelled` など）の列が、reader の EOF の列（`audio-conditions-changed`・`audio-engine-exited`・`audio-error`）より先に出うる。
+- 画面の反応（`src/`）：
+  - `audio-error`・`audio-engine-exited` は、プラグイン一覧の初期化と「クラッシュ」の表示を行うだけの、**冪等で順に依らない**処理（`src/hooks/useAppEvents.ts:86-103`）。`audio-error` で復旧の自動再試行を止める（`src/hooks/useAudioRecovery.ts:94`）のも、順に依らない。
+  - `live-modes-invalidated` は、ホストの状態を**読み直す**（`src/hooks/useLiveModes.ts:30-39,43-46`）。さらに **500ms ごとに読み直す**（`:46`）。通知の順で画面の状態が決まらない。
+  - `global-mute-changed` は、ミュートの真偽を値で受ける（`src/hooks/useEmergencyMute.tsx:11`）。EOF の列はミュートに触れないので、順に依らない。
+  - そのほか `audio-started`・`audio-stopped`・`audio-error`・`audio-conditions-changed` を聞く多くの画面（`useMeterLevels`・`useMasterHealth`・`useRuntimeStats` など）は、「無効化して読み直す」「止める」の冪等な処理。
+- **結論：順が崩れても、画面の状態は最終的に正しくなる**（誤情報は残らない）。崩れるのは、復旧の案内の表示と「エンジンが終了した」の表示の、見える順だけ。main でも起きる。判断の基準（退行・保存データの破損や喪失・固まる／回復できない・main では起きない誤情報の残存）に当たらない。
+- **よって、`await_eof_notices`・`fail_mode_transaction` での待ち・`wait_notified` への「一度きり」の印・`close(Eof)` の扱いの変更・窓口 `win_eof` の変更は、設計から消した**。実行のスレッドで、停止・回収を塞ぐ待ちを足さない。
+- 閉じた接続への `begin`：`LinkCell::begin` は `Closed` で `Err(Closed)`（E3）。待ちの登録も、操作の記録も起きない。この性質は今のまま固定する（Q8）。
+- 9.10 の (h) は、「完全な順序の保証は F1b-0b-4 で行う」の約束を、**この段では行わない**に改める（14.16 の (d)）。順の保証が要るようになったら（たとえば画面が通知の順で状態を決めるようになったら）、回収を先に進め、停止を塞がない方式（古い接続の EOF の通知を N2 の規則で捨てる、reader が EOF の列を出し終えるまで host の通知を保持するなど）を、別に設計する。
 
-### 14.9 ロックの規則・デッドロックの危険（実行のスレッド・reader・reaper・writer）
+### 14.9 ロックの規則・`emit` が詰まりうるかの調査・デッドロックの危険
 
-使うロック：`Notifier.order`（通知の列。`std::sync::Mutex<()>`）、`Notifier.emitter`（`emitter` の複製を取る間だけ）、`LinkCell.inner`（葉。`wait_notified` の `Condvar` の待ちの間は放す）、`held_notices`（`depth` の加減と保持した通知の出し入れの間だけ。待たない）。ロックの順は、9.3 のとおり **ホスト → `order` → 鏡（ロックなし）**。`order` を持つ間に `LinkCell` のロックを取らない。
+**`emit` が同期で詰まりうるか（依存のソースで確かめた。tauri 2.12.4、tauri-runtime-wry 2.12.2、tao 0.37.1。`Cargo.lock`・`cargo tree -e features` で版と機能を確認）**
 
-| 閉じる側（スレッド） | `sweep`・待ちの時点で持つロック | 待つもの | 待たれる側が待つもの | 輪になるか |
+| 段 | 場所 | 待つか |
+|---|---|---|
+| `AppHandle::emit` → 管理側の `emit` | tauri `manager/mod.rs:524-541` | 管理側が `webviews_lock()`（`Mutex`）を取ったまま、全ウェブビューへ `emit_js`（`:538`）、続けて Rust 側の `listeners.emit`（`:539`） |
+| ウェブビューへ | tauri `event/listener.rs:329`・`webview/mod.rs:2230-2237`・`:2173-2179` | `eval`（スクリプトを渡す）。結果を待たない |
+| ランタイム | tauri-runtime-wry `lib.rs:1740-1745`（`eval_script`。`tracing` 機能が**無い**ビルド） | `send_user_message` に渡すだけ |
+| メッセージの送信 | tauri-runtime-wry `lib.rs:263-280` | **イベントループのスレッド以外**からは `proxy.send_event`（待たない）。**イベントループのスレッドからなら、その場で `handle_user_message` を実行する**（`:264-273`） |
+| イベントループへ | tao `platform_impl/windows/event_loop.rs:570-586` | `PostMessageW`（キューへの投入。待たない。失敗は `Err` で返る）と、無制限の `mpsc` の `send` |
+| Rust 側の購読 | tauri `event/listener.rs:214-230` | `handlers` のロックを `try_lock`（取れなければ保留へ回す。待たない）。取れれば、購読の関数を**呼び出したスレッドの上で同期に実行する**。このリポジトリに `listen` の使用は無い（`.listen(` なし）が、tauri 本体・プラグインの購読までは確かめていない |
+| `tracing` 機能が有効な場合 | tauri-runtime-wry `lib.rs:1724-1737` | `getter!`（チャネルの受信）で、イベントループが処理するのを**待つ**。`Cargo.toml:29` は有効にせず、`cargo tree -e features` で `tauri-runtime-wry` に `tracing` 機能が無いことを確認した |
+
+- **結論：通常は詰まらない（投入だけ）が、「詰まらない」と言い切れない**。理由：(1) `webviews_lock()` を、ウェブビューの作成・破棄（イベントループのスレッド）と取り合う。(2) 呼び出しがイベントループのスレッドなら、その場で実行する（reader・実行のスレッドは違うが、`AppHandle` を使う別の経路は未確認）。(3) Rust 側の購読が同期で実行される。(4) `tracing` 機能が入るビルドでは待つ。
+- **したがって、閉じる側（実行のスレッド）は、`order` も `emit` も、上限なしに待たない**（方針 A）。待つのは `LinkCell` の `Condvar` の上限つきの待ちだけ（14.6）。ただし、**今も `order` を無期限に待つ箇所は残る**：`hold_notices` の保持した通知の出し直し（`audio.rs:695-701`）と、`notice`（`:660-674`）。main と同じで、この段は増やさず、変えない（14.16 の (b)）。
+
+**ロック**：`Notifier.order`（通知の列）、`Notifier.emitter`（複製を取る間だけ）、`LinkCell.inner`（葉。`wait_notified`・`quiesce` の `Condvar` の待ちの間は放す）、`held_notices`（`depth` の加減と出し入れの間だけ）。ロックの順は 9.3 のとおり **ホスト → `order` → 鏡（ロックなし）**。`order` を持つ間に `LinkCell` のロックを取らない（`enter` と `EmitGuard` の Drop は、`order` の外。14.6）。
+
+| 閉じる側（スレッド） | 待ちの時点で持つロック | 待つもの | 待たれる側が待つもの | 輪になるか |
 |---|---|---|---|---|
-| 実行のスレッド：`kill_primary_engine`（`hold_notices` の中） | なし（`held_notices` は `depth` を足しただけで、ロックは放している。`LinkCell` は `close` が戻っている） | `order`（`sweep`） | `order` の持ち主は reader の列の途中（`emitter` を短く取るだけ）。reader は実行のスレッドを待たない | ならない |
-| 実行のスレッド：tick の `fail_mode_transaction`（`await_eof_notices` → `hold_notices`） | なし | `LinkCell` の `Condvar`（`wait_notified`。`inner` を放して待つ）→ `order` | reader は EOF の列を出して `mark_notified`（`order` を放した後。`inner` を短く取る）。実行のスレッドを待たない | ならない |
-| 実行のスレッド：`reply_timed_out`・`cut_off`・`fail_mode_deadline`・`:887,899,905`・`reset_engine_reader` | なし | 上と同じ | 同じ | ならない |
-| 実行のスレッド：配信ミックスの子の閉鎖（`post_mix.rs:1173,480,921`） | 主の `Notifier` は持たない。子の `Notifier` の `order` を取る | 子の `order` | 子の reader だけ（`emitter` が無いので発行は空） | ならない |
-| reader（EOF の勝者・通常の列） | `order`（列の間）。`LinkCell` のロックは取らない（鏡の `Acquire` の読み取りだけ） | なし（`emit` は WebView への投入で、実行のスレッドを待たない。Rust 側の `listen` は無い） | — | ならない |
+| 実行のスレッド：`kill_primary_engine`・`quiesce_closed_link`（`quiesce`） | なし（`LinkCell` は `close` が戻っている。`held_notices` は `depth` だけ） | `LinkCell.quiet`（`Condvar`。上限200ms。待つ間は `inner` を放す） | 待たれる reader は、`order`（発行の間）と `inner`（`enter`・Drop の短い間）だけ。実行のスレッドを待たない | ならない |
+| 実行のスレッド：`ensure_engine_running` の `:887,899,905` | なし | 同上 | 同上 | ならない |
+| 実行のスレッド：`reply_timed_out`（既存の `wait_notified`） | なし | `LinkCell.notified`（`Condvar`。上限 `EOF_WAIT`。**変えない**） | reader が EOF の列を出し、`order` を放した後に `mark_notified` | ならない |
+| 実行のスレッド：`Drop`・`release_engine`・`take_engine_for_shutdown` | — | **待たない**（`quiesce` しない） | — | — |
+| reader（通常の列） | `enter`：`inner`（短い）。発行：`order`。**両方を同時には持たない** | なし | — | ならない |
+| reader（EOF の勝者） | `order`（列の間）。`inner` は `order` を放した後（`mark_notified`） | なし | — | ならない |
 | writer | `LinkCell.inner`（`mark_sent`。葉） | なし | — | ならない（`order` を取らない） |
-| reaper | `Store.slots`（短い読み取りと記録の出し入れ）。通知・`LinkCell` に触れない（I32） | なし | — | ならない |
-| `Drop`・終了（`close_connection` だけ） | — | **待たない**（掃き切り・`await_eof_notices` をしない） | — | — |
+| reaper | `Store.slots`（短い）。通知・`LinkCell` に触れない（I32） | なし | — | ならない |
 
-- **実行のスレッドが自分の列の中から `sweep` を呼ぶ**（`chain` の閉包の中で）：`order` は再入できない `Mutex` で、自己デッドロックになる。呼び出し箇所を構造の試験（Q14）で固定し、`chain`・`chain_if` の閉包の中には置かない。host の通知は `hold_notices` の閉包の**外**（`depth == 0` の後）で出す今の構造のまま。
-- **emit が戻らない（WebView・OS の都合で `order` を持った列が止まる）**：閉じる側は、回収（`kill`・確認）を先に終え（I3）、`sweep` の `order` で止まる。**今も、`hold_notices` が保持した通知を出すとき（`kill_primary_engine` は常に1件以上を保持する）、同じ `order` で止まる**ので、止まる場所と性質は同じ。新しく生まれる止まり方は無いが、`ensure_engine_running` の `:887,899,905` は、今は `new_engine` の後の `notify_conditions_changed`（`:914`）で止まるところを、`ensure_clear` の前の `sweep` で止まる（止まる位置が少し前になる）。実行のスレッドが止まれば、停止の列も実行されない（12.17 の (b) と同じ範囲）。14.16 の (b)。
-- 待ちの上限：`order` の待ちには上限を付けない（`std::sync::Mutex` に時間つきの取得が無い。付けると、旧い列が閉じた後に出る窓を作る）。EOF の列の待ち（`wait_notified`）だけが `EOF_WAIT`（2秒）の上限つき。
+- **自己デッドロック**：実行のスレッドが `quiesce` を、`chain`・`chain_if` の閉包の中・`hold_notices` の閉包の中の `order` を持つ位置から呼ぶと、自分の列を待つ。呼び出しは `kill_primary_engine`・`ensure_engine_running` の3経路・`reset_engine_reader` だけで、いずれも `order` を持たない（構造の試験 Q11）。上限があるので、誤っても詰まらないが、200ms 遅れる。
+- **`order` の待ちには、閉じる側は関与しない**（`quiesce` は `emitting` だけを見る）。`emit` が詰まって reader が列の中で止まれば、`emitting` は 0 にならず、`quiesce` は200ms で終わり、警告を1回（接続ごと）出して進む。
 
 ### 14.10 切断・終了の瞬間の役者×状態×順序
 
-役者：R＝旧い reader（閉じた接続の）、N＝新しい接続の reader、W＝writer、A＝実行のスレッド（tick を含む。閉じる側）、P＝reaper。`close`＝`LinkCell::close(cause)`（鏡に `Closed`）、`sweep`＝`Notifier::sweep`、`order`＝通知の列のロック。矢印は順。
+役者：R＝旧い reader（閉じた接続の）、N＝新しい接続の reader、W＝writer、A＝実行のスレッド（tick を含む。閉じる側）、P＝reaper。`close`＝`LinkCell::close(cause)`、`enter`＝`LinkCell::enter`、`quiesce`＝`LinkCell::quiesce`。矢印は順。
 
 | # | 瞬間 | 順序 | 結果 |
 |---|---|---|---|
-| 1 | R が行頭の確認を通過。A が `close` する前に、R が `order` を取って確認する | R：`order`→鏡（開）→状態の変更→発行→`order` を放す。A：`close`→回収→`sweep`（R の列を待つ） | R の列は出る。A は R の列の後に進む。出る順は R の列が先、A の次の通知が後 |
-| 2 | R が `order` を取る直前に A が `close` する | A：`close`（鏡 `Closed`）。R：`order`→鏡（閉）→**状態は変わらない**・何も出さない | 列は出ない。状態も変わらない（W1・W2） |
-| 3 | R が `order` で待っている間に A が `close` し、A が `sweep` に着く | `order` の持ち主が出し終える→R か A のどちらかが先に取る | R が先：鏡は閉→何もしない。A が先：何も出さず放す→R が閉を見る。どちらでも R は何も出さない |
-| 4 | A の `close` が戻った後、R がすでに `order` を持って発行中 | R：発行中。A：回収が終わった後、`sweep` で待つ | R の列が出し終わってから、A が先へ進む（W3） |
-| 5 | A が `sweep` から戻った後に、R に旧い行が残っている | R：行頭の確認で閉を見て抜ける。または `order`→鏡（閉）→何もしない | 出ない |
-| 6 | `kill_primary_engine`：`retire_engine`（epoch++）→`close`→回収→`sweep`→`store(false)`→（保持した通知の列） | R の `store(true)` は `sweep` までに終わるか、確認で止まる | `voice_activity == false`（W5）。保持した通知の列は R の旧い列の後 |
-| 7 | R が EOF に勝つ（`close_eof`）。A の `close`（Intentional）は負ける | R：`engine_event`→`order`→EOF の3件→`mark_notified`→待ち手へ `Eof`。A：回収→`await_eof_notices`（ある場合）→`sweep`→保持した通知の列 | EOF の3件が先、host の通知が後（W6）。EOF の勝者は掃き切りの外（W7 は残す） |
-| 8 | R が EOF に勝った後、列を出す前に止まる・panic する | A：`await_eof_notices` は `EOF_WAIT`（2秒）で `false`→警告1回→`sweep`（`order` は空）→保持した通知の列 | 通知の前に host の通知が出る（9.10 の (c) の型）。警告は接続ごとに1回 |
-| 9 | tick（A）が `connection_lost()`（`mode_vst.rs:628`）を通過。EOF が `begin` の前に勝つ | A：`begin(None)` → `Err(CLOSED)`（E3。登録なし）→`fail_mode_transaction`（ambiguous）→`await_eof_notices`→`hold_notices`｛`cancel_mode_vst`（保持）・`kill_engine`（`sweep`）｝→復旧の通知の列 | **EOF の3件→復旧の通知** の順（(h)）。待ち手はいない（`begin` は拒まれた）。文言は `ENGINE_EXITED` |
-| 10 | tick の最後の `connection_lost()` で、すでに EOF の列まで出し終わっている | `await_eof_notices` は `eof_notified` を見て即座に戻る | 待たない |
-| 11 | `ensure_engine_running`：`:899`（`drop_connection`）→`sweep`→`ensure_clear`（C5 は窓の終わりまで待つ）→`new_engine`→N を起動 | R の旧い行は、`sweep` の後、確認で止まる | N の最初の通知（`:914` の `audio-conditions-changed`）の前に、R の通知は出ない。`ensure_clear` の失敗で `new_engine` が来なくても、R は何も変えない（W4） |
-| 12 | 閉じた後に N が起動する（R の `sweep` は済み） | N：`order`→鏡（N の接続は開）→発行 | N の通知は通る。R と N が入れ替わらない（R の列は `sweep` までに終わる） |
-| 13 | W の `mark_sent`（E4〜E6）と A の `close` | 9.4 のとおり（変えない） | `Aborted` なら書かない |
-| 14 | P が記録を消して `ring` | 通知・`LinkCell` に触れない（I32） | N2 に影響しない |
-| 15 | `Drop`（アプリの終了）：`close_connection`→回収 | 掃き切り・`await_eof_notices` をしない | 終了は通知の発行で止まらない（旧い列がその間に1つ出うる。終了の後は誰も見ない） |
-| 16 | 配信ミックスの子の閉鎖（`post_mix.rs:1173`→`detach_with`→`release_engine`） | 子の `drop_connection`→子の `Notifier` の `sweep`（子には `emitter` が無く、発行は空） | 主の通知に影響しない |
+| 1 | R が `enter` する前に A が `close` | A：`close`。R：`enter` → `None` | R は状態も変えず、通知も出さない（W1） |
+| 2 | R が `enter` のロックの中（確認の直後・効果の前）にいる間に A が `close` | R：`inner` を持って効果を実行 → 解放。A：`close` は `inner` を待つ → 取れて閉じる | 効果は `close` より前の事象。`close` が戻った後は、R は何もしない（W1・W2）。A の確定（`running=false`・`store(false)`）が後から上書き |
+| 3 | R が `enter` を通った後、`order` を取る前に A が `close` | R：`order` → 鏡（閉）→ 発行しない。`EmitGuard` を落とす。A：回収 → 確定 → `quiesce`（R の Drop で 0 になり戻る） | 通知は出ない。状態は `close` より前の事象で、確定が上書き |
+| 4 | R が `enter` を通り、`order` の中で発行している間に A が `close` | A：`close` → 回収（`kill`・確認。通知を待たない）→ 確定 → `quiesce`（`emitting` が 1） | R が発行を終え、Drop で 0 → A が進む。R の列は A の次の通知（`hold_notices` の出し直し）より前（W3）。200ms を超えて発行が詰まれば、A は警告を1回出して進む（14.16 の (a)） |
+| 5 | `quiesce` が戻った後に R に旧い行が残っている | R：行頭の確認で閉を見て抜ける。または `enter` → `None` | 出ない。状態も変わらない |
+| 6 | `kill_primary_engine`：epoch++（`:2806`）→ `close`（`:2814`）→ 回収 → `quiesce` → `store(false)`（`:2815`） | R の `store(true)` は `close` より前に完了するか、`enter` が `None` | `voice_activity == false`（W5） |
+| 7 | `ensure_engine_running` の `:899`：`close` → 回収（`retire_engine`）→ 確定（`retire_engine`〔epoch〕・`store(false)`）→ `quiesce` → `ensure_clear` | 旧い reader の通過済みの行は、`close` の後は `enter` が `None` | `ensure_clear` が失敗して戻っても、`running=false`・`voice_activity=false`。`new_engine` が来なくても、旧い reader は何も変えない（W4） |
+| 8 | R が EOF に勝つ（`close_eof`）。A の `close`（Intentional）は負ける | R：`engine_event` → `order` → EOF の3件 → `mark_notified` → 待ち手へ `Eof`。A：回収 → 確定 → `quiesce`（EOF の勝者は `enter` しないので数えない）→ 保持した通知の列 | EOF の列と host の通知の相対順は決まっていない（W6）。画面の状態は最終的に正しい（14.8） |
+| 9 | tick（A）が `connection_lost()`（`mode_vst.rs:628`）を通過。EOF が `begin` の前に勝つ | A：`begin(None)` → `Err(CLOSED)`（E3。登録なし）→ `fail_mode_transaction`（ambiguous）→ `hold_notices`｛`cancel_mode_vst`（保持）・`kill_engine`（`quiesce_closed_link`）｝→ 復旧の通知の列 | **待ちは増えない**（`wait_notified` を呼ばない）。順は W6 のとおり |
+| 10 | 新しい接続 N が起動する | N：`enter`（N の `LinkCell`）→ `order` → 発行 | N の通知は通る。R の `LinkCell` は別。R の列は `quiesce` までに終わるか、確認で止まる |
+| 11 | W の `mark_sent`（E4〜E6）と A の `close` | 9.4 のとおり（変えない） | `Aborted` なら書かない |
+| 12 | P が記録を消して `ring` | 通知・`LinkCell` に触れない（I32） | N2 に影響しない |
+| 13 | `Drop`（アプリの終了）／配信ミックスの子の破棄（`release_engine`） | `close_connection`／`drop_connection` だけ。`quiesce`・確定しない | 待たない。終了の後に旧い列が出うるが、誰も見ない |
+| 14 | 配信ミックスの子の外し（`post_mix.rs:1173` → `detach_with` → `release_engine`）の直後に、子の `Drop` | 2回とも `drop_connection`（`close` は2回目が負ける。`child` は1回目で `take` 済み） | 二重に待たない（待たない経路）。子の回収は1回 |
+| 15 | `reply_timed_out` が EOF に負ける | 今のとおり：`close` に負ける → `kill_*`（回収・確定の後に `quiesce_closed_link`）→ `wait_notified`（上限 `EOF_WAIT`）→ `ENGINE_EXITED` | F1b-0b-1 の 9.5 のまま。回収が先、待ちは後（上限つき）。`quiesce` の分だけ最大200ms 加わりうる |
 
 ```mermaid
 stateDiagram-v2
     direction LR
     state "開いている" as Open
-    state "閉じた（掃き切り前）" as Closed
-    state "EOF で閉じた（勝者が列を出す）" as Eof
-    state "掃き切り済み" as Swept
+    state "閉じた（回収中）" as Closed
+    state "確定済み（切断状態）" as Settled
+    state "EOF で閉じた" as Eof
     [*] --> Open
-    Open --> Closed: 閉じる側が close（鏡が Closed）
+    Open --> Closed: 閉じる側が close。以後 enter は None
     Open --> Eof: reader が close_eof に勝つ
-    Closed --> Swept: 回収の後に sweep（order を1度通す）
-    Eof --> Swept: 勝者が列を出し mark_notified、閉じる側が await_eof_notices の後に sweep
-    Eof --> Swept: 上限 EOF_WAIT を過ぎた（警告1回）。通知の前に進む
-    Swept --> [*]: 旧い reader は何も出さず何も変えない
+    Closed --> Settled: 回収・確定（running=false など）の後
+    Settled --> Settled: quiesce（enter した reader が 0 になるか、200ms まで待つ。超えたら警告1回）
+    Eof --> Settled: 閉じる側が回収・確定。EOF の列は reader が出す（host の通知との順は決めない）
+    Settled --> [*]: 旧い reader は何も変えず、何も出さない
 ```
 
-利用者の目に見える動き：停止・再起動・VST 切替の失敗・エンジンの異常終了の後、(1) 画面のメーター・状態の古い値は、新しい接続の最初の通知より後には出ない。(2) 停止後に、ボイスチェックの録音の印が残って「更新できない」ままになることが無くなる。(3) VST 切替の途中でエンジンが落ちたときは、「エンジンが終了した」の通知が先、復旧の案内が後に出る。イベント：旧い reader の通知・閉じる側の回収・EOF。失敗：EOF の列が出ない（上限を過ぎる）と、順を待たずに進む。取消：呼び出し側の取り消しは、実行のスレッドの閉包を止めない（掃き切りも待ちも閉包の中で完了する）。再試行：新しい接続は、この段の影響を受けない。
+利用者の目に見える動き：停止・再起動・VST 切替の失敗・エンジンの異常終了の後、(1) 画面のメーター・状態の古い値は、新しい接続の最初の通知より後には出ない（通知の発行が200ms 以内に終わる通常の場合）。(2) 停止後に、ボイスチェックの録音の印が残って「更新できない」ままになることが無くなる。(3) 作り直しが失敗しても、音声が動いているという表示が残らない。イベント：旧い reader の通知・閉じる側の回収・EOF。失敗：通知の発行が詰まっていれば、閉じる側は200ms で進む。取消：呼び出し側の取り消しは、実行のスレッドの閉包を止めない（確定も待ちも閉包の中で完了する）。再試行：新しい接続は、この段の影響を受けない。
 
 ### 14.11 不変条件（13章の続き。I48〜）
 
 | # | 不変条件 |
 |---|---|
-| I48 | **閉じた接続（`LinkCell` が `Closed`）の reader は、`close` が戻った後に始まる状態の変更（`conditions`・`voice_activity`）も通知も行わない**。状態の変更と通知は、`order` の下の、接続の確認の後の1つの区間にだけある（EOF の勝者の列を除く） |
-| I49 | 閉じる側は、接続を閉じて子を回収した**後**に、同じ `Notifier` の旧い列を掃き切ってから、次の状態の変更・通知へ進む（`drop_connection` の末尾・`ensure_engine_running` の `:887`・`reset_engine_reader` で `close` に勝ったとき）。回収は通知を待たない（I3） |
-| I50 | 掃き切り（`sweep`）と EOF の列の待ち（`await_eof_notices`）を行うのは、実行のスレッド（接続を閉じる側）だけ。reader・writer・reaper は行わない。`chain`・`chain_if` の閉包の中では呼ばない |
-| I51 | `order` を持つ間にしてよいのは、`emitter` の短い取得と、ロックを取らない原子操作（`conditions`・`voice_activity`）だけ。`LinkCell` のロックは取らない |
-| I52 | EOF の勝者の列は、確認なしで出る（K13）。host は、EOF で閉じた接続について、保持した通知・復旧の通知を出す前に、勝者の列を出し終えるのを、**接続ごとに最大 `EOF_WAIT` の1回**だけ待つ（上限を過ぎたら警告1回で進む） |
-| I53 | 閉じた接続への `begin` は、何も登録しない（E3）。tick の復旧の通知は EOF の列より先に出ない |
-| I54 | `Drop`・終了の経路は、掃き切りも EOF の列の待ちもしない |
-| I55 | 通知の名前・中身・数・順・`engine_generation` の更新点・`engine_epoch` の更新点は変えない。通知が出なくなるのは、`close` の後に始まった旧い接続の列だけ |
-| I56 | 配信ミックスの子の `Notifier` は子ごと。子の掃き切りは子の `Notifier` に対して行い、主の `Notifier` を待たない |
+| I48 | **`LinkCell::enter` は、閉鎖と同じロックの下で「閉じていない」を確かめ、状態の変更（効果）を行う**。`close` が戻った後は、旧い reader の状態の変更（`conditions`・`voice_activity`）も通知も起きない。`close` より前に `enter` を通った事象の状態は残る。効果は、ロックを取らない原子操作だけ（ログ・`emit`・I/O・ほかのロックを入れない） |
+| I49 | 閉じる側（実行のスレッド）は、回収（子の `kill`・確認・記録）と切断状態の確定を済ませた**後**に、`quiesce` を上限（`QUIESCE_WAIT` = 200ms）つきで行う。`order`・`emit` を待たない。上限を過ぎたら、警告を接続ごとに1回出して進む。失敗の応答・回収は、この待ちより先に決まる（I3） |
+| I50 | `ensure_engine_running` が接続を閉じる3経路は、回収の後に切断状態を確定する（`running=false`・epoch を進める・`voice_activity=false`）。`ensure_clear` が失敗して `new_engine` が来なくても、`running=true`・`voice_activity=true` は残らない |
+| I51 | `Drop`・`release_engine`・`take_engine_for_shutdown` は、回収だけを行う経路（`close_connection`・`drop_connection`）を通る。確定も `quiesce` もしない。配信ミックスの子を外した直後の破棄でも、二重に待たない |
+| I52 | ロック：`enter`・`EmitGuard` の Drop・`quiesce` が取るのは `LinkCell.inner` だけ（`quiesce` は `Condvar` の待ちで放す）。`order` を持つ間に `LinkCell` のロックを取らない。R3 のログは、`LinkCell` と `order` のどちらも持たない位置 |
+| I53 | EOF の勝者は `enter` しない（K13：EOF の通知の列を出し終え、`mark_notified` の後に、待ち手へ `Eof` を送る）。host の通知と EOF の列の相対順は保証しない（9.10 の (h)・14.8）。この段で、`wait_notified` の使い方・上限・意味は変えない（`reply_timed_out` の既存の待ちだけ。同じ `Arc<LinkCell>` で、期限切れの後も別の待ち手が通知済みで成功する。T6） |
+| I54 | 閉じた接続への `begin` は、何も登録しない（E3）。tick の復旧の経路は、待ちを増やさない |
+| I55 | 通知の名前・中身・数・順・`engine_generation` の更新点は変えない。`engine_epoch` の更新点は、14.7 の3経路（確定）を除いて変えない。通知が出なくなるのは、`close` の後に始まった旧い接続の列だけ |
+| I56 | 配信ミックスの子の `LinkCell`・`Notifier`・`Conditions` は子ごと。子の `quiesce` は子の `LinkCell` だけを見て、主を待たない |
 
 ### 14.12 変える箇所の一覧（`ファイル:関数`、今の行）
 
 | ファイル:行 | 関数・項目 | 変えること |
 |---|---|---|
-| `audio/reader.rs:86,101,133,170,193` | `handle_event`（R2・R3・R5・R8・R9） | `engine_changed`・`engine_event`・`voice_activity.store` を `emit_chain` の閉包の中（確認の後）へ移す。`Error` のログも閉包の中 |
+| `audio/link.rs:62-67,93-101` | `Inner`・`LinkCell` | `emitting`・`quiesce_warned`・`quiet`（`Condvar`）を足す。試験用に `lock_contended_for_test`（`close`・`enter` が `inner` を取る前に `try_lock` で失敗した回数）・`quiesce_waits_entered_for_test` |
+| `audio/link.rs` | `enter`・`EmitGuard`・`quiesce`（新設） | 14.6。poison は `into_inner`。`enter` の中（確認の後・効果の前）に試験の継ぎ目 `after_check_before_effect`（`#[cfg(test)]`。`before_begin_hook` と同じ型）を置く |
+| `audio/reader.rs:86,101,133,170,193` | `handle_event`（R2・R3・R5・R8・R9） | `enter(効果)`（14.6）。ほかの変種は `enter(\|\| true)`。R3 のログは `enter` の後・`emit_chain` の前 |
 | `audio/reader.rs:25-27` | `emit_chain` | 変えない（シグネチャ） |
-| `audio/emit.rs:58-64,100-123` | `Notifier` | `sweep` を足す。`order` を持つ間の規則の文言を直す（原子操作を許す）。試験用の `sweeps_for_test`・`sweep_arrivals_for_test` |
-| `audio.rs:717-724` | `drop_connection` | 末尾に `self.emitter.sweep()` |
-| `audio.rs:887` | `ensure_engine_running`（子がすでに終わっていた） | `close_connection` の直後に `sweep` |
-| `audio.rs:1055-1059` | `reset_engine_reader` | `close_connection` が勝ったときだけ `sweep` |
-| `audio.rs:1160-1165` | `reply_timed_out` | 待ちの本体を `await_eof_notices`（新設）へ。結果・文言・警告の回数は同じ |
-| `audio/link.rs:256-273` | `LinkCell::wait_notified` | 上限を過ぎたら、その接続では以後すぐ `false`（`Inner` に1項目）。`close(Eof)`（試験専用）は `eof_notified = true` で閉じる |
-| `audio/mode_vst.rs:850-862` | `fail_mode_transaction` | 最後の枝の先頭で `await_eof_notices`（`hold_notices` の前） |
-| `audio/mode_vst.rs:700-701` | `send_mode_command` | 試験用の継ぎ目 `before_mode_begin`（`#[cfg(test)]`。`audio.rs` の `before_begin_hook` と同じ型）を `begin` の直前へ |
-| `audio/tests/link_seam.rs` | `win_eof` | `mark_notified` も呼ぶ（reader がいない試験が、新しい待ちで止まらないように） |
+| `audio.rs:717-724` | `drop_connection` | 変えない（待たない・確定しない） |
+| `audio.rs`（新設） | `quiesce_closed_link`・`settle_disconnected` | 14.6 の表のとおり。`kill_primary_engine`（`:2814` の後）と `ensure_engine_running`（`:887,899,905`）が呼ぶ |
+| `audio.rs:1055-1059` | `reset_engine_reader` | `close_connection` が勝ったときだけ `quiesce` |
+| `audio/writer.rs:16,40-46` | 定数 | `QUIESCE_WAIT`・`set_quiesce_wait_for_test`（試験のスレッドだけ） |
 | `audio/tests/link_tests.rs:870-885` | S6 | `s6_a_closed_reader_cannot_raise_voice_activity`。期待値 `false` |
-| `audio/tests/` | Q1〜Q15 | 14.13 |
+| `audio/tests/` | Q1〜Q11 | 14.13 |
 
-- **変えないもの**：`LinkCell` の状態・遷移（E1〜E17。`wait_notified` の上限の印と、試験専用の `close(Eof)` の扱いだけ）、`engine_epoch` の更新点、`hold_notices`、`Reader` の項目と組み立て、書き込みの経路、reaper・`Store`、通知の名前・中身・数・順。
-- 実装の最初の作業：(1) `engine_event`・`engine_changed`・`voice_activity` を、閉じた接続の reader から呼ぶ試験を、今のコードで数え直す（今の数え直しでは S6 だけ。`compat_tests`・`link_tests`・`post_mix_life_tests` の `handle_event` は、開いた接続）。(2) `close(CloseCause::Eof)` と `win_eof` を使い、その後で `fail_mode_transaction`・`kill_*` を通る試験を数え直す（`mode_vst.rs` 7+3か所。ほかに無いか）。
+- **変えないもの**：`LinkCell` の状態・遷移（E1〜E17）、`wait_notified`・`mark_notified`・`close(Eof)`・窓口 `win_eof`・`reply_timed_out`・`cut_off`・`fail_mode_transaction`・`send_mode_command`、`engine_epoch` の更新点（確定の3経路を除く）、`hold_notices`、`Reader` の項目と組み立て、書き込みの経路、reaper・`Store`、通知の名前・中身・数・順。
+- 実装の最初の作業：`engine_event`・`engine_changed`・`voice_activity` を、閉じた接続の reader から呼ぶ試験を、今のコードで数え直す（今の数え直しでは S6 だけ。`compat_tests`・`link_tests`・`post_mix_life_tests` の `handle_event` は、開いた接続）。
 
 ### 14.13 合格の条件と試験の形（決めること 8）
 
 **合格の条件**
-1. 既存の試験が、14.12 の窓口の変更だけで、期待値を変えずに通る。**期待値が変わるのは S6 の1本だけ**（`true` → `false`）。`t9_…`（`link_tests.rs:481,506,534`）・`t5_…`・`t6_…`（`link_tests.rs:363`・`mode_vst.rs:2699`）・`t12`（`reply_deadline_tests.rs`）・`t13_drop…`・`x12_…`（`actor_tests.rs:732`）・K13 の試験は、そのまま通る。`t9` の2本目の `arrivals_for_test` は、epoch が古い列も数えるようになるので、epoch が同じ `Started` を使っている今の形のまま 1 で通ることを確かめる。
-2. Q1〜Q15 が通る。
-3. 壊して確かめる (a)〜(m) で、対応する Q が落ちる（T15）。
+1. 既存の試験が、期待値を変えずに通る。**期待値が変わるのは S6 の1本だけ**（`true` → `false`）。`t9_…`（`link_tests.rs:481,506,534`）・`t5_…`・`t6_…`（`link_tests.rs:363`・`mode_vst.rs:2699`）・`t12`（`reply_deadline_tests.rs`）・`t13_drop…`・`x12_…`（`actor_tests.rs:732`）・K13 の試験・T6（`link_cell_tests.rs`）は、そのまま通る。`t9` の2本目は、reader が先に `enter` を通り（状態は変わる）、通知が確認で落ちる形で、通知なしの期待は変わらない（状態の期待は足さない）。
+2. Q1〜Q11 が通る。
+3. 壊して確かめる (a)〜(l) で、対応する Q が落ちる（T15）。
 4. `npm run verify -- --static --rust` が通る。
-5. 実機（未実施）：W5 の測り直し（`docs/TESTING.md`）は、reader の通知の順を変えないので不要。通常の開始・停止・VST 切替の失敗（エンジンを途中で落とす）を、実機で1回確かめる。
+5. 実機（未実施）：W5 の測り直し（`docs/TESTING.md`）は、reader の通知の順を変えないので不要。通常の開始・停止・VST 切替の失敗（エンジンを途中で落とす）・作り直しの失敗を、実機で1回確かめる。
 
-**足す試験（記号は 13章の Z と重ならない Q。置き場所は `audio/tests/n2_tests.rs`。待ちは門・`Recorder::block_after`・`Reader::pause`・`arrivals`・`sweep_arrivals_for_test`・`waits_entered_for_test`。`sleep` で順を作らない）**
+**足す試験（記号は 13章の Z と重ならない Q。置き場所は `audio/tests/n2_tests.rs`。順は門・`Recorder::block_after`・`Reader::pause`・継ぎ目 `after_check_before_effect`・`lock_contended_for_test`・`quiesce_waits_entered_for_test` で作る。`sleep` で順を作らず、競りの反復に頼らない。時間切れは失敗の上限としてだけ使う）**
 
 | ID | 名前の案 | 確かめること | どこを壊すと落ちるか（T15） |
 |---|---|---|---|
-| Q1 | `q1_a_closed_reader_cannot_raise_voice_activity`（S6 の反転） | `close(Intentional)` の後に `store(false)`、続けて `VoiceCheckState{recording}` を渡す。`voice_activity == false`・通知なし。`playing`・`idle` も同じ。**`close` の前なら立つ**（開いている間の事実は残る） | `store` を `emit_chain` の外へ戻す → 落ちる |
-| Q2 | `q2_a_closed_reader_changes_no_conditions_for_each_gated_event` | R2・R3・R5・R8 を、**epoch が古くない**（`new_engine` の後で `retire_engine` していない）まま、`drop_connection(Intentional)` の後に渡す。`running`・`revision`・`pending` が変わらず、通知なし（W4）。接続が開いていれば、今のとおり変わり、通知が出る | `engine_event`／`engine_changed` を閉包の外へ戻す → 落ちる |
-| Q3 | `q3_a_chain_that_waited_for_the_order_lock_leaves_no_state_behind` | 既存 `t9` の2本目の形：`notifier.chain` の中で、reader（Started）を `order` の前で待たせ（`arrivals`）、`close`。解放後、通知なし・**`running`・`revision` も変わらない**（W1・W2） | 同上 |
-| Q4 | `q4_close_waits_for_a_chain_that_already_passed_the_check` | reader が確認を通って発行の途中で止まる（`block_after(1)`）。別スレッドで `drop_connection`。回収（子の終了）は止まった間に終わる（I3）。`sweep_arrivals_for_test == 1` で、`sweeps_for_test == 0` のまま。解放後、`sweeps_for_test == 1`、記録は「reader の列の全体 → host の保持した通知」の順（W3） | `sweep` を呼ばない → 戻りが早く、順が崩れて落ちる。`sweep` を回収の前へ置く → 回収の確認で落ちる |
-| Q5 | `q5_every_closing_path_sweeps_once_and_shutdown_never` | `kill_primary_engine`・`:899` 型の `drop_connection`・`:887` 型（終わっていた子）・`reset_engine_reader`（開いていた接続に勝つ）・`reply_timed_out`（勝ち・負け）・`cut_off`・`fail_mode_deadline`・配信ミックスの子の閉鎖：それぞれ主（または子）の `sweeps_for_test` が1。`Drop`・`take_engine_for_shutdown` は 0。reader を止めたまま `drop(host)` が共通の期限内に戻る | 3か所のどれかを外す・`Drop` へ足す → 落ちる |
-| Q6 | `q6_a_stale_reader_stays_silent_after_a_new_connection_starts` | 旧い reader を持ったまま `drop_connection` → `ensure_engine_running`（新しい接続・epoch）。旧い reader に全13種を渡す：通知なし・状態の変更なし。新しい reader の通知は出る。順は「旧い列（`sweep` までに出たもの）→ 新しい通知」 | 確認を鏡から外す・照合を epoch だけにする → 落ちる |
-| Q7 | `q7_eof_notices_come_before_the_hosts_recovery_notices` | reader を `close_eof` の後で止める（`Reader::pause`）。別スレッドで `kill_engine`（EOF に負ける）。`waits_entered_for_test` が 1 になる。解放後、`[CC, audio-engine-exited, audio-error]` の後に host の通知。待ち手の解放の順は 9.5 のまま | `await_eof_notices` を外す・`hold_notices` の後へ置く → 落ちる |
-| Q8 | `q8_a_begin_on_a_closed_link_registers_nothing_and_recovery_follows_the_eof_notices` | (h)。`before_mode_begin` で、最後の `connection_lost()` の後・`begin` の前に、reader に EOF を勝たせて止める。`begin` は `CLOSED`（`shape_for_test == Closed(Eof)`・`Registered` は一度も無い・操作の記録なし）。文言は `ENGINE_EXITED`。reader を解放すると、`[CC, audio-engine-exited, audio-error]` → 復旧の通知（`global-mute-changed` ほか）の順。同じ形で `fail_mode_transaction` を直接呼ぶ変種も | `fail_mode_transaction` の待ちを外す → 順で落ちる。`begin` が閉じた接続に登録する改変 → `Registered` で落ちる |
-| Q9 | `q9_the_eof_wait_is_bounded_once_per_link` | reader を解放しないまま、`EOF_WAIT` を短くして、`fail_mode_transaction` → `reply_timed_out` の順に通る。2回とも上限で戻り、合計の待ちは `EOF_WAIT` の近く（2回分にならない）。`eof_wait_exceeded_for_test() == 1`。解放後、EOF の列は1列だけ（二重にならない） | 上限の印を外す → 2回待つ・警告2回で落ちる |
-| Q10 | `q10_a_test_only_eof_without_a_reader_is_not_waited` | `EOF_WAIT` を10秒にして、`close(Eof)` だけ（reader なし）で `fail_mode_transaction` を通る。経過が1秒に満たず、`eof_wait_exceeded_for_test() == 0`。`win_eof`（`mark_notified` つき）も同じ | `close(Eof)` の印を外す → 試験が待って落ちる |
-| Q11 | `q11_the_post_mix_child_sweeps_its_own_notifier` | 配信ミックスの子（`post_mix_child_host`）に reader を付け、子の `close(Intentional)` → `detach_with`。子の `sweeps_for_test == 1`・主の `Notifier` は 0。閉じた後の子の reader は、子の `conditions`・`voice_activity` を変えない。主の `Notifier` が詰まっていても（主の reader を `block_after`）、子の閉鎖は戻る | 子の掃き切りが主の `Notifier` を使う改変 → 戻らず落ちる |
-| Q12 | `q12_poisoned_notifier_locks_do_not_break_the_sweep_or_the_wait` | `order` の poison の後も `sweep` は panic せず戻る。`LinkCell.inner` の poison の後も `wait_notified`・`mark_notified` は進む（`emit.rs` の T12 と `link.rs` の poison の試験に並べる） | `lock().unwrap()` へ戻す → panic で落ちる |
-| Q13 | `q13_a_stuck_emit_stalls_only_the_final_wait_of_the_closer` | reader が列の途中で止まったまま、`drop_connection` で子の回収が終わる（`wait_exit`）。閉じる側は `sweep` で止まり（戻らない）、`LinkCell` の `begin`・`close`・`is_open`・`mark_sent` は別スレッドから返る（X12 の形）。解放で全部が進む | 回収の前に `sweep` を置く・`LinkCell` のロックを持ったまま待つ改変 → 落ちる |
-| Q14 | `q14_the_sweep_and_the_state_changes_stay_where_the_design_puts_them` | 構造の試験：(1) `reader.rs` の `conditions.engine_event`・`engine_changed`・`voice_activity.store` は、すべて `emit_chain` の閉包の中にある（ソースの走査）。(2) `Notifier::sweep` を呼ぶのは `drop_connection`・`ensure_engine_running`・`reset_engine_reader` の3か所だけで、`chain`・`chain_if` の閉包の中・`Drop` には無い。(3) 製品のコードの `link.close(` の呼び出し元の一覧が、14.3 の表と一致する（新しい閉じる側が増えたら、掃き切りの要否を決めるまで落ちる） | 副作用を外へ出す・`sweep` を足す/外す・閉じる側を増やす → 落ちる |
-| Q15 | `q15_nothing_from_a_closed_reader_appears_after_the_closer_returns`（競りの繰り返し） | 旧い reader の複数スレッドが、全13種を繰り返し渡す。閉じる側が `close`→`sweep` を行い、戻った時点の記録の数・`conditions` の `revision`・`voice_activity` を控える。reader を止めて join した後、**控えた値から増えていない**。200回、接続を作り直しながら繰り返す。順は門と `Barrier` で作る（`sleep` なし） | `sweep`・確認・状態の移動のどれを外しても、ある回で落ちる |
+| Q1 | `q1_a_closed_reader_cannot_raise_voice_activity`（S6 の反転） | `close(Intentional)` の後に `store(false)`、続けて `VoiceCheckState{recording}` を渡す。`voice_activity == false`・通知なし。`playing`・`idle` も同じ。**`close` の前なら立つ**（開いている間の事実は残る） | 状態の変更を `enter` の外へ戻す → 落ちる |
+| Q2 | `q2_a_closed_reader_changes_no_conditions_for_each_gated_event` | R2・R3・R5・R8 を、**epoch が古くない**まま、`quiesce_closed_link`（または `:899` 型）の後に渡す。`running`・`revision`・`pending` が変わらず、通知なし（W4）。接続が開いていれば、今のとおり変わり、通知が出る | 同上 |
+| Q3 | `q3_close_is_atomic_with_the_check_and_the_state_change`（確認の直後・効果の前の門。表で4点） | `after_check_before_effect`（`enter` の中）に reader を止め、別スレッドで `close` → 確定（`store(false)`・`retire_engine`）。**`lock_contended_for_test == 1` を待つ**（`close` が `inner` を待っている＝不可分）。`close` は戻っていない。門を解放すると、効果が先に完了し、その後 `close`・確定が完了する。最後に `voice_activity == false`・`running == false`。同じ表で、(P1) `enter` の前に `close` → `None`・状態不変、(P3) `enter` の後・`order` の前に `close` → 通知なし・`EmitGuard` の Drop で `quiesce` が戻る、(P4) 発行の途中に `close` → `quiesce` が待つ（Q5） | `enter` の確認と効果を `inner` の外へ出す（確認の後で止めると、`close` が待たずに戻り、`contended` が立たず、`store(true)` が残る）→ 落ちる |
+| Q4 | `q4_a_failed_ensure_clear_leaves_no_running_state` | 動いていた子が終わっている（`:887` 型）・stdout だけ閉じた子（`:899` 型）・`try_wait` の失敗（`:905` 型）の3つで、同じ役割の記録を残す（`reaper_seam::stuck`。窓は `Timing` で縮める）→ `ensure_clear` が `engine_unconfirmed` で失敗する。戻った時点で、`conditions` の `running == false`・epoch が進んでいる・`voice_activity == false`。続けて旧い reader に `Started`（旧い epoch）・`VoiceCheckState{recording}` を渡しても、不変。Q3 の門を `enter` の中に置いた変種（`close` と確定が門の後に完了）でも同じ | 確定（`retire_engine`・`store(false)`）を外す → `running == true` が残って落ちる |
+| Q5 | `q5_quiesce_waits_for_a_reader_in_the_chain_and_never_before_the_recovery` | reader が `enter` を通り、発行の途中で止まる（`block_after(1)`）。別スレッドで `kill_primary_engine`。**`wait_exit`（子の終了）が先に立ち、その時点で `quiesce_waits_entered_for_test == 0`**（回収が待ちより先。I3）。次に `quiesce_waits_entered_for_test == 1`・まだ戻らない。解放すると戻り、記録は「reader の列の全体 → host の保持した通知」の順（W3）。`LinkCell` の `begin`・`close`・`is_open`・`mark_sent` は止まっている間も別スレッドから返る（X12 の形） | `quiesce` を回収の前へ置く → 先に `wait_exit` が立たず落ちる。`quiesce` を外す → 順が崩れて落ちる |
+| Q6 | `q6_the_quiesce_is_bounded_and_warns_once_per_link` | reader を解放しないまま、`set_quiesce_wait_for_test` で短くして `quiesce_closed_link` を2回（同じ接続）。どちらも各回の上限で戻り（待ちは呼び出しごと）、警告は接続ごとに1回（`quiesce_warned`）。解放後、reader の列は1列だけ出る（二重にならない）。`reply_timed_out` の `wait_notified`（T6）は、同じ `Arc<LinkCell>` で期限を過ぎた後、別の待ち手が通知済みで成功する（既存 T6 の再確認） | 警告の印を外す → 2回出る。`quiesce` に上限が無い → 戻らず落ちる |
+| Q7 | `q7_drop_and_release_only_recover_and_never_wait` | reader が `enter` の後・発行の途中で止まったまま、(1) `drop(host)`（主）、(2) 配信ミックスの子の `release_engine`、(3) 子を外した直後の子の `Drop`：いずれも共通の期限内に戻り、`quiesce_waits_entered_for_test == 0`、`wait_exit` が立つ。(3) は子の回収が1回だけ（二重の `kill` なし） | `Drop`・`release_engine` に `quiesce` を足す → 止まって落ちる |
+| Q8 | `q8_a_begin_on_a_closed_link_registers_nothing_and_the_recovery_never_waits` | (h)。継ぎ目 `before_mode_begin`（`send_mode_command` の `begin` の直前。`#[cfg(test)]`。`before_begin_hook` と同じ型）で、最後の `connection_lost()` の後に、reader へ EOF を勝たせて `Reader::pause` で止める。`begin` は `CLOSED`（`shape_for_test` が `Registered` を一度も取らない。操作の記録なし）。文言は `ENGINE_EXITED`。復旧の通知の列は出る（EOF の列より先でも後でも、最終的な状態は同じ）。**`waits_entered_for_test == 0`**（待たない）で `fail_mode_transaction` が戻る。reader を解放すると EOF の列が出て、待ち手はいない | `begin` が閉じた接続に登録する改変 → `Registered` で落ちる。`fail_mode_transaction` に待ちを足す → `waits_entered` で落ちる |
+| Q9 | `q9_the_recovery_and_the_failure_result_come_before_the_extra_wait` | `reply_timed_out`（勝ち・負け）・`cut_off`・`:899` 型で、reader が発行の途中で止まる。順を、**継ぎ目の記録**（`Stage::Retired`・確定・`quiesce` に入った印・失敗の結果を作った印）で確かめる：回収 → 確定 → `quiesce` の順。失敗の結果（`REPLY_TIMED_OUT`・`WRITE_TIMED_OUT`・`engine_unconfirmed`）は、`quiesce` の上限の後でも、文言・種類が変わらない | `quiesce` を回収の前へ置く・結果を `quiesce` の前に確定させる改変 → 記録の順で落ちる |
+| Q10 | `q10_poisoned_locks_do_not_break_enter_quiesce_or_the_guard` | `LinkCell.inner` の poison の後も、`enter`・`EmitGuard` の Drop・`quiesce`・`mark_notified` は panic せず進む。`order` の poison の後も `chain_if` は進む（`emit.rs` の T12 と `link.rs` の poison の試験に並べる） | `lock().unwrap()` へ戻す → panic で落ちる |
+| Q11 | `q11_the_state_changes_the_logs_and_the_waits_stay_where_the_design_puts_them` | 構造の試験（ソースの走査）：(1) `reader.rs` の `conditions.engine_event`・`engine_changed`・`voice_activity.store` は、すべて `link.enter(` の引数の閉包の中にあり、`enter` の閉包の中に `log::`・`emit`・`lock(` が無い。(2) `reader.rs` の `log::` は `emit_chain` の閉包の中に無い（R3）。(3) `quiesce(` を呼ぶのは `quiesce_closed_link` だけで、その呼び出し元は `kill_primary_engine`・`ensure_engine_running` の3経路・`reset_engine_reader` だけで、`Drop`・`release_engine`・`take_engine_for_shutdown`・`chain`・`chain_if` の閉包の中には無い。(4) 製品のコードの `link.close(`・`close_connection(`・`drop_connection(` の呼び出し元の一覧が 14.3 の表と一致する（新しい閉じる側が増えたら、確定・待ちの要否を決めるまで落ちる）。**例外は明記する**：`finish`（EOF の勝者。`enter` しない。`reader.rs:277-299`） | 状態の変更・ログを `enter` の外へ出す・`quiesce` を `Drop` へ足す・閉じる側を増やす → 落ちる |
 
-**期待値が変わる既存の試験**：S6（`link_tests.rs:873`。上の Q1 が置き換える）。**窓口の変更だけの試験**：`win_eof` を使う3か所と `close(Eof)` を使う7か所（`mode_vst.rs`）は、Q10 の扱い（`mark_notified`・`eof_notified`）で期待値を変えずに通る。`t12`・`t6` は、掃き切りが回収の後に来ることで、通る（Q4・Q13 が同じ事実を別の形で固定する）。
+**期待値が変わる既存の試験**：S6（`link_tests.rs:873`。上の Q1 が置き換える）。それ以外は、窓口・`wait_notified`・`close(Eof)` を含め、変えない。
 
-**壊して確かめる（一時的な改変。T15）**：(a) 副作用を `emit_chain` の外へ戻す → Q1・Q2・Q3。(b) `sweep` を外す → Q4・Q5・Q15。(c) `sweep` を回収（`retire_engine`）の前へ置く → Q4・Q13。(d) `Drop` へ `sweep` を足す → Q5。(e) `drop_connection` 以外の閉じる側を増やして掃き切りを忘れる → Q14。(f) `await_eof_notices` を外す → Q7・Q8。(g) 上限の印を外す → Q9。(h) `close(Eof)` を `eof_notified = false` のままにする → Q10。(i) 子の掃き切りに主の `Notifier` を使う → Q11。(j) `lock().unwrap()` へ戻す → Q12。(k) `sweep` を `chain` の閉包の中で呼ぶ → Q14。(l) `begin` が閉じた接続に登録する → Q8。(m) 掃き切りを `LinkCell` のロックを持ったまま呼ぶ → Q13。
+**壊して確かめる（一時的な改変。T15）**：(a) 状態の変更を `enter` の外へ戻す → Q1・Q2・Q3。(b) `enter` の確認と効果を `inner` の外へ分ける → Q3。(c) 確定を外す → Q4。(d) `quiesce` を外す → Q5。(e) `quiesce` を回収の前へ置く → Q5・Q9。(f) `quiesce` の上限を外す → Q6。(g) 警告の印を外す → Q6。(h) `Drop`・`release_engine` に `quiesce` を足す → Q7・Q11。(i) `begin` が閉じた接続に登録する → Q8。(j) `lock().unwrap()` へ戻す → Q10。(k) R3 のログを `enter` の中・`emit_chain` の中へ移す → Q11。(l) `quiesce` を `chain` の閉包の中で呼ぶ → Q11。
 
 ### 14.14 利用者から見て変わること
 
 - **N2（承認済み）**：停止・再起動・エンジンの作り直しの後に、古いエンジンの値（メーター・ラウドネス・チャンネルの活動・エディタの開閉・処理の健康・ボイスチェックの状態・エンジンの状態の変化）が、1行だけ後から表示されることが無くなる。通知の名前・中身・数・順（EOF の3件を含む）は変わらない。閉じた後に始まった旧い接続の通知が出なくなるだけ。
-- **同じ範囲の副産物（N2 の完全な形に含まれる。7.3）**：(1) 停止した後に、古いボイスチェックの状態が残り、更新・移行が「ボイスチェックの録音・試聴を終了してから更新してください」で止まったままになる場面が無くなる。(2) 古いエンジンの「開始した」「停止した」の通知が、音声の状態（`running`・音声条件の版）を後から書き換える場面が無くなる。
-- **要承認の候補（1つ）**：VST 切替の途中で音声エンジンが予期せず終了したとき、復旧の案内（手動復旧が必要です、など）を出す前に、「音声エンジンが終了した」の通知を先に出し終える。通常はミリ秒だが、通知の発行が詰まっているときは**最大2秒**、復旧の案内が遅れ、その間、ほかの操作（停止を含む）は実行の順番を待つ。待つ上限と、通知の順の保証は 9.10 の (h) が約束した範囲。**勝手に決めず、承認を求める**（案：(A) この設計のとおり／(B) 順の保証をやめ、今のまま復旧の案内が先に出うる）。
-- **変わらないもの**：通知の名前・中身・数・順・間引きなし（PRE-F1b-12 (1)）、EOF の3件、`engine_generation` の更新点、`engine_epoch` の更新点、エラーの文言、停止の優先・受付の上限（12章）、reaper（13章）。新しい文言・新しい通知は無い。
+- **同じ範囲の副産物（N2 の完全な形に含まれる。7.3）**：(1) 停止した後に、古いボイスチェックの状態が残り、更新・移行が「ボイスチェックの録音・試聴を終了してから更新してください」で止まったままになる場面が無くなる。(2) 古いエンジンの「開始した」「停止した」の通知が、音声の状態（`running`・音声条件の版）を後から書き換える場面が無くなる。(3) エンジンの作り直しが「終了を確認できません」で失敗したときに、音声が動いているという状態が残る場面が無くなる（14.7）。
+- **要承認の候補：無い**。第1版にあった「復旧の案内の前に最大2秒待つ」は、(h) をこの段から外したので無くなった（14.8）。画面の状態に誤りが残らないことを、画面側の処理（`src/hooks/useAppEvents.ts`・`useLiveModes.ts` など）で確かめた。復旧の案内と「エンジンが終了した」の表示の、見える順が入れ替わりうるのは、今と同じ。
+- **確認事項（承認不要の見込み。統括の確認）**：閉じる側は、通知の発行が詰まっているときに限り、回収・状態の確定の後に最大200ms 待つ（通常は待たない）。回収・停止・失敗の応答は、この待ちより先に決まり、内容は変わらない。待ちの間は、受付の列の次の操作が、同じ実行のスレッドの順番待ちになる（最大200ms。12.17 の (b) の範囲）。通知の発行が詰まるのは、`emit` が待たない造りでも、ウェブビューの作成・破棄と重なった場合などで、通常は起きない（14.9）。
+- **変わらないもの**：通知の名前・中身・数・順・間引きなし（PRE-F1b-12 (1)）、EOF の3件、`engine_generation` の更新点、エラーの文言、停止の優先・受付の上限（12章）、reaper（13章）、`reply_timed_out` の EOF の待ち（最大2秒）。新しい文言・新しい通知は無い。
 - 通知が落ちる場面が増える懸念：増えるのは「閉じた後に始まった旧い接続の列」だけ（N2 の目的）。開いている接続の通知は、今と同じ数・同じ順で出る。表示が一瞬消える変更は無い。
 
 ### 14.15 未決（決め切れない点）と推奨
 
-14章の O は、この章の中だけで使う。
+14章の O は、この章の中だけで使う。**着手前に決める項目（O1・O2・O7・(h)・待ちの上限・失敗のときの進み方）は、この版で決めた**（下の「決めた」）。
 
-| # | 未決 | 推奨 |
+| # | 項目 | 決め方 |
 |---|---|---|
-| O1 | 案1（掃き切り）／案2（有効な接続を `order` の下で更新） | **案1**（14.5）。案2は「閉じた」の正本が2つになり、更新し忘れの失敗が今より悪い |
-| O2 | 状態の変更の置き場所：(Y) `order` の下の確認の後／(X) `LinkCell` のロックの下（`while_open(閉包)`）で、ロックを取らない原子操作だけを行う | **(Y)**。状態と通知が一緒に出る・一緒に出ない（W2 の不整合が消える）。(X) は閉じる側が待たない利点があるが、通知だけが残る窓（W3）には別に掃き切りが要り、状態と通知が別の区間になる |
-| O3 | `cut_off` が EOF に負けたときに、`await_eof_notices` を呼ぶか | **呼ばない**。結果が `ENGINE_EXITED` ではなく書き込みの失敗で、K13 の対象外。保持した通知と EOF の列の順は 14.16 の (f) に残す。呼ぶなら1行の追加で、待ちが（接続ごとに1回の上限で）広がる |
-| O4 | EOF に勝った reader が `voice_activity` を下げない（クラッシュした後、次の開始まで「録音・試聴を終了して」が残る） | **この段に入れない**。main と同じで、N2（閉じた後の旧い通知）の範囲外。別 Issue。入れるなら `finish` の列の中で `store(false)` の1行 |
-| O5 | EOF の勝者の列が、epoch が古いままでも出る（W7） | **残す**（14.16 の (c)）。main と同じ。K13 を変えない |
-| O6 | 配信ミックスの子の `Notifier` に `emitter` が無い（本番で通知が空） | **変えない**。事実の確認（14.3）。将来、付けるなら、同じ規則が子にも効く（Q11） |
-| O7 | `Drop`・終了で掃き切りも EOF の列の待ちもしない | **しない**（I54）。終了を発行の詰まりで止めない |
-| O8 | `close(CloseCause::Eof)`（試験専用）を `eof_notified = true` で閉じる／窓口 `win_eof` に `mark_notified` を足す | **両方**（14.8）。製品に `close(Eof)` の呼び出しは無い。実装の最初に試験の数を数え直す（14.12） |
-| O9 | `audio-session-f1b0-changes.md` の N2 の「接続の番号で照合し」 | 「接続の番号」は、**reader が持つ `LinkCell` そのもの**（接続ごとに新しく作る。reader は自分の `LinkCell` だけを見る）と読み替える。番号は足さない |
-| O10 | 洗い出し・`changes` の「9種」 | 実装の PR で、`changes` の N2 の行を「13か所（14変種）」へ直す（洗い出しは日付の記録なので直さず、この章を正本にする） |
+| O1（決めた） | 案1／案2／案1′ | **案1′**（14.5）。`order`・`emit` を待たず、`LinkCell` の中で不可分にし、上限つきで待つ |
+| O2（決めた） | 状態の変更の置き場所 | **`LinkCell::enter` の中（`LinkCell` のロックの下。ロックを取らない原子操作だけ）**。`order` の下ではない（閉じる側が `order` を待たないため） |
+| O7（決めた） | `Drop`・終了 | **回収だけ**（`close_connection`・`drop_connection`）。確定も `quiesce` もしない（I51） |
+| (h)（決めた） | 復旧の通知と EOF の列の順 | **この段から外す**（14.8）。既知の競合（14.16 の (d)）。`await_eof_notices` は無い |
+| 待ちの上限（決めた。値は推奨） | `QUIESCE_WAIT` | **200ms**。超えたら警告を接続ごとに1回出して進む。実装の試験で見直す（O11） |
+| 失敗のときの進み方（決めた） | `quiesce` の期限切れ・`ensure_clear` の失敗 | 期限切れ：警告を1回出して、失敗の応答・回収を変えずに進む。`ensure_clear` の失敗：回収の後に切断状態を確定してから、今の `engine_unconfirmed` で戻る（I50） |
+| O11（推奨の確認） | `QUIESCE_WAIT` の値と、3経路で `retire_engine`（epoch）を進めること | 値は200ms。epoch を進めるのは、`new_engine` の前の1回の追加（単調。`revision` も進む）。`ensure_clear` が成功する通常の経路では、直後の `new_engine` が同じ状態にするので、見える違いは無い |
+| O3（次段） | `cut_off` が EOF に負けたときの保持した通知と EOF の列の順 | (h) と同じ型。この段は変えない。順の保証が要るときに、(h) とあわせて設計する |
+| O4（次段） | EOF に勝った reader が `voice_activity` を下げない（クラッシュした後、次の開始まで「録音・試聴を終了して」が残る） | **この段に入れない**。main と同じで、N2 の範囲外。別 Issue |
+| O5（次段） | EOF の勝者の列が、epoch が古いままでも出る（W7） | 残す（14.16 の (c)）。K13 を変えない |
+| O6（次段） | 配信ミックスの子の `Notifier` に `emitter` が無い（本番で通知が空） | 変えない。事実の確認（14.3）。将来、付けるなら、同じ規則が子にも効く |
+| O8（実装時） | 試験の窓口 | `link_seam` に、`enter`・`quiesce` の窓口を足す。`win_eof`・`close(Eof)` は変えない（14.8） |
+| O9（実装時） | `changes` の N2 の「接続の番号で照合し」 | 「接続の番号」は、**reader が持つ `LinkCell` そのもの**（接続ごとに新しく作る）と読み替える。番号は足さない |
+| O10（実装時） | 洗い出し・`changes` の「9種」 | 実装の PR で、`changes` の N2 の行を「13か所（14変種）」へ直す（洗い出しは日付の記録なので直さず、この章を正本にする） |
 
 ### 14.16 既知の狭い競合として残るもの
 
 判断の基準：今直すのは、退行・保存データの破損や喪失・固まる／回復できない・main では起きない誤情報の残存、だけ。次は、いずれも main で起きるか、この段の新しい失敗ではない。
 
-- **(a) `close` が戻った後〜`sweep` が戻るまでの間に、旧い列が1つ出うる**：閉じる側が回収の間（最大 `CONFIRM` の2秒）に、`close` の前に確認を通過した列が出る。順は、閉じる側の次の通知より前（`order` で直列）。`sweep` が戻った後は出ない。
-- **(b) emit が戻らないとき、閉じる側が `sweep` で止まる**：`hold_notices` の出し直しと同じ場所・同じ性質（F1b-0a-1 の既知の範囲）。回収は先に終わる（I3）。停止の列は、実行のスレッドが止まる間、実行されない（12.17 の (b)）。`order` の待ちに上限は付けない（14.9）。
+- **(a) 通知の発行が200ms を超えて詰まるとき、`close` が戻った後に旧い列が1つ出うる**：`quiesce` が警告を出して進む。順は、閉じる側の次の通知（`hold_notices` の出し直し）より前（`order` で直列）。状態は不可分で守られている（I48）ので、出うるのは1列の通知だけ。接続ごとに警告は1回。
+- **(b) `order` を無期限に待つ箇所が、今のまま残る**：`hold_notices` の保持した通知の出し直し（`audio.rs:695-701`）と `notice`（`:660-674`）。`emit` が詰まれば、実行のスレッドが止まり、停止の列も実行されない（12.17 の (b)）。main と同じ（F1b-0a-1 の既知の範囲）。この段は、閉じる側の経路に、`order`・`emit` の待ちを**足さない**（14.9）。
 - **(c) EOF の勝者は、epoch が古くても列を出す**：`kill_primary_engine` が epoch を進めた（`:2806`）後、接続を閉じる（`:2814`）前に子が終わった場合。`engine_event` は偽になるが、列は確認なしで出る（K13）。main と同じ（14.15 の O5）。
-- **(d) `Drop`・終了の経路は、旧い列を掃き切らない**（I54）。終了の後は誰も見ない。
-- **(e) EOF の勝者が止まる・panic する**：`await_eof_notices` が `EOF_WAIT` の後に警告を1回出して進み、host の通知が EOF の列より先に出うる（9.10 の (c) と同じ型）。reader が panic しても、リリースは `panic = "abort"`（11.6）で到達しない。
-- **(f) `cut_off` が EOF に負けたとき・`:887` の経路**：host の通知（保持した通知、新しい接続の最初の `audio-conditions-changed`）が、EOF の列より先に出うる。EOF の勝者が `close_eof` と列の間にいる間だけ。main と同じ。順の保証は、K13 が約束した「待ち手の解放が通知より先」と (h) の復旧の通知だけ（14.15 の O3）。
-- **(g) 配信ミックスの子の通知は、本番では出力が空**（14.15 の O6）。
-- **(h) EOF で `voice_activity` が残る**（14.15 の O4）。
-- **(i) `close` より前に完了した状態の変更は残る**：開いていた間の事実で、閉じる側の `lifecycle(false)`・`retire_engine` が上書きする経路（`kill_primary_engine`）では消える。`ensure_clear` が失敗して `new_engine` が来ない経路では、閉じる前の `running` が残る（main と同じ。N2 の範囲外）。
-- 9.10・11.17・12.17・13.16 の狭い競合は変わらない。9.10 の (d)・(e)・(h) は、この段で閉じた（(d)＝W3、(e)＝W4・W5、(h)＝W6）。
+- **(d) (h)：復旧の通知と EOF の列の相対順は保証しない**：`cut_off`・`:887` の経路・tick の `begin` が `CLOSED` の場合を含む（host の通知〔保持した通知・新しい接続の最初の `audio-conditions-changed`〕が、EOF の列より先に出うる）。画面の状態は最終的に正しい（14.8）。main と同じ。順の保証は、K13（EOF の列を出し終えてから待ち手を解放する）と、F1b-0b-1 の `reply_timed_out` の待ち（9.5）だけ。
+- **(e) EOF の勝者が列を出す前に止まる・panic する**：`reply_timed_out` の既存の待ちが `EOF_WAIT` で終わり、通知の前に `ENGINE_EXITED` が返りうる（9.10 の (c)。変えない）。リリースは `panic = "abort"`（11.6）。
+- **(f) 配信ミックスの子の通知は、本番では出力が空**（14.15 の O6）。
+- **(g) EOF で `voice_activity` が残る**（14.15 の O4）。
+- **(h) `close` より前に完了した状態の変更は残る**：事象は閉鎖より前。確定が上書きする経路（`kill_primary_engine`・`ensure_engine_running` の3経路）では消える。`reset_engine_reader`・`reply_timed_out` の負けの経路では、`kill_*` が上書きする。
+- 9.10・11.17・12.17・13.16 の狭い競合は変わらない。9.10 の (d)・(e) は、この段で閉じた（(d)＝W3〔上限つき〕、(e)＝W4・W5）。(h) は、閉じない（上の (d)）。
 
 ### 14.17 これまでの段のレビューで繰り返し出た指摘の型への自己点検
 
 | 型 | この段の設計が当たらないことの確かめ |
 |---|---|
-| (1) ロックの順（輪・取り違え） | 閉じる側が取る `order` は、持っているロックが無い時点で取る（14.9 の表）。`order` を持つ間に取るのは `emitter` と原子操作だけで、`LinkCell`・`held_notices`・ホスト・`Store.slots` は取らない（I51）。`sweep` を `chain` の閉包の中で呼ぶ自己デッドロックは、呼び出し箇所を構造の試験で固定する（Q14）。`wait_notified` は `Condvar` の待ちで `inner` を放す。**当たらない（自己デッドロックの経路を見つけて、構造の試験で閉じた）** |
-| (2) 取りこぼしの起床 | `wait_notified` は `eof_notified` と絶対期限を、起きるたびに確かめ直すループ（E17。変えない）。`mark_notified` は `inner` の下でフラグを立てて `notify_all`。待つ側が先でも後でも見逃さない。`sweep` は `Mutex` の取得だけで、起床の通知を使わない。上限を過ぎた印は `inner` の下で立てる。**当たらない** |
-| (3) 取り消しで失われる後処理 | 掃き切りも待ちも、実行のスレッドの閉包の中で完了する。呼び出し側の future が捨てられても、閉包は走り切る（I44）。reader の `finish` が途中で止まれば、待ちは上限で終わり（I52）、`mark_notified` が来なくても閉じる側は進む。`voice_activity.store(false)` は掃き切りの後の同じ閉包の中。**当たらない** |
-| (4) 受付時点の固定 | 待つ対象の接続は、閉じた時点の `Arc<LinkCell>` を複製して固定する（`await_eof_notices` の先頭。差し替わっても同じ接続）。reader が見る接続・epoch・`engine_generation` は、reader を組むときに固定する（変えない）。**当たらない** |
-| (5) poison の扱い | `Notifier` の `order`・`emitter` は `into_inner` で進む（`emit.rs:86-107`。`sweep` も同じ）。`LinkCell` は `begin` 以外 `into_inner`（9.3）。新しい `unwrap` を足さない。Q12 が固定する。**当たらない** |
-| (6) 継ぎ目で順序を固定しない試験 | 順は門で作る：`block_after`（発行の途中）・`arrivals`／`sweep_arrivals_for_test`（`order` の前に着く）・`Reader::pause`（`close_eof` の後）・`waits_entered_for_test`・`before_mode_begin`（`begin` の直前）。`sleep` で順を作らない。「戻っていない」は、到達の数と `is_finished` で確かめ、時間切れは失敗の上限としてだけ使う。Q15 は、控えた値から**増えていない**ことを、順の仮定なしで確かめる。**当たらない** |
-| (7) 解除・後始末が断られて状態が残る | 後始末は断られない（掃き切りは待つだけ。`await_eof_notices` は上限で進む）。`voice_activity` の `false` は無条件に書く。**当たらない** |
-| (8) 状態と通知が別々になる | W2 の不整合（状態だけ変わり通知が出ない）を、1つの区間に入れて消した（I48）。EOF の勝者だけは、今のとおり、`engine_event` と列が別の位置（`close_eof` が決めた勝者で、閉じた接続の事実そのもの）。**当たらない（見つけて閉じた）** |
-| (9) 回収が通知に塞がれる | `sweep` は回収の後（I49・I3）。回収中は通知を待たない。`t6`・`t12`・`x12` が、回収・ほかの呼び出しが止まらないことを引き続き固定する。**当たらない** |
-| (10) 終了が詰まる | `Drop`・終了は掃き切りも EOF の列の待ちもしない（I54・Q5）。**当たらない** |
+| (1) ロックの順（輪・取り違え） | 閉じる側が取るのは `LinkCell.inner`（`close`・`quiesce` の `Condvar`）だけで、`order` を取らない（14.9）。`enter`・`EmitGuard` の Drop は `order` の外で、`order` を持つ間に `LinkCell` のロックを取らない（I52。9.3 の規則のまま）。`quiesce` を自分の列の中から呼ぶ経路は、呼び出し箇所を構造の試験で固定する（Q11）。**当たらない** |
+| (2) 取りこぼしの起床 | `quiesce` は `emitting` と絶対期限を、起きるたびに確かめ直すループ（`wait_notified` と同じ型）。`EmitGuard` の Drop は `inner` の下で `emitting` を減らし、0 のとき `notify_all`。待つ側が先でも後でも見逃さない。**当たらない** |
+| (3) 取り消しで失われる後処理 | 確定も待ちも、実行のスレッドの閉包の中で完了する。呼び出し側の future が捨てられても、閉包は走り切る（I44）。`EmitGuard` は `Drop` で戻すので、reader が途中で抜けても `emitting` が残らない。**当たらない** |
+| (4) 受付時点の固定 | reader は、組み立てるときに固定した自分の `LinkCell`・epoch・`engine_generation` だけを見る（変えない）。`quiesce` の対象は、閉じた時点の `self.link`（同じスレッドで差し替わらない）。**当たらない** |
+| (5) poison の扱い | `LinkCell` は `begin` 以外 `into_inner`（9.3）。`enter`・`quiesce`・`EmitGuard` の Drop も同じ。新しい `unwrap` を足さない。Q10。**当たらない** |
+| (6) 継ぎ目で順序を固定しない試験 | 順は門で作る：`after_check_before_effect`（確認の直後・効果の前）・`lock_contended_for_test`（`close` が `inner` を待っていること）・`quiesce_waits_entered_for_test`・`Reader::pause`・`block_after`・`before_mode_begin`・回収と確定の記録。**`sleep` と競りの反復に頼らない**。「戻っていない」は到達の数で確かめる（Q3・Q5）。**当たらない** |
+| (7) 解除・後始末が断られて状態が残る | 確定（`running=false`・`voice_activity=false`）は無条件。`ensure_clear` が失敗しても残らない（I50・Q4）。`quiesce` は上限で進む。**当たらない** |
+| (8) 状態と通知が別々になる | W2（状態だけ変わり通知が出ない）は、事象が閉鎖より前のもので、確定が上書きする（14.7）。閉鎖より後の事象は、状態も通知も無い（I48）。**当たらない（見つけて、範囲を明記した）** |
+| (9) 回収が通知に塞がれる | `quiesce` は回収・確定の後（I49・I3）。`order` を待たない。回収・失敗の結果は、待ちの前に決まる（Q9）。`t6`・`t12`・`x12` が、回収・ほかの呼び出しが止まらないことを引き続き固定する。**当たらない** |
+| (10) 終了が詰まる | `Drop`・終了・配信ミックスの子の破棄は、待たない（I51・Q7）。**当たらない** |
+| (11) 追加の待ちで、失敗の応答が止まる | 追加の待ちは `quiesce` の最大200ms だけ（`order`・`emit` を待たない。14.9）。`reply_timed_out`・`cut_off` の失敗の応答は、`kill_*` の後に今の順で作る。(h) の待ちは設計から消した（14.8）。**当たらない** |
 
 ### 14.18 洗い出しと今のコードで食い違っていた点
 
 1. 洗い出し 4章 N2 の行：`reader.rs:27-29` の `emit_chain`→**`:25-27`**、各行の確認 `:33`→**`:31-33`**、`chain_if` の `emit.rs:110-123` は一致、列の外の状態の変更 `:89,104,136,173`→**`:86,101,133,170`**、`voice_activity.store` `:196`→**`:193`**、`kill_primary_engine` の `retire_engine` `:2810,2955`→**`:2806,2955`**、`new_engine` `:914`→**`:913`**、`close_connection` `:709-725`→**`:710-724`**。EOF の通知の列 `reader.rs:297-301`→**`:289-293`**。9.10 の (h) の `send_mode_command` の行は **`mode_vst.rs:700-726`**（`begin` は `:701`、tick の確認は `:612,628`）。
 2. 洗い出しと `changes` の「9種の通知」は、今のコードでは **13か所（14変種）・15種の名前**（14.4）。文書の数は概数。
-3. 7.3 は「`voice_activity` と epoch の窓を、`LinkCell` の閉鎖と `retire_engine` にそろえて閉じる」と書く。今のコードでは、**`close_connection`・`drop_connection` は `retire_engine`（epoch）を呼ばない**（`ensure_engine_running` の3経路は epoch を進めずに閉じる）。そろえる対象は `retire_engine` ではなく、**接続を閉じた後は、epoch が古くても何も変わらない**こと（14.7）。`retire_engine` の呼び出し点（epoch の更新点）は変えない。
+3. 7.3 は「`voice_activity` と epoch の窓を、`LinkCell` の閉鎖と `retire_engine` にそろえて閉じる」と書く。今のコードでは、**`close_connection`・`drop_connection` は `retire_engine`（epoch）を呼ばない**。そろえる対象は、**接続を閉じた後は、旧い reader が何も変えない**こと（14.7）。`ensure_engine_running` の3経路は、確定のために `retire_engine` を呼ぶ（14.7）。
 4. 9.10 の (e) は「`voice_activity.store(true)`・epoch の古い `engine_event`」を1つにまとめる。今のコードでは **`voice_activity.store` には epoch の照合が無い**（`reader.rs:193`）。別の窓（W5）。
-5. 9.2 の競合3（9.5）は `reply_timed_out` の中に待ちを書いた。この段は、その待ちを `await_eof_notices` へ取り出す（結果・文言・警告の回数は同じ）。
-6. **配信ミックスの子の `Notifier` に `emitter` が無い**（`audio.rs:570`。`post_mix.rs` に設定が無い）：5章・7.3・洗い出しは触れていない新しい事実。N2 の配信ミックスの側は、同じコードを通るが、本番の出力は空。
+5. 7.3 は「閉じる側が、閉じた後に通知の列のロックを1度通して、掃き切る」と書く。**`emit` は詰まらないと言い切れない**（14.9）ので、この段は `order` を待たず、`LinkCell` の数と上限つきの待ちにした（14.5）。
+6. **配信ミックスの子の `Notifier` に `emitter` が無い**（`audio.rs:570`。`post_mix.rs` に設定が無い）：5章・7.3・洗い出しは触れていない新しい事実。
 7. `ensure_clear` の行：13章の記述（`engine_life.rs:172-189`）は、`engine_life/` へ分けた今のコードでは **`engine_life.rs:274-318`**。同じ閉包が作った記録だけを窓の終わりまで待つ（13.7。変わらない）。
+8. K13 の言い方：EOF の通知の列を出し終え（`reader.rs:289-293`）、`mark_notified`（`:295`）の後に、待ち手へ `Eof` を送る（`:297`）。第1版は「待ち手の解放が通知より先」と書いたが、**逆**（通知が先、待ち手の解放が後）。
+
+### 14.19 Sol のレビュー（82a4c26e。BLOCK）への対応
+
+| # | 指摘の要旨 | 対応 |
+|---|---|---|
+| 1 | W1〜W5｜接続確認の直後に reader を止めると、`close` の後に状態の変更が走り、`ensure_clear` が失敗すると `running=true` が残りうる | **確認と状態の変更を閉鎖に対して不可分にした**（`LinkCell::enter`。I48）。加えて、`ensure_engine_running` の3経路が、回収の後に切断状態を確定する（I50。14.7）。試験：Q3（継ぎ目は確認の直後・効果の前。`close` が待つことを `lock_contended_for_test` で観測）・Q4（`ensure_clear` の失敗の後の状態） |
+| 2 | 配信ミックスの子の `Drop` も `release_engine → drop_connection` を通り、二重に掃き切る | **回収だけの経路（`close_connection`・`drop_connection`）と、確定・待ちの呼び出し（`settle_disconnected`・`quiesce_closed_link`）を分けた**（I51。14.6）。`Drop`・`release_engine`・`take_engine_for_shutdown` は待たない。Q7・Q11 |
+| 3 | `emit` が詰まれば `order` の待ちは無期限。R3 の同期ログを `order` の中へ移すと、emitter の無い子でも主の回収を止めうる | **`emit` が詰まらないとは言い切れない**ことを、依存のソースで確かめた（14.9。`manager/mod.rs:524-541`・`tauri-runtime-wry lib.rs:263-280,1740-1745`・`tao event_loop.rs:570-586`・`listener.rs:214-230`）。閉じる側は `order`・`emit` を待たず、`LinkCell` の `Condvar` の上限つきの待ちだけ（I49・I52）。回収・確定を先にした。R3 のログはどのロックの外（14.6・Q11） |
+| 4 | (h)：`fail_mode_transaction` の先頭の待ちが、回収と停止を最大2秒遅らせる。`sweep`・発行は無期限。`reply_timed_out` の警告が毎回出る | 今の main で順が崩れても画面の状態は最終的に正しいことを確かめ（14.8）、**(h) の順の保証をこの段から外した**。`await_eof_notices`・`fail_mode_transaction` の待ち・`wait_notified` の変更を消した。`reply_timed_out` の既存の待ちは変えない（I53）。Q8 が、待たないことと登録の無いことを固定 |
+| 5 | Q4 は最初の発行の後でしか止めず、Q15 は競りの反復。Q7 の `kill_engine` は待ちの呼び出し先でない。Q8 は継ぎ目で観測する。Q9 は同じ `Arc<LinkCell>` で初回だけ期限を消費する。Q14 に `finish` の例外、I53 に期限切れの例外 | 試験を作り直した（14.13）。確認の直後・効果の前の門（Q3）、`ensure_clear` の失敗の後の状態（Q4）、競りの反復をやめて門と観測（Q3・Q5・Q8・Q9）。(h) の待ちが無くなったので、Q7（旧）・Q9（旧）の対象は消えた。`wait_notified` に「一度きり」の印を足さず、同じ `Arc<LinkCell>` で期限切れの後に別の待ち手が成功する T6 を残した（I53・Q6）。Q11 に `finish` の明示の例外、I53 に期限切れの例外（`quiesce` の期限切れは I49） |
+| 6 | 利用者への影響：最大2秒の追加の待ち、回収・停止の遅れ、再起動の失敗の応答、EOF と復旧通知の相対順。K13 の記述の訂正 | (h) を外したので、要承認の候補は無くなった（14.14）。新しい最大200ms の待ちは、承認不要の確認事項として明記（回収・失敗の応答は先に決まる）。EOF と復旧通知の相対順は、既知の競合（14.16 の (d)）で、根拠を示した（14.8）。K13 を訂正した（14.2・14.18 の 8） |
+| 7 | 着手前に決めるもの：O1・O2・O7・(h)・14.16 (a)(b)(e) の境界・待ちの上限・失敗のときの進み方 | 14.15 で決めた（O1＝案1′、O2＝`enter` の中、O7＝回収だけ、(h)＝外す、上限＝200ms、失敗のとき＝警告して進む・確定してから戻る）。14.16 の (a)(b)(e) の境界を書き直した。決め切れずに推奨で残すのは O11（値と epoch の追加の1回） |
