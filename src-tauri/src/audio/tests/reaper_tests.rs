@@ -1272,8 +1272,13 @@ fn z23_mutes_held_on_the_same_window_run_in_acceptance_order_even_when_the_actor
         }
         wait_until("held", || rig.control.queue_len() == 3);
         std::thread::sleep(WAIT);
+        let ended = Instant::now();
         stuck.end();
         wait_until("all run", || entries(&log).len() == 3);
+        assert!(
+            ended.elapsed() < Duration::from_secs(2),
+            "窓の期限（5秒）より前に、列が起こされて取り出す"
+        );
         let order = entries(&log);
         let position = |name: &str| {
             order
