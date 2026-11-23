@@ -698,6 +698,8 @@ impl AudioHost {
         !self.link.is_open()
     }
     fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
+        #[cfg(test)]
+        before_mode_begin::run();
         let receiver = self.link.begin(None)?;
         let Some(writer) = self.writer.as_ref() else {
             self.link.cancel();
@@ -2407,6 +2409,45 @@ pub(super) mod tests {
         failed_with_recovery(&host, "Engine Crashed/Exited");
         std::thread::sleep(Duration::from_millis(100));
         assert!(recording.text().is_empty(), "何も書いていない");
+    }
+
+    // Q8（F1b-0b-4。9.10 の (h)）：最後の接続の確認の後、`begin` の前に EOF が勝つ。閉じた接続への `begin` は
+    // 何も登録せず、復旧の経路は EOF の通知の列を待たずに進む（順の保証は、この段では行わない）。
+    #[test]
+    fn q8_a_begin_on_a_closed_link_registers_nothing_and_the_recovery_never_waits() {
+        let mut host = open_link_host();
+        let recorder = Arc::new(crate::audio::emit::Recorder::default());
+        host.emitter.set(recorder.emitter());
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        let link = host.link.clone();
+        let win = Arc::new(Mutex::new(None));
+        let held = win.clone();
+        before_mode_begin::set(move || {
+            *held.lock().unwrap() = link.close_eof();
+        });
+        host.poll_mode_vst();
+        assert!(
+            win.lock().unwrap().is_some(),
+            "EOF の競りに勝った reader がいる"
+        );
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(
+            !link_seam::operation_in_flight(&host) && !link_seam::operation_awaiting(&host),
+            "閉じた接続には、何も登録しない"
+        );
+        assert_eq!(
+            host.link.shape_for_test(),
+            crate::audio::link::Shape::Closed(CloseCause::Eof)
+        );
+        assert_eq!(host.link.waits_entered_for_test(), 0, "EOF の列を待たない");
+        assert!(
+            recorder
+                .names()
+                .iter()
+                .any(|name| name == "live-modes-invalidated"),
+            "復旧の通知は出る: {:?}",
+            recorder.names()
+        );
     }
 
     // T11：世代が違う取引は、今の文言で復旧の経路へ。

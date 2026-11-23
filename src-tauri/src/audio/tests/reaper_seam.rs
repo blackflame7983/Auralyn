@@ -44,6 +44,11 @@ pub(super) fn post_mix_state(host: &AudioHost, root: &std::path::Path) -> post_m
     post_mix::State::new(root, host.retired.clone())
 }
 
+/// 生きたままの子を、`kill` も確認もせずに記録へ置く（終わらない子の再現）。子は終わらせるまで残る。
+pub(super) fn adopt(host: &AudioHost, role: Role, child: std::process::Child) {
+    host.retired.adopt_for_test(role, child);
+}
+
 /// 停止の状態の子を Job に入れて動かす。失敗すれば、記録へ移る。
 pub(super) fn contain(
     host: &AudioHost,

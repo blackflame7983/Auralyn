@@ -867,10 +867,10 @@ fn cut_off_leaves_the_operation_as_the_exit_cause_when_eof_won() {
     }
 }
 
-// S6（今の挙動の固定。F1b-0b-4 で、期待値を `false` へ反転する。設計 9.8）：
-// 接続の確認を通過していた1行の `VoiceCheckState` は、閉じた接続の reader でも `voice_activity` を立てる。
+// S6（F1b-0b-4 で、期待値を `false` へ反転した。設計 9.8・14.12）：
+// 閉じた接続の reader は、`VoiceCheckState` が来ても `voice_activity` を立てない。
 #[test]
-fn s6_today_a_closed_reader_can_still_raise_voice_activity() {
+fn s6_a_closed_reader_cannot_raise_voice_activity() {
     let (host, recorder) = open_host();
     let reader = reader_for(&host, 0);
     assert!(host.link.close(CloseCause::Intentional));
@@ -880,6 +880,6 @@ fn s6_today_a_closed_reader_can_still_raise_voice_activity() {
         position_ms: 0,
         duration_ms: 0,
     });
-    assert!(host.voice_activity.load(Ordering::Acquire));
+    assert!(!host.voice_activity.load(Ordering::Acquire));
     assert!(names(&recorder).is_empty(), "通知は出ない");
 }
