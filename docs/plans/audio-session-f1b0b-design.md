@@ -1,6 +1,6 @@
 # F1b-0b セッションの中心部の作り直しの設計（第1版・骨子）
 
-状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。次は 7.4 の段ごとの詳細設計。
+状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）まで書いた。次は 2b 以降。
 
 前提の文書：
 - 今の事実：`audio-session-f1b0b-inventory.md`（bcd2dca2 の時点。以下「洗い出し」）。
@@ -431,3 +431,413 @@ ID（`T1`〜）は 9章の中だけで使う。
 | U7 | `Operations` の全体（`awaiting`・`plugins` を含む）を `LinkCell` に移す。`LinkCell` のロックの区間では I/O と `emit` をしない規則を守る |
 | U8 | `voice_activity` と epoch の窓は F1b-0b-4 で直す |
 | U9 | 試験専用の `link.close(Eof)` は `win_eof` に寄せる（9章のとおり） |
+
+## 11. F1b-0b-2a（実行のスレッドと N1）の詳細
+
+前提：コードは main `cffaba6f`（F1b-0b-1 の後）。`ファイル:行` は `src-tauri/src/` を基準にし、今のコードで確かめ直した（洗い出しの行は動いている。食い違いは 11.18）。7章の決定（2.1-A・2.2-A）と、7.4 の「2a は、実行のスレッドへの移し替えと N1。受付の順は今と同じ FIFO。挙動はほぼ変えない」を変えない。C1・C4・`interrupt_restore`（洗い出し 6.9）は 2b、reaper・N3 は 3、N2 は 4。
+
+### 11.1 答えの要約（決めること 1〜9）
+
+| # | 決めること | 答え |
+|---|---|---|
+| 1 | 持ち主の移し替え | 今は `Arc<Mutex<AudioHost>>`（`audio/control.rs:174`）を、入口 95 か所が `AudioControl::lock` で取る。2a では `AudioControl::new` が `AudioHost` を新しい1本のスレッド（`auralyn-audio-control`）へ移し、`Mutex` をなくす。入口の 93 か所（起動時の `setup`・warmup・scheduler を含む）は `run`、トレイとショートカットの2か所は `post` へ（11.4 の表、11.9） |
+| 2 | `run` の形 | `run<R: Send + 'static>(entry, FnOnce(&mut AudioHost) -> R + Send + 'static) -> Result<R, ControlError>`。返事は1件ごとの `sync_channel(1)`。受付の列は `Mutex<VecDeque<Job>>`＋`Condvar`（取り出す関数が1か所なので、2b で優先度を足せる）。`admit`（受付の記録）は残し、`Ticket::run`/`post` が列へ積む。Tauri のコマンドは今のまま `async fn` で、`run_blocking` の中で `run` を呼ぶ（11.4） |
+| 3 | 再入 | **今の経路は 0 件**（`audio/`・`profile.rs`・`bundle.rs`・`obs_setup/` は `AudioControl` を持たない。入口を持つのは `commands/*`・`lib.rs`・`shortcuts.rs`・`obs.rs`・`migration.rs`・`temporary_session.rs`・`updates.rs` だけで、どれも閉包の外で呼ぶ）。それでも実行のスレッドの上の `run` は、待たずに `Err(Reentrant)` で返す。構造の試験で、持ち込みを防ぐ（11.5） |
+| 4 | 閉包の panic | 閉包を `catch_unwind` し、実行のスレッドは死なない。待っている呼び出し側へは panic をそのまま投げ直し（今の `spawn_blocking` の `JoinError` と同じ）、以後の `run` は `Err(Poisoned)`（各入口が今の文言へ写す）。リリースは `panic = "abort"`（`Cargo.toml:117`）なので、今も 2a も即終了で変わらない（11.6） |
+| 5 | N1 | トレイとショートカットは `post`（待たない）。閉包は今の本体のまま。結果の `Err` は今と同じく、トレイは捨て、ショートカットは `shortcut-error` を出す。ロックの失敗も閉包が `Err(ControlError)` を受けて同じ文言にする。`interrupt_restore` は 2a では取らない（11.7） |
+| 6 | 時間で動くもの | 周期でホストのロックを取るのは、モード VST の scheduler の1本だけ（配信ミックス・メーターは取らない）。scheduler のスレッドは今のまま（10ms 眠る→`run`で1 tick→返事を待つ）。tick は列に溜まらず、期限の起点は `AudioHost` の中の `Instant` のまま（11.8） |
+| 7 | 終了・起動 | 最後の `AudioControl` を捨てると列を閉じ、実行のスレッドが残りの仕事を `Err(Stopped)` で断り、ホストを `Drop`（子の回収は今の `Drop` のまま）してから終わる。`Drop` は終わりを `join` して待つ。**Tauri 2.12.4 は終了時に管理中の状態を捨てない**ので、実際の終了では今も `Drop` は走らず、子は Job で回収される（新しい終了の手順は足さない）。起動は `new`→scheduler→`run`（emitter）→warmup のスレッドの順（11.9） |
+| 8 | ロックの順 | 実行のスレッドが閉包を走らせている間が「今のホストのロックの中」。その中の順（`Shortcuts` の gate → `Store.slots`／`order`→`emitter`／`held_notices`／`LinkCell`）は今のまま。列と `Admission.log` は葉で、持ったまま何もしない。reader は列も実行のスレッドも取らない（11.10） |
+| 9 | 試験 | 既存の試験は、**型名3か所の差し替えだけ**で期待値を変えずに通る。そのために、試験専用の `AudioControl::lock`（実行のスレッドがホストを箱ごと貸し出す `HostLease`）を残す。足す試験は `X1`〜`X12`、壊して確かめる項目は 11.14 の (a)〜(l)（11.14） |
+
+### 11.2 範囲
+
+やること：
+- `AudioHost` の持ち主を、`Mutex` から1本の実行のスレッドへ移す。入口 95 か所を `run`／`post` へ書き換える。
+- 受付の列（FIFO。取り出す関数は1か所）、返事、poison、再入の検出、起動と終了。
+- N1：トレイとショートカットを待たずに戻す。
+
+やらないこと（それぞれの段で行う）：
+- 停止を先に実行する・上限・期限・断り（C1・C4。2b）。列の優先度は足さない。`Phase` の名前（`LockGranted`）も変えない（11.16 の U9）。
+- トレイ・ショートカットのミュートが `interrupt_restore` を取ること（洗い出し 6.9。2b）。
+- reaper・N3（段 3）、N2 の完全な形（段 4）。閉包の中の待ち（`ensure_clear` の最大10秒、`retire_child` の最大2秒、`wait_notified` の最大2秒、`await_reply` の応答の期限）は今のまま閉包の中に残る。
+- 子との IPC、通知の名前・中身・順、エラーの文言、`engine_generation` の更新点、読み取りが先の操作の完了を待つ境界（K2・K10）。
+- 実際の終了で子を回収する新しい手順。
+
+### 11.3 今の事実（確かめ直したもの）
+
+- 持ち主：`AudioControl { host: Arc<Mutex<AudioHost>>, admission: Arc<Admission> }`（`audio/control.rs:172-176`）。`lock(entry)` は `admit(entry).lock()`（`control.rs:221-223`）で、`Ticket::lock`（`control.rs:248-252`）が `host.lock()` の後に `push_granted` を呼ぶ。返すのは `LockResult<MutexGuard<AudioHost>>`。
+- 入口は **95 か所**（洗い出し 3章と同じ数）。`commands/audio.rs` 59・`commands/bundles.rs` 13・`commands/voice_check.rs` 8・`commands/profiles.rs` 3・`obs.rs` 2・`updates.rs` 2・`temporary_session.rs` 2・`migration.rs` 1・`shortcuts.rs` 1・`lib.rs` 3（トレイ `:353-362`・`setup` の emitter `:389-394`・warmup `:397-407`）・scheduler 1（`control.rs:236`）。ほかに、ロックを取らない `note` が `quit_app`（`lib.rs:72-79`）に1か所。
+- 呼び出しのスレッド：83 のコマンドと `obs`・`updates`・`migration`・`temporary_session` の 7 か所はすべて `run_blocking`（`commands/mod.rs:7-13`）か `spawn_blocking` の中。トレイはイベントループのスレッド（0洗い出し 1.2）。`setup` はメインのスレッド。warmup と scheduler は専用のスレッド。ショートカットの OS のコールバックは `try_lock` と状態の確認だけをして、ロックを待つ処理を `spawn_blocking` に渡す（`shortcuts.rs:384-418`）。
+- 入口の本体はすべて `&mut AudioHost`（または `&AudioHost`）への呼び出しで、`AudioControl` を持たない。`bundle_change_scope(|host| …)`（`commands/bundles.rs:2726`）や `profile::apply_profile(&config_dir, &mut host, …)`（`commands/profiles.rs:150`）も同じ形。
+- ロックの失敗の文言は入口ごとに違う（「Failed to lock audio state」「音声状態を取得できません」「音声設定を取得できません」「音声の状態を取得できません」。例：`commands/audio.rs:301,286,1295`）。K の試験が固定している（`commands/audio/compat_tests.rs:445-467`）。
+- `quit_app` は `note` と `app.exit(0)` だけ（`lib.rs:72-79`）。Tauri 2.12.4 の `cleanup_before_exit`（`tauri-2.12.4/src/app.rs:1128-1140`）は、トレイ・リソース表・ウィンドウだけを片づける。`App::run` は終了時に `std::process::exit` を直接呼ぶ（`app.rs:1364` の説明）。したがって管理中の `AudioState` の `Drop` は走らない（読み取りによる確認。実機は未確認）。子は `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`（`process_job.rs:23`）の Job が、プロセスの終了で回収する。`AudioHost::drop`（`audio.rs:2938-2960`）が走るのは、試験と、`AudioControl` を捨てた場合。
+- リリースの設定は `panic = "abort"`（`Cargo.toml:117`）。poison が起きるのは、unwind するビルド（試験・dev）だけ。
+- `AudioHost` は `Send`（今も `Arc<Mutex<AudioHost>>` を複数のスレッドで共有している）。非試験のコードに、スレッドごとの状態（`thread_local!`）は無い。COM は `routing_diag.rs:154` の `CoInitializeEx(None, COINIT_MULTITHREADED)`（結果は無視）だけで、1本の長寿命のスレッドで繰り返しても `S_FALSE` で済む。
+- 試験の継ぎ目の `thread_local!` が6か所：`audio.rs:255-271`（`before_begin_hook`）・`audio/writer.rs:19-25`（`LIMITS`・`EOF_WAIT_OVERRIDE`・`EOF_WAIT_EXCEEDED`）・`writer.rs:144-146`（`NEXT_SINK`）・`audio/conditions.rs:12-15`・`audio/engine_life.rs:510`（`seam`）・`audio/tests/link_seam.rs:8`。**試験のスレッドで設定し、同じスレッドでホストを動かす前提**。
+- 試験が `AudioControl` を通ってホストを使う場所：`control_tests.rs`（7）、`commands/audio/compat_tests.rs`（`Fixture` ＋ `mock()`）、`audio/tests/compat_tests.rs:10-14` の `host(&f)`、`link_tests.rs:49-53` と `reply_deadline_tests.rs:34-38` の `lock_host(&f)`、`compat_support.rs:566-573` の `Fixture::drop`。ほかの試験（`engine_life_tests`・`post_mix_life_tests`・`config_storage_tests`・`device_scan_tests`・`link_cell_tests`・`mode_vst.rs`/`engine_exit.rs` の内側）は `AudioHost` を直接作り、`AudioControl` を使わない。
+
+### 11.4 型と動き（決めること 1・2）
+
+```text
+AudioControl { shared: Arc<Shared> }                         // Clone。`State<AudioState>` に今のまま入る
+Shared {
+  queue:     Arc<JobQueue>                                   // 受付の列
+  admission: Arc<Admission>                                  // 今のまま
+  actor:     実行のスレッドの JoinHandle と ThreadId
+}
+JobQueue { state: Mutex<QueueState>, ready: Condvar }        // 葉のロック
+QueueState { jobs: VecDeque<Job>, closed: bool }
+Job { seq: u64, entry: Entry,
+      exec: Box<dyn FnOnce(Result<&mut AudioHost, ControlError>) -> Outcome + Send> }
+Outcome { Done, Panicked }
+ControlError { Poisoned, Stopped, Reentrant }                // #[non_exhaustive]。2b が Busy・Expired などを足す
+
+AudioControl::new(host)  -> Self                             // 実行のスレッドを起動する
+AudioControl::run<R: Send + 'static>(&self, entry, f: impl FnOnce(&mut AudioHost) -> R + Send + 'static)
+                         -> Result<R, ControlError>          // 結果を待つ
+AudioControl::post(&self, entry, f: impl FnOnce(Result<&mut AudioHost, ControlError>) + Send + 'static)
+                                                             // 待たない（N1）
+AudioControl::admit(&self, entry) -> Ticket                  // 残す（K11）。Ticket::run / Ticket::post が列へ積む
+AudioControl::note(&self, entry)                             // 残す（ロックを取らない入口）
+```
+
+`run(entry, f)` は `admit(entry).run(f)`。
+
+**`run` の順**
+1. 呼び出しのスレッドが実行のスレッドなら、列へ積まず `Err(Reentrant)`（`log::error!`）。待たない。
+2. `admit`：受付の番号と `Accepted` を記録する（今と同じ。`Admission::accept`）。
+3. 返事の口（`sync_channel(1)`）を作り、`exec` を作る。
+4. 列のロックを取り、`closed` なら放して `Err(Stopped)`。そうでなければ `push_back` して `notify_one`、ロックを放す。
+5. 返事を `recv()` する（呼び出しのスレッドは何も持たずに待つ。今の `Mutex::lock` の待ちと同じ）。受け取ったのが panic なら `resume_unwind`（11.6）。返事が来ずに口が閉じていれば `Err(Stopped)`。
+
+**実行のスレッドの順**（1 件ずつ）
+1. 列のロックを取り、`jobs` が空で `closed` でなければ `Condvar` で待つ。`take_next` で1件取り、ロックを放す。**2a の `take_next` は `pop_front` だけ。2b はここを、停止の優先と断りに差し替える。**
+2. `Admission::push_granted(seq, entry)`（`LockGranted`。今は `Ticket::lock` が呼ぶ）。
+3. poison していれば `exec(Err(Poisoned))`。そうでなければ `exec(Ok(&mut host))`。`exec` の内側が `catch_unwind` を持ち、`run` なら返事を送り、`Panicked` を返す。
+4. `Panicked` なら `poisoned = true`。次の仕事へ。
+5. `closed` で空になったら、残りの仕事に `exec(Err(Stopped))` を渡してから、ホストを `Drop` して終わる。
+
+**返事を送るのは、閉包が戻り、閉包の中で出した通知（`emit`）がすべて終わった後。** 今の「`emit` は結果を返す前に終わっている」（K1・K13）と、読み取りが先の操作の完了を待つ境界（K2・K10）は、実行が1件ずつであることから保たれる。
+
+```mermaid
+stateDiagram-v2
+  [*] --> 受付済み: admit（番号と Accepted を記録）
+  受付済み --> 待ち: 列へ積む（FIFO）
+  受付済み --> 断られた: 列が閉じている（Stopped）
+  待ち --> 実行中: 実行のスレッドが取り出す（LockGranted を記録）
+  待ち --> 断られた: poison（Poisoned）／終了（Stopped）
+  実行中 --> 完了: 閉包が戻る。run は結果を返す
+  実行中 --> 異常終了: 閉包が panic。run は投げ直す。poison を立てる
+  完了 --> [*]
+  断られた --> [*]
+  異常終了 --> [*]
+```
+
+**受付の順の記録（F1a-0）との関係**
+- `Accepted` は `admit` で、`LockGranted` は実行のスレッドが取り出した時に、この順で記録する（K12 の `[Accepted, LockGranted]`）。`Scheduler` は今と同じく記録しない。
+- 列の順は**積んだ順**で、受付の番号の順ではない。`admit` と積むまでの間に別のスレッドが先に積めば入れ替わる。今の `Mutex` の取得順と同じ性質で、K11（受付 A→B、実行 B→A）の期待値を変えない。2b の「停止より前に受け付けた」は、番号（`seq`）と、最後の停止の番号を取り出す時に比べて決める（11.17 の (a)）。
+- `Phase::LockGranted` の名前は 2a では変えない（意味は「実行のスレッドが取り出した」。11.16 の U9）。
+
+**呼び出す側**（95 か所の分け方）
+
+| 呼び出しのスレッド | 数 | 使うもの |
+|---|---|---|
+| ブロッキングスレッド（`run_blocking`・`spawn_blocking`）：コマンド 83、`obs.rs` 2・`updates.rs` 2・`migration.rs` 1・`temporary_session.rs` 2 | 90 | `run` |
+| `setup`（メインのスレッド）の emitter | 1 | `run` |
+| warmup の専用スレッド | 1 | `run` |
+| scheduler の専用スレッド | 1 | `run` |
+| トレイ（イベントループのスレッド） | 1 | `post` |
+| ショートカット（今は `spawn_blocking`） | 1 | `post` |
+
+- Tauri のコマンドは今のまま `async fn`。`run_blocking`／`spawn_blocking` の中で `run` を呼ぶ。`run` は今の `lock` と同じく、そのブロッキングスレッドを塞ぐ。`async` で待つ `run_async` は足さない（2b の C4 の上限 256 は、tokio のブロッキングスレッドの既定の上限 512 より小さい）。
+- 各入口の書き換えは機械的：`let mut host = state.lock(e).map_err(|_| TEXT)?; BODY` を `state.run(e, move |host| BODY).map_err(|_| TEXT)?` へ。`TEXT` は入口ごとの今の文言のまま。`BODY` が `?` を使うときは、閉包の戻り値の型を `Result<_, String>` と書く。閉包の後でも使う値は、閉包の前に複製する（例：`commands/voice_check.rs:174-193` の `raw_path`・`processed_path`）。
+- `ControlError` の3種は、入口では区別せず同じ文言に写す（`Stopped` は 2a では、アプリが止まる途中でしか起きない）。
+
+**実行のスレッド**
+- 名前は `auralyn-audio-control`。スタックは tokio のブロッキングスレッドの既定（2MiB）以上にする。
+- `AudioControl::new` は `std::thread::Builder::spawn` が失敗したら `expect` する代わりに、`try_new -> io::Result<Self>` を足し、`setup` はそれを使って、失敗したら `setup` が `Err` を返す（`new` は試験用）。
+- 実行のスレッドの先頭で、再入の旗（`thread_local! ON_ACTOR: Cell<bool>`）を立てる。非試験のコードの `thread_local!` はこれだけ。
+
+### 11.5 再入（決めること 3）
+
+「閉包の中から別の入口（`run`）を呼ぶ経路」の洗い出し：
+
+| 確かめたこと | 結果 |
+|---|---|
+| `AudioControl`・`AudioState`・`WeakAudioControl` を持つ・名指す非試験のコード | `audio.rs:3055`（定義）・`audio/control.rs`・`commands/*`・`lib.rs`・`shortcuts.rs`・`obs.rs`・`migration.rs`・`temporary_session.rs`・`updates.rs` だけ。`audio/`（`control.rs` を除く）・`profile.rs`・`bundle.rs`・`obs_setup/` には **0**。`AudioHost` のメソッドと、閉包が `&mut AudioHost` として渡す先（`bundle_change_scope`・`apply_selected`・`capture`・`profile::apply_profile`・`preserve_temporary_runtime`）は、入口を持たないので `run` を呼べない |
+| 閉包の中が呼ぶ外：`app.emit`（`shortcuts.rs:502,518,521,534`）は、Rust 側の listener から入口へ戻るか | 戻らない。`listen`・`listen_any` の登録が 0（`on_menu_event`・`on_tray_icon_event` は `lib.rs:344,366` で、`emit` の受け手ではない） |
+| 今のコードが、ガードを持ったまま同じ `AudioControl` の `lock` を呼んでいないか | 呼んでいない。`std::sync::Mutex` は再入できず固まるので、動いている今のコードに再入は無い |
+| 閉包に分けるときに増える形：ガードを手放した後の `run` を、閉包の中へ入れてしまう | `apply_owned`（`bundles.rs:2721-2731` の後の `settle_capture(host.clone())`、`:2752`）・`undo_owned`（`:2874-2890` の後の `settle_capture`、`:2911`）・`enumerate_devices_async`（`commands/audio.rs:192-243`。`begin_device_scan`／`poll_device_scan` を別々の `run` にし、`sleep` は `async` 側）・`analyze_voice_check`（`voice_check.rs:180-193` の後の読み込み）は、閉包の外に置く。**書き換えの規則：閉包の中は直接 `&mut AudioHost` を使い、`run`・`post` を呼ばない。ガードを `drop` していた位置が、閉包の終わり** |
+
+結論：**今、再入する経路は 0 件**。守り：
+1. 実行：実行のスレッドの上で `run` を呼ぶと、待たずに `Err(Reentrant)` と `log::error!`。固まらない。`post` は待たないので、実行のスレッドの上でも呼べる（列の末尾に付く。使う箇所は無い）。
+2. 試験 X5：閉包の中から `run` を呼ぶと `Err(Reentrant)` で戻る。
+3. 構造の試験 X5b：`audio/`（`control.rs` と試験を除く）・`profile.rs`・`bundle.rs`・`obs_setup/` のソースに `AudioControl`・`AudioState` が現れない。
+4. 閉包の中で別のスレッドを起こして、そのスレッドが `run` を呼び、閉包がそれを待つ形は検出できない（今の `Mutex` でも固まる。11.17 の (f)）。
+
+`run` を呼ぶ側にも規則がある：**閉包の中が取りうるロック（`Shortcuts` の gate（`shortcuts.rs:73` の4つ目）・`Store.slots`・`order`・`emitter`・`LinkCell` など）を持ったまま `run` を呼ばない。** 今の `shortcuts.rs:430-433` は、ホストのロックを取った後に gate を取る。閉包へ移した後も、gate は閉包の中で取る。
+
+### 11.6 閉包の panic（決めること 4）
+
+| 場面 | 今 | 2a |
+|---|---|---|
+| unwind するビルド（試験・dev）で、閉包が panic | 持っているガードが drop されて `Mutex` が poison。panic は呼び出しのスレッドを unwind する（`spawn_blocking` なら `JoinError`。`run_blocking` が `e.to_string()` に写す）。以後の `lock` はすべて `Err` で、各入口が自分の文言（11.3）に写す。poison は戻らない。poison した `Mutex<AudioHost>` の `Drop` も、中身を普通に捨てる | 閉包を `exec` の中で `catch_unwind(AssertUnwindSafe(…))`。`run` の呼び出し側には payload を返し、呼び出し側が `resume_unwind` する（panic のメッセージは二重に出ない）。実行のスレッドは `poisoned = true` にして次の仕事へ進む。以後の仕事は、閉包を実行せず `exec(Err(Poisoned))`。poison は戻らない。poison したホストの `Drop` は、列が閉じたときに普通に走る |
+| `post` の閉包が panic | トレイ：イベントループのスレッドの callback の中で panic する（その後は Tauri・tao 次第。未確認）。ショートカット：`spawn_blocking` の `JoinError`（捨てられる） | 受け手がいないので、`log::error!` に payload の文字列を残し、poison する。以後は上と同じ |
+| 閉包の外（`Drop` する取り込み値、`exec` の組み立て）の panic | — | 仕事1件の処理の全体も `catch_unwind` し、`Panicked` として扱う。実行のスレッドが何らかの理由で終わる場合は、終わる側（`Drop` する印）が列を `closed` にして、待つ呼び出し側が固まらず `Err(Stopped)` になる |
+| リリース（`panic = "abort"`） | 即終了 | 即終了。変わらない |
+
+文言は変えない。X4 が、閉包の panic → 以後の `run` の `Err(Poisoned)` → 各入口の今の文言（`commands/audio/compat_tests.rs:445-467` と同じ3つ）を固定する。
+
+### 11.7 N1（決めること 5）
+
+**トレイ**（`lib.rs:353-362`）：本体を `audio.rs` の `AudioState` の隣の `pub(crate) fn tray_mute_toggle(host: Result<&mut AudioHost, ControlError>)` に出す。中身は今のまま `if let Ok(host) = host { let _ = host.toggle_global_mute(); }`。`lib.rs` は `audio_state.0.post(Entry::new(Tray, "mute_toggle"), tray_mute_toggle)` を呼んで戻る。
+
+- 結果の扱いは今と同じ：失敗は捨てる（今も `let _ =`）。ロックの失敗（poison）も無視する（今は `if let Ok`）。成功の通知（`global-mute-changed`）は閉包の中の `notice` で、今と同じ。
+- `toggle_global_mute` は実行の時点の `is_global_muted` を読むので、順番が来た時の状態に対して反転する（今と同じ）。
+- `interrupt_restore` は取らない（洗い出し 6.9。2b で停止の受付と同じ扱いにするかを決める）。
+
+**ショートカット**（`shortcuts.rs:384-537`）：OS のコールバックの側（`try_dispatch_gate`・束縛の検索・`intent_sequence`。`:386-417`）は今のまま。`spawn_blocking`（`:418`）をやめ、`audio.0.post(Entry::new(Shortcut, "global_shortcut"), move |host| { … })` に変える。閉包の中身は今の `(|| -> anyhow::Result<()> { … })()` と、その後の `shortcut-error` の発行（`:527-535`）のまま：
+- `host` が `Err(ControlError)` なら `ShortcutError::AudioStateUnavailable`（`:427` と同じ）として、同じ `shortcut-error` の経路へ。
+- gate は閉包の中で、ホストを受け取った後に取る（`:430-433`）。古い操作の判定（`gate.permits`・`intent_sequence`。`:434-441`）は実行の時点で行う。今と同じで、待っている間に入力の取り込みが始まれば、その操作は実行しない。
+- `shortcut-error` は、`host` と gate の借用が終わった後に出す（`:527-535` の順）。実行のスレッドの上で出す。
+
+**順序**：今のショートカットは、押すたびに別の `spawn_blocking` スレッドがホストのロックを取り合う（取得順は不定）。2a は OS のコールバックの順の FIFO になる。利用者から見える変化ではない（11.15）。
+
+**失敗と通知**：
+| 場面 | トレイ | ショートカット |
+|---|---|---|
+| 本体が `Err` | 捨てる（今と同じ） | `shortcut-error`（今と同じ文言） |
+| poison・実行のスレッドが止まっている | 何もしない（今と同じ） | `AudioStateUnavailable`（今と同じ文言） |
+| 閉包が panic | 11.6 | 11.6 |
+
+```mermaid
+stateDiagram-v2
+  [*] --> 通常
+  通常 --> 受付済み: トレイのミュートをクリック（画面は固まらない）
+  受付済み --> 実行中: 先の操作が終わり順番が来る
+  実行中 --> 反映済み: ミュートを切り替え、global-mute-changed を出す
+  実行中 --> 失敗: 子が応答しない・poison など（今と同じく黙って捨てる）
+  反映済み --> [*]
+  失敗 --> [*]
+```
+
+連打：2a では列の長さに上限が無い。長い操作の間にクリックした回数だけ、順番が来たときに切り替える（今も、止まっている間のクリックは、イベントループが戻ってから1回ずつ処理されると推定する。実機は未確認）。上限と断りは 2b の C4。
+
+### 11.8 時間で動くもの（決めること 6）
+
+- 今、周期でホストのロックを取るのは **scheduler の1本だけ**（`audio/control.rs:231-240`。10ms 眠る→`upgrade`→`lock`→`poll_mode_vst`）。配信ミックスの子の `AudioHost` は独自のロックも tick も持たず、主のロックの内側でだけ動く（`control.rs:255-260`）。メーター・ラウドネスは reader が直接 `emit` する（`reader.rs:155` ほか）。OBS の `timing_targets` は `Conditions`（atomic）を `ConditionState` から直接読む（`lib.rs:138-142`）。どれもホストのロックを取らない。
+- 2a の scheduler：
+
+```text
+thread::spawn(move || loop {
+    sleep(10ms);
+    let Some(control) = weak.upgrade() else { break };
+    match control.run(Entry::new(Scheduler, "poll_mode_vst"), |host| host.poll_mode_vst()) {
+        Ok(()) | Err(Poisoned) => {}          // 今の `if let Ok` と同じ。poison の後も眠って続ける
+        Err(Stopped) | Err(Reentrant) => break,
+    }
+})
+```
+- **tick の順**：「眠る→受付→待つ→1 tick→眠る」のまま。次の眠りは前の tick の返事の後に始まるので、scheduler の仕事は列に同時に高々1件で、溜まらない。`Scheduler` は今と同じく `Admission` のログに残さない（`control.rs:102-104,139-141`）。
+- **期限の起点**：`tx.started`・`pending.sent`・`flushed_at` など、期限の `Instant` は `AudioHost` の中で作る（`mode_vst.rs:525-536,539-568`）。tick の呼び出し方を変えても、起点は変わらない。
+- 違い：今の `Mutex` は取得順が不定（K11）で、tick が並んでいる入口を追い越すこともありうる。2a は FIFO なので、先に積まれた閉包の後に必ず来る。モード VST の期限は 120 秒（`mode_vst.rs:533`）・応答の期限は秒単位で、tick の遅れの上限は、今も 2a も「先に並んだ閉包の合計」。複数の長い入口が並ぶと遅れが伸びる点は 11.17 の (b) に記録し、scheduler の優先度は 2b で決める（11.16 の U8）。
+
+### 11.9 起動と終了（決めること 7）
+
+**起動の順**（`lib.rs`）：
+1. `setup`（メインのスレッド）：`AudioHost::new`（`:308`）、必要なら `require_explicit_start`（`:309-311`）、`conditions()` を先に取り出して `ConditionState` へ（`:312`。ホストが実行のスレッドへ移る前に取る）。
+2. `AudioControl::try_new(audio_host)`（`:313`）：実行のスレッドを起動する。
+3. `start_mode_vst_scheduler`（`:315`）。
+4. トレイの構築（`:325-383`）。「ミュート切替」は `try_state::<AudioState>()` を取り、`post` して戻る（11.7）。
+5. `run(Entry::new(Startup, "set_event_emitter"), |host| host.set_event_emitter(handle))`（`:389-394`）。メインのスレッドが待つのは、空いている実行のスレッドの1件だけ（U5）。戻った時点で emitter が設定済み、は今と同じ。
+6. warmup のスレッド（`:397-407`）：`run(Entry::new(Warmup, "warmup"), |host| host.warmup())`。結果の `Err` を `log::error!` に残すのも今のまま。保存した設定での自動開始は `warmup` の中（`audio.rs:2811-`）で、閉包の中。WebView からの `audio_frontend_bootstrap` などと、列の順（FIFO）で並ぶ（今は `Mutex` の不定順。K8a〜d の試験は、`Fixture` のリースで warmup を直接呼ぶ形でも、入口だけの形でも、順に依存しない）。
+
+**終了**：
+- **実際のアプリの終了は変えない。** `quit_app` は `note` と `app.exit(0)` だけ（`lib.rs:72-79`）。Tauri は管理中の状態を捨てずに `std::process::exit` するので、`AudioHost::drop` は走らず、子は Job が回収する（11.3）。新しい停止の手順（`RunEvent::Exit` での `shutdown`）は足さない（U6。足すと終了が最大2秒遅れ、更新・一時利用の再起動の経路に影響する）。
+- `temporary_session::switch_session` の `app.exit(0)`（`temporary_session.rs:344`）は、今は `drop(audio)`（`:343`）の後に呼ぶ。2a では閉包の最後に呼ぶ（ホストの借用が終わった後）。`app.exit` はイベントループへ終了を要求して戻るので、実行のスレッドは閉包を終えられる。
+- **`AudioControl` を捨てたとき**（試験・将来の終了の手順）：
+  1. 最後の強い参照の `Shared::drop` が、列を `closed` にして `notify_all`。
+  2. 実行のスレッドは、いま走っている閉包を最後まで走らせ（途中で打ち切らない）、残りの仕事は実行せずに `exec(Err(Stopped))` で断る（終了の途中で、子を起動しうる操作を始めない）。`post` の閉包は `Err(Stopped)` を受ける。待つ `run` は、強い参照を持つので残っていない。
+  3. ホストを `Drop` する（`audio.rs:2938-2960` のとおり。`close_connection(Intentional)`→`retire_engine`→主・配信ミックス・記録の子を `terminate_all`（共通の2秒））。配信ミックスの子の `release_engine`（`audio.rs:2964`）は、この `Drop` の中の経路で、変えない。
+  4. `Shared::drop` は、実行のスレッドを `join` する。今の同期の `Drop` と同じく、子の回収が終わってから戻る（`Fixture::drop` の後に子の終了を確かめる試験のため）。**`Shared::drop` が実行のスレッドの上で走るとき**（仕事に取り込まれた `AudioControl` の最後の複製が、その仕事の `drop` で捨てられるとき）は、`ThreadId` で見分けて `join` しない（自分を待たない）。
+  5. scheduler は `Weak<Shared>` を持つ。`upgrade` で得た強い参照が最後の1つなら、`Shared::drop` は scheduler のスレッドの上で走る（今も `Drop` はそのスレッドで走る）。
+
+### 11.10 ロックの順（決めること 8）
+
+| 持つ者 | 持つもの | その間に取ってよいもの |
+|---|---|---|
+| 呼び出しの側（`run`・`post`） | 何も持たない。`Admission.log`（葉）→放す→列（葉）→放す。同時には持たない。`run` は、その後、何も持たずに返事を待つ | — |
+| 実行のスレッド（取り出す間） | 列のロック | なし（`take_next` と `Condvar` の待ちだけ。放してから `push_granted`（`Admission.log`、葉）→閉包） |
+| 実行のスレッド（閉包を走らせている間）＝今の「ホストのロックの中」 | 実行そのもの | 今と同じ順：`Shortcuts` の gate（ショートカットの閉包だけ）→ `Store.slots`、`order`→`emitter`、`held_notices`、`LinkCell`（葉。9.3）。閉包の中で列・`Admission.log` を取るのは、閉包が `post` を呼ぶときだけ（どちらも葉で、持ったまま何もしない） |
+| reader・writer | `LinkCell`（葉）、`order`→`emitter`（reader の通知） | 実行のスレッドも列も取らない・待たない。応答は `LinkCell` へ渡すだけ |
+
+禁止：(1) 列のロックを持ったまま、閉包・`exec`・通知・I/O・ほかのロックを使う。(2) 閉包の中が取りうるロックを持ったまま `run` を呼ぶ。(3) 実行のスレッドから `run`（再入。`Err(Reentrant)`）。(4) 実行のスレッドが、`run` で待つスレッドだけが解放できるものを待つ。
+
+**待ちの中で通知を出す reader と固まらないこと（2.2-A）**：
+- 閉包の中の待ちは、(i) `await_reply` の `recv_timeout`（応答の期限まで）、(ii) EOF に負けたときの `LinkCell::wait_notified`（`EOF_WAIT` の2秒まで。9.5）、(iii) `retire_child` の確認（最大2秒）、(iv) `ensure_clear`（最大10秒。N3 は段 3）、(v) 通知を出すときの `order` の待ち。どれも reader の `LinkCell`・`order` だけが相手で、**reader が待つのは `order` だけ**。reader は実行のスレッドも列も呼ばない（`reader.rs` に `AudioControl` は出ない）。したがって、実行のスレッドが reader を待ち、reader が実行のスレッドを待つ輪は作れない。
+- reader が `AppHandle::emit` の途中で止まったとき：`order` を取りたい閉包は、今と同じく止まる（F1b-0a-1 設計 3.3 の既知の範囲）。ほかの呼び出し側は、列に積んで待つだけで、`order` を取らない。`post`（N1）は積んで戻る。**今あった「イベントループが、ホストのロックを持つ者の `order` の待ちの後ろで固まる」並びは、トレイの `post` で無くなる**（`setup` の1回の `run` を除く。reader はまだ無い）。
+- 呼び出しのスレッドが `run` で待つ間、持つロックは無い。`BundleState`・`Updates`（tokio の `Mutex`）を持ったまま `run` を呼ぶ入口（`commands/bundles.rs:2017`・`updates.rs:150`）はあるが、閉包は `BundleState`・`Updates` を取らない。
+
+### 11.11 切断・終了・停止・作り直しの瞬間の、役者×状態×順序
+
+役者：C＝呼び出しのスレッド（`run`）、P＝`post` の呼び手（トレイ・ショートカット）、A＝実行のスレッド、R＝reader、S＝scheduler。矢印は順。
+
+| # | 瞬間（状態） | 順序（2a） | 今との違い |
+|---|---|---|---|
+| 1 | 子が切れる（EOF）。閉包が走っている | R：`close_eof`→通知3件→`mark_notified`→`Eof` を送る。A（閉包の中）：`await_reply` が `Eof`／`Disconnected` で戻る、または `reply_timed_out` が負けて `wait_notified`（9.5）。C：`recv()` で待つだけ | 閉包の中は同じ。持ち主が「ホストのロックを持つスレッド」から「実行のスレッド」に変わっただけ。reader は列にも A にも触れない |
+| 2 | 長い閉包の間に、停止が届く | P（コマンド層）：`interrupt_restore()`→`run_blocking`→`admit`（`Accepted`）→列へ積む。A：長い閉包を最後まで→次を取り出す（`LockGranted`）→`stop()`。J-18：走っている閉包は割り込まない | 今は `Mutex` の取得順が不定。2a は積んだ順。停止が先に並んだ操作を追い越すのは 2b（C1） |
+| 3 | 作り直し（`restart_audio_engine`）の最中 | C：`check_microphone_access`（閉包の外。`commands/audio.rs:692-698`）→`run`。A：1件の閉包の中で `preflight_live_changes`→`resolve_input_source`→`preserve_live_changes_for_restart`→`kill_engine`→`start_with_input_source`。ほかの入口は列で待つ | 同じ（今もロックを持ったまま通しで行う） |
+| 4 | 閉包が panic | A：`catch_unwind`→`poisoned = true`→次へ。C：`resume_unwind`。以後の C：`Err(Poisoned)`→各入口の文言。S：眠って続ける | 同じ結果（11.6） |
+| 5 | トレイのクリック（N1） | P：`admit`→積む→戻る。A：順が来たら `tray_mute_toggle` | **変わる**：イベントループは待たない |
+| 6 | 最後の `AudioControl` を捨てる | `Shared::drop`：`closed`→A：走っている閉包を終える→残りを `Err(Stopped)` で断る→ホストを `Drop`→終わる→`Shared::drop` が `join` | 今は同期の `Drop`。`join` で戻る順序を保つ |
+| 7 | アプリの終了（`quit_app`・`app.exit`） | `note`→`app.exit`。何も足さない。子は Job が回収 | 同じ |
+| 8 | scheduler の tick | S：眠る→`upgrade`→`run`→返事→眠る。列に高々1件 | 取得順が FIFO |
+| 9 | 起動の直後 | `setup`：`try_new`→scheduler→`run`（emitter）→warmup のスレッドの `run`。WebView の入口は列で warmup と並ぶ | warmup と入口の順が、不定から FIFO へ |
+
+### 11.12 不変条件
+
+| # | 不変条件 |
+|---|---|
+| I1 | `AudioHost` に触るのは、実行のスレッドの上で走る閉包だけ（試験専用のリースを除く） |
+| I2 | 同時に走る閉包は1件。次の仕事は、前の閉包が戻り、通知が終わってから取り出す |
+| I3 | 列は積んだ順（FIFO）。取り出す関数は `take_next` の1か所 |
+| I4 | `run` の返事は、閉包が戻り、閉包の中で出した通知が終わった後（K1・K13・K2・K10 の境界） |
+| I5 | `post` は待たない。積めない（`closed`）ときは `Err(Stopped)` を閉包に渡して戻る |
+| I6 | 閉包の中から `run` を呼ばない（呼べば `Err(Reentrant)`。固まらない） |
+| I7 | 閉包の panic の後も実行のスレッドは生きている。以後の `run` は `Err(Poisoned)`。poison は戻らない |
+| I8 | 列のロックと `Admission.log` は葉。持ったまま閉包・通知・I/O・ほかのロックを使わない |
+| I9 | `Accepted` は `admit` で、`LockGranted` は実行のスレッドが取り出した時に、この順で記録する（K12） |
+| I10 | 列が閉じた後は、新しい閉包を実行しない。残りは `Err(Stopped)`。終わる時に、ホストを `Drop` する |
+| I11 | 通知の名前・中身・順、エラーの文言、`engine_generation` の更新点は変えない |
+| I12 | scheduler の仕事は、列に同時に高々1件 |
+
+### 11.13 変える箇所の一覧（`ファイル:関数`、今の行）
+
+製品のコード：
+
+| ファイル:行 | 関数・項目 | 変えること |
+|---|---|---|
+| `audio/control.rs:1-4` | モジュールの説明 | 「ロックの種類・保持の長さ・実行するスレッドは変えない」を、実行のスレッドの説明に直す |
+| `audio/control.rs:165-170,243-253` | `Ticket`・`Ticket::lock` | `Ticket::run`・`post`。`lock` は `#[cfg(test)]` のリースを返す |
+| `audio/control.rs:172-176` | `AudioControl` | `Arc<Shared>`（11.4） |
+| `audio/control.rs:178-190` | `WeakAudioControl` | `Weak<Shared>` |
+| `audio/control.rs:192-198` | `AudioControl::new` | 実行のスレッドを起動する。`try_new` を足す |
+| `audio/control.rs:212-223` | `admit`・`lock` | `admit` は残す。`lock` は試験専用 |
+| `audio/control.rs:231-240` | `start_mode_vst_scheduler` | 11.8 |
+| 新設（`audio/control/` の下。U10） | `JobQueue`・`Job`・`ControlError`・実行のスレッド・再入の旗・`HostLease`（試験） | 11.4 |
+| `audio.rs:3055` | `AudioState` | 変えない。隣に `pub(crate) fn tray_mute_toggle` |
+| `audio.rs:3126-3128` | 試験の登録 | `actor_tests` を足す |
+| `commands/audio.rs`（59） | 各入口 | 11.4 の機械的な書き換え。`stop_audio`（`:509-515`）・`toggle_global_mute`（`:854-860`）・`set_global_mute`（`:871-877`）は、`interrupt_restore()` を今のとおり `run` の前に取る（K12） |
+| `commands/bundles.rs`（13）：`:581,1988,2090,2111,2363,2386,2475,2493,2557,2565,2723,2796,2876` | 各入口 | 同上。ガードを手放した後の処理は閉包の外（11.5） |
+| `commands/voice_check.rs`（8）：`:17,69,82,98,113,135,155,182` | 各入口 | 同上。`analyze_voice_check` は `raw_path`・`processed_path` を複製して渡す |
+| `commands/profiles.rs`（3）：`:64,148,191` | 各入口 | 同上 |
+| `obs.rs:49-52,68-71` | `ReachTone for AudioState` の `play`・`stop` | 同上 |
+| `updates.rs:165-182` | `install_update` | `prepare_update` と `finish_update_attempt` を別々の `run` に（間に `update.install`） |
+| `migration.rs:475-480` | `apply_migration` | 同上。閉包の中に今の本体 |
+| `temporary_session.rs:210-217,285-290` | `acknowledge_session_review`・`switch_session` | 同上。`switch_session` の `app.exit(0)` は閉包の最後（11.9） |
+| `shortcuts.rs:418-536` | `dispatch` の `spawn_blocking` | `post`（11.7） |
+| `lib.rs:313-315` | `AudioControl::new`・scheduler | `try_new` |
+| `lib.rs:353-362` | トレイの `mute_toggle` | `post(…, tray_mute_toggle)`（11.7） |
+| `lib.rs:389-394` | emitter | `run` |
+| `lib.rs:397-407` | warmup | `run` |
+
+試験のコード：
+- `audio/tests/compat_tests.rs:6,10`・`link_tests.rs:49`・`reply_deadline_tests.rs:34`：`MutexGuard<'_, AudioHost>` の型名を `HostLease<'_>`（または試験専用の別名）へ。**これだけ**。
+- `audio/tests/actor_tests.rs`（新設）：11.14 の X1〜X12。
+- `audio/tests/compat_support.rs:566-573`（`Fixture::drop`）・`control_tests.rs`・`commands/audio/compat_tests.rs`：書き換えなし。
+
+### 11.14 合格の条件と試験の形（決めること 9）
+
+**合格の条件**：
+1. 既存の試験が、期待値を変えずに通る。変えるのは、11.13 の型名3か所だけ。
+2. X1〜X12 が通る。
+3. 11.14 の「壊して確かめる」で、対応する X が落ちる。
+4. `npm run verify -- --static --rust` が通る。
+5. 実機（未実施）：長い操作（開始など）の最中にトレイのミュートをクリックしても、画面が固まらない。W5（`docs/TESTING.md:42-110`）を測り直し、reader の通知の順が変わっていないことを見る（reader は変えていないが、返事の経路にスレッドの受け渡しが1回足される）。
+
+**既存の試験**：
+
+| 試験 | 今の使い方 | 2a で通るか |
+|---|---|---|
+| `control_tests.rs`（7） | `new`・`lock`・`admit`・`note`・`start_mode_vst_scheduler`・`downgrade` | 通る。`lock`（リース）は `LockGranted` を、実行のスレッドがホストを貸した時に記録する。K11（`a.lock()` と `b.lock()` を逆順に呼ぶ）は、**積んだ順**で実行されるので、B→A のまま通る。`note` はリースが実行のスレッドを占めていても待たない。`the_scheduler_goes_through_the_entry_and_stops_when_the_state_is_dropped` は `Weak<Shared>` の `upgrade` が `None` になるのを待つ形で通る |
+| `commands/audio/compat_tests.rs`（K2・K10・K12・poison・K8・タイムアウトほか） | 実際のコマンドの関数（→`run`）と、`f.control.lock(…)`（→リース） | 通る。K12 の `holder`（`:271`）はリースで、実行のスレッドを止めている間、`stop_audio` は `Accepted` だけで待つ。`lock_failure_texts_are_fixed`（`:446-467`）はリースを持ったスレッドの panic で poison し、`Fixture::drop` の `lock` は `Err` で `kill_engine` を飛ばす（今と同じ）。ホストは列が閉じた時に普通に `Drop` される |
+| `audio/tests/compat_tests.rs`（24）・`link_tests.rs`（20）・`reply_deadline_tests.rs`（6） | `host(&f)`・`lock_host(&f)` が `MutexGuard` を返し、ホストの項目を直接触る。試験のスレッドで `thread_local!` の継ぎ目（`set_limits_for_test`・`before_begin_hook` など）を設定する | 型名3か所だけで通る。リースの間、ホストは**試験のスレッドの上**で動く（箱ごと貸し出す）ので、`thread_local!` の継ぎ目はそのまま効く。ほかのスレッドが `lock_host` を呼べば、今と同じく列で待つ（T1 の `reader_thread`） |
+| `engine_life_tests`・`post_mix_life_tests`・`config_storage_tests`・`device_scan_tests`・`link_cell_tests`・`mode_vst.rs`／`engine_exit.rs` の内側 | `AudioHost` を直接作り、`&mut AudioHost` を使う | 触らない。そのまま通る |
+
+**通らないものの扱い**：期待値を変える試験は無い。リースは `HostLease { Deref/DerefMut<Target = AudioHost> }` で、実行のスレッドが `Box<AudioHost>` を貸し出し、`Drop` で返す。返す時に `std::thread::panicking()` なら poison を立てて返す（今の `MutexGuard` と同じ）。**規則**：`run`・コマンド経由で走る閉包は実行のスレッドの上で動くので、`thread_local!` の継ぎ目は効かない。そういう継ぎ目が要る試験は、リースを使う（`compat_support.rs` の説明に書く）。
+
+**足す試験（`X1`〜`X12`。置き場所は `audio/tests/actor_tests.rs`）**。待ちはすべて門（`mpsc`）で、時間切れは失敗の上限。時間で成否が決まるものは無い（X7 の「増えない」の確認だけ、観測の間に 100ms 待つ）。
+
+| ID | 名前の案 | 確かめること |
+|---|---|---|
+| X1 | `x1_jobs_run_in_the_order_they_were_queued` | 実行のスレッドを門で止め、列の長さの観測（試験専用の `queue_len`）で積んだ順を確かめながら、複数のスレッドから `post`・`run` を積む。門を開けると積んだ順に実行される。`admit` を A→B と受け付け、`B.run` を先に積めば B→A（K11 の意味）。**2b が `take_next` を差し替えても、停止以外は FIFO のままであることの基準になる** |
+| X2 | `x2_run_returns_after_the_closure_and_its_notices_finish_on_the_one_actor_thread` | すべての閉包が同じ1つのスレッド（呼び出しのスレッドとは別）で走る。閉包の中で `notice` を出し、`run` が戻った時点でその通知が記録済み（K1・K13 の境界）。`R` が戻り値として渡る。閉包が戻るまで `run` は戻らない（K2・K10） |
+| X3 | `x3_post_returns_while_the_actor_is_busy_and_runs_later` | 実行のスレッドを門で止め、`post(tray_mute_toggle)` が即座に戻る。`Accepted` は記録済み・閉包は未実行。門を開けると、順番に実行され `is_global_muted` が反転し、`global-mute-changed` が出る。本体の `Err`（子が無い等）は捨てられ、何も出ない。同じ時間、ほかのスレッドの `admission().records()`・`note`・別の `post` も戻る（列のロックを持ったまま閉包を走らせていない） |
+| X4 | `x4_a_panicking_closure_poisons_with_the_same_texts_and_the_actor_survives` | `run` の閉包が panic：呼び出し側に panic が投げ直される。続けて `start_audio`・`get_audio_state`・`get_saved_audio_config` が今の3つの文言（`commands/audio/compat_tests.rs:445-467` と同じ）。実行のスレッドは生きている（`post` した閉包が `Err(Poisoned)` を受ける）。`post` の閉包の panic でも同じ。scheduler は眠って続ける |
+| X5 | `x5_run_from_inside_a_closure_fails_at_once` | 閉包の中で、取り込んだ `AudioControl` の複製から `run` を呼ぶと `Err(Reentrant)` で戻る（固まらない。門つきで、時間切れは失敗）。その後も実行のスレッドは普通に動く。`post` は戻って、列の末尾で実行される |
+| X5b | `x5b_no_entry_handle_outside_the_command_layer` | `audio/`（`control.rs` と試験を除く）・`profile.rs`・`bundle.rs`・`obs_setup/` のソースに `AudioControl`・`AudioState` が現れない（ファイルを読む構造の試験）。持ち込みを防ぐ再発防止 |
+| X6 | `x6_dropping_the_last_control_stops_the_actor_and_drops_the_host` | `Fixture` で子を起動し、最後の `AudioControl` を捨てる：`drop` が戻った時点で、子が終わっている（`probe.wait_exit`）。列が閉じた後の `post` は閉包に `Err(Stopped)`、`run` は `Err(Stopped)`。積んであった `post` は実行されず `Err(Stopped)`。**閉包が取り込んだ最後の複製をその仕事が捨てる**場合に、固まらない（`ThreadId` の確認。時間切れは失敗） |
+| X7 | `x7_the_scheduler_ticks_through_the_actor_and_never_piles_up` | scheduler の `poll_mode_vst` が実行のスレッドの上で走り、`Scheduler` の受付が増える。実行のスレッドを止めている間、`accepted_of(Scheduler)` の増えは高々1（観測は100msだけ待つ）。`Scheduler` は `records()` に出ない。`control` を捨てると scheduler が止まる（今の試験と同じ） |
+| X8 | `x8_the_record_is_accepted_then_granted_when_the_actor_takes_it` | 実行のスレッドを止めている間は `[Accepted]` だけ。取り出した後に `LockGranted` が付き、閉包はその後に始まる（K12 と `control_tests` の記録の形） |
+| X9 | `x9_waiters_hold_no_lock_and_the_queue_lock_is_a_leaf` | `run` で待つスレッドが複数いる間、別のスレッドの `admit`・`note`・`post`・`records()` が戻る。取り出しの間（`Condvar` の待ち）も同じ。`exec(Err)` を呼ぶ間も列のロックを持たない |
+| X10 | `x10_the_test_lease_hands_the_host_out_and_poisons_on_panic` | リース：ホストを貸している間、実行のスレッドは次の仕事を取り出さない。`Drop` で返すと続く。リースを持ったまま panic すると poison し、以後の `run`・`lock` は `Err`。ホストは `Box` のまま返り、項目の値が変わらない |
+| X11 | `x11_post_after_stop_or_poison_hands_the_error_to_the_closure` | N1 の失敗の経路：poison 後・列が閉じた後の `post` が、閉包を `Err(ControlError)` で1回だけ呼ぶ。ショートカットの `ControlError` → `ShortcutError::AudioStateUnavailable` の写しを、`shortcuts.rs` の単体で固定する |
+| X12 | `x12_a_reader_blocked_in_emit_does_not_stall_the_queue_or_other_callers` | 2.2-A：`Recorder::block_after` で reader を `emit` の途中で止める。`order` を取りたい閉包は止まるが、ほかの `post`・`run` の受付・`LinkCell` の読み取り・`note` は戻る。reader を解放すると、止まっていた閉包が進み、通知の順が今と同じ（K13） |
+
+**壊して確かめる（T11 型。一時的な改変）**：
+(a) `take_next` を末尾から取る → X1。
+(b) `post` が返事を待つ → X3。
+(c) `catch_unwind` を外す → X4（実行のスレッドが死に、`Stopped` になる）。
+(d) panic の後に poison を立てない → X4。
+(e) 再入の旗を外す → X5（固まる。門の時間切れで失敗）。
+(f) 列のロックを持ったまま `exec` を呼ぶ → X3・X9。
+(g) 返事を、閉包の中の通知が終わる前に送る → X2。
+(h) `LockGranted` を積む時に記録する → X8・K12。
+(i) `Shared::drop` が列を閉じない、または `join` しない → X6。
+(j) 実行のスレッドの上でも `join` する → X6（自己 drop の場合が固まる）。
+(k) scheduler が返事を待たずに `post` する → X7。
+(l) リースが panic で poison しない → X10・`lock_failure_texts_are_fixed`。
+
+### 11.15 利用者から見て変わること
+
+- **N1**：トレイの「ミュート切替」が、先の操作の完了を待たずに戻る。長い操作（開始・再起動・配信セットの適用など）の間も、画面が固まらない。ミュートが効くのは、先の操作が終わって順番が来てからで、効くまでの時間は今と同じ。**承認は不要**（`audio-session-f1b0-changes.md` の 2章の N1。承認が要る C1〜C5 は 2a に含まない）。
+- 利用者に見えないが変わるもの：(a) 入口が来た順に実行される（今は `Mutex` の取得順が不定）。同時に押したショートカットは、押した順に実行される。(b) ショートカットが `spawn_blocking` のスレッドを使わなくなる。
+- 変わらないもの：通知の名前・中身・順、エラーの文言（ロックの失敗の文言を含む）、待つ時間の上限、`engine_generation`、先の操作の完了を待つ読み取り（K2・K10）、停止がすぐ効くか（C1 は 2b）。
+- **要承認の項目：なし。**
+
+### 11.16 未決（決め切れない点）と推奨
+
+| # | 未決 | 推奨 |
+|---|---|---|
+| U1 | 閉包の型を `'static` にするか（借用を許す `scoped` は `unsafe` が要る） | `'static`。今も `run_blocking(move || …)` の閉包は `'static`。閉包の後でも使う値だけ複製する（11.4） |
+| U2 | 試験が `MutexGuard` を使う5つの形を、試験専用のリースで残すか、`run` へ書き換えるか | リース。期待値と `thread_local!` の継ぎ目を変えず、型名3か所だけで済む。`run` 経由の試験は X 群と K 群のコマンドの試験が受け持つ |
+| U3 | ショートカットで `spawn_blocking` をやめ、OS のコールバックから直接 `post` するか | やめる（待たない・順が FIFO。11.7）。受け取る束縛の検索・gate の `try_lock`・連番の更新は、今のとおりコールバックの上 |
+| U4 | `try_new -> io::Result` を足すか | 足す（スレッドを起動できないときは、`setup` が `Err`） |
+| U5 | `setup` の emitter を `run` と `post` のどちらにするか | `run`。メインのスレッドが待つのは起動時の1件で、戻った時点の設定済みを保つ |
+| U6 | 実際の終了で、明示の `shutdown`（`RunEvent::Exit`）を足すか | 足さない。今は Job が子を回収する。終了が最大2秒遅れ、更新・一時利用の再起動の経路に影響する。別の段で、実機の確認と一緒に |
+| U7 | `ControlError` の3種を入口で区別するか | 区別しない（K の文言を保つ） |
+| U8 | scheduler を 2b の優先度の低い種類として、上限の対象外にするか | 2b で決める。2a は FIFO |
+| U9 | `Phase::LockGranted` の改名と、完了（`Completed`）の追加 | 2b（C4 が完了の件数を要る）。2a は名前を変えず、意味を「実行のスレッドが取り出した」に読み替える |
+| U10 | 実行のスレッドと列を、`audio/control.rs` に置くか、`audio/control/` の下に分けるか | 分ける。`control.rs` は入口（`AudioControl`・`Ticket`・`Admission`）だけにする |
+
+### 11.17 既知の狭い競合として残るもの
+
+- **(a) `admit` と列へ積むまでの間の追い越し**。受付の番号と列の順が入れ替わりうる。今の `Mutex` の取得順と同じ性質で、K11 が固定している。2b の「停止より前に受け付けた」は、番号と、取り出す時点の最後の停止の番号を比べて決める（積む順に頼らない）。
+- **(b) 長い閉包の間、停止・読み取り・tick は待つ**（J-18・K2・K10。停止を先にするのは 2b）。閉包の中の待ち（書き込み 5 秒・応答の期限・`ensure_clear` 最大10秒・`retire_child` 最大2秒・`EOF_WAIT` 2秒）も 2a で変わらない。複数の長い入口が並ぶと、tick の遅れが「先に並んだ合計」まで伸びる（今も、最悪は同じ）。
+- **(c) 列の長さに上限が無い**。トレイ・ショートカットの連打は、溜まった分だけ順番に実行する。上限と断りは 2b の C4。
+- **(d) 実際の終了では `Drop` が走らない**（11.3。読み取りによる確認で、実機は未確認）。子は Job が回収する。今と同じ。
+- **(e) 実行のスレッドが止まった後の `post`**：閉包は実行されず、`Err(Stopped)` を受けるだけ（トレイは何も起きない）。2a ではアプリが止まる途中でしか起きない。
+- **(f) 検出できない再入**：閉包の中で別のスレッドを起こし、そのスレッドの `run` を閉包が待つ形。今の `Mutex` でも固まる。検出は `Reentrant` の旗（同じスレッド）だけ。
+- **(g) 呼び出し側の規則違反**：閉包の中が取りうるロック（`Shortcuts` の gate など）を持ったまま `run` を呼ぶと固まる。コードの規則（11.5）で守り、機械の検査は無い。
+- **(h) リリースの panic は abort**。poison の挙動は、unwind するビルドだけ。
+- 9.10 の (a)(c)〜(h)（`LinkCell` の狭い競合）は変わらない。
+
+### 11.18 洗い出しと今のコードで食い違っていた点
+
+1. 洗い出し 1.2 の `AudioHost` の項目は 40。今は 38（`link`・`vst_operations`・`pending_reply_tx` が `LinkCell` 1つになった。`audio.rs:292`）。
+2. 洗い出しの `audio.rs` の行は、F1b-0b-1 で 8〜17 行ずれた（`execute_command` 1005→993、`ensure_engine_running` 875→865、`reply_timed_out` 1155→1141、`cut_off` 1180→1169、`notice` 659→651、`hold_notices` 676→668、`close_connection` 709→701、`kill_engine` 2789→2776、`kill_primary_engine` 2797→2784、`Drop` 2951→2938、`get_state` 2926→2909）。`control.rs`・`lib.rs`・`shortcuts.rs`・`commands/*` の行は一致（`control.rs:174,231-240,248-252`、`lib.rs:353-362,389-394,397-407`、`shortcuts.rs:418-436`）。洗い出し 4章 N1 の「`lib.rs:353-361`」は閉じ括弧を含めて `:353-362`。
+3. 入口は 95 か所で、内訳も一致（`commands/audio.rs` 59・`bundles.rs` 13・`voice_check.rs` 8・`profiles.rs` 3・`obs.rs` 2・`updates.rs` 2・`temporary_session.rs` 2・`migration.rs` 1・`shortcuts.rs` 1・`lib.rs` 3・scheduler 1）。
+4. 洗い出し 2.2 の E は「アプリの終了（`Drop`）」を並べているが、実際の終了では `Drop` は走らない（Tauri が `std::process::exit` する。読み取りによる確認）。`quit_app` が `note` と `app.exit(0)` だけである点は一致。
+5. 洗い出しに無かった事実：(i) リリースが `panic = "abort"`（`Cargo.toml:117`）。(ii) 試験の継ぎ目の `thread_local!` が6か所あり、実行のスレッドの上では効かない。(iii) 試験が `MutexGuard` の型名を直接書く3か所。(iv) COM の初期化が `routing_diag.rs:154` の1か所（MTA、結果は無視）で、長寿命の1本のスレッドで繰り返しても問題ない。
+6. 洗い出し 5.3 の 6（トレイがイベントループのスレッドでロックを待つ）は、依存のソースの読み取りで試験ではない。2a では X3 が「`post` は待たない」ことを試験にする（イベントループそのものではなく、`post` の性質として）。
