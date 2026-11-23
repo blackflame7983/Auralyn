@@ -441,8 +441,14 @@ fn z8_a_stop_during_the_hold_refuses_the_held_start_with_stopped_first_and_runs_
     control
         .post(cmd("load_plugin"), record_into(&log, "before"))
         .unwrap();
+    control
+        .post(
+            cmd("get_round_trip_measurement"),
+            record_into(&log, "normal"),
+        )
+        .unwrap();
     let before_stop = control.counted();
-    assert_eq!(before_stop, 1);
+    assert_eq!(before_stop, 2);
     let stop = control.run(stop_entry(), |_| ());
     assert_eq!(stop, Ok(()));
     wait_until("the held start is refused", || {
@@ -452,7 +458,11 @@ fn z8_a_stop_during_the_hold_refuses_the_held_start_with_stopped_first_and_runs_
         phases(control, "load_plugin"),
         [Phase::Accepted, Phase::Refused]
     );
-    assert_eq!(control.counted(), 0);
+    assert_eq!(
+        control.counted(),
+        1,
+        "断られるのは Starting だけ。Normal は残る"
+    );
     control
         .post(cmd("set_bypass"), record_into(&log, "after"))
         .unwrap();
@@ -460,12 +470,14 @@ fn z8_a_stop_during_the_hold_refuses_the_held_start_with_stopped_first_and_runs_
     assert_eq!(
         entries(&log),
         ["before:StoppedFirst"],
-        "Mute は断られず、後の Starting は窓まで保留される"
+        "Mute・Normal は断られず、後の Starting は窓まで保留される"
     );
     stuck.end();
-    wait_until("the rest run after the window", || entries(&log).len() == 3);
+    wait_until("the rest run after the window", || entries(&log).len() == 4);
     let log = entries(&log);
-    assert!(log.contains(&"mute:ok".to_owned()) && log.contains(&"after:ok".to_owned()));
+    for expected in ["mute:ok", "normal:ok", "after:ok"] {
+        assert!(log.contains(&expected.to_owned()), "{expected}");
+    }
 }
 
 // Z9：列が閉じても、実行のスレッドが異常終了しても、保留中の仕事はすべて窓の期限より前に Stopped で解放される。
