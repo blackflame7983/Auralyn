@@ -1,6 +1,6 @@
 # F1b-0b セッションの中心部の作り直しの設計（第1版・骨子）
 
-状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。Sol のレビュー2回（どちらも BLOCK）と Neon への相談を受けた第3版。閉じる側の待ちは無い。要承認の候補は無い。着手前に決めることは残っていない。次段・実装時の未決と選択肢だけの O12 を14.15 に挙げた）まで書いた。
+状態：設計の骨子（第2版）。Gemini 4 Neon のレビュー（条件つき）を受け、7章で方式と分け方を決めた。段ごとの詳細設計は、8章（F1b-0b-0）・9章（F1b-0b-1）・10章（未決の決定）・11章（F1b-0b-2a）・12章（F1b-0b-2b：停止の優先と受付の上限）・13章（F1b-0b-3：reaper と N3）・14章（F1b-0b-4：N2 の完全な形。Sol のレビュー2回（どちらも BLOCK）と Neon への相談を受けた第3版。閉じる側の待ちは無い。要承認の候補は無い。着手前に決めることは残っていない。次段・実装時の未決と選択肢だけの O12 を14.15 に挙げた）まで書き、F1b-0b-4 を実装した（実装との差は14.21）。
 
 前提の文書：
 - 今の事実：`audio-session-f1b0b-inventory.md`（bcd2dca2 の時点。以下「洗い出し」）。
@@ -2404,3 +2404,18 @@ stateDiagram-v2
 | 決定5 | 14.15 の未決を更新し、着手前に決めることを残さない | 14.15 を更新した。着手前の未決は無い。次段・実装時のもの（O4〜O6・O8〜O10）と、選択肢だけの O12 が残る |
 | Sol の2（ロック） | 警告の出力を `inner` と実行のスレッドの外へ | 警告・待ちごと設計から消えたので、対象が無い（I52） |
 | Sol の3（停止・回収・応答） | 200ms は Stop と失敗応答の返却を遅らせる。`voice_activity=false` を待ちの前へ | 待ちを外した（I49）。`kill_primary_engine` の確定を通知を積む前に置いた |
+
+### 14.21 実装で確かめ直した点（F1b-0b-4 の実装。設計との差）
+
+実装中に見つけた設計との差。本文を書き換えず、ここに残す。
+
+1. **Q8 の置き場所**：`mode_vst.rs` の試験の中（`q8_a_begin_on_a_closed_link_registers_nothing_and_the_recovery_never_waits`）。補助（`open_link_host`・`journaled`・`failed_with_recovery`）が同じファイルにあるため。`n2_tests.rs` には Q1〜Q7・Q9〜Q11。継ぎ目 `before_mode_begin` は `audio.rs` に、`before_begin_hook` の隣へ置いた。
+2. **Q9 の範囲（14.13 の記述との差）**：`reply_timed_out`（勝ち）・`cut_off` の変種は持たない。この2経路は `kill_engine` → `hold_notices` の出し直しで `order` を待つ（14.16 の (b)。今も同じ）ので、reader が発行の途中で止まっている間は、失敗の結果が決まるのも、返るのも、解放の後になる。「待たない」ことを観測できない。この2経路の「回収は通知を待たない・結果は解放の後」は、既存の `t6_c2_…`（`link_tests.rs`）・`t12`（`reply_deadline_tests.rs`）が固定する。Q9 は、`order` を通らない `ensure_clear` の失敗の3つの閉じ方（`:887`・`:899`・`:905`）で、`Stage::ResultDecided`（`ensure_clear` の失敗の直後にだけ置いた）と実際の返却を別々に観測する。
+3. **Q11 の (2)（ログの位置）**：固定するのは R3 のログ（`"[Engine] {}"`）だけ。R4・R7（`audio-level`・`audio-channel-scan`）には、`emit` の失敗を警告するログが `emit_chain` の中に今もある（main と同じ。この段は変えない）。
+4. **`reaper_seam::adopt`・`Store::adopt_for_test`**：13.13 の窓口の表に書いたが、13章では実装されていなかった。生きた子を `kill` も確認もせずに記録へ置く。Q4・Q9 が、`ensure_clear` の失敗を、閉じ方（`:887`・`:899`）と独立に注入するために使う。`:905` は `try_wait` の失敗（seam の `fails`）で記録が自然にできるので、成功の側は `before_ensure_clear` の中で、子の終了を確かめてから `real` へ戻す。
+5. **`LinkCell::lock`（試験のとき）**：`try_lock` で競合を数える（`lock_contended_for_test`）。`begin` の poison の扱い（直接 `inner.lock()`）と、製品のビルドの `lock` は変えない。
+6. **`enter` を呼ばない8か所**：R1・R4・R6・R7・R10〜R13 は状態を持たないので、設計どおり `enter` を呼ばない（`link.hold_for_test` の中で `handle_event(EditorOpened)` が戻る T9 の試験が、そのまま通る）。
+7. **`kill_primary_engine` の順**：`notify_conditions_changed`（保持する通知）を積む位置だけが、`engine_generation` の更新・`device_scan = None`・`drop_connection`・`store(false)` の後ろへ動いた。保持した通知なので、出る順・中身は変わらない（`t6`・`link_tests.rs` の既存の試験が通る）。
+8. **Q10**：`LinkCell` の poison だけ。`order` の poison は `emit.rs` の T12 が固定する。
+9. **既存の試験の期待値**：変えたのは S6（`s6_a_closed_reader_cannot_raise_voice_activity`）だけ。`ensure_engine_running` の3経路で `retire_engine` を呼ぶので、`revision` が1回多く進むが、既存の試験の期待値は変わらなかった（`audio::` 443本・`--lib` の全体 1275本が通る）。
+10. **ガードの台帳**：`config/gardening-rust-baseline.json` の `audio.rs` のファイル指紋だけを更新した（allow の数は8のまま。新しい allow・expect は無い）。`config/gardening-policy.json` の `approved` の末尾に記録し、台帳のファイルの指紋を合わせた。
