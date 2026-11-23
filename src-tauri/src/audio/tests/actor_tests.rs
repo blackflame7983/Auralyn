@@ -154,6 +154,12 @@ fn record_into(
             Ok(_) => format!("{name}:ok"),
             Err(error) => format!("{name}:{error:?}"),
         };
+        // 回収は unwind の外で行う。unwind の中なら、記録に印が付く。
+        let text = if std::thread::panicking() {
+            format!("{text}:unwinding")
+        } else {
+            text
+        };
         log.lock().unwrap().push(text);
     }
 }

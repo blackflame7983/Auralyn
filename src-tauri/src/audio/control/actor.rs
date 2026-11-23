@@ -142,7 +142,7 @@ fn lease_job(
     host: &mut Option<Box<AudioHost>>,
     poisoned: &mut bool,
 ) -> Outcome {
-    let boxed = host.take().filter(|_| !*poisoned);
+    let boxed = if *poisoned { None } else { host.take() };
     let Some(boxed) = boxed else {
         let _ = lease.grant.send(Err(ControlError::Poisoned));
         return Outcome::Done;
