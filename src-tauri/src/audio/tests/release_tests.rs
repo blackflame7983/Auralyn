@@ -326,8 +326,8 @@ fn live_intent() -> live_modes::Intent {
 /// `(ラベル, 入口, 停止より前の受付を断るか)`。入口は本番と同じく、要求から種類を決めて渡す。
 fn request_cases() -> Vec<(&'static str, Entry, bool)> {
     let post_mix =
-        |value: serde_json::Value| cmd("post_mix").request(classes::post_mix(&json(value)));
-    let mixing = |value: serde_json::Value| cmd("mixing").request(classes::mixing(&json(value)));
+        |value: serde_json::Value| cmd("post_mix").class(classes::post_mix(&json(value)));
+    let mixing = |value: serde_json::Value| cmd("mixing").class(classes::mixing(&json(value)));
     let witness = || serde_json::json!({"expectedEpoch": "e", "expectedRevision": "r"});
     let with_witness = |action: &str, extra: serde_json::Value| {
         let mut value = witness();
@@ -378,53 +378,53 @@ fn request_cases() -> Vec<(&'static str, Entry, bool)> {
         ),
         (
             "live_modes(Snapshot)",
-            cmd("live_modes").request(classes::live_modes(&live_modes::Request::Snapshot)),
+            cmd("live_modes").class(classes::live_modes(&live_modes::Request::Snapshot)),
             false,
         ),
         (
             "live_modes(SingingOn)",
-            cmd("live_modes").request(classes::live_modes(&live_modes::Request::SingingOn {
+            cmd("live_modes").class(classes::live_modes(&live_modes::Request::SingingOn {
                 intent: live_intent(),
             })),
             true,
         ),
         (
             "live_modes(TalkOn)",
-            cmd("live_modes").request(classes::live_modes(&live_modes::Request::TalkOn {
+            cmd("live_modes").class(classes::live_modes(&live_modes::Request::TalkOn {
                 intent: live_intent(),
             })),
             true,
         ),
         (
             "session_rack(Snapshot)",
-            cmd("session_rack").request(classes::session_rack(&SessionRackRequest::Snapshot)),
+            cmd("session_rack").class(classes::session_rack(&SessionRackRequest::Snapshot)),
             false,
         ),
         (
             "session_rack(Add)",
-            cmd("session_rack").request(classes::session_rack(&rack_add())),
+            cmd("session_rack").class(classes::session_rack(&rack_add())),
             false,
         ),
         (
             "session_rack(Begin)",
-            cmd("session_rack").request(classes::session_rack(&rack_begin())),
+            cmd("session_rack").class(classes::session_rack(&rack_begin())),
             true,
         ),
         (
             "builtin_effects(Snapshot)",
-            cmd("builtin_effects").request(classes::builtin_effects(&json(
+            cmd("builtin_effects").class(classes::builtin_effects(&json(
                 serde_json::json!({"action": "snapshot"}),
             ))),
             false,
         ),
         (
             "auto_gain(Status)",
-            cmd("auto_gain").request(classes::auto_gain(&auto_gain::Request::Status)),
+            cmd("auto_gain").class(classes::auto_gain(&auto_gain::Request::Status)),
             false,
         ),
         (
             "auto_gain(Apply)",
-            cmd("auto_gain").request(classes::auto_gain(&auto_gain::Request::Apply {
+            cmd("auto_gain").class(classes::auto_gain(&auto_gain::Request::Apply {
                 id: 1,
                 revision: 1,
             })),
@@ -432,14 +432,14 @@ fn request_cases() -> Vec<(&'static str, Entry, bool)> {
         ),
         (
             "noise_measurement(Snapshot)",
-            cmd("noise_measurement").request(classes::noise_measurement(
+            cmd("noise_measurement").class(classes::noise_measurement(
                 &noise_learning::Request::Snapshot,
             )),
             false,
         ),
         (
             "noise_measurement(Start)",
-            cmd("noise_measurement").request(classes::noise_measurement(
+            cmd("noise_measurement").class(classes::noise_measurement(
                 &noise_learning::Request::Start {
                     epoch: "e".into(),
                     generation: "g".into(),
@@ -449,24 +449,24 @@ fn request_cases() -> Vec<(&'static str, Entry, bool)> {
         ),
         (
             "peak_protection(None)",
-            cmd("peak_protection").request(classes::peak_protection::<()>(&None)),
+            cmd("peak_protection").class(classes::peak_protection::<()>(&None)),
             false,
         ),
         (
             "peak_protection(Some)",
-            cmd("peak_protection").request(classes::peak_protection(&Some(()))),
+            cmd("peak_protection").class(classes::peak_protection(&Some(()))),
             true,
         ),
         (
             "voice_check_preview(Status)",
-            cmd("voice_check_preview").request(classes::voice_check_preview(&preview_request(
+            cmd("voice_check_preview").class(classes::voice_check_preview(&preview_request(
                 preview::Action::Status,
             ))),
             false,
         ),
         (
             "voice_check_preview(Start)",
-            cmd("voice_check_preview").request(classes::voice_check_preview(&preview_request(
+            cmd("voice_check_preview").class(classes::voice_check_preview(&preview_request(
                 preview::Action::Start {
                     recording_id: 1,
                     device_id: "d".into(),
@@ -478,7 +478,7 @@ fn request_cases() -> Vec<(&'static str, Entry, bool)> {
         ),
         (
             "audio_frontend_bootstrap(without config)",
-            cmd("audio_frontend_bootstrap").request(classes::frontend_bootstrap(&json(
+            cmd("audio_frontend_bootstrap").class(classes::frontend_bootstrap(&json(
                 serde_json::json!({"config": null, "inputGain": 1.0, "outputGain": 1.0}),
             ))),
             false,
@@ -508,12 +508,12 @@ fn y32_request_dependent_entries_get_their_class_from_the_request() {
 
 /// `(解除の入口, 取得の入口)`。解除は満杯・期限切れの下で断られず、取得は断られる。
 fn release_pairs() -> Vec<(&'static str, Entry, Entry)> {
-    let auto = |request: auto_gain::Request| cmd("auto_gain").request(classes::auto_gain(&request));
+    let auto = |request: auto_gain::Request| cmd("auto_gain").class(classes::auto_gain(&request));
     let voice = |action: preview::Action| {
-        cmd("voice_check_preview").request(classes::voice_check_preview(&preview_request(action)))
+        cmd("voice_check_preview").class(classes::voice_check_preview(&preview_request(action)))
     };
     let noise = |request: noise_learning::Request| {
-        cmd("noise_measurement").request(classes::noise_measurement(&request))
+        cmd("noise_measurement").class(classes::noise_measurement(&request))
     };
     let start = || preview::Action::Start {
         recording_id: 1,
@@ -581,20 +581,20 @@ fn release_pairs() -> Vec<(&'static str, Entry, Entry)> {
         ),
         (
             "set_channel_scan(false)",
-            cmd("set_channel_scan").request(classes::set_channel_scan(false)),
-            cmd("set_channel_scan").request(classes::set_channel_scan(true)),
+            cmd("set_channel_scan").class(classes::set_channel_scan(false)),
+            cmd("set_channel_scan").class(classes::set_channel_scan(true)),
         ),
         (
             "set_loudness_measurement(None)",
-            cmd("set_loudness_measurement").request(classes::set_loudness_measurement(&None)),
-            cmd("set_loudness_measurement").request(classes::set_loudness_measurement(&Some(1))),
+            cmd("set_loudness_measurement").class(classes::set_loudness_measurement(&None)),
+            cmd("set_loudness_measurement").class(classes::set_loudness_measurement(&Some(1))),
         ),
         (
             "session_rack(Finish)",
-            cmd("session_rack").request(classes::session_rack(&SessionRackRequest::Finish {
+            cmd("session_rack").class(classes::session_rack(&SessionRackRequest::Finish {
                 token: "t".into(),
             })),
-            cmd("session_rack").request(classes::session_rack(&rack_begin())),
+            cmd("session_rack").class(classes::session_rack(&rack_begin())),
         ),
     ]
 }

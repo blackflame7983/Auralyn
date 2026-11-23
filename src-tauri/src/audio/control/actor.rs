@@ -151,19 +151,13 @@ fn execute(
     let started = Instant::now();
     match kind {
         JobKind::Run { tx, f } => {
-            let (reply, outcome) = {
-                let _scope = queue.store().begin_closure();
-                run_job(f, host, *poisoned)
-            };
+            let (reply, outcome) = run_job(f, host, *poisoned);
             finish.completed(started);
             reply_to(queue, tx, reply);
             outcome
         }
         JobKind::Post { f } => {
-            let outcome = {
-                let _scope = queue.store().begin_closure();
-                post_job(f, host, *poisoned)
-            };
+            let outcome = post_job(f, host, *poisoned);
             finish.completed(started);
             outcome
         }

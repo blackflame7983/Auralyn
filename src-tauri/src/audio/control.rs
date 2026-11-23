@@ -2,8 +2,7 @@
 //! `post`（待たない）で閉包を渡す。受付の順序と、実行のスレッドが取り出した順序を記録する。
 //!
 //! 記録は受付の順序と取り出した順序を残すだけである。操作の並べ替えにも、利用者から見た勝ち負けにも
-//! 使わない。仕事は受付の番号の順に1件ずつ実行する（停止の列が先）。子を起動しうる仕事は、終了を確かめられない
-//! 子の窓が開いている間、列の中で保留する。
+//! 使わない。仕事は受付の番号の順に1件ずつ実行する（停止の列が先）。
 mod actor;
 mod class;
 #[cfg(test)]
@@ -16,13 +15,13 @@ pub(crate) use lease::HostLease;
 #[cfg(test)]
 pub(crate) use queue::ActorPoint;
 
-pub(crate) use class::{class_of, launch_of, RequestKind};
+pub(crate) use class::class_of;
+pub use class::JobClass;
 #[cfg(test)]
 pub(crate) use class::{
-    request_class as request_class_of, request_launch, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS,
-    REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
+    request_class as request_class_of, NAME_CLASSES, NAME_PAIRS, REQUEST_CLASSES, REQUEST_ENTRIES,
+    REQUEST_PAIRS,
 };
-pub use class::{JobClass, Launch};
 
 use super::{engine_life, AudioHost};
 use queue::{Job, JobKind, JobQueue, Payload, Reply, ReplyTx};
@@ -133,7 +132,6 @@ pub struct Entry {
     pub kind: EntryKind,
     pub name: &'static str,
     class: Option<JobClass>,
-    launch: Option<Launch>,
 }
 
 impl Entry {
@@ -142,7 +140,6 @@ impl Entry {
             kind,
             name,
             class: None,
-            launch: None,
         }
     }
     pub const fn command(name: &'static str) -> Self {
@@ -154,18 +151,6 @@ impl Entry {
     /// 名前では決まらない入口が、要求の中身から決めた種類を渡す。
     pub const fn class(mut self, class: JobClass) -> Self {
         self.class = Some(class);
-        self
-    }
-    /// 名前では決まらない入口が、要求の中身から決めた種類と起動しうる役割を渡す。
-    pub(crate) const fn request(mut self, kind: RequestKind) -> Self {
-        self.class = Some(kind.class);
-        self.launch = Some(kind.launch);
-        self
-    }
-    /// 試験で、起動しうる役割を指定する。
-    #[cfg(test)]
-    pub(crate) const fn launch(mut self, launch: Launch) -> Self {
-        self.launch = Some(launch);
         self
     }
 }
@@ -323,8 +308,6 @@ pub struct Ticket<'a> {
     seq: u64,
     entry: Entry,
     class: JobClass,
-    launch: Launch,
-    known: u64,
     accepted_at: Instant,
 }
 
@@ -371,14 +354,7 @@ impl WeakAudioControl {
 impl AudioControl {
     /// 実行のスレッドを起動して、ホストを渡す。
     pub fn try_new(host: AudioHost) -> io::Result<Self> {
-        let store = host.retired();
-        let queue = Arc::new(JobQueue::new(store.clone()));
-        let waker = Arc::downgrade(&queue);
-        store.bell().register(Box::new(move || {
-            if let Some(queue) = waker.upgrade() {
-                queue.wake();
-            }
-        }));
+        let queue = Arc::new(JobQueue::new());
         let admission = Arc::new(Admission::new());
         let handle = actor::spawn(queue.clone(), admission.clone(), host)?;
         Ok(Self {
@@ -410,16 +386,12 @@ impl AudioControl {
     pub fn admit(&self, entry: Entry) -> Ticket<'_> {
         let class = class_of(entry);
         let accepted_at = Instant::now();
-        // 見えている記録の番号は、受付を確定する前に固定する。受付の間に足された記録では保留しない。
-        let known = self.shared.queue.store().last_id();
         let seq = self.shared.admission.accept(entry);
         Ticket {
             control: self,
             seq,
             entry,
             class,
-            launch: launch_of(entry),
-            known,
             accepted_at,
         }
     }
@@ -568,20 +540,10 @@ impl<'a> Ticket<'a> {
     }
 
     fn job(&self, kind: JobKind) -> Job {
-        #[cfg(test)]
-        let launch = if matches!(kind, JobKind::Lease(_)) {
-            Launch::None
-        } else {
-            self.launch
-        };
-        #[cfg(not(test))]
-        let launch = self.launch;
         Job {
             seq: self.seq,
             entry: self.entry,
             class: self.class,
-            launch,
-            known: self.known,
             accepted_at: self.accepted_at,
             kind,
         }

@@ -116,7 +116,7 @@ fn t1_c3_an_unanswered_command_is_cut_off_at_its_deadline_and_the_next_operation
 }
 
 // T9：文言。子の終了を確かめられたときだけ「終了しました」。確かめられなければ `engine_unconfirmed`
-// （J-13 の数え方も、書き込みの期限切れと同じ記録で数える）。
+// （J-13：期限を過ぎても残れば再起動の案内に変わるのも、書き込みの期限切れと同じ記録で見る）。
 #[test]
 fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
     for confirmed in [true, false] {
@@ -140,11 +140,9 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
             );
             assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
             assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
-            reaper_seam::pass_window(&host);
-            for _ in 0..3 {
-                host.ensure_engine_running().unwrap_err();
-            }
-            assert!(reaper_seam::unconfirmed(&host).repeated);
+            assert!(!reaper_seam::unconfirmed(&host, Role::Primary).repeated);
+            reaper_seam::pass_deadline();
+            assert!(reaper_seam::unconfirmed(&host, Role::Primary).repeated);
             reaper_seam::real();
         }
         drop(host);

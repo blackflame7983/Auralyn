@@ -694,10 +694,6 @@ impl AudioHost {
         self.conditions.clone()
     }
 
-    fn retired(&self) -> Arc<engine_life::Store> {
-        self.retired.clone()
-    }
-
     /// ホストが出す通知。`hold_notices` の間は保持して、回収の後に出す。
     fn notice<S: Serialize + Clone>(&self, name: &'static str, payload: S) {
         {
@@ -1026,7 +1022,7 @@ impl AudioHost {
                     return Err(unconfirmed.into());
                 }
                 if self.retired.recorded(self.role()) > recorded {
-                    return Err(self.retired.unconfirmed_error().into());
+                    return Err(self.retired.unconfirmed_error(self.role()).into());
                 }
                 return Err(anyhow!(engine_life::LAUNCH_FAILED));
             }
@@ -1228,7 +1224,9 @@ impl AudioHost {
             self.notice("audio-error", "音声エンジンとの通信が切れました");
         }
         if self.retired.recorded(self.role()) > recorded {
-            return Err(anyhow::Error::new(self.retired.unconfirmed_error()));
+            return Err(anyhow::Error::new(
+                self.retired.unconfirmed_error(self.role()),
+            ));
         }
         Err(anyhow!(REPLY_TIMED_OUT))
     }
@@ -1250,7 +1248,7 @@ impl AudioHost {
         }
         // 「終了しました」と言えるのは、子の終了を確かめられたときだけ。
         if cause == CloseCause::WriteTimeout && unconfirmed {
-            return anyhow::Error::new(self.retired.unconfirmed_error());
+            return anyhow::Error::new(self.retired.unconfirmed_error(self.role()));
         }
         error.into()
     }
@@ -3252,8 +3250,8 @@ mod link_seam;
 mod reaper_seam;
 
 #[cfg(test)]
-#[path = "audio/tests/reaper_tests.rs"]
-mod reaper_tests;
+#[path = "audio/tests/unconfirmed_tests.rs"]
+mod unconfirmed_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_cell_tests.rs"]
