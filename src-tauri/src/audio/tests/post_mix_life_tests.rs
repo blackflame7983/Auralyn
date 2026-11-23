@@ -759,12 +759,19 @@ fn t2_c3_a_post_mix_child_that_stops_answering_is_retired_and_the_primary_is_unt
     rig.finish();
 }
 
-// S2（今の挙動の固定。F1b-0b-1 で、期待値を `an_eof_right_after_settle_keeps_enabled`
-// 「`enabled` が残り、`disconnected` が立ち、`error` が空」へ反転する。設計 9.8）：
-// 切断ではない理由で公開の操作が失敗し、`settle()` が開いた接続を読んだ直後に EOF が来ると、
-// 切断として数えられず、`enabled` が落ちて保存状態の読み直しを求める。
+fn refused_add(rig: &Rig) -> Request {
+    Request::Add {
+        expected_epoch: rig.host.post_mix.epoch.clone(),
+        expected_revision: rig.host.post_mix.revision.to_string(),
+        path: "new.vst3".into(),
+        class_id: None,
+    }
+}
+
+// S2（F1b-0b-1 で反転済み。設計 9.8・T5）：切断ではない理由で公開の操作が失敗し、失敗の処理が決める直前に
+// EOF が来ても、切断として数える。`enabled` は残り、`disconnected` が立ち、`error` は空。子は外れて回収される。
 #[test]
-fn s2_today_an_eof_right_after_settle_drops_enabled() {
+fn an_eof_right_after_settle_keeps_enabled() {
     let mut rig = Rig::with_primary(
         stopped_primary(),
         [
@@ -775,12 +782,29 @@ fn s2_today_an_eof_right_after_settle_drops_enabled() {
     rig.host.post_mix.after_failure_settle = Some(Box::new(|child| {
         assert!(child.link.close(CloseCause::Eof));
     }));
-    let request = Request::Add {
-        expected_epoch: rig.host.post_mix.epoch.clone(),
-        expected_revision: rig.host.post_mix.revision.to_string(),
-        path: "new.vst3".into(),
-        class_id: None,
-    };
+    let request = refused_add(&rig);
+    let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
+    assert_ne!(error.to_string(), EXITED, "切断ではない理由の失敗");
+    let state = &rig.host.post_mix;
+    assert!(state.enabled && !state.restored && !state.running);
+    assert!(state.child.is_none(), "子は外れている");
+    assert!(state.error.is_none(), "保存状態の読み直しは求めない");
+    assert!(state.disconnected.is_some() && state.detached == 1);
+    assert!(rig.post.probe(0).wait_exit(5000), "子は回収される");
+    rig.finish();
+}
+
+// T5：切断ではない理由の通常の失敗は、今のとおり、子を捨てて `enabled` を落とし、保存状態の読み直しを求める。
+#[test]
+fn an_ordinary_failure_still_discards_the_child_and_drops_enabled() {
+    let mut rig = Rig::with_primary(
+        stopped_primary(),
+        [
+            ("GetPluginRack", vec![rack_with_a_plugin()]),
+            ("LoadPlugin", vec![error_line("load refused")]),
+        ],
+    );
+    let request = refused_add(&rig);
     let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
     assert_ne!(error.to_string(), EXITED, "切断ではない理由の失敗");
     let state = &rig.host.post_mix;

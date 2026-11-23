@@ -22,8 +22,8 @@ mod replies;
 mod session_rack;
 mod writer;
 use anyhow::{anyhow, Result};
-use link::{CloseCause, LinkState};
-use replies::{ReplyOutcome, ReplySlot};
+use link::{CloseCause, LinkCell};
+use replies::ReplyOutcome;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -288,14 +288,11 @@ pub struct AudioHost {
     live_modes: live_modes::HostModes,
     mode_vst: mode_vst::State,
     voice_activity: Arc<AtomicBool>,
-    /// 接続の開閉と、閉じた理由。接続ごとに作り直す。
-    link: Arc<LinkState>,
-    vst_operations: Arc<engine_exit::Operations>,
+    /// 接続の開閉・閉じた理由・応答の待ち（1件だけ。直列プロトコル）・操作の記録。接続ごとに作り直す。
+    link: Arc<LinkCell>,
     child: Option<Child>,
     /// 子の stdin の唯一の持ち主（接続ごとの書き込みスレッド）への口。
     writer: Option<writer::Writer>,
-    // 応答の待ちは1件だけ（直列プロトコル）。接続ごとに作り直す。
-    pending_reply_tx: Arc<ReplySlot>,
     emitter: Arc<emit::Notifier>,
     /// 子の回収の前に生まれた通知を、回収の後まで保持する。
     held_notices: Mutex<HeldNotices>,
@@ -564,11 +561,9 @@ impl AudioHost {
             live_modes: live_modes::HostModes::new(&config_dir),
             mode_vst,
             voice_activity: Arc::new(AtomicBool::new(false)),
-            link: Arc::new(LinkState::closed()),
-            vst_operations: Arc::new(engine_exit::Operations::default()),
+            link: Arc::new(LinkCell::closed()),
             child: None,
             writer: None,
-            pending_reply_tx: Arc::new(ReplySlot::default()),
             emitter: Arc::new(emit::Notifier::default()),
             held_notices: Mutex::new(HeldNotices::default()),
             confirming_start: false,
@@ -611,13 +606,10 @@ impl AudioHost {
         self.writer = Some(writer::Writer::start(stdin, self.link.clone()));
     }
 
-    /// 試験で、接続の開閉を直接決める。開くときは、閉じていた応答の待ちも開き直す。
+    /// 試験で、接続の開閉を直接決める。
     #[cfg(test)]
     pub(crate) fn set_link_for_test(&mut self, open: bool) {
         self.link.set_open_for_test(open);
-        if open {
-            self.pending_reply_tx.reopen_for_test();
-        }
     }
 
     /// 試験で、writer を差し替える。旧い writer は持ち続け、子の stdin を閉じない（子が先に終わる競りを避ける）。
@@ -708,8 +700,6 @@ impl AudioHost {
     /// 接続を捨てる（2.3 の 1〜3）。勝ち負けを返す。子の回収は呼び出し側が続ける。
     fn close_connection(&mut self, cause: CloseCause) -> bool {
         let won = self.link.close(cause);
-        // 取り出した送り側を捨てて、待ち手を解放する。reader が先に取り出していたら、reader に任せる。
-        drop(self.pending_reply_tx.close());
         self.writer = None;
         won
     }
@@ -933,8 +923,6 @@ impl AudioHost {
         self.voice_activity = Arc::new(AtomicBool::new(false));
         reader::Reader {
             link: self.link.clone(),
-            operations: self.vst_operations.clone(),
-            replies: self.pending_reply_tx.clone(),
             voice_activity: self.voice_activity.clone(),
             notifier: self.emitter.clone(),
             conditions: self.conditions.clone(),
@@ -1058,22 +1046,18 @@ impl AudioHost {
     fn reset_engine_reader(&mut self) {
         // 旧readerの終了を新しい接続へ持ち越さない。
         self.close_connection(CloseCause::Intentional);
-        self.pending_reply_tx = Arc::new(ReplySlot::default());
-        self.link = Arc::new(LinkState::open());
-        self.vst_operations = Arc::new(engine_exit::Operations::default());
+        self.link = Arc::new(LinkCell::open());
     }
 
     fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         self.guard_mode_vst()?;
-        anyhow::ensure!(self.link.is_open(), replies::CLOSED);
         let json = serde_json::to_string(&cmd)?;
         #[cfg(test)]
         before_begin_hook::run();
 
         // IDのない直列プロトコルなので、タイムアウトした応答を受け取るまで
         // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
-        let rx = self.pending_reply_tx.begin()?;
-        self.vst_operations.begin(&cmd);
+        let rx = self.link.begin(Some(&cmd))?;
         let limit = writer::reply_limit(&cmd);
         let submitted = self.submit_write(writer::Payload::Json(json));
         self.await_reply(submitted, rx, limit)
@@ -1150,13 +1134,12 @@ impl AudioHost {
 
     /// 応答の期限切れで接続を切り離す（C3、2.3 と同じ後始末）。
     ///
-    /// 先に `LinkState` を閉じる競りに出る。勝てば Host が通知を出し、負ければ reader の EOF として扱い
-    /// （`vst_operations` には触れず、原因は reader の採取に任せる）、どちらも子は必ず回収する。
+    /// 先に接続を閉じる競りに出る。勝てば Host が通知を出し、負ければ reader の EOF として扱い
+    /// （記録には触れず、原因は reader の採取に任せる）、どちらも子は必ず回収する。
+    /// EOF に負けたときは、回収の後に、reader が通知を出し終えるのを（上限つきで）待ってから返す。
     fn reply_timed_out(&mut self) -> Result<IpcResponse> {
-        let won = self.link.close(CloseCause::ReplyTimeout);
-        if won {
-            self.vst_operations.timeout();
-        }
+        let link = self.link.clone();
+        let won = link.close(CloseCause::ReplyTimeout);
         let recorded = self.retired.pending(self.role());
         // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
         if self.confirming_start {
@@ -1165,6 +1148,11 @@ impl AudioHost {
             self.kill_engine();
         }
         if !won {
+            if link.cause() == Some(CloseCause::Eof)
+                && !link.wait_notified(Instant::now() + writer::eof_wait())
+            {
+                writer::warn_eof_wait_exceeded();
+            }
             return Ok(IpcResponse::Error(ENGINE_EXITED.to_string()));
         }
         if !self.post_role && !self.confirming_start {
@@ -1178,8 +1166,6 @@ impl AudioHost {
 
     /// 書き込みの失敗・期限切れで接続を切り離す（2.3）。書きかけのJSONや遅い応答が残る接続を再利用しない。
     fn cut_off(&mut self, cause: CloseCause, error: std::io::Error) -> anyhow::Error {
-        self.vst_operations
-            .response(&IpcResponse::Error(error.to_string()));
         let won = self.link.close(cause);
         let recorded = self.retired.pending(self.role());
         if self.confirming_start {
@@ -3143,6 +3129,10 @@ mod control_tests;
 #[cfg(test)]
 #[path = "audio/tests/link_seam.rs"]
 mod link_seam;
+
+#[cfg(test)]
+#[path = "audio/tests/link_cell_tests.rs"]
+mod link_cell_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_tests.rs"]

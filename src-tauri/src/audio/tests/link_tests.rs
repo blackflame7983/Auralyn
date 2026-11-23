@@ -682,8 +682,8 @@ fn mixing_selection() -> crate::audio_engine::mixing::Start {
     }
 }
 
-// 6回目：reader は先に `LinkState` を閉じ、その後に `ReplySlot` を閉じる。`LinkState` を閉じた直後で止めても、
-// - その間に `begin()` が通った待ち手は、writer の `Aborted` を経て、`Eof`（`Engine Crashed/Exited`）で解放される。
+// 6回目：reader は接続（`LinkCell`）を閉じるとき、待ち手の送り側も同じ区間で取り出す。閉じた直後で止めても、
+// - 先に登録した待ち手は、writer の `Aborted` を経て、`Eof`（`Engine Crashed/Exited`）で解放される。
 // - EOF の通知（K13 の3つの列）は欠けずに出る。
 // - 配信ミックスの子とオケの入力の選択は残る（主の EOF で捨てない）。
 #[test]
@@ -696,13 +696,12 @@ fn t4_a_reader_stopped_just_after_closing_the_link_still_releases_the_waiter_and
     host.post_mix.adopt_child_for_test(post);
     host.mixing.selected = Some(mixing_selection());
     let epoch = host.conditions.new_engine();
+    let rx = link_seam::begin_request(&host, None).expect("接続は開いている");
     let pause = reader::Pause::closed();
     let mut reader = reader_for(&host, epoch);
     reader.pause = Some(pause.clone());
     let finishing = std::thread::spawn(move || reader.finish());
-    wait_until("reader が LinkState を閉じる", || !host.link.is_open());
-    // 接続は閉じたが、待ちはまだ開いている。ここで `begin()` が通る。
-    let rx = link_seam::begin_request(&host, None).expect("待ちはまだ開いている");
+    wait_until("reader が接続を閉じる", || !host.link.is_open());
     pause.release();
     let response = host
         .await_reply(
@@ -742,17 +741,36 @@ fn host_with_a_paused_eof_reader() -> (
     (host, recorder, pause, finishing)
 }
 
-// S1（今の挙動の固定。F1b-0b-1 で、期待値を「送っていない操作は原因に載らない」へ反転する。設計 9.8）：
-// reader が EOF の競りに勝って止まっている間に `begin` が通ると、writer は書かない（`Aborted`）のに、
-// その操作が終了の原因に載る。
-#[test]
-fn s1_today_an_unsent_vst_operation_is_named_as_the_exit_cause() {
-    let (mut host, recorder, pause, finishing) = host_with_a_paused_eof_reader();
-    let load = IpcCommand::LoadPlugin {
+fn unsent_load() -> IpcCommand {
+    IpcCommand::LoadPlugin {
         path: "C:/vst/unsent.vst3".into(),
         class_id: None,
-    };
-    let rx = link_seam::begin_request(&host, Some(&load)).expect("待ちはまだ開いている");
+    }
+}
+
+fn exited_payload(recorder: &emit::Recorder) -> serde_json::Value {
+    recorder
+        .events()
+        .into_iter()
+        .find(|(name, _)| name == "audio-engine-exited")
+        .expect("終了の通知が出る")
+        .1
+}
+
+// S1（F1b-0b-1 で反転済み。設計 9.8・T2）：書き込みを始めていない VST の操作は、終了の原因に載らない。
+// (i) `begin` が先：登録は通るが writer は書かず（`Aborted`）、原因は `unknown`。待ち手は `Eof` で解放される。
+// (ii) EOF の競りが先：`begin` は `CLOSED`。登録は起きない。
+#[test]
+fn an_unsent_vst_operation_is_not_named_as_the_exit_cause() {
+    let (mut host, recorder) = open_host();
+    let epoch = host.conditions.new_engine();
+    let rx = link_seam::begin_request(&host, Some(&unsent_load())).unwrap();
+    let pause = reader::Pause::closed();
+    let mut reader = reader_for(&host, epoch);
+    reader.pause = Some(pause.clone());
+    let finishing = link_seam::finish_eof(reader);
+    wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
+    assert!(!host.link.mark_sent(), "writer は書かない（`Aborted`）");
     let release = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(50));
         pause.release();
@@ -767,53 +785,59 @@ fn s1_today_an_unsent_vst_operation_is_named_as_the_exit_cause() {
     release.join().unwrap();
     finishing.join().unwrap();
     assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
-    let exited = recorder
-        .events()
-        .into_iter()
-        .find(|(name, _)| name == "audio-engine-exited")
-        .expect("終了の通知が出る")
-        .1;
-    assert_eq!(exited["cause"], "vst_operation");
-    assert_eq!(exited["op"], "load");
-    assert_eq!(exited["path"], "C:/vst/unsent.vst3");
+    assert_eq!(exited_payload(&recorder)["cause"], "unknown");
+
+    let (host, recorder, pause, finishing) = host_with_a_paused_eof_reader();
+    assert_eq!(
+        link_seam::begin_request(&host, Some(&unsent_load()))
+            .unwrap_err()
+            .to_string(),
+        replies::CLOSED
+    );
+    pause.release();
+    finishing.join().unwrap();
+    assert_eq!(exited_payload(&recorder)["cause"], "unknown");
 }
 
-// S4（今の挙動の固定。F1b-0b-1 で、期待値を `Empty`・解放後に通知3件の後に `Eof` へ反転する。設計 9.8）：
-// reader が EOF の競りに勝って止まっている間に、別の入口の `drop_connection` が待ち手の送り側を捨てる。
-// 待ち手は、通知より前に切断で解放される。
+// S4（F1b-0b-1 で反転済み。設計 9.8）：reader が EOF の競りに勝って止まっている間に、別の入口の
+// `drop_connection` が走っても、待ち手の送り側は reader の手に残る。待ち手は、通知3件の後に `Eof` で解放される。
 #[test]
-fn s4_today_a_host_close_drops_the_waiter_before_the_eof_notices() {
-    let (mut host, recorder, pause, finishing) = host_with_a_paused_eof_reader();
-    let rx = link_seam::begin_request(&host, None).expect("待ちはまだ開いている");
+fn a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter() {
+    let (mut host, recorder) = open_host();
+    let epoch = host.conditions.new_engine();
+    let rx = link_seam::begin_request(&host, None).unwrap();
+    let pause = reader::Pause::closed();
+    let mut reader = reader_for(&host, epoch);
+    reader.pause = Some(pause.clone());
+    let finishing = link_seam::finish_eof(reader);
+    wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
     assert!(!host.drop_connection(CloseCause::Intentional));
-    assert!(matches!(
-        rx.try_recv(),
-        Err(mpsc::TryRecvError::Disconnected)
-    ));
+    assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
     assert!(names(&recorder).is_empty(), "通知はまだ出ていない");
     pause.release();
     finishing.join().unwrap();
     assert_eq!(
         names(&recorder),
         [CC, "audio-engine-exited", "audio-error"],
-        "解放の後に、EOF の通知3件が出る"
+        "通知3件の後に、待ち手が解放される"
     );
+    assert!(matches!(rx.recv().unwrap(), ReplyOutcome::Eof));
 }
 
-// S5（今の挙動の固定。F1b-0b-1 で、期待値を `cas_eof` が返した原因 `vst_operation`・`load` へ反転する。設計 9.8）：
-// EOF が先に勝っていても、`cut_off`（書き込みの失敗）は競りの前に操作の記録を消すので、終了の原因が `unknown` になる。
-// 応答の期限切れ（`reply_timed_out`）は、負けたとき記録に触れないので、原因は本当の VST のまま。
+// S5（F1b-0b-1 で反転済み。設計 9.8）：EOF が先に勝っていても、`cut_off`（書き込みの失敗）は記録に触れない。
+// 終了の原因は、`cas_eof` が呼んだ `close_eof` が返した、本当の VST。
+// 応答の期限切れ（`reply_timed_out`）も、負けたとき記録に触れない。
 #[test]
-fn s5_today_cut_off_clears_the_operation_even_when_eof_won() {
+fn cut_off_leaves_the_operation_as_the_exit_cause_when_eof_won() {
     for write_failure in [true, false] {
         let (mut host, _) = open_host();
         let load = IpcCommand::LoadPlugin {
             path: "C:/vst/crashing.vst3".into(),
             class_id: None,
         };
-        link_seam::register_sent_operation(&host, &load);
-        let rx = link_seam::begin_request(&host, None).unwrap();
+        let rx = link_seam::register_sent_operation(&host, &load);
         assert!(link_seam::cas_eof(&host));
+        link_seam::mark_notified(&host);
         if write_failure {
             let error = host
                 .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
@@ -834,12 +858,11 @@ fn s5_today_cut_off_clears_the_operation_even_when_eof_won() {
         }
         assert_eq!(host.link.cause(), Some(CloseCause::Eof));
         let exit = link_seam::take_exit(&host);
-        if write_failure {
-            assert_eq!(exit["cause"], "unknown", "cut_off は記録を先に消す");
-        } else {
-            assert_eq!(exit["cause"], "vst_operation", "期限切れは記録に触れない");
-            assert_eq!(exit["op"], "load");
-        }
+        assert_eq!(
+            exit["cause"], "vst_operation",
+            "負けた cut_off も期限切れも、記録に触れない（write_failure={write_failure}）"
+        );
+        assert_eq!(exit["op"], "load");
     }
 }
 

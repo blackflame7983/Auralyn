@@ -129,7 +129,7 @@
 | `deliver(&AudioHost, Response)`・`deliver_at(…, Instant)` | `pending_reply_tx.deliver*` | `link.deliver*` |
 | `win_eof(&AudioHost) -> Option<Sender<ReplyOutcome>>` | `link.close(Eof)` が勝てば、`pending_reply_tx.close()` を返す（reader の勝ちの真似） | `link.close_eof()` の `waiter`（`exit` は**捨てる**。原因を見ない試験だけが使う） |
 | `cas_eof(&AudioHost) -> bool`・`take_exit(&AudioHost) -> ExitPayload`（S5 専用の組） | `cas_eof` は `link.close(Eof)` だけ（送り側にも記録にも触れない）。`take_exit` は `vst_operations.take_exit()`（後から、`cut_off` の後に採る） | `cas_eof` は `link.close_eof()` を呼び、返った `EofWin` を窓口が保持する。`take_exit` は、**保持した `exit`（`close_eof` が返した原因）**を返す。S5 はこの原因を検査する |
-| `finish_eof(&AudioHost, epoch) -> JoinHandle` | `reader_for(…).finish()` を別スレッドで走らせる（通知の列を出し切り、待ち手へ `Eof` を送るところまで進める） | 同じ（`mark_notified()` も呼ばれる） |
+| `finish_eof(reader) -> JoinHandle` | 先に `reader_for(&AudioHost, epoch)` で組んだ reader（`pause` を足せる）を受け取り、別スレッドで `finish()` を走らせる（通知の列を出し切り、待ち手へ `Eof` を送るところまで進める。ホストを別スレッドが持つ間も使えるよう、組む側と走らせる側を分ける） | 同じ（`mark_notified()` も呼ばれる） |
 | `register_sent_operation(&AudioHost, &Command)` | `vst_operations.begin(cmd)` | `begin` の後に `mark_sent` |
 | `reader_for(&AudioHost, epoch) -> Reader` | `Reader { link, operations, replies, … }` を組む（`link_tests.rs:30-41`、`reply_deadline_tests.rs:56-69` の2つを1つにする） | `Reader { link, … }` |
 | `cancel(&AudioHost)` | `pending_reply_tx.cancel()` | `link.cancel()` |

@@ -157,9 +157,9 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
 fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_retires_the_child() {
     let (mut host, observer) = silent_host();
     observer.recorder.clear();
+    let rx = link_seam::begin_request(&host, None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
-    let rx = link_seam::begin_request(&host, None).unwrap();
     release_when_retired(&pause);
     let response = host
         .await_reply(
@@ -189,41 +189,33 @@ fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_ret
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
 
-// S3（今の挙動の固定。F1b-0b-1 で、期待値を「reader を止めている間は戻らない。解放後、通知3件の後に戻る」へ反転する。
-// 設計 9.8）：期限の直前に reader が EOF の競りに勝っていると、負けた `reply_timed_out` は、reader が通知を出す前に
-// `Engine Crashed/Exited` で戻る。
+// S3（F1b-0b-1 で反転済み。設計 9.8・T6）：期限の直前に reader が EOF の競りに勝っていると、負けた `reply_timed_out` は、
+// 子を回収した後、reader が通知を出し終えるまで戻らない。解放後、通知3件が出てから `Engine Crashed/Exited` で戻る。
 #[test]
-fn s3_today_the_c3_loser_returns_before_the_eof_notices() {
+fn the_c3_loser_waits_for_the_eof_notices() {
     let (mut host, observer) = silent_host();
     observer.recorder.clear();
+    let rx = link_seam::begin_request(&host, None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
-    let rx = link_seam::begin_request(&host, None).unwrap();
-    let response = host
-        .await_reply(
+    let caller = std::thread::spawn(move || {
+        let response = host.await_reply(
             Ok(done_with(
                 WriteResult::Ok,
                 Instant::now() - Duration::from_secs(12),
             )),
             rx,
             Duration::from_secs(10),
-        )
-        .unwrap();
-    assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
-    assert_eq!(
-        count(&observer, "audio-engine-exited"),
-        0,
-        "戻った時点で、EOF の通知は出ていない"
-    );
-    assert_eq!(
-        count(&observer, "audio-error"),
-        0,
-        "戻った時点で、Host も reader も audio-error を出していない"
-    );
-    assert!(host.child.is_none(), "子の回収は、通知より先に終わっている");
-    assert!(!reader_thread.is_finished(), "reader は止まったまま");
+        );
+        (host, response)
+    });
+    assert!(observer.probe(0).wait_exit(5000), "子は回収される");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!caller.is_finished(), "reader を止めている間は戻らない");
+    assert_eq!(count(&observer, "audio-engine-exited"), 0);
     pause.release();
-    reader_thread.join().unwrap();
+    let (host, response) = caller.join().unwrap();
+    assert!(matches!(response.unwrap(), IpcResponse::Error(text) if text == EXITED));
     let names = observer.recorder.names();
     assert_eq!(
         names[names.len() - 3..],
@@ -232,8 +224,10 @@ fn s3_today_the_c3_loser_returns_before_the_eof_notices() {
             "audio-engine-exited",
             "audio-error"
         ],
-        "解放の後に、EOF の通知3件が出る"
+        "戻った時点で、EOF の通知3件が出ている"
     );
+    assert!(host.child.is_none(), "子の回収は済んでいる");
+    reader_thread.join().unwrap();
     drop(host);
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
@@ -246,10 +240,9 @@ fn t13_a_lost_race_leaves_the_vst_operation_as_the_exit_cause() {
         path: "C:/vst/crashing.vst3".into(),
         class_id: None,
     };
-    link_seam::register_sent_operation(&host, &load);
+    let rx = link_seam::register_sent_operation(&host, &load);
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
-    let rx = link_seam::begin_request(&host, None).unwrap();
     release_when_retired(&pause);
     host.await_reply(
         Ok(done_with(
@@ -322,13 +315,13 @@ fn s7_attempt(respawn: bool) {
         host.ensure_engine_running().unwrap();
         assert_eq!(observer.spawn_count(), 2, "次の操作で作り直す");
         assert_eq!(
-            link_seam::take_exit(&host)["cause"],
+            link_seam::exit_record(&host)["cause"],
             "unknown",
             "作り直した接続へ、機器を開く記録を持ち越さない"
         );
     } else {
         assert_eq!(
-            link_seam::take_exit(&host)["cause"],
+            link_seam::exit_record(&host)["cause"],
             "device_open",
             "期限切れの `Start` は、応答までの間、機器を開く記録を残す"
         );
