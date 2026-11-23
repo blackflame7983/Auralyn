@@ -150,7 +150,7 @@ it('再開の待ち中に手動で開始されたら、予約した再開を行�
     expect(start).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
 });
-it('再開のStart中に手動停止され、そのStartが失敗しても再予約しない', async () => {
+it('再開のStart中に手動停止され、そのStartが失敗しても次のStartを呼ばない', async () => {
     let fail!: () => void;
     const start = vi.spyOn(audioApi, 'start').mockReturnValue(new Promise((_, reject) => { fail = () => reject(new Error('stopped first')); }));
     renderHook(() => useAudioRecovery()); disconnect(); await tick(2000);
@@ -160,4 +160,34 @@ it('再開のStart中に手動停止され、そのStartが失敗しても再予
     notify('audio-stopped'); // 自分のStart中の通知として無視される。
     await act(async () => fail()); await tick(12000);
     expect(start).toHaveBeenCalledOnce();
+});
+
+it('状態の取得を待つ間に手動停止され、停止の通知より先に応答が届いても開始しない', async () => {
+    let finish!: () => void;
+    vi.mocked(liveModesApi.request).mockReturnValueOnce(new Promise(resolve => {
+        finish = () => resolve({ armed: false } as Awaited<ReturnType<typeof liveModesApi.request>>);
+    }));
+    const start = vi.spyOn(audioApi, 'start');
+    renderHook(() => useAudioRecovery());
+    disconnect();
+    await tick(2000);
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    await audioApi.stop();
+    await act(async () => finish());
+    await tick(12000);
+    expect(start).not.toHaveBeenCalled();
+});
+
+it('再開のStart中に手動停止され、そのStartが成功しても再接続の成功を伝えない', async () => {
+    let succeed!: () => void;
+    vi.spyOn(audioApi, 'start').mockReturnValue(new Promise(resolve => {
+        succeed = () => resolve({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    }));
+    renderHook(() => useAudioRecovery());
+    disconnect();
+    await tick(2000);
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    await audioApi.stop();
+    await act(async () => succeed());
+    expect(toast.success).not.toHaveBeenCalled();
 });

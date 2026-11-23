@@ -36,6 +36,7 @@ export function useAudioRecovery() {
             const current = ++generation;
             recovering = true;
             const valid = () => active && current === generation;
+            const stoppedByUser = () => stopCallCount() !== stopsAtError;
 
             const schedule = (attempt: number) => {
                 cancelTimer = delay(attempt * 2000, () => void retry(attempt));
@@ -43,7 +44,7 @@ export function useAudioRecovery() {
             const retry = async (attempt: number) => {
                 if (!valid()) return;
                 if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true'
-                    || stopCallCount() !== stopsAtError || JSON.stringify(readAudioPreferences()) !== snapshot) {
+                    || stoppedByUser() || JSON.stringify(readAudioPreferences()) !== snapshot) {
                     cancel();
                     return;
                 }
@@ -57,6 +58,8 @@ export function useAudioRecovery() {
                         if (!actual?.host || !actual.input || !actual.output || !actual.input_id || !actual.output_id || !actual.sample_rate || !actual.buffer_size) throw new Error('本番保護中の具体的なデバイス設定を確認できません');
                         recovery = { ...config, host: actual.host, input: actual.input, output: actual.output, inputId: actual.input_id, outputId: actual.output_id, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
                     }
+                    // 状態の取得を待つ間の手動の停止は、停止の通知より先に応答が届くことがある。
+                    if (stoppedByUser()) { cancel(); return; }
                     // ストリームだけを再開する。プロセスを破棄するとVSTとパラメーターも失う。
                     startingGeneration = current;
                     try {
@@ -67,8 +70,8 @@ export function useAudioRecovery() {
                         if (startingGeneration === current) startingGeneration = null;
                     }
                     if (!valid()) return;
-                    // 保護中は保持済み経路をそのまま再開し、古いUI選択でchを変更しない。
-                    if (!valid()) return;
+                    // 再開の Start の間に押された停止は、その後に実行されるので、成功とは伝えない。
+                    if (stoppedByUser()) { cancel(); return; }
                     recovering = false;
                     toast.success(t('audioNotices.reconnected'));
                 } catch {

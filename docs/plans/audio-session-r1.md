@@ -87,7 +87,7 @@ P2 の害は短い途切れと余分な通知だけ。ただし1点目は数行�
 
 ## 6. 実装（案A）
 
-- `src/hooks/useAudioRecovery.ts`：自分の Start 以外の `audio-started` で予約を取り消す。障害の通知の時点の `stopCallCount()` を控え、予約の実行の冒頭で変わっていたら取り消す（Start が失敗して再予約しても、次の実行で止まる）。
+- `src/hooks/useAudioRecovery.ts`：自分の Start 以外の `audio-started` で予約を取り消す。障害の通知の時点の `stopCallCount()` を控え、予約の実行の冒頭・状態の取得の後で Start の直前・Start の成功の後の3か所で、変わっていたら取り消す（Start が失敗して再予約しても、次の実行の冒頭で止まり、次の Start は呼ばない。Start の間に押された停止では、再接続の成功を伝えない）。Sol のレビュー（状態の取得の応答が停止の通知より先に届く順）と ponytail-review（Start の成功の後）の指摘で、後ろの2か所を足した。
 - `src/api/audio.ts`：`audioApi.stop()` の呼び出しを数える `stopCallCount()` を足した。
 - 試験2つ（`useAudioRecovery.test.tsx`）：待ち中の手動の開始、Start 中の手動の停止と失敗。それぞれ直した処理を外すと失敗することを確認した。
 - 省いたもの：Start 失敗の直後の別の確認（実行の冒頭の確認で足りる）、Rust 側の停止（P6）、`StoppedFirst` の文言の照合。
