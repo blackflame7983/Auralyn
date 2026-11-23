@@ -13,7 +13,7 @@ pub(crate) async fn voice_check_preview(
 ) -> Result<crate::audio_engine::voice_check::preview::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("voice_check_preview")
-        .request(audio::control::request_class::voice_check_preview(&request));
+        .class(audio::control::request_class::voice_check_preview(&request));
     async move {
         state
             .run_async(entry, move |host| -> Result<_, String> {

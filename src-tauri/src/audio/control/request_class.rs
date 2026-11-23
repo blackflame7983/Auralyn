@@ -1,14 +1,14 @@
-//! 要求の中身で種類を決める入口。各関数は要求の変種の名前を網羅の`match`で返し、種類と起動しうる役割は
-//! `class::REQUEST_CLASSES`・`class::REQUEST_LAUNCH`の表で決まる。要求を足すとコンパイルが落ち、表の漏れは構造の試験が落とす。
-use super::class::{request_kind, RequestKind};
+//! 要求の中身で種類を決める入口。各関数は要求の変種の名前を網羅の`match`で返し、種類は
+//! `class::REQUEST_CLASSES`の表で決まる。要求を足すとコンパイルが落ち、表の漏れは構造の試験が落とす。
+use super::class::{request_class, JobClass};
 use crate::audio::{frontend_bootstrap, mixing, post_mix};
 use crate::audio_engine::voice_check::preview;
 use crate::audio_engine::{auto_gain, builtin, core::noise_learning, live_modes};
 use crate::ipc::SessionRackRequest;
 
-pub(crate) fn post_mix(request: &post_mix::Request) -> RequestKind {
+pub(crate) fn post_mix(request: &post_mix::Request) -> JobClass {
     use post_mix::Request as R;
-    request_kind(
+    request_class(
         "post_mix",
         match request {
             R::Snapshot => "Snapshot",
@@ -28,9 +28,9 @@ pub(crate) fn post_mix(request: &post_mix::Request) -> RequestKind {
     )
 }
 
-pub(crate) fn mixing(request: &mixing::Request) -> RequestKind {
+pub(crate) fn mixing(request: &mixing::Request) -> JobClass {
     use mixing::Request as R;
-    request_kind(
+    request_class(
         "mixing",
         match request {
             R::Snapshot => "Snapshot",
@@ -42,9 +42,9 @@ pub(crate) fn mixing(request: &mixing::Request) -> RequestKind {
     )
 }
 
-pub(crate) fn live_modes(request: &live_modes::Request) -> RequestKind {
+pub(crate) fn live_modes(request: &live_modes::Request) -> JobClass {
     use live_modes::Request as R;
-    request_kind(
+    request_class(
         "live_modes",
         match request {
             R::Snapshot => "Snapshot",
@@ -59,9 +59,9 @@ pub(crate) fn live_modes(request: &live_modes::Request) -> RequestKind {
     )
 }
 
-pub(crate) fn session_rack(request: &SessionRackRequest) -> RequestKind {
+pub(crate) fn session_rack(request: &SessionRackRequest) -> JobClass {
     use SessionRackRequest as R;
-    request_kind(
+    request_class(
         "session_rack",
         match request {
             R::Snapshot => "Snapshot",
@@ -73,9 +73,9 @@ pub(crate) fn session_rack(request: &SessionRackRequest) -> RequestKind {
     )
 }
 
-pub(crate) fn builtin_effects(request: &builtin::Request) -> RequestKind {
+pub(crate) fn builtin_effects(request: &builtin::Request) -> JobClass {
     use builtin::Request as R;
-    request_kind(
+    request_class(
         "builtin_effects",
         match request {
             R::Snapshot => "Snapshot",
@@ -87,9 +87,9 @@ pub(crate) fn builtin_effects(request: &builtin::Request) -> RequestKind {
     )
 }
 
-pub(crate) fn auto_gain(request: &auto_gain::Request) -> RequestKind {
+pub(crate) fn auto_gain(request: &auto_gain::Request) -> JobClass {
     use auto_gain::Request as R;
-    request_kind(
+    request_class(
         "auto_gain",
         match request {
             R::Status => "Status",
@@ -107,9 +107,9 @@ pub(crate) fn auto_gain(request: &auto_gain::Request) -> RequestKind {
     )
 }
 
-pub(crate) fn noise_measurement(request: &noise_learning::Request) -> RequestKind {
+pub(crate) fn noise_measurement(request: &noise_learning::Request) -> JobClass {
     use noise_learning::Request as R;
-    request_kind(
+    request_class(
         "noise_measurement",
         match request {
             R::Snapshot => "Snapshot",
@@ -121,9 +121,9 @@ pub(crate) fn noise_measurement(request: &noise_learning::Request) -> RequestKin
     )
 }
 
-pub(crate) fn voice_check_preview(request: &preview::Request) -> RequestKind {
+pub(crate) fn voice_check_preview(request: &preview::Request) -> JobClass {
     use preview::Action as A;
-    request_kind(
+    request_class(
         "voice_check_preview",
         match &request.action {
             A::Open => "Open",
@@ -147,8 +147,8 @@ pub(crate) fn voice_check_preview(request: &preview::Request) -> RequestKind {
 }
 
 /// 自動開始の設定を持つ要求だけが開始を伴う。
-pub(crate) fn frontend_bootstrap(request: &frontend_bootstrap::Request) -> RequestKind {
-    request_kind(
+pub(crate) fn frontend_bootstrap(request: &frontend_bootstrap::Request) -> JobClass {
+    request_class(
         "audio_frontend_bootstrap",
         match &request.config {
             Some(config) if !config.host.is_empty() => "WithConfig",
@@ -157,8 +157,8 @@ pub(crate) fn frontend_bootstrap(request: &frontend_bootstrap::Request) -> Reque
     )
 }
 
-fn option_class<T>(entry: &str, value: &Option<T>) -> RequestKind {
-    request_kind(
+fn option_class<T>(entry: &str, value: &Option<T>) -> JobClass {
+    request_class(
         entry,
         match value {
             Some(_) => "Some",
@@ -167,22 +167,22 @@ fn option_class<T>(entry: &str, value: &Option<T>) -> RequestKind {
     )
 }
 
-pub(crate) fn peak_protection<T>(config: &Option<T>) -> RequestKind {
+pub(crate) fn peak_protection<T>(config: &Option<T>) -> JobClass {
     option_class("peak_protection", config)
 }
 
-pub(crate) fn broadcast_true_peak<T>(config: &Option<T>) -> RequestKind {
+pub(crate) fn broadcast_true_peak<T>(config: &Option<T>) -> JobClass {
     option_class("broadcast_true_peak", config)
 }
 
-pub(crate) fn live_output<T>(config: &Option<T>) -> RequestKind {
+pub(crate) fn live_output<T>(config: &Option<T>) -> JobClass {
     option_class("live_output", config)
 }
 
-pub(crate) fn set_channel_scan(active: bool) -> RequestKind {
-    request_kind("set_channel_scan", if active { "True" } else { "False" })
+pub(crate) fn set_channel_scan(active: bool) -> JobClass {
+    request_class("set_channel_scan", if active { "True" } else { "False" })
 }
 
-pub(crate) fn set_loudness_measurement(id: &Option<u64>) -> RequestKind {
+pub(crate) fn set_loudness_measurement(id: &Option<u64>) -> JobClass {
     option_class("set_loudness_measurement", id)
 }

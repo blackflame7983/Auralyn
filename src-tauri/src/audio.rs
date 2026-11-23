@@ -694,10 +694,6 @@ impl AudioHost {
         self.conditions.clone()
     }
 
-    fn retired(&self) -> Arc<engine_life::Store> {
-        self.retired.clone()
-    }
-
     /// ホストが出す通知。`hold_notices` の間は保持して、回収の後に出す。
     fn notice<S: Serialize + Clone>(&self, name: &'static str, payload: S) {
         {
@@ -3252,8 +3248,8 @@ mod link_seam;
 mod reaper_seam;
 
 #[cfg(test)]
-#[path = "audio/tests/reaper_tests.rs"]
-mod reaper_tests;
+#[path = "audio/tests/unconfirmed_tests.rs"]
+mod unconfirmed_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_cell_tests.rs"]

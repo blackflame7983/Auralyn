@@ -1,14 +1,8 @@
 //! 音声エンジンの子プロセスの寿命。停止の状態で作って Job に入れてから動かし、
 //! 終了は上限つきで確かめる。終了を確かめられない子は、主の `AudioHost` の役割ごとの記録に残す。
-mod bell;
-mod reaper;
-
-pub(super) use bell::Bell;
-#[cfg(test)]
-pub(crate) use reaper::{Mode, Script};
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
@@ -35,10 +29,8 @@ impl Role {
 const POLL: Duration = Duration::from_millis(50);
 /// `kill()` の後に終了を確かめる上限。
 pub(super) const CONFIRM: Duration = Duration::from_secs(2);
-/// 監視されていない記録を、列の待ちが確かめ直す間隔の上限。
-pub(super) const PROBE_INTERVAL: Duration = Duration::from_millis(200);
-/// `engine_unconfirmed` が続いたとき、案内を切り替える回数。
-pub(super) const REPEAT_AT: u32 = 3;
+/// 最初の `kill()` から、案内を「アプリを再起動してください」へ切り替えるまで。
+pub(crate) const DEADLINE: Duration = Duration::from_secs(10);
 /// アプリの終了で、全部の子に共通の確認の上限。
 const SHUTDOWN: Duration = Duration::from_secs(2);
 
@@ -119,75 +111,38 @@ fn confirm(child: &mut Child, limit: Duration) -> bool {
     }
 }
 
-/// 終了の確認の時間の設定。本番は既定値で、試験は `Store` ごとに縮める。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Timing {
-    /// 最初の `kill()` から、記録の窓が閉じるまで。
-    pub(crate) deadline: Duration,
-    /// 期限の前に、記録の子へ `kill()` をやり直す間隔。
-    pub(crate) retry_kill: Duration,
-    /// 待ち続ける監視が、記録と `Store` の有無を見直す間隔。
-    pub(crate) rescan: Duration,
-}
-
-impl Default for Timing {
-    fn default() -> Self {
-        Self {
-            deadline: Duration::from_secs(10),
-            retry_kill: Duration::from_secs(2),
-            rescan: Duration::from_secs(1),
-        }
-    }
-}
-
 struct Retired {
-    id: u64,
     child: Child,
     _job: Option<JobHandle>,
-    /// 最初の `kill()` の実時間。
+    /// 最初の `kill()` の時刻。
     killed_at: Instant,
-    unconfirmed: u32,
-    watched: bool,
 }
 
 type Slots = [Vec<Retired>; 2];
 
-/// 開いている窓（記録が残り、最初の `kill()` から期限の前）。
-#[derive(Clone, Copy, Debug)]
-pub(super) struct OpenWindow {
-    pub(super) id: u64,
-    pub(super) role: Role,
-    pub(super) until: Instant,
-    pub(super) watched: bool,
-}
-
-/// 実行のスレッドが、閉包の中で作った記録を見分ける控え。閉包の終わりで外れる。
-pub(super) struct ClosureScope<'a>(&'a Store);
-
-impl Drop for ClosureScope<'_> {
-    fn drop(&mut self) {
-        self.0.closure_from.store(0, Ordering::Release);
+/// 終了が確かめられた記録を取り除いて返す。残った子へは `kill()` をやり直す。返した記録は、ロックの外で落とす。
+fn reap(lists: &mut [Vec<Retired>]) -> Vec<Retired> {
+    let mut removed = Vec::new();
+    for list in lists {
+        let mut at = 0;
+        while at < list.len() {
+            if exited(&mut list[at].child) {
+                removed.push(list.remove(at));
+            } else {
+                let _ = list[at].child.kill();
+                at += 1;
+            }
+        }
     }
+    removed
 }
 
-/// 終了を確かめられない子の記録。主の `AudioHost` が持ち、配信ミックスの子の `AudioHost`・受付の列と共有する。
+/// 終了を確かめられない子の記録。主の `AudioHost` が持ち、配信ミックスの子の `AudioHost` と共有する。
 /// 子を手放す経路が、次の生成・`State` の差し替え・呼び出し元への復帰より先に、ここへ移す。
-/// ロックの順は、列のロック → `slots`（短い読み取りだけ）。`slots` を持ったまま待たず、`Bell` も鳴らさない。
 #[derive(Default)]
 pub(super) struct Store {
     slots: Mutex<Slots>,
-    bell: Bell,
     recorded: [AtomicU64; 2],
-    last_id: AtomicU64,
-    /// 実行中の閉包が始まった時点より後の通し番号。0 は控えなし。
-    closure_from: AtomicU64,
-    timing: Mutex<Timing>,
-    #[cfg(test)]
-    kills: std::sync::atomic::AtomicUsize,
-    #[cfg(test)]
-    reapers: Arc<std::sync::atomic::AtomicUsize>,
-    #[cfg(test)]
-    held_drops: std::sync::atomic::AtomicUsize,
 }
 
 impl Store {
@@ -195,169 +150,58 @@ impl Store {
         self.slots.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(super) fn bell(&self) -> &Bell {
-        &self.bell
-    }
-
-    pub(super) fn ring(&self) {
-        self.bell.ring();
-    }
-
-    pub(super) fn timing(&self) -> Timing {
-        *self.timing.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_timing(&self, timing: Timing) {
-        *self.timing.lock().unwrap_or_else(PoisonError::into_inner) = timing;
-    }
-
-    /// これまでに記録へ置いた最後の通し番号。受付の時点で見えている記録は、この番号以下。
-    pub(super) fn last_id(&self) -> u64 {
-        self.last_id.load(Ordering::Acquire)
-    }
-
-    /// 実行のスレッドが、閉包を始める前に呼ぶ。この後に作られた記録だけが「同じ閉包の中で作った記録」。
-    pub(super) fn begin_closure(&self) -> ClosureScope<'_> {
-        self.closure_from
-            .store(self.last_id() + 1, Ordering::Release);
-        ClosureScope(self)
-    }
-
-    fn push(&self, role: Role, child: Child, job: Option<JobHandle>, killed_at: Instant) -> u64 {
-        let mut slots = self.lock();
-        let id = self.last_id.fetch_add(1, Ordering::AcqRel) + 1;
+    fn push(&self, role: Role, child: Child, job: Option<JobHandle>, killed_at: Instant) {
         self.recorded[role.index()].fetch_add(1, Ordering::AcqRel);
-        slots[role.index()].push(Retired {
-            id,
+        self.lock()[role.index()].push(Retired {
             child,
             _job: job,
             killed_at,
-            unconfirmed: 0,
-            watched: true,
         });
-        id
     }
 
     /// 試験で、生きたままの子を、`kill` も確認もせずに記録へ置く（終わらない子の再現）。
     #[cfg(test)]
-    pub(super) fn adopt_for_test(self: &Arc<Self>, role: Role, child: Child) {
-        let killed_at = Instant::now();
-        let id = self.push(role, child, None, killed_at);
-        if !reaper::spawn(self, id, reaper::Source::Poll, killed_at) {
-            self.mark_unwatched(id);
-        }
-        self.ring();
+    pub(super) fn adopt_for_test(&self, role: Role, child: Child) {
+        self.push(role, child, None, now());
     }
 
+    /// 案内を切り替えるのは、最初の `kill()` から期限を過ぎても記録が残るとき。
     fn error(slots: &Slots) -> EngineUnconfirmed {
+        let now = now();
         EngineUnconfirmed {
-            repeated: slots.iter().flatten().any(|r| r.unconfirmed >= REPEAT_AT),
+            repeated: slots
+                .iter()
+                .flatten()
+                .any(|record| now.saturating_duration_since(record.killed_at) >= DEADLINE),
         }
     }
 
-    /// 窓が開いている記録。`slots` の短い読み取りだけで、確認も `kill()` も `Drop` もしない。
-    pub(super) fn open_windows(&self, now: Instant) -> Vec<OpenWindow> {
-        let deadline = self.timing().deadline;
-        // 窓を読めない（ロックが poison した）ときは、窓が閉じていると見なす。保留せず、再確認が答える。
-        let Ok(slots) = self.slots.lock() else {
-            return Vec::new();
-        };
-        [Role::Primary, Role::PostMix]
-            .into_iter()
-            .flat_map(|role| {
-                slots[role.index()]
-                    .iter()
-                    .filter(|record| now < record.killed_at + deadline)
-                    .map(move |record| OpenWindow {
-                        id: record.id,
-                        role,
-                        until: record.killed_at + deadline,
-                        watched: record.watched,
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
-    /// 同じ役割の子を作る前に呼ぶ。待たない。確かめられなかった記録は、窓が過ぎていれば数を進める。
-    /// 例外は、実行中の閉包が作った記録だけで、窓の終わりまで待つ。
-    pub(super) fn ensure_clear(&self, role: Role) -> Result<(), EngineUnconfirmed> {
-        let own_from = self.closure_from.load(Ordering::Acquire);
-        loop {
-            let deadline = self.timing().deadline;
-            let mut removed = Vec::new();
-            let mut wait_until: Option<Instant> = None;
-            let failed = {
-                let mut slots = self.lock();
-                let now = Instant::now();
-                let mut failed = false;
-                let list = &mut slots[role.index()];
-                let mut at = 0;
-                while at < list.len() {
-                    if exited(&mut list[at].child) {
-                        removed.push(list.remove(at));
-                        continue;
-                    }
-                    let record = &mut list[at];
-                    let until = record.killed_at + deadline;
-                    if now >= until {
-                        record.unconfirmed += 1;
-                        failed = true;
-                    } else if own_from != 0 && record.id >= own_from {
-                        wait_until = Some(wait_until.map_or(until, |current| current.max(until)));
-                    } else {
-                        failed = true;
-                    }
-                    at += 1;
-                }
-                failed.then(|| Self::error(&slots))
-            };
-            if !removed.is_empty() {
-                log::info!("終了を確認しました（{role:?}）");
-                self.discard(removed);
-                self.ring();
-            }
-            if let Some(error) = failed {
-                return Err(error);
-            }
-            let Some(until) = wait_until else {
-                return Ok(());
-            };
-            std::thread::sleep(POLL.min(until.saturating_duration_since(Instant::now())));
-        }
-    }
-
-    /// 待たずに1回だけ確かめる（更新の前）。残れば失敗にし、数を進めるのは窓が過ぎた記録だけ。
-    pub(super) fn recheck(&self) -> Result<(), EngineUnconfirmed> {
-        let deadline = self.timing().deadline;
-        let mut removed = Vec::new();
-        let failed = {
+    /// `roles` の記録を1回だけ確かめる。待たない。残れば失敗にする。
+    fn check(&self, roles: &[Role]) -> Result<(), EngineUnconfirmed> {
+        let (removed, failed) = {
             let mut slots = self.lock();
-            let now = Instant::now();
-            let mut failed = false;
-            for list in slots.iter_mut() {
-                let mut at = 0;
-                while at < list.len() {
-                    if exited(&mut list[at].child) {
-                        removed.push(list.remove(at));
-                        continue;
-                    }
-                    if now >= list[at].killed_at + deadline {
-                        list[at].unconfirmed += 1;
-                    }
-                    failed = true;
-                    at += 1;
-                }
+            let mut removed = Vec::new();
+            for role in roles {
+                removed.extend(reap(std::slice::from_mut(&mut slots[role.index()])));
             }
-            failed.then(|| Self::error(&slots))
+            let alive = roles.iter().any(|role| !slots[role.index()].is_empty());
+            (removed, alive.then(|| Self::error(&slots)))
         };
         if !removed.is_empty() {
-            log::info!("終了を確認しました（更新の前）");
-            self.discard(removed);
-            self.ring();
+            log::info!("終了を確認しました（{roles:?}）");
         }
+        drop(removed);
         failed.map_or(Ok(()), Err)
+    }
+
+    /// 同じ役割の子を作る前に呼ぶ。待たない。
+    pub(super) fn ensure_clear(&self, role: Role) -> Result<(), EngineUnconfirmed> {
+        self.check(&[role])
+    }
+
+    /// 更新の前に、全部の役割を1回だけ確かめる。
+    pub(super) fn recheck(&self) -> Result<(), EngineUnconfirmed> {
+        self.check(&[Role::Primary, Role::PostMix])
     }
 
     /// アプリの終了で、記録の子を共通の期限へ渡す。
@@ -380,177 +224,16 @@ impl Store {
         self.recorded[role.index()].load(Ordering::Acquire)
     }
 
-    /// いまの記録から作る `engine_unconfirmed`（J-13 の数え方を含む）。
+    /// いまの記録から作る `engine_unconfirmed`。
     pub(super) fn unconfirmed_error(&self) -> EngineUnconfirmed {
         Self::error(&self.lock())
-    }
-
-    /// 記録 `id` の子が終わっているか。監視が確かめるときに使う。
-    pub(super) fn probe(&self, id: u64) -> bool {
-        self.lock()
-            .iter_mut()
-            .flatten()
-            .find(|record| record.id == id)
-            .is_some_and(|record| exited(&mut record.child))
-    }
-
-    pub(super) fn has(&self, id: u64) -> bool {
-        self.lock().iter().flatten().any(|record| record.id == id)
-    }
-
-    /// 記録 `id` を消す。`Child`・`Job` は、ロックの外で落とす。
-    fn take(&self, id: u64) -> Option<Retired> {
-        let mut slots = self.lock();
-        slots.iter_mut().find_map(|list| {
-            let at = list.iter().position(|record| record.id == id)?;
-            Some(list.remove(at))
-        })
-    }
-
-    /// 終了を観測した記録を消して、列を起こす。
-    pub(super) fn finish(&self, id: u64) {
-        let removed = self.take(id);
-        if removed.is_some() {
-            log::info!("終了を確認しました（監視）");
-            self.discard(removed);
-            self.ring();
-        }
-    }
-
-    pub(super) fn kill(&self, id: u64) {
-        if let Some(record) = self
-            .lock()
-            .iter_mut()
-            .flatten()
-            .find(|record| record.id == id)
-        {
-            let _ = record.child.kill();
-            #[cfg(test)]
-            self.kills.fetch_add(1, Ordering::AcqRel);
-        }
-    }
-
-    pub(super) fn mark_unwatched(&self, id: u64) {
-        if let Some(record) = self
-            .lock()
-            .iter_mut()
-            .flatten()
-            .find(|record| record.id == id)
-        {
-            record.watched = false;
-        }
-    }
-
-    /// 監視されていない記録を、自分で確かめて消す。列のロックの外から呼ぶ。
-    pub(super) fn probe_unwatched(&self) {
-        let mut removed = Vec::new();
-        {
-            let mut slots = self.lock();
-            for list in slots.iter_mut() {
-                let mut at = 0;
-                while at < list.len() {
-                    if !list[at].watched && exited(&mut list[at].child) {
-                        removed.push(list.remove(at));
-                    } else {
-                        at += 1;
-                    }
-                }
-            }
-        }
-        if !removed.is_empty() {
-            self.discard(removed);
-            self.ring();
-        }
-    }
-
-    /// 消した記録の `Child`・`Job` を落とす。`slots` を持ったまま呼ばない。
-    fn discard<T>(&self, removed: T) {
-        #[cfg(test)]
-        {
-            // ほかのスレッドが短く持つ間は待つ。自分が持ったままなら、いつまでも取れない。
-            let mut held = true;
-            for _ in 0..10 {
-                if self.slots.try_lock().is_ok() {
-                    held = false;
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(3));
-            }
-            if held {
-                self.held_drops.fetch_add(1, Ordering::AcqRel);
-            }
-        }
-        drop(removed);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn held_drops(&self) -> usize {
-        self.held_drops.load(Ordering::Acquire)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn reaper_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
-        self.reapers.clone()
-    }
-
-    #[cfg(test)]
-    pub(super) fn reaper_guard(&self) -> ReaperGuard {
-        self.reapers.fetch_add(1, Ordering::AcqRel);
-        ReaperGuard(self.reapers.clone())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn kills(&self) -> usize {
-        self.kills.load(Ordering::Acquire)
-    }
-
-    #[cfg(test)]
-    pub(super) fn counts(&self, role: Role) -> Vec<u32> {
-        self.lock()[role.index()]
-            .iter()
-            .map(|r| r.unconfirmed)
-            .collect()
-    }
-}
-
-/// 試験で、実の子を記録へ置いて、監視を起こす。`kill()` も確認もしない。
-#[cfg(test)]
-pub(super) fn adopt(
-    store: &Arc<Store>,
-    role: Role,
-    child: Child,
-    job: Option<JobHandle>,
-    script: Option<Arc<Script>>,
-) -> u64 {
-    let killed_at = Instant::now();
-    let id = store.push(role, child, job, killed_at);
-    let source = script.map_or(reaper::Source::Poll, reaper::Source::Scripted);
-    if !reaper::spawn(store, id, source, killed_at) {
-        store.mark_unwatched(id);
-    }
-    store.ring();
-    id
-}
-
-#[cfg(test)]
-pub(super) struct ReaperGuard(Arc<std::sync::atomic::AtomicUsize>);
-
-#[cfg(test)]
-impl Drop for ReaperGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
 /// 子を `kill()` し、最大 `CONFIRM` だけ終了を確かめる。確かめられなければ、子と Job と
-/// 最初の `kill()` の時刻を記録へ移し、終了の監視を起こす。子を手放す経路は、すべてこれを通す。
-pub(super) fn retire_child(
-    store: &Arc<Store>,
-    role: Role,
-    mut child: Child,
-    job: Option<JobHandle>,
-) {
-    let killed_at = Instant::now();
+/// 最初の `kill()` の時刻を記録へ移す。子を手放す経路は、すべてこれを通す。
+pub(super) fn retire_child(store: &Store, role: Role, mut child: Child, job: Option<JobHandle>) {
+    let killed_at = now();
     let _ = child.kill();
     if confirm(&mut child, CONFIRM) {
         drop(job);
@@ -559,15 +242,7 @@ pub(super) fn retire_child(
         return;
     }
     log::warn!("音声エンジンの終了を確認できません（{role:?}）。記録して、作り直しを止めます");
-    let id = store.push(role, child, job, killed_at);
-    #[cfg(test)]
-    let source = seam::script().map_or(reaper::Source::Poll, reaper::Source::Scripted);
-    #[cfg(not(test))]
-    let source = reaper::Source::Poll;
-    if !reaper::spawn(store, id, source, killed_at) {
-        store.mark_unwatched(id);
-    }
-    store.ring();
+    store.push(role, child, job, killed_at);
     #[cfg(test)]
     seam::stage(seam::Stage::Retired(role));
 }
@@ -606,7 +281,7 @@ pub(super) fn apply_creation_flags(command: &mut std::process::Command) {
 /// 停止の状態の子を Job に入れ、主スレッドを再開する。どれかが失敗したら、子を終わらせて失敗にする。
 #[cfg(windows)]
 pub(super) fn contain_and_resume(
-    store: &Arc<Store>,
+    store: &Store,
     role: Role,
     child: Child,
 ) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
@@ -641,7 +316,7 @@ pub(super) fn contain_and_resume(
 
 #[cfg(not(windows))]
 pub(super) fn contain_and_resume(
-    _store: &Arc<Store>,
+    _store: &Store,
     _role: Role,
     child: Child,
 ) -> anyhow::Result<(Child, Option<JobHandle>, bool)> {
@@ -810,8 +485,6 @@ pub(crate) mod seam {
 
     struct State {
         wait: Wait,
-        script: Option<std::sync::Arc<super::Script>>,
-        spawn_fails: bool,
         job: JobSource,
         assign: Assign,
         resume: Resume,
@@ -822,8 +495,6 @@ pub(crate) mod seam {
     thread_local! {
         static STATE: RefCell<State> = const { RefCell::new(State {
             wait: Wait::Real,
-            script: None,
-            spawn_fails: false,
             job: JobSource::Real,
             assign: Assign::Real,
             resume: Resume::Real,
@@ -869,38 +540,20 @@ pub(crate) mod seam {
     }
 
     /// `try_wait` を差し替える。`Stuck` と `Fails` では、時計も仮想にして実際には待たない。
-    /// 差し替えている間に記録へ移った子の監視（別のスレッド）は、同じ台本に従う。`Real` へ戻すと、
-    /// 台本を解き、監視が実際の子を確かめる。
     pub(crate) fn set_wait(wait: Wait) {
         with(|s| {
             s.wait = wait;
             if wait != Wait::Real && s.clock.is_none() {
                 s.clock = Some((Instant::now(), Duration::ZERO));
             }
-            if wait == Wait::Real {
-                if let Some(script) = s.script.take() {
-                    script.set(super::Mode::Released);
-                }
-            } else if s.script.is_none() {
-                s.script = Some(super::Script::new());
-            }
         });
     }
-    /// 差し替え中に記録へ移る子の監視へ渡す台本。
-    pub(super) fn script() -> Option<std::sync::Arc<super::Script>> {
-        with(|s| match s.wait {
-            Wait::Real => None,
-            Wait::Stuck | Wait::Fails => s.script.clone(),
-        })
-    }
-    pub(crate) fn current_script() -> Option<std::sync::Arc<super::Script>> {
-        with(|s| s.script.clone())
-    }
-    pub(crate) fn set_spawn_fails(fails: bool) {
-        with(|s| s.spawn_fails = fails);
-    }
-    pub(super) fn spawn_fails() -> bool {
-        with(|s| s.spawn_fails)
+    /// 仮想の時計を進める。記録の子が、最初の `kill()` から期限を過ぎた状況を作る。
+    pub(crate) fn pass(duration: Duration) {
+        with(|s| {
+            let (_, offset) = s.clock.get_or_insert((Instant::now(), Duration::ZERO));
+            *offset += duration;
+        });
     }
     pub(crate) fn set_job(job: JobSource) {
         with(|s| s.job = job);
