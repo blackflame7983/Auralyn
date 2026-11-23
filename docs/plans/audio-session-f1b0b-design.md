@@ -2205,7 +2205,7 @@ enter(効果: FnOnce() -> bool) -> bool:                    // reader が、状�
 | 1 | R が `enter` する前に A が `close` | A：`close`。R：`enter` → `false` | R は状態も変えず、通知も出さない（W1） |
 | 2 | R が `enter` のロックの中（確認の直後・効果の前）にいる間に A が `close` | R：`inner` を持って効果を実行 → 解放。A：`close` は `inner` を待つ（数回の原子操作） → 取れて閉じる | 効果は `close` より前の事象。`close` が戻った後は、R は何もしない（W1・W2）。A の確定（`running=false`・`store(false)`）が後から上書き |
 | 3 | R が `enter` を通った後、`order` を取る前に A が `close` | R：`order` → 鏡（閉）→ 発行しない | 通知は出ない。状態は `close` より前の事象で、確定が上書き |
-| 4 | R が `chain_if` の確認を通り、`order` を持って発行している間に A が `close` | A：`close` → 回収（`kill`・確認。通知を待たない）→ 確定 → **待たずに進む** | **R の列が1つ出る**（契約）。A が次に `order` を取る通知（`hold_notices` の出し直し・`:914` の `notice`）は、R の列の**後**。N の通知も後。A の Stop の実行・失敗応答の返却は、R の列に遅れない |
+| 4 | R が `chain_if` の確認を通り、`order` を持って発行している間に A が `close` | A：`close` → 回収（`kill`・確認。通知を待たない）→ 確定 → **待たずに進む** | **R の列が1つ出る**（契約）。A が次に `order` を取る通知（`hold_notices` の出し直し・`:914` の `notice`）は、R の列の**後**。N の通知も後。A の Stop の実行・失敗応答の返却は、この段で足した待ちでは遅れない（ただし、A が `order` を取る今ある経路（`hold_notices` の出し直し・`:914` の `notice`）を通るときは、main と同じく R の列の発行を待つ） |
 | 5 | A が `close` した後、R に旧い行が残っている | R：行頭の確認で閉を見て抜ける。または `enter` → `false`。または `order` → 鏡（閉） | 出ない。状態も変わらない |
 | 6 | `kill_primary_engine`：epoch++（`:2806`）→ `engine_generation` など → `drop_connection`（`close`・回収）→ `store(false)` → `notify_conditions_changed` を積む → 出し直し | R の `store(true)` は `close` より前に完了するか、`enter` が `false` | `voice_activity == false`（W5）。確定が通知を積む前に済む |
 | 7 | `ensure_engine_running` の `:899`：`close` → 回収（`retire_engine`）→ `settle_disconnected`（epoch・`running`・`voice_activity`）→ `ensure_clear` | 旧い reader の通過済みの行は、`close` の後は `enter` が `false` | `ensure_clear` が失敗して戻っても、`running=false`・`voice_activity=false`。`new_engine` が来なくても、旧い reader は何も変えない（W4）。**失敗応答は `order` を通らずに返る**（行4 の1列が `emit` の途中なら、画面に残りうる。14.16 の (i)） |
@@ -2243,11 +2243,11 @@ stateDiagram-v2
 | I48 | **`LinkCell::enter` は、閉鎖と同じロックの下で「閉じていない」を確かめ、状態の変更（効果）を行う**。`close` が戻った後は、旧い reader の状態の変更（`conditions`・`voice_activity`）は起きない。通知は、**契約（14.1）の例外を除いて**出ない：閉鎖の時点で `chain_if` の確認を通っていた旧い列の**1つだけ**が出うる。その列は、`order` により、新しい接続の通知・閉じる側が積んだ通知より前に出し終わる。`close` より前に `enter` を通った事象の状態は残る。効果は、ロックを取らない原子操作だけ（ログ・`emit`・I/O・ほかのロックを入れない） |
 | I49 | **閉じる側（実行のスレッド）は、旧い reader の列・`order`・`emit` の完了を、待たない**（上限つきでも待たない）。Stop の実行と失敗応答の返却に、新しい待ちは加わらない。回収（子の `kill`・確認・記録）は、通知を待たない（I3）。今ある待ち（`hold_notices` の出し直し・`notice` の `order`、`reply_timed_out` の `EOF_WAIT`）は変えない |
 | I50 | `ensure_engine_running` が接続を閉じる3経路は、回収の後に切断状態を確定する（`running=false`・epoch を進める・`voice_activity=false`）。`ensure_clear` が失敗して `new_engine` が来なくても、`running=true`・`voice_activity=true` は残らない。**epoch の契約**：接続を閉じた経路は、成否に依らず epoch を進め、閉鎖の前の witness・reader の epoch を二度と有効にしない（成功のときの `new_engine` による追加の更新を含む。単調） |
-| I51 | `Drop`・`release_engine`・`take_engine_for_shutdown` は、回収だけを行う経路（`close_connection`・`drop_connection`）を通る。確定も待ちもしない。配信ミックスの子を外した直後の破棄でも、二重の待ちは無い |
+| I51 | `Drop`・`release_engine`・`take_engine_for_shutdown` は、回収だけを行う経路（`close_connection`・`drop_connection`）を通る。確定も待ちもしない（`Drop` が main から行っている `conditions.retire_engine()` の条件の失効は、そのまま残す）。配信ミックスの子を外した直後の破棄でも、二重の待ちは無い |
 | I52 | ロック：`enter` が取るのは `LinkCell.inner` だけ（葉。ロックを取らない原子操作だけを行う）。`order` を持つ間に `LinkCell` のロックを取らない。R3 のログは、`LinkCell` と `order` のどちらも持たない位置 |
 | I53 | EOF の勝者は `enter` しない（K13：EOF の通知の列を出し終え、`mark_notified` の後に待ち手へ `Eof` を送る。回収の完了と利用者への応答の返却は別）。host の通知と EOF の列の相対順は保証しない（9.10 の (h)・14.8）。この段で、`wait_notified` の使い方・上限・意味は変えない（同じ `Arc<LinkCell>` で、期限切れの後も別の待ち手が通知済みで成功する。T6） |
 | I54 | 閉じた接続への `begin` は、何も登録しない（E3）。tick の復旧の経路は、待ちを増やさない |
-| I55 | 通知の名前・中身・数・順・`engine_generation` の更新点は変えない。**新旧の接続の通知**：旧い接続の通知は、閉鎖の後は、閉鎖の時点で発行の途中だった1列を除いて出ない。その1列は、新しい接続の通知より前に出る。`engine_epoch` の更新点は、14.7 の3経路（確定）を除いて変えない |
+| I55 | 通知の名前・中身・数・順・`engine_generation` の更新点は変えない。**新旧の接続の通知**：旧い接続の通知は、閉鎖の後は、閉鎖の時点で発行の途中だった1列を除いて出ない。その1列は、新しい接続の通知より前に出る。ただし EOF の勝者が出す EOF の列は、I53 のとおり別の経路で出る（この1列の契約の外）。`engine_epoch` の更新点は、14.7 の3経路（確定）を除いて変えない |
 | I56 | 配信ミックスの子の `LinkCell`・`Notifier`・`Conditions` は子ごと。**子の門（子の `Notifier` の `order`）が閉じたままでも、主は進む**（主の `kill_primary_engine`・`ensure_engine_running` は子の `Notifier` を待たない）。子の閉鎖も待たない |
 
 ### 14.12 変える箇所の一覧（`ファイル:関数`、今の行）
