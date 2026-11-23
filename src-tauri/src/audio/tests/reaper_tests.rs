@@ -224,17 +224,26 @@ fn z3_a_reaper_ends_when_its_record_is_gone_or_the_store_is_dropped_and_holds_no
     let _ = third;
 
     let store = Arc::new(Store::default());
-    store.set_timing(timing(Duration::from_secs(30)));
+    store.set_timing(Timing {
+        rescan: Duration::from_secs(3),
+        ..timing(Duration::from_secs(30))
+    });
     let threads = store.reaper_counter();
     let kept = [stick(&store, Role::Primary), stick(&store, Role::Primary)];
     wait_until("two watches run", || threads.load(Ordering::SeqCst) == 2);
+    std::thread::sleep(Duration::from_millis(200));
     let weak = Arc::downgrade(&store);
     let started = Instant::now();
     drop(store);
     assert!(started.elapsed() < Duration::from_secs(1), "join しない");
-    wait_until("the store is released while the watches wait", || {
-        weak.strong_count() == 0
-    });
+    let released = Instant::now();
+    while weak.strong_count() != 0 {
+        assert!(
+            released.elapsed() < Duration::from_millis(1000),
+            "待機中の監視が Store への強い参照を持つ"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
     wait_until("both watches end", || threads.load(Ordering::SeqCst) == 0);
     for stuck in &kept {
         stuck.probe.terminate();
@@ -1079,7 +1088,14 @@ fn z19_a_stop_reaches_the_queue_and_raises_the_fence_even_when_the_blocking_pool
         .enable_all()
         .build()
         .unwrap();
+    struct Release(Arc<AtomicBool>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
     let release = Arc::new(AtomicBool::new(false));
+    let _release_on_exit = Release(release.clone());
     for _ in 0..2 {
         let flag = release.clone();
         runtime.spawn_blocking(move || {
@@ -1511,5 +1527,9 @@ fn z26_a_mute_that_reaps_a_c5_child_in_its_own_closure_waits_in_the_actor_and_su
         started.elapsed() < Duration::from_millis(500),
         "ほかの記録は待たない"
     );
-    assert_eq!(rig.store.counts(Role::Primary), [0], "窓の中の失敗は数えない");
+    assert_eq!(
+        rig.store.counts(Role::Primary),
+        [0],
+        "窓の中の失敗は数えない"
+    );
 }
