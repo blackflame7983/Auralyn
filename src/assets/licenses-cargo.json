@@ -936,7 +936,7 @@
 },
 {
 "name": "cookie",
-"version": "0.18.1",
+"version": "0.18.3",
 "authors": "Sergio Benitez &lt;sb@sergio.bz&gt;, Alex Crichton &lt;alex@alexcrichton.com&gt;",
 "repository": "https://github.com/SergioBenitez/cookie-rs",
 "license": "MIT License"
