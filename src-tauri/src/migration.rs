@@ -470,10 +470,10 @@ pub async fn apply_settings(
     };
     validate(&bundle)?;
     let audio = app.state::<crate::audio::AudioState>().0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::commands::detached(async move {
         let _guard = guard;
         audio
-            .run(
+            .run_async(
                 crate::audio::Entry::new(crate::audio::EntryKind::Migration, "apply_migration"),
                 move |host| -> Result<(), String> {
                     host.check_can_interrupt().map_err(|e| e.to_string())?;
@@ -500,10 +500,10 @@ pub async fn apply_settings(
                     Ok(())
                 },
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))?
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 // 音声開始・チャンネル適用・利用者確認の完了後にだけ呼ぶ。

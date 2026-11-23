@@ -2,6 +2,7 @@
 //! `JobClass`の網羅の`match`のメソッドだけが持つ。入口の名前→種類の表と、要求で種類を決める入口の表、
 //! 取得と解放の対の表もここに置く。
 use super::{Entry, EntryKind};
+use crate::audio::engine_life::Role;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JobClass {
@@ -61,6 +62,31 @@ impl JobClass {
         match self {
             Self::Stop => true,
             Self::Mute | Self::Tick | Self::Release | Self::Starting | Self::Normal => false,
+        }
+    }
+}
+
+/// 子を起動しうる役割。`JobClass`とは別の属性で、窓の間に保留するかを決める。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Launch {
+    /// 子を起動しない。保留しない。
+    None,
+    /// 主の子だけを起動しうる。
+    Primary,
+    /// 配信ミックスの子だけを起動しうる。
+    PostMix,
+    /// 両方を起動しうる。
+    Both,
+}
+
+impl Launch {
+    /// 起動しうる子の役割。窓の判定はこれだけを見る。
+    pub(super) const fn roles(self) -> &'static [Role] {
+        match self {
+            Self::None => &[],
+            Self::Primary => &[Role::Primary],
+            Self::PostMix => &[Role::PostMix],
+            Self::Both => &[Role::Primary, Role::PostMix],
         }
     }
 }
@@ -312,6 +338,20 @@ pub(crate) const REQUEST_CLASSES: &[RequestClass] = &[
     rc("set_loudness_measurement", "Some", JobClass::Starting),
 ];
 
+/// 要求の変種の、種類と子を起動しうる役割。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RequestKind {
+    pub(super) class: JobClass,
+    pub(super) launch: Launch,
+}
+
+pub(crate) fn request_kind(entry: &str, variant: &str) -> RequestKind {
+    RequestKind {
+        class: request_class(entry, variant),
+        launch: request_launch(entry, variant),
+    }
+}
+
 /// 要求の変種の種類。表に無い（要求を足して表を直し忘れた）ときは、停止の後に実行する側へ倒さない。
 pub(crate) fn request_class(entry: &str, variant: &str) -> JobClass {
     REQUEST_CLASSES
@@ -352,6 +392,166 @@ pub(crate) const REQUEST_PAIRS: &[(&str, &str, &str)] = &[
     ("session_rack", "Begin", "Finish"),
     ("live_modes", "Arm", "Disarm"),
 ];
+
+/// 入口の名前→子を起動しうる役割。要求で決める入口（`REQUEST_ENTRIES`）の既定は、要求の表（`REQUEST_LAUNCH`）が決める。
+/// 未知の名前は Both。
+pub(crate) const NAME_LAUNCH: &[(&str, Launch)] = &[
+    ("stop_audio", Launch::None),
+    ("toggle_global_mute", Launch::Primary),
+    ("set_global_mute", Launch::Primary),
+    ("mute_toggle", Launch::Primary),
+    ("global_shortcut_mute", Launch::Primary),
+    ("poll_mode_vst", Launch::None),
+    ("cancel_device_scan", Launch::Primary),
+    ("cancel_noise_learning", Launch::Primary),
+    ("stop_test_tone", Launch::Primary),
+    ("cancel_round_trip_measurement", Launch::Primary),
+    ("stop_voice_check", Launch::Primary),
+    ("stop_voice_check_playback", Launch::Primary),
+    ("end_live_changes", Launch::None),
+    ("end_live_changes_bundle", Launch::None),
+    ("finish_update_attempt", Launch::None),
+    ("stop", Launch::Primary),
+    ("start_audio", Launch::Primary),
+    ("restart_audio_engine", Launch::Primary),
+    ("restore_plugin", Launch::Primary),
+    ("load_plugin", Launch::Primary),
+    ("reorder_plugins", Launch::Primary),
+    ("set_bypass", Launch::Primary),
+    ("set_mute", Launch::Primary),
+    ("resume_plugin", Launch::Primary),
+    ("set_gain", Launch::Primary),
+    ("open_editor", Launch::Primary),
+    ("set_plugin_state", Launch::Primary),
+    ("set_input_gain", Launch::Primary),
+    ("set_output_gain", Launch::Primary),
+    ("set_noise_reduction", Launch::Primary),
+    ("start_noise_learning", Launch::Primary),
+    ("set_noise_control_config", Launch::Primary),
+    ("set_built_in_effects", Launch::Primary),
+    ("set_global_bypass", Launch::Primary),
+    ("set_input_channels", Launch::Primary),
+    ("set_channel_scan", Launch::Primary),
+    ("play_test_tone", Launch::Primary),
+    ("measure_round_trip", Launch::Primary),
+    ("probe_loopback", Launch::Primary),
+    ("apply_profile", Launch::Both),
+    ("restore_backup_profile", Launch::Both),
+    ("apply_owned", Launch::Both),
+    ("undo_owned", Launch::Both),
+    ("start_voice_check", Launch::Primary),
+    ("play_voice_check", Launch::Primary),
+    ("warmup", Launch::Primary),
+    ("play", Launch::Primary),
+    ("global_shortcut", Launch::Both),
+    ("post_mix", Launch::PostMix),
+    ("mixing", Launch::Primary),
+    ("live_modes", Launch::Primary),
+    ("session_rack", Launch::Both),
+    ("builtin_effects", Launch::Both),
+    ("auto_gain", Launch::Both),
+    ("voice_check_preview", Launch::Both),
+    ("audio_frontend_bootstrap", Launch::Primary),
+    ("live_output", Launch::Both),
+    ("set_loudness_measurement", Launch::Both),
+    ("get_output_gain_observation", Launch::None),
+    ("get_saved_audio_config", Launch::None),
+    ("get_audio_state", Launch::None),
+    ("get_engine_tuning_config", Launch::None),
+    ("set_engine_tuning_config", Launch::None),
+    ("get_engine_runtime_stats", Launch::None),
+    ("remove_plugin", Launch::None),
+    ("get_plugin_state", Launch::None),
+    ("get_round_trip_measurement", Launch::Primary),
+    ("get_routing_diagnostics", Launch::None),
+    ("preflight_live_changes", Launch::None),
+    ("begin_live_changes", Launch::None),
+    ("begin_live_changes_bundle", Launch::None),
+    ("enumerate_devices_async", Launch::Primary),
+    ("validate_checked", Launch::None),
+    ("capture_async", Launch::None),
+    ("broadcast_bundle", Launch::None),
+    ("snapshot_conditions", Launch::None),
+    ("save_profile", Launch::None),
+    ("export_voice_check_wav", Launch::Primary),
+    ("export_voice_check", Launch::Primary),
+    ("analyze_voice_check", Launch::Primary),
+    ("get_process_input_sources", Launch::None),
+    ("peak_protection", Launch::None),
+    ("broadcast_true_peak", Launch::None),
+    ("noise_measurement", Launch::None),
+    ("set_event_emitter", Launch::None),
+    ("quit_app", Launch::None),
+    ("prepare_update", Launch::None),
+    ("apply_migration", Launch::None),
+    ("acknowledge_session_review", Launch::None),
+    ("switch_session", Launch::None),
+];
+
+/// 要求で決める入口の、要求の変種を問わない既定。
+pub(crate) const REQUEST_LAUNCH_DEFAULT: &[(&str, Launch)] = &[
+    ("post_mix", Launch::PostMix),
+    ("mixing", Launch::Primary),
+    ("live_modes", Launch::Primary),
+    ("session_rack", Launch::Primary),
+    ("builtin_effects", Launch::Primary),
+    ("auto_gain", Launch::Primary),
+    ("noise_measurement", Launch::None),
+    ("voice_check_preview", Launch::Primary),
+    ("audio_frontend_bootstrap", Launch::Primary),
+    ("peak_protection", Launch::None),
+    ("broadcast_true_peak", Launch::None),
+    ("live_output", Launch::Primary),
+    ("set_loudness_measurement", Launch::Primary),
+    ("set_channel_scan", Launch::Primary),
+];
+
+/// 既定と違う要求の変種。
+pub(crate) const REQUEST_LAUNCH: &[(&str, &str, Launch)] = &[
+    ("post_mix", "Snapshot", Launch::None),
+    ("mixing", "Snapshot", Launch::None),
+    ("session_rack", "Snapshot", Launch::None),
+    ("session_rack", "Retain", Launch::None),
+];
+
+/// 要求の変種の、子を起動しうる役割。表に無い入口は Both。
+pub(crate) fn request_launch(entry: &str, variant: &str) -> Launch {
+    REQUEST_LAUNCH
+        .iter()
+        .find(|(name, candidate, _)| *name == entry && *candidate == variant)
+        .map(|(_, _, launch)| *launch)
+        .or_else(|| {
+            REQUEST_LAUNCH_DEFAULT
+                .iter()
+                .find(|(name, _)| *name == entry)
+                .map(|(_, launch)| *launch)
+        })
+        .unwrap_or(Launch::Both)
+}
+
+/// 入口の起動しうる役割。`Entry::launch`の指定を優先し、次に入口の種類（定期の更新は起動しない）、最後に名前で決める。
+pub(crate) fn launch_of(entry: Entry) -> Launch {
+    if let Some(launch) = entry.launch {
+        return launch;
+    }
+    match entry.kind {
+        EntryKind::Scheduler => Launch::None,
+        EntryKind::Tray
+        | EntryKind::Command
+        | EntryKind::Bundle
+        | EntryKind::Startup
+        | EntryKind::Warmup
+        | EntryKind::Shortcut
+        | EntryKind::Update
+        | EntryKind::Migration
+        | EntryKind::TemporarySession
+        | EntryKind::Obs
+        | EntryKind::Quit => NAME_LAUNCH
+            .iter()
+            .find(|(candidate, _)| *candidate == entry.name)
+            .map_or(Launch::Both, |(_, launch)| *launch),
+    }
+}
 
 /// 実行の時間の警告を出す長さ。開始・再起動は、起動と確認の分だけ長い。
 pub(super) fn is_start_request(entry: Entry) -> bool {

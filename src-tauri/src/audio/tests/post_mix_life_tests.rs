@@ -3,6 +3,7 @@
 use super::*;
 use crate::audio::compat_support::*;
 use crate::audio::engine_life::{seam, EngineUnconfirmed, Role};
+use crate::audio::reaper_seam;
 
 const FIRST_FINAL: &str =
     "音声エンジンの終了を確認できません。しばらくしてからもう一度お試しください";
@@ -25,7 +26,7 @@ impl Rig {
         let (mut host, primary) = scripted_parts(primary_overrides);
         let (mut child, post) = scripted_parts(post_overrides);
         child.post_role = true;
-        child.retired = host.retired.clone();
+        reaper_seam::share(&host, &mut child);
         child.ensure_engine_running().unwrap();
         host.post_mix.child = Some(Box::new(child));
         host.post_mix.restored = true;
@@ -49,7 +50,7 @@ impl Rig {
     }
 
     fn pending(&self, role: Role) -> usize {
-        self.host.retired.pending(role)
+        reaper_seam::pending(&self.host, role)
     }
 }
 
@@ -65,7 +66,7 @@ fn descriptor() -> crate::audio_engine::post_mix::Descriptor {
 #[test]
 fn w2_post_mix_stop_failure_moves_the_child_to_the_primary_record_first() {
     let mut rig = Rig::new([("Stop", vec![error_line("post stop refused")])]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let error = rig.host.post_mix.stop().unwrap_err();
     assert_eq!(error.to_string(), "配信VSTを停止できませんでした");
     assert!(!rig.host.post_mix.restored && !rig.host.post_mix.running);
@@ -78,7 +79,7 @@ fn w2_post_mix_stop_failure_moves_the_child_to_the_primary_record_first() {
 #[test]
 fn w2_post_mix_start_failure_moves_the_child_to_the_primary_record_first() {
     let mut rig = Rig::new([("PostMixStart", vec![error_line("post start refused")])]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let error = rig.host.post_mix.start(48000, descriptor()).unwrap_err();
     assert_eq!(error.to_string(), "post start refused");
     assert!(!rig.host.post_mix.restored);
@@ -90,7 +91,7 @@ fn w2_post_mix_start_failure_moves_the_child_to_the_primary_record_first() {
 #[test]
 fn w2_post_mix_write_failure_moves_the_child_to_the_primary_record_first() {
     let mut rig = Rig::new([]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let child = rig.host.post_mix.child.as_mut().unwrap();
     child.fail_writes_for_test();
     let error = child
@@ -105,7 +106,7 @@ fn w2_post_mix_write_failure_moves_the_child_to_the_primary_record_first() {
 #[test]
 fn w2_post_mix_snapshot_after_eof_moves_the_child_to_the_primary_record_before_detaching() {
     let mut rig = Rig::new([]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let child = rig.host.post_mix.child.as_mut().unwrap();
     child.set_link_for_test(false);
     let snapshot = rig.host.post_mix.snapshot().unwrap();
@@ -120,15 +121,15 @@ fn w2_post_mix_snapshot_after_eof_moves_the_child_to_the_primary_record_before_d
 #[test]
 fn w2_replacing_the_state_never_loses_an_unconfirmed_child() {
     let mut rig = Rig::new([]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     rig.host.post_mix.kill();
     assert_eq!(rig.pending(Role::PostMix), 1);
     rig.finish();
 
     let mut rig = Rig::new([]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let root = rig.primary.dir.clone();
-    rig.host.post_mix = State::new(&root, rig.host.retired.clone());
+    rig.host.post_mix = reaper_seam::post_mix_state(&rig.host, &root);
     assert_eq!(
         rig.pending(Role::PostMix),
         1,
@@ -141,7 +142,7 @@ fn w2_replacing_the_state_never_loses_an_unconfirmed_child() {
 #[test]
 fn w2_a_recorded_post_mix_child_blocks_a_new_one_and_the_error_text_is_final() {
     let mut rig = Rig::new([]);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     rig.host.post_mix.kill();
     let error = rig.host.post_mix.child().map(|_| ()).unwrap_err();
     assert_eq!(error.to_string(), FIRST_FINAL);
@@ -153,9 +154,9 @@ fn w2_a_recorded_post_mix_child_blocks_a_new_one_and_the_error_text_is_final() {
     assert!(error.to_string().contains(engine_life::UNCONFIRMED_JA));
     assert_eq!(rig.pending(Role::PostMix), 1);
     assert!(rig.post.probe(0).wait_exit(5000), "遅れて終了した");
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     assert!(
-        rig.host.retired.recheck().is_ok(),
+        reaper_seam::recheck(&rig.host).is_ok(),
         "後で終われば、次の要求で作れる"
     );
     assert_eq!(rig.pending(Role::PostMix), 0);
@@ -167,17 +168,18 @@ fn w2_a_recorded_post_mix_child_blocks_a_new_one_and_the_error_text_is_final() {
 fn j13_counts_per_record_and_any_record_at_three_switches_the_message() {
     let mut rig = Rig::new([]);
     rig.host.ensure_engine_running().unwrap();
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     rig.host.kill_engine();
     assert_eq!(rig.pending(Role::Primary), 1);
     assert_eq!(rig.pending(Role::PostMix), 1);
+    reaper_seam::pass_window(&rig.host);
     for _ in 0..2 {
         rig.host.ensure_engine_running().unwrap_err();
     }
-    assert_eq!(rig.host.retired.counts(Role::Primary), [2]);
+    assert_eq!(reaper_seam::counts(&rig.host, Role::Primary), [2]);
     let error = rig.host.post_mix.child().map(|_| ()).unwrap_err();
     assert_eq!(error.to_string(), FIRST_FINAL, "最大の数は2");
-    assert_eq!(rig.host.retired.counts(Role::PostMix), [1]);
+    assert_eq!(reaper_seam::counts(&rig.host, Role::PostMix), [1]);
     let error = rig.host.ensure_engine_running().unwrap_err();
     assert!(error.downcast_ref::<EngineUnconfirmed>().unwrap().repeated);
     let error = rig.host.post_mix.child().map(|_| ()).unwrap_err();
@@ -185,7 +187,7 @@ fn j13_counts_per_record_and_any_record_at_three_switches_the_message() {
         error.to_string().starts_with(engine_life::REPEATED_JA),
         "配信ミックスの記録は2でも、主の記録が3なので3回目以降の文言"
     );
-    assert_eq!(rig.host.retired.counts(Role::PostMix), [2]);
+    assert_eq!(reaper_seam::counts(&rig.host, Role::PostMix), [2]);
     rig.finish();
 }
 
@@ -274,19 +276,19 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
         |host, _calls| {
             host.last_config_path = root.join("last_audio_config.json");
             host.mixing = crate::audio::mixing::State::new(&root);
-            host.post_mix = State::new(&root, host.retired.clone());
+            host.post_mix = reaper_seam::post_mix_state(host, &root);
             host.mixing.selected = Some(Start {
                 config: mixing_config("wasapi:one"),
                 target: None,
             });
             host.is_global_muted = true;
             post_child.post_role = true;
-            post_child.retired = host.retired.clone();
+            reaper_seam::share(host, &mut post_child);
             post_child.ensure_engine_running().unwrap();
             host.post_mix.child = Some(Box::new(post_child));
             host.post_mix.restored = true;
             let (_, witness) = host.capture_bundle_mixing().unwrap();
-            seam::set_wait(seam::Wait::Stuck);
+            reaper_seam::stuck();
             let epoch_before = host.post_mix.epoch.clone();
             let error = host
                 .with_bundle_mixing(&target, &witness, |_| Ok(()))
@@ -297,7 +299,7 @@ fn w2_bundle_restore_failure_rolls_back_and_the_replaced_state_still_sees_the_re
                 "ロールバックで State が差し替わっている"
             );
             assert_eq!(
-                host.retired.pending(Role::PostMix),
+                reaper_seam::pending(host, Role::PostMix),
                 1,
                 "終わらない子は、その時点で主の記録に残っている"
             );
@@ -579,10 +581,10 @@ fn restore_rig(plugins: usize) -> RestoreRig {
     let (second, second_observer) = scripted_parts([]);
     let mut first = first;
     first.post_role = true;
-    first.retired = rig.host.retired.clone();
+    reaper_seam::share(&rig.host, &mut first);
     let mut second = second;
     second.post_role = true;
-    second.retired = rig.host.retired.clone();
+    reaper_seam::share(&rig.host, &mut second);
     rig.host.post_mix.test_children = vec![Box::new(first), Box::new(second)];
     rig.host.post_mix.after_exec_check = Some(Box::new(|child| {
         child.link.close(CloseCause::Eof);
@@ -840,7 +842,7 @@ fn s8_t2_c3_keeps_the_saved_post_mix_settings_in_memory_and_on_disk() {
     let (mut silent, silent_observer) =
         scripted_parts([("GetPluginRack", vec![Step::WaitGate("never".into())])]);
     silent.post_role = true;
-    silent.retired = rig.host.retired.clone();
+    reaper_seam::share(&rig.host, &mut silent);
     silent.ensure_engine_running().unwrap();
     rig.host.post_mix.child = Some(Box::new(silent));
     rig.host.post_mix.restored = true;
@@ -886,7 +888,7 @@ fn t8_c3_during_the_start_confirmation_recovers_only_the_primary_child() {
         );
         seam::set_resume(seam::Resume::ExternalSuspend(None));
         if !confirmed {
-            seam::set_wait(seam::Wait::Stuck);
+            reaper_seam::stuck();
         }
         let error = rig.host.ensure_engine_running().unwrap_err();
         seam::set_resume(seam::Resume::Real);
@@ -899,7 +901,7 @@ fn t8_c3_during_the_start_confirmation_recovers_only_the_primary_child() {
                 error.downcast_ref::<EngineUnconfirmed>().is_some(),
                 "{label}"
             );
-            seam::set_wait(seam::Wait::Real);
+            reaper_seam::real();
         }
         assert_eq!(
             rig.host.link.cause(),
@@ -1008,7 +1010,7 @@ fn p1_add_aborts_when_the_rack_reply_is_followed_by_eof() {
     let (second, second_observer) = scripted_parts([]);
     let mut second = second;
     second.post_role = true;
-    second.retired = rig.host.retired.clone();
+    reaper_seam::share(&rig.host, &mut second);
     rig.host.post_mix.test_children = vec![Box::new(second)];
     rig.host.post_mix.saved = Some(Saved {
         schema_version: 1,
@@ -1051,11 +1053,11 @@ fn p2_an_unconfirmed_c2_reason_is_carried_to_the_next_snapshot() {
         ));
     }
     crate::audio::writer::set_limits_for_test(Some(std::time::Duration::from_millis(200)), None);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let request = save_request(&rig);
     let error = rig.host.post_mix(request).map(|_| ()).unwrap_err();
     crate::audio::writer::set_limits_for_test(None, None);
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     gate.open();
     assert_eq!(
         error.downcast_ref::<EngineUnconfirmed>().copied(),
@@ -1100,7 +1102,7 @@ fn p1_a_child_ending_after_the_rack_check_never_gets_replaced_for_the_change() {
     let (second, second_observer) = scripted_parts([]);
     let mut second = second;
     second.post_role = true;
-    second.retired = rig.host.retired.clone();
+    reaper_seam::share(&rig.host, &mut second);
     rig.host.post_mix.test_children = vec![Box::new(second)];
     rig.host.post_mix.saved = Some(Saved {
         schema_version: 1,
@@ -1138,14 +1140,14 @@ fn p1_a_missing_or_different_child_after_the_rack_fails_without_a_start() {
         let (spare, spare_observer) = scripted_parts([]);
         let mut spare = spare;
         spare.post_role = true;
-        spare.retired = rig.host.retired.clone();
+        reaper_seam::share(&rig.host, &mut spare);
         rig.host.post_mix.test_children = vec![Box::new(spare)];
         assert_eq!(rig.host.post_mix.rack().unwrap().len(), 1);
         if replaced {
             // 別の接続（別の子）に入れ替わった。
             let (mut other, _other_observer) = scripted_parts([]);
             other.post_role = true;
-            other.retired = rig.host.retired.clone();
+            reaper_seam::share(&rig.host, &mut other);
             other.ensure_engine_running().unwrap();
             rig.host.post_mix.child = Some(Box::new(other));
         } else {

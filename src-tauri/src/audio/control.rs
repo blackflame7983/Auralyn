@@ -2,7 +2,8 @@
 //! `post`（待たない）で閉包を渡す。受付の順序と、実行のスレッドが取り出した順序を記録する。
 //!
 //! 記録は受付の順序と取り出した順序を残すだけである。操作の並べ替えにも、利用者から見た勝ち負けにも
-//! 使わない。仕事は積んだ順（FIFO）に1件ずつ実行する。
+//! 使わない。仕事は受付の番号の順に1件ずつ実行する（停止の列が先）。子を起動しうる仕事は、終了を確かめられない
+//! 子の窓が開いている間、列の中で保留する。
 mod actor;
 mod class;
 #[cfg(test)]
@@ -15,16 +16,16 @@ pub(crate) use lease::HostLease;
 #[cfg(test)]
 pub(crate) use queue::ActorPoint;
 
-pub(crate) use class::class_of;
-pub use class::JobClass;
+pub(crate) use class::{class_of, launch_of, RequestKind};
 #[cfg(test)]
 pub(crate) use class::{
-    request_class as request_class_of, NAME_CLASSES, NAME_PAIRS, REQUEST_CLASSES, REQUEST_ENTRIES,
-    REQUEST_PAIRS,
+    request_class as request_class_of, request_launch, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS,
+    REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
 };
+pub use class::{JobClass, Launch};
 
 use super::{engine_life, AudioHost};
-use queue::{Job, JobKind, JobQueue, Payload, Reply};
+use queue::{Job, JobKind, JobQueue, Payload, Reply, ReplyTx};
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
@@ -86,6 +87,29 @@ impl fmt::Display for ControlError {
 
 impl std::error::Error for ControlError {}
 
+/// `run_async`の失敗。閉包の panic は、コマンドのタスクを panic させず`Panicked`で返す。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunAsyncError {
+    Control(ControlError),
+    Panicked(String),
+}
+
+impl RunAsyncError {
+    /// 入口の利用者向けの文言。`ControlError::text`と同じ規則で、panic は panic の文字列を返す。
+    pub fn text(self, fallback: &'static str) -> String {
+        match self {
+            Self::Control(error) => error.text(fallback).to_owned(),
+            Self::Panicked(text) => text,
+        }
+    }
+}
+
+impl From<ControlError> for RunAsyncError {
+    fn from(error: ControlError) -> Self {
+        Self::Control(error)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EntryKind {
     Command,
@@ -109,6 +133,7 @@ pub struct Entry {
     pub kind: EntryKind,
     pub name: &'static str,
     class: Option<JobClass>,
+    launch: Option<Launch>,
 }
 
 impl Entry {
@@ -117,6 +142,7 @@ impl Entry {
             kind,
             name,
             class: None,
+            launch: None,
         }
     }
     pub const fn command(name: &'static str) -> Self {
@@ -128,6 +154,18 @@ impl Entry {
     /// 名前では決まらない入口が、要求の中身から決めた種類を渡す。
     pub const fn class(mut self, class: JobClass) -> Self {
         self.class = Some(class);
+        self
+    }
+    /// 名前では決まらない入口が、要求の中身から決めた種類と起動しうる役割を渡す。
+    pub(crate) const fn request(mut self, kind: RequestKind) -> Self {
+        self.class = Some(kind.class);
+        self.launch = Some(kind.launch);
+        self
+    }
+    /// 試験で、起動しうる役割を指定する。
+    #[cfg(test)]
+    pub(crate) const fn launch(mut self, launch: Launch) -> Self {
+        self.launch = Some(launch);
         self
     }
 }
@@ -285,6 +323,8 @@ pub struct Ticket<'a> {
     seq: u64,
     entry: Entry,
     class: JobClass,
+    launch: Launch,
+    known: u64,
     accepted_at: Instant,
 }
 
@@ -331,7 +371,14 @@ impl WeakAudioControl {
 impl AudioControl {
     /// 実行のスレッドを起動して、ホストを渡す。
     pub fn try_new(host: AudioHost) -> io::Result<Self> {
-        let queue = Arc::new(JobQueue::new());
+        let store = host.retired();
+        let queue = Arc::new(JobQueue::new(store.clone()));
+        let waker = Arc::downgrade(&queue);
+        store.bell().register(Box::new(move || {
+            if let Some(queue) = waker.upgrade() {
+                queue.wake();
+            }
+        }));
         let admission = Arc::new(Admission::new());
         let handle = actor::spawn(queue.clone(), admission.clone(), host)?;
         Ok(Self {
@@ -363,12 +410,45 @@ impl AudioControl {
     pub fn admit(&self, entry: Entry) -> Ticket<'_> {
         let class = class_of(entry);
         let accepted_at = Instant::now();
+        // 見えている記録の番号は、受付を確定する前に固定する。受付の間に足された記録では保留しない。
+        let known = self.shared.queue.store().last_id();
+        let seq = self.shared.admission.accept(entry);
         Ticket {
             control: self,
-            seq: self.shared.admission.accept(entry),
+            seq,
             entry,
             class,
+            launch: launch_of(entry),
+            known,
             accepted_at,
+        }
+    }
+
+    /// 受付を記録し、列へ積んで、結果を待つ。待つ間はブロッキングのスレッドを使わない（実行のスレッドの上から
+    /// 呼ぶと`Reentrant`）。閉包が panic したら、`Panicked`で返す。
+    pub async fn run_async<R: Send + 'static>(
+        &self,
+        entry: Entry,
+        f: impl FnOnce(&mut AudioHost) -> R + Send + 'static,
+    ) -> Result<R, RunAsyncError> {
+        let ticket = self.admit(entry);
+        ticket.guard_reentrancy()?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let run = Box::new(move |host: &mut AudioHost| Box::new(f(host)) as Payload);
+        ticket.push(JobKind::Run {
+            tx: ReplyTx::Async(tx),
+            f: run,
+        })?;
+        match ticket.wait_reply_async(rx).await? {
+            Reply::Done(output) => output
+                .downcast::<R>()
+                .map(|output| *output)
+                .map_err(|_| RunAsyncError::Control(ControlError::Stopped)),
+            Reply::Panicked(payload) => Err(RunAsyncError::Panicked(actor::payload_text(
+                payload.as_ref(),
+            ))),
+            Reply::Poisoned => Err(RunAsyncError::Control(ControlError::Poisoned)),
+            Reply::Refused(error) => Err(RunAsyncError::Control(error)),
         }
     }
 
@@ -488,10 +568,20 @@ impl<'a> Ticket<'a> {
     }
 
     fn job(&self, kind: JobKind) -> Job {
+        #[cfg(test)]
+        let launch = if matches!(kind, JobKind::Lease(_)) {
+            Launch::None
+        } else {
+            self.launch
+        };
+        #[cfg(not(test))]
+        let launch = self.launch;
         Job {
             seq: self.seq,
             entry: self.entry,
             class: self.class,
+            launch,
+            known: self.known,
             accepted_at: self.accepted_at,
             kind,
         }
@@ -537,6 +627,29 @@ impl<'a> Ticket<'a> {
         }
     }
 
+    /// `wait_reply`の非同期版。待つ間にブロッキングのスレッドを使わない。
+    async fn wait_reply_async(
+        &self,
+        mut rx: tokio::sync::oneshot::Receiver<Reply>,
+    ) -> Result<Reply, ControlError> {
+        if !self.class.waits_with_deadline() {
+            return rx.await.map_err(|_| ControlError::Stopped);
+        }
+        let queue = &self.control.shared.queue;
+        let deadline = tokio::time::Instant::from_std(self.accepted_at + queue.limits().wait);
+        match tokio::time::timeout_at(deadline, &mut rx).await {
+            Ok(reply) => reply.map_err(|_| ControlError::Stopped),
+            Err(_elapsed) => match queue.cancel_waiting(self.seq) {
+                Some(job) => {
+                    drop(job);
+                    self.record_refused();
+                    Err(ControlError::Expired)
+                }
+                None => rx.await.map_err(|_| ControlError::Stopped),
+            },
+        }
+    }
+
     /// 実行のスレッドの上からの待ちは、列へ積まずに`Err(Reentrant)`で戻る。
     fn guard_reentrancy(&self) -> Result<(), ControlError> {
         if actor::on_actor() {
@@ -556,7 +669,10 @@ impl<'a> Ticket<'a> {
         self.guard_reentrancy()?;
         let (tx, rx) = sync_channel(1);
         let run = Box::new(move |host: &mut AudioHost| Box::new(f(host)) as Payload);
-        self.push(JobKind::Run { tx, f: run })?;
+        self.push(JobKind::Run {
+            tx: ReplyTx::Sync(tx),
+            f: run,
+        })?;
         match self.wait_reply(&rx)? {
             Reply::Done(output) => output
                 .downcast::<R>()

@@ -123,7 +123,7 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
         let (mut host, observer) = silent_host();
         writer::set_limits_for_test(None, Some(SHORT));
         if !confirmed {
-            seam::set_wait(seam::Wait::Stuck);
+            reaper_seam::stuck();
         }
         let error = host
             .execute_running_command(IpcCommand::GetDevices)
@@ -132,19 +132,20 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
         if confirmed {
             assert_eq!(error.to_string(), REPLY_TIMED_OUT);
             assert!(error.downcast_ref::<EngineUnconfirmed>().is_none());
-            assert_eq!(host.retired.pending(Role::Primary), 0);
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
         } else {
             assert_eq!(
                 error.downcast_ref::<EngineUnconfirmed>().copied(),
                 Some(EngineUnconfirmed { repeated: false })
             );
             assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
-            assert_eq!(host.retired.pending(Role::Primary), 1);
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
+            reaper_seam::pass_window(&host);
             for _ in 0..3 {
                 host.ensure_engine_running().unwrap_err();
             }
-            assert!(host.retired.unconfirmed_error().repeated);
-            seam::set_wait(seam::Wait::Real);
+            assert!(reaper_seam::unconfirmed(&host).repeated);
+            reaper_seam::real();
         }
         drop(host);
         let _ = std::fs::remove_dir_all(&observer.dir);
@@ -420,7 +421,7 @@ fn t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_
                 let outcome = host
                     .execute_running_command(IpcCommand::GetPluginState { id: "x".into() })
                     .map_err(|error| error.to_string());
-                (outcome, host.retired.pending(Role::Primary))
+                (outcome, reaper_seam::pending(&host, Role::Primary))
             })
         };
         let eof_finish = eof_wins.then(|| {

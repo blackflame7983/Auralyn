@@ -46,45 +46,39 @@ struct ReachMeasurement {
 impl ReachTone for AudioState {
     async fn play(&self, duration_ms: u32) -> Result<ReachReceipt, String> {
         let host = self.0.clone();
-        tokio::task::spawn_blocking(move || {
-            host.run(
-                Entry::new(EntryKind::Obs, "play"),
-                move |host| -> Result<_, String> {
-                    let witness = host
-                        .begin_obs_reach_tone(duration_ms)
-                        .map_err(|e| e.to_string())?;
-                    Ok(ReachReceipt {
-                        witness,
-                        config: host.get_state().config,
-                    })
-                },
-            )
-            .map_err(|error| error.text("音声状態を取得できません").to_string())?
-        })
+        host.run_async(
+            Entry::new(EntryKind::Obs, "play"),
+            move |host| -> Result<_, String> {
+                let witness = host
+                    .begin_obs_reach_tone(duration_ms)
+                    .map_err(|e| e.to_string())?;
+                Ok(ReachReceipt {
+                    witness,
+                    config: host.get_state().config,
+                })
+            },
+        )
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.text("音声状態を取得できません"))?
     }
 
     async fn stop(&self, receipt: &ReachReceipt) -> Result<ReachReceipt, String> {
         let host = self.0.clone();
         let witness = receipt.witness.clone();
-        tokio::task::spawn_blocking(move || {
-            host.run(
-                Entry::new(EntryKind::Obs, "stop"),
-                move |host| -> Result<_, String> {
-                    let witness = host
-                        .finish_obs_reach_tone(&witness)
-                        .map_err(|e| e.to_string())?;
-                    Ok(ReachReceipt {
-                        witness,
-                        config: host.get_state().config,
-                    })
-                },
-            )
-            .map_err(|error| error.text("音声状態を取得できません").to_string())?
-        })
+        host.run_async(
+            Entry::new(EntryKind::Obs, "stop"),
+            move |host| -> Result<_, String> {
+                let witness = host
+                    .finish_obs_reach_tone(&witness)
+                    .map_err(|e| e.to_string())?;
+                Ok(ReachReceipt {
+                    witness,
+                    config: host.get_state().config,
+                })
+            },
+        )
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.text("音声状態を取得できません"))?
     }
 }
 

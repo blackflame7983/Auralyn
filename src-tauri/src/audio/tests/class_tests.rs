@@ -8,7 +8,7 @@ use super::control::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-fn src() -> PathBuf {
+pub(super) fn src() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
 }
 
@@ -27,7 +27,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// 試験の項目（`#[cfg(test)]`の付いた項目）を、波括弧の対応で飛ばしたソース。
-fn production_source(path: &Path) -> String {
+pub(super) fn production_source(path: &Path) -> String {
     let text = std::fs::read_to_string(path).unwrap();
     let mut kept = Vec::new();
     let mut lines = text.lines();
@@ -139,7 +139,11 @@ fn used_entries() -> Vec<(String, String, bool)> {
                 let tail = text[close..].trim_start();
                 let tail = tail.strip_prefix(',').unwrap_or(tail).trim_start();
                 let tail = tail.strip_prefix(')').unwrap_or(tail).trim_start();
-                found.push((name, format!("{kind} {file}"), tail.starts_with(".class(")));
+                found.push((
+                    name,
+                    format!("{kind} {file}"),
+                    tail.starts_with(".class(") || tail.starts_with(".request("),
+                ));
             }
         }
     }

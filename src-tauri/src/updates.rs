@@ -159,28 +159,37 @@ pub async fn install_update(
         .take()
         .ok_or("先に更新をダウンロードしてください。")?;
     let audio = app.state::<crate::audio::AudioState>().0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        app.save_window_state(tauri_plugin_window_state::StateFlags::all())
-            .map_err(|e| e.to_string())?;
-        let prepare_audio = audio.clone();
-        prepare_audio
-            .run(
+    crate::commands::detached(async move {
+        tauri::async_runtime::spawn_blocking(move || {
+            app.save_window_state(tauri_plugin_window_state::StateFlags::all())
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        audio
+            .run_async(
                 crate::audio::Entry::new(crate::audio::EntryKind::Update, "prepare_update"),
                 |host| host.prepare_update().map_err(|e| e.to_string()),
             )
+            .await
             .map_err(|error| error.text("音声状態を取得できません"))??;
         // Windowsではインストーラー起動後にプロセス終了する。Dropに後片付けを任せない。
-        let result = update.install(bytes).map_err(|e| {
+        let installed =
+            tauri::async_runtime::spawn_blocking(move || {
+                update.install(bytes).map_err(|e| {
             format!("更新できませんでした。音声は停止しています。音声設定から再開してください: {e}")
-        });
-        let _ = audio.run(
-            crate::audio::Entry::new(crate::audio::EntryKind::Update, "finish_update_attempt"),
-            |host| host.finish_update_attempt(),
-        );
-        result
+        })
+            })
+            .await;
+        let _ = audio
+            .run_async(
+                crate::audio::Entry::new(crate::audio::EntryKind::Update, "finish_update_attempt"),
+                |host| host.finish_update_attempt(),
+            )
+            .await;
+        installed.map_err(|e| e.to_string())?
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
