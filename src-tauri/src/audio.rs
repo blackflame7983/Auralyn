@@ -3192,6 +3192,10 @@ mod link_seam;
 mod reaper_seam;
 
 #[cfg(test)]
+#[path = "audio/tests/reaper_tests.rs"]
+mod reaper_tests;
+
+#[cfg(test)]
 #[path = "audio/tests/link_cell_tests.rs"]
 mod link_cell_tests;
 

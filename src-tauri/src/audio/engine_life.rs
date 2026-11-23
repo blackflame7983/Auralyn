@@ -34,11 +34,11 @@ impl Role {
 /// 終了の確認を繰り返す間隔。
 const POLL: Duration = Duration::from_millis(50);
 /// `kill()` の後に終了を確かめる上限。
-const CONFIRM: Duration = Duration::from_secs(2);
+pub(super) const CONFIRM: Duration = Duration::from_secs(2);
 /// 監視されていない記録を、列の待ちが確かめ直す間隔の上限。
 pub(super) const PROBE_INTERVAL: Duration = Duration::from_millis(200);
 /// `engine_unconfirmed` が続いたとき、案内を切り替える回数。
-const REPEAT_AT: u32 = 3;
+pub(super) const REPEAT_AT: u32 = 3;
 /// アプリの終了で、全部の子に共通の確認の上限。
 const SHUTDOWN: Duration = Duration::from_secs(2);
 
@@ -186,6 +186,8 @@ pub(super) struct Store {
     kills: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
     reapers: Arc<std::sync::atomic::AtomicUsize>,
+    #[cfg(test)]
+    held_drops: std::sync::atomic::AtomicUsize,
 }
 
 impl Store {
@@ -299,7 +301,7 @@ impl Store {
             };
             if !removed.is_empty() {
                 log::info!("終了を確認しました（{role:?}）");
-                drop(removed);
+                self.discard(removed);
                 self.ring();
             }
             if let Some(error) = failed {
@@ -338,7 +340,7 @@ impl Store {
         };
         if !removed.is_empty() {
             log::info!("終了を確認しました（更新の前）");
-            drop(removed);
+            self.discard(removed);
             self.ring();
         }
         failed.map_or(Ok(()), Err)
@@ -396,7 +398,7 @@ impl Store {
         let removed = self.take(id);
         if removed.is_some() {
             log::info!("終了を確認しました（監視）");
-            drop(removed);
+            self.discard(removed);
             self.ring();
         }
     }
@@ -442,20 +444,45 @@ impl Store {
             }
         }
         if !removed.is_empty() {
-            drop(removed);
+            self.discard(removed);
             self.ring();
         }
+    }
+
+    /// 消した記録の `Child`・`Job` を落とす。`slots` を持ったまま呼ばない。
+    fn discard<T>(&self, removed: T) {
+        #[cfg(test)]
+        {
+            // ほかのスレッドが短く持つ間は待つ。自分が持ったままなら、いつまでも取れない。
+            let mut held = true;
+            for _ in 0..10 {
+                if self.slots.try_lock().is_ok() {
+                    held = false;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(3));
+            }
+            if held {
+                self.held_drops.fetch_add(1, Ordering::AcqRel);
+            }
+        }
+        drop(removed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn held_drops(&self) -> usize {
+        self.held_drops.load(Ordering::Acquire)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reaper_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
+        self.reapers.clone()
     }
 
     #[cfg(test)]
     pub(super) fn reaper_guard(&self) -> ReaperGuard {
         self.reapers.fetch_add(1, Ordering::AcqRel);
         ReaperGuard(self.reapers.clone())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn reaper_threads(&self) -> usize {
-        self.reapers.load(Ordering::Acquire)
     }
 
     #[cfg(test)]
@@ -470,6 +497,25 @@ impl Store {
             .map(|r| r.unconfirmed)
             .collect()
     }
+}
+
+/// 試験で、実の子を記録へ置いて、監視を起こす。`kill()` も確認もしない。
+#[cfg(test)]
+pub(super) fn adopt(
+    store: &Arc<Store>,
+    role: Role,
+    child: Child,
+    job: Option<JobHandle>,
+    script: Option<Arc<Script>>,
+) -> u64 {
+    let killed_at = Instant::now();
+    let id = store.push(role, child, job, killed_at);
+    let source = script.map_or(reaper::Source::Poll, reaper::Source::Scripted);
+    if !reaper::spawn(store, id, source, killed_at) {
+        store.mark_unwatched(id);
+    }
+    store.ring();
+    id
 }
 
 #[cfg(test)]

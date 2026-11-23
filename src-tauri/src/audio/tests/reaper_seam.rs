@@ -74,28 +74,6 @@ pub(super) fn pass_window(host: &AudioHost) {
     std::thread::sleep(deadline + Duration::from_millis(100));
 }
 
-/// 記録が消えるまで、実時間で待つ（上限は失敗）。
-pub(super) fn wait_cleared(host: &AudioHost, role: Role, limit: Duration) {
-    let until = std::time::Instant::now() + limit;
-    while pending(host, role) != 0 {
-        assert!(
-            std::time::Instant::now() < until,
-            "記録が {limit:?} のうちに消えなかった"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
-
-/// 生きている監視のスレッドの数。
-pub(super) fn reaper_threads(host: &AudioHost) -> usize {
-    host.retired.reaper_threads()
-}
-
-/// 監視が送った `kill()` のやり直しの数。
-pub(super) fn kills(host: &AudioHost) -> usize {
-    host.retired.kills()
-}
-
 /// 差し替え中に記録へ移った子の監視への台本。
 pub(super) fn script() -> Option<std::sync::Arc<engine_life::Script>> {
     seam::current_script()

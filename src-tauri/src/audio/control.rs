@@ -19,8 +19,8 @@ pub(crate) use queue::ActorPoint;
 pub(crate) use class::{class_of, launch_of, RequestKind};
 #[cfg(test)]
 pub(crate) use class::{
-    request_class as request_class_of, request_launch, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS,
-    REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
+    request_class as request_class_of, NAME_CLASSES, NAME_LAUNCH, NAME_PAIRS, REQUEST_CLASSES,
+    REQUEST_ENTRIES, REQUEST_LAUNCH, REQUEST_LAUNCH_DEFAULT, REQUEST_PAIRS,
 };
 pub use class::{JobClass, Launch};
 
@@ -566,11 +566,19 @@ impl<'a> Ticket<'a> {
     }
 
     fn job(&self, kind: JobKind) -> Job {
+        #[cfg(test)]
+        let launch = if matches!(kind, JobKind::Lease(_)) {
+            Launch::None
+        } else {
+            self.launch
+        };
+        #[cfg(not(test))]
+        let launch = self.launch;
         Job {
             seq: self.seq,
             entry: self.entry,
             class: self.class,
-            launch: self.launch,
+            launch,
             known: self.known,
             accepted_at: self.accepted_at,
             kind,
