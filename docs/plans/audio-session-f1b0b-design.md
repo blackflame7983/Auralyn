@@ -970,7 +970,7 @@ Release は、2b では、取り出す時の断り（fence）・上限・期限�
 
 **Normal（初版）**：上に無いすべて。`get_*`・`validate_checked`・`capture_async`・`broadcast_bundle`（読み取り4か所。**今のコードは8か所とも `Entry::bundle("broadcast_bundle")`。取得・解放の4か所は名前を分ける**）・`begin_live_changes`・`begin_live_changes_bundle`・`snapshot_conditions`・`save_profile`・`enumerate_devices_async`（開始と問い合わせ）・`remove_plugin`・`noise_measurement`・`peak_protection`・`broadcast_true_peak`・`set_engine_tuning_config`・`set_event_emitter`（`setup` のメインのスレッドが待つので、断られてはならない）・`prepare_update`・`apply_migration`・`acknowledge_session_review`・`switch_session`。
 
-**判定は網羅の `match` のメソッド1か所（Neon の助言。I29）**：上限・受付からの期限・取り消し・fence・レーンの判定は、`impl JobClass` の次のメソッドだけが持ち、すべて**`_ =>` を使わない網羅の `match`**：`counted`（数える）・`waits_with_deadline`（期限付き待ちと取り消し。Starting・Normal だけ）・`refused_after_stop`（Starting だけ）・`lane`・`raises_fence`（Stop だけ）・`checks_stop`（境目の `check_stopped` が止めるか。Starting だけ）。新しい種類を足すとコンパイルが落ち、Release の外し忘れ（期限付き待ちへの混入）を型で防ぐ。`queue.rs`・`control.rs`・`actor.rs` は種類を直接見ず、これらのメソッドだけを呼ぶ（Y31）。
+**判定は網羅の `match` のメソッド1か所（Neon の助言。I29）**：上限・受付からの期限・取り消し・fence・レーンの判定は、`impl JobClass` の次のメソッドだけが持ち、すべて**`_ =>` を使わない網羅の `match`**：`counted`（数える）・`waits_with_deadline`（期限付き待ちと取り消し。Starting・Normal だけ）・`refused_after_stop`（Starting だけ）・`lane`・`raises_fence`（Stop だけ）。新しい種類を足すとコンパイルが落ち、Release の外し忘れ（期限付き待ちへの混入）を型で防ぐ。`queue.rs`・`control.rs`・`actor.rs` は種類を直接見ず、これらのメソッドだけを呼ぶ（Y31）。
 
 **名前ではなく要求で種類を決める入口（Neon の助言。決定 2）**：1つの入口の名前が、読み取りと適用を兼ねるものは、名前で Starting にすると、**読み取りの要求（UI が定期的に送るもの）が、停止の後で「停止が先に」と断られる**。そこで、`Entry` に `const fn class(self, JobClass) -> Self` を足し、呼び出し側が**要求から種類を決めて渡す**（`Entry::command("live_modes").class(live_modes_class(&request))`）。表の既定は名前で決め、`.class(…)` の指定があればそれが優先。洗い出した入口（初版。V15）：
 
@@ -979,11 +979,11 @@ Release は、2b では、取り出す時の断り（fence）・上限・期限�
 | `post_mix`（`commands/audio.rs:6`） | `post_mix::Request` | `Snapshot`・`Remove`・`Reorder`・`Bypass`・`Mute`・`Gain`・`Editor`・`Save`・`Reload`・`Reset`・`Enable` | `RestoreSaved`・`Add`（子を起動・復元する） |
 | `mixing`（`:175`） | `mixing::Request` | `Snapshot`・`Reset` ほか読み取りと保存 | 開始・復元・選択の適用 |
 | `live_modes`（`:1423`） | `live_modes::Request` | `Snapshot` | `SingingOn`・`TalkOn` ほか切替・復元 |
-| `session_rack`（`:584`） | `SessionRackRequest` | 読み取り | 追加・復元・変更 |
+| `session_rack`（`:584`） | `SessionRackRequest` | 読み取り（`Snapshot`）・`Retain`・**`Add`（予約の中で走る復元の一部。停止で断らない。Sol の3回目の指摘）** | **Release**：`Finish`（予約の解放）。**Starting**：`Begin`（予約を取る） |
 | `builtin_effects`（`:1142`） | `builtin::Request` | 読み取り | `Apply`・`Undo`・`Redo`・`ApplyProposal` |
 | `auto_gain`（`:1201`） | `auto_gain::Request` | `Status`・`Devices` | **Release**：`Cancel`・`StopPreview`（録音・試聴を止める）。**Starting**：`Initialize`・`Begin`・`Preview`・`Apply`・`Restore`・`UndoHistory`・`RedoHistory` |
 | `noise_measurement`（`:1497`） | `noise_learning::Request` | `Snapshot`・`Invalidate`・`Approve` | **Release**：`Cancel`。**Starting**：`Start` |
-| `voice_check_preview`（`voice_check.rs:10`） | `preview::Request` | 読み取り | **Release**：`Stop`・`Close`（試聴の停止・片付け）。**Starting**：再生・開始の要求 |
+| `voice_check_preview`（`voice_check.rs:10`。`Request.action`） | `preview::Action` | 読み取り（`CandidateStatus` ほか） | **Release**：`Stop`・`Close`・`CancelCandidate`（候補とその試聴を片付ける。`voice_check_preview.rs:105,1207`）。**Starting**：再生・開始の要求と、候補を作る `PrepareCandidate`・`PrepareProposal`・`PrepareNoise` |
 | `audio_frontend_bootstrap`（`:298`） | `frontend_bootstrap::Request` | 読み取り | 開始を伴うもの |
 | `peak_protection`（`:118`）・`broadcast_true_peak`（`:137`）・`live_output`（`:156`） | `Option<Config>` | `None`（読み取り） | `Some`（適用） |
 | `set_loudness_measurement`（`:1163`） | `Option<u64>` | — | **Release**：`None`（計測の解除）。**Starting**：`Some`（開始） |
@@ -1222,13 +1222,13 @@ stateDiagram-v2
 | Y17 | `y17_a_queued_tick_runs_after_a_stop_and_a_running_tick_finishes_first` | X13 の拡張。`[tick, stop]` を積む→停止が先。tick を走らせている最中に停止を積む→tick が先（J-18）。両方で、取り消す・確定する結果を直接のホストと照合 |
 | Y18 | `y18_the_scheduler_is_never_refused_and_still_does_not_pile_up` | 満杯・期限・fence の下でも tick は積まれ、断られず、同時に高々1件（I12）。Tick を `ControlError::Busy` 等で受けても scheduler は止まらず次の周期へ |
 | Y20 | `y20_shortcut_refusals_map_silently_or_to_action_failed` | ショートカットの `StoppedFirst` は何も通知せず、`Busy`・`Expired` は `ActionFailed` の `detail` に新しい文言、`Stopped`・`Poisoned` は今の `AudioStateUnavailable`。トレイは、どれも黙って捨てる。比較のショートカットの `auto_gain(Status)` が `StoppedFirst` のとき、「止まっているため無視しました」にならず、黙って捨てられる |
-| Y21 | `y21_acquire_and_release_are_paired_by_name_and_by_request_and_release_is_never_refused` | 12.4 の構造の試験。**名前の単位**：対の解放がすべて Release、Release がすべて対の解放、`end_`・`cancel_`・`finish_` で始まる入口は Release か Stop、1つの名前が取得と解放を兼ねない。**要求の単位**（`REQUEST_CLASSES`）：`auto_gain`（`Begin`↔`Cancel`・`Preview`↔`StopPreview`）・`voice_check_preview`（開始・再生↔`Stop`・`Close`）・`noise_measurement`（`Start`↔`Cancel`）・`set_loudness_measurement`（`Some`↔`None`）の対で、解除の要求が Release、始める要求が Starting であること。ソースの `enum Request` の変種名を読み、`Cancel`・`Stop`・`Close`・`End`・`Release`・`Finish` を含む変種が Release か、表で理由つきの例外であること |
+| Y21 | `y21_acquire_and_release_are_paired_by_name_and_by_request_and_release_is_never_refused` | 12.4 の構造の試験。**名前の単位**：対の解放がすべて Release、Release がすべて対の解放、`end_`・`cancel_`・`finish_` で始まる入口は Release か Stop、1つの名前が取得と解放を兼ねない。**要求の単位**（`REQUEST_CLASSES`）：`auto_gain`（`Begin`↔`Cancel`・`Preview`↔`StopPreview`）・`voice_check_preview`（開始・再生↔`Stop`・`Close`）・`noise_measurement`（`Start`↔`Cancel`）・`set_loudness_measurement`（`Some`↔`None`）・**`session_rack`（`Begin`↔`Finish`）**・**`voice_check_preview`（`PrepareCandidate`・`PrepareProposal`・`PrepareNoise`↔`CancelCandidate`）**の対で、解除の要求が Release、始める要求が Starting であること。ソースの `enum Request` の変種名を読み、`Cancel`・`Stop`・`Close`・`End`・`Release`・`Finish` を含む変種が Release か、表で理由つきの例外であること |
 | Y25 | `y25_a_release_survives_a_full_queue_and_an_expired_wait` | **すべて実際の `Ticket::run`（`AudioControl::run`）経由で確かめる**（`push`・`take_next` の単体だけで済ませない）。**予約**：`begin_live_changes`（取得）が通った後、列を256件で満杯にし、さらに縮めた期限（200ms）を過ぎさせても、`end_live_changes`（単独のコマンドの入口と、配信セットの `end_live_changes_bundle` の入口の**両方**）は `Busy` にならず、**期限切れで呼び出し側に取り消されず**（`recv_timeout` を使わない）、待ち続けて実行され、**予約が消えて次の `begin_live_changes` が通る**。**更新**（`prepare_update` と `finish_update_attempt` も `Ticket::run` 経由）：`prepare_update` の後、`update.install` が失敗する・列が満杯になる・期限が過ぎるが重なっても、`finish_update_attempt` が実行され、`maintenance` が下りて、次の `start_audio` が（「更新を適用中のため」で断られず）進む。取得（Normal）は、満杯のとき `Busy` で断られ、そのとき予約は立たない |
 | Y27 | `y27_an_abnormal_exit_releases_every_run_in_both_lanes_and_a_refused_current` | X14 の拡張。停止の列・通常の列・取り出し直後の `current`（**断る仕事**を含む）に `Run` を積んだ状態で、実行のスレッドを異常に終わらせる（`QueueLockHeld`・`AfterTake` の継ぎ目。断る仕事の返事を送る直前にも継ぎ目）。待っていた `run` がすべて `Err(Stopped)` で戻る（I28）。`post` は `Err(Stopped)` で1回だけ呼ばれる |
 | Y31 | `y31_job_class_decisions_are_exhaustive_matches_in_one_place` | 12.4 の構造の試験。`class.rs` の `impl JobClass` のメソッド（`counted`・`waits_with_deadline`・`refused_after_stop`・`lane`・`raises_fence`）が、`match` の `_ =>` を使わない（ソースを読んで固定）。新しい種類を足すとコンパイルが落ちる。上限・期限・fence の判定は、これらのメソッド以外で種類を直接見ない |
 | Y32 | `y32_request_dependent_entries_get_their_class_from_the_request` | 12.4 の表の入口：`live_modes(Snapshot)`・`post_mix(Snapshot)`・`mixing(Snapshot)`・`session_rack` の読み取り・`builtin_effects` の読み取り・`auto_gain(Status)`・`noise_measurement` の読み取り・`peak_protection(None)` などの読み取りの要求は、**停止より前に受け付けても断られない**（Normal）。`RestoreSaved`・`Add`・`live_modes(SingingOn)`・`auto_gain(Apply)` などの適用の要求は断られる（Starting）。要求の種類ごとに結果を固定 |
 | Y33 | `y33_the_request_dependent_entry_table_matches_the_source` | 構造の試験。12.4 の「要求で種類を決める入口」の表と、ソースの `Entry` の呼び出し（`.class(…)` の指定）が一致する。表にある入口が、名前だけの `Entry::command("…")` で呼ばれていない |
-| Y35 | `y35_a_full_queue_and_an_expired_wait_never_refuse_a_release_request` | **要求単位の解除**（`auto_gain(Cancel)`・`auto_gain(StopPreview)`・`voice_check_preview(Stop)`・`voice_check_preview(Close)`・`noise_measurement(Cancel)`・`set_loudness_measurement(None)`）を、満杯の列・縮めた期限の下で、実際の `Ticket::run` 経由で呼ぶ。**`Busy`・`Expired` にならず、無期限に待って実行される**。同じ要求の取得側（`Begin`・`Preview`・`Start`・`Some`）は、満杯のとき `Busy` で断られ、停止より前に受け付けたものは `StoppedFirst` で断られる |
+| Y35 | `y35_a_full_queue_and_an_expired_wait_never_refuse_a_release_request` | **要求単位の解除**（`auto_gain(Cancel)`・`auto_gain(StopPreview)`・`voice_check_preview(Stop)`・`voice_check_preview(Close)`・`noise_measurement(Cancel)`・`set_loudness_measurement(None)`・**`session_rack(Finish)`**・**`voice_check_preview(CancelCandidate)`**）を、満杯の列・縮めた期限の下で、実際の `Ticket::run` 経由で呼ぶ。**`Busy`・`Expired` にならず、無期限に待って実行される**。**`session_rack(Add)` は Normal なので、停止より前に受け付けても断られない**（予約の中で走る復元は、停止の後も走る。main と同じ）。同じ要求の取得側（`Begin`・`Preview`・`Start`・`Some`）は、満杯のとき `Busy` で断られ、停止より前に受け付けたものは `StoppedFirst` で断られる |
 | Y30 | `y30_a_release_stays_in_the_normal_lane_and_keeps_the_callers_order` | 同じ呼び出し側の「取得→（Starting の適用）→解放」が FIFO で保たれる。解放は停止の列へ入らず、前に受け付けた無関係な操作を追い越さない。長い閉包の後ろでも、無期限に待って実行される（取りこぼさない） |
 
 **壊して確かめる（一時的な改変。2b。実行中の停止に関する項目は 2c の 12.20.6）**：
@@ -1298,7 +1298,7 @@ stateDiagram-v2
 | V10 | 停止のレーンの長さの上限 | 設けない（Stop・Mute は断らない・捨てない。人の操作の速さで入る。受付の入口がブロッキングスレッド 512 に縛られるのはコマンドの層だけ）。トレイ・ショートカットの連打は、12.17 の (h) に記録 |
 | V11 | 256 の根拠 | tokio のブロッキングスレッドの既定の上限 512 の半分。停止・ミュートのコマンドと、列の外で待つほかの入口（更新・移行など）が使うスレッドを残す。F1b の実測（4章）で見直す |
 | V12 | Release を停止の列に入れるか、通常の列のままにするか（統括の決定 1 の判断） | **通常の列のまま**（12.4）。同じ呼び出し側の順（取得→適用→解放）が FIFO で保たれ、前の無関係な操作を追い越さない。断られず無期限に待つので取りこぼさない。待ちが長いときの副作用（予約が残る時間）は、今の「解放が先の操作の後ろで待つ」と同じ |
-| V13 | 要求で種類を決める入口の一覧（12.4）の網羅と、要求ごとの分類の誤りの検出 | 初版の一覧を実装の最初の作業にし、名前が複数の用途を兼ねる入口を今のコードで数え直す。分類の誤りは、要求ごとの分類の定数と、取得と解除の対の構造の試験（Y21・Y35）で検出する。網羅の `match` は、要求の追加の漏れだけを防ぐ（既存の要求に割り当てた分類の誤りは防げない） |
+| V13 | 要求で種類を決める入口の一覧（12.4）の網羅と、要求ごとの分類の誤りの検出 | 初版の一覧を実装の最初の作業にし、名前が複数の用途を兼ねる入口を今のコードで数え直す。**予約・区間を取ってから、中で複数の操作を積む入口が、ほかにもあれば（`session_rack` のほか、配信セットの `begin_live_changes`〜`end_live_changes`、更新の `prepare_update`〜`finish_update_attempt` など）、同じ規則を当てる：区間の中の操作は Normal（停止で断らない）、閉じる側は Release。** `voice_check_preview` の `Action` の棚卸しでは、候補とその試聴を片付ける要求（`CancelCandidate`）も確認する。分類の誤りは、要求ごとの分類の定数と、取得と解除の対の構造の試験（Y21・Y35）で検出する。網羅の `match` は、要求の追加の漏れだけを防ぐ（既存の要求に割り当てた分類の誤りは防げない） |
 | V14 | `StoppedFirst` の型の置き場所と、`stopped_seen` の公開 | **2c へ**（12.20.7） |
 | V15 | 要求で種類を決める入口の Starting／Normal の分け方（12.4 の表の初版）。`post_mix` の `Add` と `RestoreSaved` を Starting にするか、`live_output` の適用の要求をどう数えるか | 初版は12.4 の表のとおり。実装時に、各入口の要求の列挙を1件ずつ読んで確定する（要求の追加で表が漏れないよう、`Request` の `match` も `_ =>` なしにする） |
 
@@ -1309,7 +1309,7 @@ stateDiagram-v2
 - **(c) 長い閉包の間、tick・読み取りは待つ**（11.17 の (b) のとおり）。停止の列が先になるのは、停止・ミュートだけ。
 - **(d) Mute は実行中の Starting を止めない**（V1）。`apply_profile` の途中のミュートは、閉包が終わるまで待つ。
 - **(e) 停止の後に、Starting 以外の操作が子を起動しうる**：Normal の操作（読み取り・設定の変更など）が、停止の後に `execute_command` 経由で子を起動しうる。`post_mix` の `Reorder { ids: [] }` は、子がいないと空ラックの照合を通り、接続を固定していない `command()` から子を起動しうる（`post_mix.rs:571,1073`）。**main でも同じ順で起き、音は出ない**（これらの経路で起動直後に音が出る処理は見当たらない）。子の起動の門は 2c（12.20）。
-- **(f) 起動の確認・引き継ぎの失敗で `StoppedFirst` を返すとき、`kill_engine` で子が終わる**：止めた後の状態は「起動に失敗した」と同じ（子が無い）。
+- **(f) 予約の中の `Add` は、停止の後も走る**：`session_rack(Begin)` が予約を取った後、待機中の `Add` を Stop が追い越しても、`Add` は断られず（Normal）、今と同じ順で走る。復元を停止で中断するのは 2c。`Add` を Starting にすると、新しい受付拒否が画面で「VST復元失敗」に数えられ、復元ループが次の項目へ進む退行になる（`usePlugins.ts:157,200`・`restorePluginSession.ts:77`・`session_rack.rs:287`）。`Finish` は Release で、混雑時にも断られない（予約が残らない）。
 - **(g) 入口の種類・要求ごとの分類の付け違い**：構造の試験は名前・要求の一致と、取得と解除の対だけを守る。分類の誤り（既存の要求を Normal にしてしまう）は、網羅の `match` では検出できない。解除の要求は対の表（Y21・Y35）で固定する。それ以外の付け違いは、実装のレビューで1件ずつ見る。
 - **(h) 停止のレーンの制約（V10）**：(1) トレイ・ショートカットの連打は、停止のレーンに溜まる（数えない）。人の速さを超えるとき（キーリピートなど）は、Mute を `toggle` するたびに実行される。(2) **先着の Mute の件数ぶん、利用者の Stop が遅れる**（レーンは積んだ順）。(3) **停止のレーンへの流入が続く間は、通常の列と Tick が進まない**（停止のレーンが先に取り出される）。人の速さの範囲では問題にならないが、上限は設けない（11.17 の (c) と同じ性質）。(4) **Mute は、停止の後でも、待機用の子を起動しうる**（承認済みの例外。12.6）。
 - **(i) 256 は、ブロッキングスレッド（512）の前提に依存する**：ブロッキングスレッドを使うほかの入口（ファイル・更新・移行・一時利用など）が、同時に 256 を超えて待てば、停止のコマンドも `run_blocking` に入れない。今、同時に 256 を超えて待つ入口があるかは確認していない（`spawn_blocking` を使う入口の数は、12.3 では数えていない）。
@@ -1339,6 +1339,8 @@ stateDiagram-v2
 ### 12.19 Sol の設計レビュー（BLOCK）への対応（統括の決定 2026-11-23）
 
 **経緯（3回目のレビュー。統括の決定）**：Sol の3回目の指摘の多くが「実行中の閉包の途中で止める」ことから来ていたので、**2b を「受付の段」だけにし、J-20 の一歩の境目・子の起動の門・実行の文脈は 2c へ分けた**（12.7・12.20）。Release は要求の単位に広げ（`auto_gain(Cancel)` など。12.4）、分類の誤りは要求ごとの分類の定数と対の構造の試験（Y21・Y35）で検出する。
+
+**4回目のレビュー（統括の決定）**：`session_rack(Finish)` を Release に固定し、`session_rack(Add)` は Normal にした（予約の中の復元を停止で断らない）。`voice_check_preview(CancelCandidate)` も Release。`checks_stop`・起動確認時の `StoppedFirst` など、2c へ移した仕組みの記述を 2b の節から外した。次の表のうち、境目・区間・`Failure` に関する対応の行は、2c へ移した（12.20）。
 
 **経緯（Neon の助言）**：最初は J-20 の確かめの点を IPC の口に置き、後始末の区間とラッチで抜け道を作った。`StoppedFirst` を IPC の `Err` に混ぜる限り、既存の失敗の処理が子の破棄・`restored`／`enabled` の落下に化けるので、**Neon の助言で、確かめの点を多段の操作の一歩の境目（S1〜S15）へ移した**（統括の決定、2026-11-23）。判定は `JobClass` の網羅の `match` と、要求で決める入口の表へ寄せた（12.4）。
 
