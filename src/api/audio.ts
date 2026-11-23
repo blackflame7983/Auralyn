@@ -135,6 +135,9 @@ export type SessionRackReply = { status: 'snapshot'; generation: string; revisio
     | { status: 'finished' | 'busy' | 'conflict' }
     | { status: 'failed'; message: string };
 
+let stopCalls = 0;
+export const stopCallCount = () => stopCalls;
+
 export const audioApi = {
     processInputSources: (): Promise<ProcessInputCandidate[]> => invoke('get_process_input_sources'),
     frontendBootstrap: async (request: FrontendBootstrapRequest): Promise<FrontendBootstrapReply> => invoke('audio_frontend_bootstrap', { request }),
@@ -164,6 +167,7 @@ export const audioApi = {
         }));
     },
     stop: async () => {
+        stopCalls++;
         return await traceCommand('stop_audio', () => invoke("stop_audio"));
     },
     scanPlugins: async (extraRoots?: string[]): Promise<VstPlugin[]> => {

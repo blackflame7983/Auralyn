@@ -84,3 +84,10 @@ P2 の害は短い途切れと余分な通知だけ。ただし1点目は数行�
 ## 5. R1 自体が要るか
 
 **Rust 側の R1（権限・`recover`）は不要。既知の制限として記録する。** 残るのは、Rust 側の停止が再開の Start の最中に重なる場合（P6）と、確認のセッションとの関係（P7、F2 で扱う）。フロントの小さな直し（案A）は、R1 の段として独立させず、1つの小さな PR で入れればよい。
+
+## 6. 実装（案A）
+
+- `src/hooks/useAudioRecovery.ts`：自分の Start 以外の `audio-started` で予約を取り消す。障害の通知の時点の `stopCallCount()` を控え、予約の実行の冒頭で変わっていたら取り消す（Start が失敗して再予約しても、次の実行で止まる）。
+- `src/api/audio.ts`：`audioApi.stop()` の呼び出しを数える `stopCallCount()` を足した。
+- 試験2つ（`useAudioRecovery.test.tsx`）：待ち中の手動の開始、Start 中の手動の停止と失敗。それぞれ直した処理を外すと失敗することを確認した。
+- 省いたもの：Start 失敗の直後の別の確認（実行の冒頭の確認で足りる）、Rust 側の停止（P6）、`StoppedFirst` の文言の照合。

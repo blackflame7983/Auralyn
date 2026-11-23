@@ -5273,14 +5273,14 @@
     {
       "file": "src/hooks/useAudioRecovery.ts",
       "rule": "auralyn/owned-timers",
-      "hash": "ef09b12a3185686bbc1f39d73a34642fb1e694a03ddfe72be36861600e0948c3",
+      "hash": "02dcabb7e1c82971f38f5269461a06d033c1d1da723615c73f7150024d39e396",
       "count": 1,
       "reason": "既存周期を保持する。対象宣言の編集時にusePolling/useAnimationFrameへ移行する。"
     },
     {
       "file": "src/hooks/useAudioRecovery.ts",
       "rule": "react-hooks/exhaustive-deps",
-      "hash": "ef09b12a3185686bbc1f39d73a34642fb1e694a03ddfe72be36861600e0948c3",
+      "hash": "02dcabb7e1c82971f38f5269461a06d033c1d1da723615c73f7150024d39e396",
       "count": 1,
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },

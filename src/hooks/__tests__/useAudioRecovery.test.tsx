@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { audioApi } from '../../api/audio';
@@ -139,4 +140,24 @@ it('終了後に届いた開始応答ではチャンネル設定や成功通知�
     await act(async () => finish());
     expect(audioApi.setInputChannels).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
+});
+
+it('再開の待ち中に手動で開始されたら、予約した再開を行わない', async () => {
+    const start = vi.spyOn(audioApi, 'start');
+    renderHook(() => useAudioRecovery()); disconnect();
+    notify('audio-started');
+    await tick(12000);
+    expect(start).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+});
+it('再開のStart中に手動停止され、そのStartが失敗しても再予約しない', async () => {
+    let fail!: () => void;
+    const start = vi.spyOn(audioApi, 'start').mockReturnValue(new Promise((_, reject) => { fail = () => reject(new Error('stopped first')); }));
+    renderHook(() => useAudioRecovery()); disconnect(); await tick(2000);
+    expect(start).toHaveBeenCalledOnce();
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    await audioApi.stop();
+    notify('audio-stopped'); // 自分のStart中の通知として無視される。
+    await act(async () => fail()); await tick(12000);
+    expect(start).toHaveBeenCalledOnce();
 });

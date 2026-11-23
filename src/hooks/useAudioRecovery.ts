@@ -3,7 +3,7 @@ import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { audioApi } from '../api/audio';
+import { audioApi, stopCallCount } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
 import { readAudioPreferences } from '../lib/audioPreferences';
 import { liveModesApi } from '../api/liveModes';
@@ -31,6 +31,7 @@ export function useAudioRecovery() {
             const config = readAudioPreferences();
             if (!config) return;
             const snapshot = JSON.stringify(config);
+            const stopsAtError = stopCallCount();
             const current = ++generation;
             recovering = true;
             const valid = () => active && current === generation;
@@ -41,7 +42,7 @@ export function useAudioRecovery() {
             const retry = async (attempt: number) => {
                 if (!valid()) return;
                 if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true'
-                    || JSON.stringify(readAudioPreferences()) !== snapshot) {
+                    || stopCallCount() !== stopsAtError || JSON.stringify(readAudioPreferences()) !== snapshot) {
                     cancel();
                     return;
                 }
@@ -86,7 +87,11 @@ export function useAudioRecovery() {
             });
             schedule(1);
         });
-        const started = listen('audio-started', () => { if (!recovering) exhausted = false; });
+        const started = listen('audio-started', () => {
+            // 自分のStart以外の開始は手動操作なので、待っている再開は要らない。
+            if (startingGeneration !== generation) cancel();
+            if (!recovering) exhausted = false;
+        });
         const stopped = listen('audio-stopped', () => {
             // 自分のStartも停止通知を出すため、要求中以外の停止だけをキャンセルとする。
             if (startingGeneration !== generation) cancel();
