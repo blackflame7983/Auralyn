@@ -1497,20 +1497,20 @@ stateDiagram-v2
 | # | 決めること | 答え |
 |---|---|---|
 | 1 | reaper の形 | **子（記録）ごとに1本のスレッド**（`auralyn-reaper`）。待つのは、記録の子から**複製したプロセスのハンドル**（`OwnedHandle`）に対する `WaitForSingleObject`。`Child`・`Job` は今のまま `Store` の記録が持ち、reaper は持たない（所有を移さない。`CREATE_SUSPENDED`・`main_thread_handle`・Job の kill-on-close に触れない）。終わりを観測したら、記録を消し（`Child`・`Job` はロックの外で落とす）、知らせ（`Bell`）を鳴らす。期限の前は2秒ごとに `kill()` をやり直す（今の `settle` の役割）。**スレッドは join しない**。終わらない子なら、記録とともに残り、1秒ごとに「記録が残っているか・`Store` が生きているか」だけを見て、無ければ終わる（13.4） |
-| 2 | `retired` の持ち主 | `Arc<Store>` の共有は残す（主の `AudioHost`・配信ミックスの子・**新しく `AudioControl` の `Shared`**）。reaper は `Weak<Store>` を持つ。`Store` に、記録のほか、**知らせの口 `Bell`**（待ち手の手番表と `Condvar`）、**累計 `recorded`**、時間の設定 `Timing` を持たせる。ロックの順は **`Bell` → `Store.slots`** だけ。`Store.slots` を持ったまま待たない・`Bell` を鳴らさない（13.5） |
-| 3 | 受付の側の待ち | **`Ticket::run` が、子を起動しうる入口・要求だけ**（新しい属性 `Launch`。`JobClass` とは別で、Stop・Release・Mute・Normal も含む。W2 の決定）、列へ積む前に、`retired` に「その入口が起動する役割の、確認の窓の中の記録」があれば（W4 の決定：主を起動しうるなら主の記録、配信ミックスの子なら配信ミックスの記録、両方なら両方）、`Bell` の `Condvar` で待つ。待つのは呼び出し側のスレッド（`run_blocking`）で、実行のスレッドは止めない。期限は記録ごとの **`killed_at + 10秒`**（今と同じ起点）。数える仕事（Starting・Normal）だけ、待ちの間も C4 の 256 件に**数える**（予約）。Stop が `fence` を上げたら `Bell` を鳴らし、`seq < fence` の **Starting の待ち手だけ** `Err(StoppedFirst)` で断る（Stop・Release・Mute・Normal の待ちは、断らず、期限で必ず進む）（2b の `take_next` と同じ判定の関数）。待ち手は受付の番号の順に列へ積む（13.6） |
+| 2 | `retired` の持ち主 | `Arc<Store>` の共有は残す（主の `AudioHost`・配信ミックスの子・**新しく `AudioControl` の `Shared`**）。reaper は `Weak<Store>` を持つ。`Store` に、記録のほか、**知らせの口 `Bell`**（`Condvar` と非同期の `watch` の両方を鳴らす。手番表は持たない）、**累計 `recorded`**、時間の設定 `Timing` を持たせる。ロックの順は **`Bell` → `Store.slots`** だけ。`Store.slots` を持ったまま待たない・`Bell` を鳴らさない（13.5） |
+| 3 | 受付の側の待ち | **受付の側（非同期の `run_async`。同期の呼び出し元は `Ticket::run`）が、子を起動しうる入口・要求だけ**（新しい属性 `Launch`。`JobClass` とは別で、Stop・Release・Mute・Normal も含む。W2 の決定）、列へ積む前に、`retired` に「その入口が起動する役割の、確認の窓の中の記録」があれば（W4 の決定：主を起動しうるなら主の記録、配信ミックスの子なら配信ミックスの記録、両方なら両方）、**`run_blocking` に入る前に、`Bell` の非同期の通知で待つ**（スレッドを使わない。同期の呼び出し元だけ `Condvar`）。実行のスレッドも、ブロッキングのスレッドのプールも使わない。期限は記録ごとの **`killed_at + 10秒`**（今と同じ起点）。数える仕事（Starting・Normal）だけ、待ちの間も C4 の 256 件に**数える**（予約）。Stop が `fence` を上げたら `Bell` を鳴らし、`seq < fence` の **Starting の待ち手だけ** `Err(StoppedFirst)` で断る（Stop・Release・Mute・Normal の待ちは、断らず、期限で必ず進む）（2b の `take_next` と同じ判定の関数）。順序は、列へ積むとき `seq` の順に差し込んで保つ（手番は持たない。通常の列は「積んだ順」から「`seq` の順」へ。13.6） |
 | 4 | 実行のスレッドの中の再確認 | `Store::ensure_clear`（`engine_life.rs:172`）は**待たない**：記録の子が終わっていれば消し、残っていれば失敗にする。数（J-13）を進めるのは**確認の窓（最初の `kill` から10秒）が過ぎた後だけ**（窓の中の失敗は数えない。W3）。`settle`（`:128`）は廃止。ホストと `Store.slots` を持ったまま最大10秒待つ箇所がなくなる（13.7） |
 | 5 | `retire_child` の2秒 | 実行のスレッドの中に、今のまま残す。reaper は**記録が置かれた後**に起こすので、2秒を待ち直さない。reaper が記録を消す速さで、「終了を確かめられなかった」の判定が変わらないよう、`pending(role)` の増減の比較（`audio.rs` 6か所）を、**減らない累計 `recorded(role)`** の比較に替える（13.8） |
 | 6 | 配信ミックスの子 | 同じ規則。記録は主と共有の `Store`、役割は `PostMix`、reaper も同じ。受付の待ちは、**起動する側の役割の記録だけ**を待つ（W4 の決定）。子の `ensure_engine_running` の `ensure_clear`（`post_mix.rs:545` 経由）も、待たない再確認になる（13.9） |
 | 7 | 利用者から見て変わること | N3（承認済み）。ほかは、利用者の決定（2026-11-23。13.14）で決まった：W2＝子を起動しうる操作は全部、受付で待つ（待てない `post` だけ、窓の中は待たずに失敗）。W3＝窓の後の失敗だけ J-13 の3回に数える。W4＝起動する側の役割の記録だけ待つ。**要承認は残っていない** |
-| 8 | 試験 | U5 の寄せ：`reaper_seam.rs`（`link_seam.rs` に倣う窓口）を作り、`engine_life_tests`・`post_mix_life_tests`・`reply_deadline_tests`・`link_tests`・`mixing_bundle_tests` の `.retired`・`seam::set_wait` などの参照（112か所）を窓口へ寄せる。**期待値は変えない。形が変わるのは `b17_d7` の「10秒待つ」の1本だけ**（13.13）。足す試験は `Z1`〜`Z18`、壊して確かめる項目は (a)〜(r) |
+| 8 | 試験 | U5 の寄せ：`reaper_seam.rs`（`link_seam.rs` に倣う窓口）を作り、`engine_life_tests`・`post_mix_life_tests`・`reply_deadline_tests`・`link_tests`・`mixing_bundle_tests` の `.retired`・`seam::set_wait` などの参照（112か所）を窓口へ寄せる。**期待値は変えない。形が変わるのは `b17_d7` の「10秒待つ」の1本だけ**（13.13）。足す試験は `Z1`〜`Z18`、壊して確かめる項目は (a)〜(x) |
 
 ### 13.2 範囲
 
 やること：
 - reaper（13.4）。`Store` の再編：待たない `ensure_clear`・`Bell`・累計 `recorded`・`Timing`（13.5〜13.8）。
 - 受付の側の待ち（子を起動しうる入口の `run`。13.6）と、そのための `JobQueue` の追加（予約・`fence` の鏡・`Bell` への鳴らし）、属性 `Launch`（入口・要求ごとに、起動しうる役割を決める表と網羅の `match`。13.6）。
-- U5：reaper で壊れる試験の窓口への寄せ（13.13）。
+- 非同期の入口 `AudioControl::run_async`（待ちをスレッドなしで行う）、通常の列の `seq` 順の差し込み（13.6）。U5：reaper で壊れる試験の窓口への寄せ（13.13）。
 
 やらないこと：
 - `retire_child` の最大2秒の reaper への移し替え（7.2。F1b）。実行中の閉包の途中で止めること（J-20。2c）。
@@ -1555,29 +1555,33 @@ Scripted(Arc<Script>)         // 試験だけ。解放されるまで slice 眠�
 Timing { deadline: 10s, retry_kill: 2s, rescan: 1s }   // 本番は既定値。試験は `Store` ごとに縮められる
 ```
 
-**reaper のループ（1記録につき1本。`Weak<Store>`・`id`・`ExitSource` だけを持つ）**
+**reaper のループ（1記録につき1本。`Weak<Store>`・`id`・`ExitSource`・`killed_at` と `last_kill` の複製だけを持つ）**
 
 ```text
 loop {
-  let Some(store) = weak.upgrade() else { return };               // Store が無ければ終わる
-  if source.wait(slice) { store.finish(id); return }              // 終了を観測：記録を消し、ロックの外で Child・Job を落とし、鳴らす
+  let exited = source.wait(slice);                                // OS の待機。この間は Store への強い参照を持たない（Weak だけ）
+  let Some(store) = weak.upgrade() else { return };               // 照合・更新のときだけ upgrade。Store が無ければ終わる
+  if exited { store.finish(id); return }                          // 終了を観測：記録を消し、ロックの外で Child・Job を落とし、鳴らす
   if !store.has(id) { return }                                    // ほかの経路（ensure_clear・recheck・drain）が消した
   if now < killed_at + deadline && now - last_kill >= retry_kill { store.kill(id) }   // 期限の前だけ。短い critical section
+  drop(store);                                                    // 次の待機の前に強い参照を放す
 }                                                                  // slice＝min(次の kill までの時間, rescan)。期限の後は rescan（1秒）
 ```
+
+- **強い参照を持ったまま待たない**（Sol の指摘）：複数の reaper が `upgrade` したまま待つと、強い参照が交互に残り、外部の所有者（`AudioControl`・ホスト）が消えても `Store` と Job が残りうる。待つのは `ExitSource`（複製ハンドル）だけで、`Store` には、待機から戻った後の照合・更新の間だけ触る。外部の所有者が最後の1つを落とせば、次の照合で `upgrade` が失敗し、reaper は終わる（Z3）。
 
 - **`killed_at` は実時間**（`Instant::now()`。試験の仮想時計を使わない）。`retire_child` の `confirm`（2秒）と `terminate_all` だけが、これまでどおり `now()`・`sleep()` の継ぎ目（仮想時計）を通る（13.13）。
 - **期限の後の `kill` のやり直しはしない**（今の `settle` も、期限を過ぎていれば `kill` を送らず1回確かめるだけ。`engine_life.rs:135-137`）。期限の後も、reaper は**待ち続ける**：終了を観測したら記録を自動で消す（今は次の要求で `try_wait` が消す。結果は同じで、消える時刻が早まる）。
 - **Job・`CREATE_SUSPENDED`・`main_thread_handle`**：reaper はいずれも持たない。記録が消える（終了を確かめた後）まで Job は落ちない（`KILL_ON_JOB_CLOSE` が、確かめる前に別のものを殺さない）。停止の状態のまま `retire_child` に来た子（`contain_and_resume` の失敗。`engine_life.rs:307-326`）も、`kill`・複製ハンドルでの待ちは同じ。`main_thread_handle` は `Child` が持ち続ける。
 - **ハンドルの持ち方**：`retire_child` が `child.as_handle().try_clone_to_owned()` で複製し、`OsProcess` に包んで reaper へ**移す**。複製に失敗したら `watched = false`（W7）。
 - **スレッドの終わり（join しない）**：(1) 終了を観測して記録を消した。(2) 記録が無い（`ensure_clear`・`recheck`・`drain` が先に消した）。(3) `Store` が無い（`Weak::upgrade` が失敗）。(4) 終わらない子の間は、`rescan`（1秒）ごとに (2)(3) を見て生き続ける。アプリの終了（プロセスの終了）が最後の回収で、`Drop` の `drain`（`audio.rs:2962`）・Job の回収は今のまま。**reaper のスレッドが止まる・panic しても、待ち手と実行のスレッドは期限で進む**（I35）。reaper の本体は `catch_unwind` で包み、panic はログに残して記録を `watched = false` に落とす。
-- **スレッドの生成の失敗**：`Builder::spawn` が失敗したら `log::warn!` して `watched = false`（W7）。
+- **スレッドの生成の失敗**：`Builder::spawn` が失敗したら `log::warn!` して `watched = false`（W7）。**監視の成否と受付の期限は分ける**：監視できない記録も、元の期限（`killed_at + 10秒`）までは受付の待ちの対象のままで、待ち手が `probe_interval`（200ms）ごとに `try_wait` で確かめる（13.6。Sol の指摘）。
 
 ### 13.5 `retired` の持ち主・ロックの順・不変条件（決めること 2）
 
 ```text
 Store { slots: Mutex<Slots>,            // 葉。持ったまま待たない・sleep しない・Bell を鳴らさない
-        bell: Bell,                      // Mutex<BellState { epoch, waiting: BTreeSet<u64> }> ＋ Condvar
+        bell: Bell,                      // Mutex<epoch> ＋ Condvar ＋ watch::Sender<u64>（同期と非同期の両方へ鳴らす。手番表は持たない）
         recorded: [AtomicU64; 2],        // 役割ごとの「記録した累計」。減らない
         timing: Mutex<Timing>, next_id: AtomicU64 }
 Shared { …, retired: Arc<Store> }        // 受付の側が窓を見る
@@ -1591,50 +1595,86 @@ Shared { …, retired: Arc<Store> }        // 受付の側が窓を見る
 
 ### 13.6 受付の側での待ち（決めること 3）
 
-**どの入口が待つか（利用者の決定。W2）**：**子を起動しうる入口・要求は、種類（`JobClass`）によらず、全部待つ**（Starting・Normal・Release・Mute。機器の一覧などの読み取りを含む。今と同じ結果）。「起動しうる」は `JobClass` とは別の属性 `Launch { None, Primary, PostMix, Both }` で、12.4 と同じ形に持つ：入口の名前→`Launch` の表（`NAME_LAUNCH`）と、要求で決める入口の表（`REQUEST_LAUNCH`）を `class.rs` に置き、`Launch` を読む判定は `impl Launch` の `_ =>` を使わない網羅の `match`（`waits`・`primary`・`post_mix`）1か所だけが持つ。**未知の名前は `Both`**（付け忘れが、待たずに失敗する側へ倒れない）。構造の試験（Z17）が、ソースの入口の名前・要求と表の一致、表の古さ、`match` の網羅を固定する。**実装の最初の作業で、`ensure_engine_running`・`execute_command`・`start_*` などを呼びうる入口と要求を、今のコードで1件ずつ数え直して表に書く**（洗い出し 3章の起動しうる 57 入口を出発点にする。数は初版で、引き算ではない）。**待たないのは、`post`（トレイ・ショートカット。N1。呼び出しのスレッドを待たせない）と、`Launch::None` の入口・Stop（起動しない）だけ**。`post` は窓の中で子を起動しようとすると、待たずに今の文言の `engine_unconfirmed` で失敗する（数は窓の後だけ進める。13.7）。**待つのは `Ticket::run` だけ**（試験専用の `Ticket::lock` は待たない）。待ちは種類の規則を変えない：断り（`StoppedFirst`）の対象は Starting だけ、数えるのは Starting・Normal だけ、期限付き（60秒）は Starting・Normal だけ（12.5 の `refused_after_stop`・`counted`・`waits_with_deadline`）。Stop・Release・Mute の待ちは、**断らず、数えず、窓の期限（最大10秒）で必ず進む**。
+**どの入口が待つか（利用者の決定。W2）**：**子を起動しうる入口・要求は、種類（`JobClass`）によらず、全部待つ**（Starting・Normal・Release・Mute。機器の一覧などの読み取りを含む。今と同じ結果）。「起動しうる」は `JobClass` とは別の属性 `Launch { None, Primary, PostMix, Both }` で、12.4 と同じ形に持つ：入口の名前→`Launch` の表（`NAME_LAUNCH`）と、要求で決める入口の表（`REQUEST_LAUNCH`）を `class.rs` に置き、`Launch` を読む判定は `impl Launch` の `_ =>` を使わない網羅の `match`（`waits`・`primary`・`post_mix`）1か所だけが持つ。**未知の名前は `Both`**（付け忘れが、待たずに失敗する側へ倒れない）。構造の試験（Z17）が、ソースの入口の名前・要求と表の一致、表の古さ、`match` の網羅を固定する。**実装の最初の作業で、`ensure_engine_running`・`execute_command`・`start_*` などを呼びうる入口と要求を、今のコードで1件ずつ数え直して表に書く**（洗い出し 3章の起動しうる 57 入口を出発点にする。数は初版で、引き算ではない）。**待たないのは、`post`（トレイ・ショートカット。N1。呼び出しのスレッドを待たせない）と、`Launch::None` の入口・Stop（起動しない）だけ**。`post` は窓の中で子を起動しようとすると、待たずに今の文言の `engine_unconfirmed` で失敗する（数は窓の後だけ進める。13.7）。**待つのは、非同期の `AudioControl::run_async` と、同期の `Ticket::run` の2つだけ**（13.6。試験専用の `Ticket::lock` は待たない）。待ちは種類の規則を変えない：断り（`StoppedFirst`）の対象は Starting だけ、数えるのは Starting・Normal だけ、期限付き（60秒）は Starting・Normal だけ（12.5 の `refused_after_stop`・`counted`・`waits_with_deadline`）。Stop・Release・Mute の待ちは、**断らず、数えず、窓の期限（最大10秒）で必ず進む**。
 
-**手順（`Ticket::run`。`guard_reentrancy` の後、`push` の前）**
+**手順（2つの入口。コマンド層は非同期、同期の呼び出し元は同期）**
 
-1. `Launch` の判定（`waits`）が偽なら、今のとおり `push`。以降の「窓」は、その入口の `Launch` が指す役割の記録だけ。
-2. **速い道**：`Store` に「窓の中の記録」が無く、待ち手もいなければ、そのまま `push`（記録が無い通常の経路は、`Store` の短いロック1回だけ増える）。
-3. 窓がある、または待ち手がいる：数える仕事（Starting・Normal）だけ**予約**（`JobQueue::reserve`）を取る（Stop・Release・Mute は取らない）。`counted >= 256` なら待たずに `Err(Busy)`（`Refused` を記録）。閉じていれば `Err(Stopped)`。予約は `counted` に1件として入る（C4。W5）。
-4. `Bell` のロックの中で、受付の番号 `seq` を `waiting` に入れ、窓の一覧（`id` と `killed_at + 10秒` の組。**入った時に見えた記録だけ**）を取る。
-5. 次の条件で `Condvar` を `wait_timeout` する。起きるたびに、上から順に確かめ直す：
+統括の決定（Sol の P1・P2 を受けて、2つを替えた）：(1) **手番（共有の `waiting`）をやめる**。順序は、列へ積むときに `seq` の順に差し込んで保つ。(2) **待ちはスレッドを使わない**。Tauri のコマンドは `async fn` なので、`run_blocking`（`commands/mod.rs:7-13`。`spawn_blocking`）に入る**前**に、非同期の通知で待つ。
+
+```text
+AudioControl::run_async<R>(&self, entry, f) -> Result<R, ControlError>     // async。コマンド層・obs・更新・移行・一時利用が使う
+   1. 実行のスレッドの上から呼ばれたら Err(Reentrant)（今の guard_reentrancy と同じ）
+   2. admit：seq・accepted_at・class（今と同じ）
+   3. gate(&ticket).await  → Gate { 予約（あれば）｝ または Err   // ここで待つ。スレッドを使わない
+   4. spawn_blocking(move || gate.run(f))                           // 積む＋返事を待つ。ブロッキングのスレッドを使うのはここから
+AudioControl::run（同期。`Ticket::run`）                              // 専用のスレッド（warmup）・試験。待ちは Condvar（同期）
+   同じ gate を、`Bell` の Condvar で待つ形で行ってから積む
+```
+
+**`gate`（共通の判断。同期・非同期で同じ関数。待つ部分だけ違う）**
+
+1. `Launch` の判定（`waits`）が偽なら、待たずに通す。以降の「窓」は、その入口の `Launch` が指す役割の記録だけ。
+2. **速い道**：その役割に窓の中の記録が無ければ、待たずに通す（`Store` の短いロック1回）。
+3. 窓がある：数える仕事（Starting・Normal）だけ**予約**（`JobQueue::reserve`）を取る（Stop・Release・Mute は取らない）。`counted >= 256` なら待たずに `Err(Busy)`（`Refused` を記録）。閉じていれば `Err(Stopped)`。予約は `counted` に1件として入る（C4。W5）。**`Gate` は予約を持つ値で、`Drop` で返す**（コマンドの future が捨てられても、待ちの途中の panic でも、予約が残らない）。
+4. `Bell` を待つ。非同期は、**先に `Bell` の `watch` を購読してから**条件を確かめ、通らなければ `changed()` と次の期限の `timeout_at` を待つ（確かめと待ちの間の鳴らしを取りこぼさない）。同期は `Condvar::wait_timeout`。条件は上から順に：
    - 列が閉じた → `Err(Stopped)`。
-   - 最後の停止の番号 `fence` が `seq` より大きい（`refused_by_fence(class, seq, fence)`。`take_next` の `verdict` と同じ関数） かつ `refused_after_stop`（Starting だけ） → `Err(StoppedFirst)`（`Phase::Refused` を記録）。
-   - 受付から60秒（`limits.wait`。`waits_with_deadline` の Starting・Normal だけ）→ `Err(Expired)`（記録）。
-   - 一覧の記録がすべて「消えた」か「窓が過ぎた」、**かつ** `seq` が `waiting` の最小（手番）→ 待ちを終える。
-   - どれでもなければ、次の期限（一覧の最も近い `killed_at + 10秒`、`accepted_at + 60秒`）まで待つ。
-6. どの出口でも `waiting` から `seq` を消し、`ring`（次の手番を起こす）。待ちを終えたときだけ、予約を `push_reserved`（`counted` を増やさず、`Busy` を再判定しない）で積む。ほかの出口は予約を返す（`Reservation` の `Drop`）。
-7. その後は今の経路：`wait_reply`（受付から60秒の期限は、待った時間も含む。起点は `accepted_at` のまま）。
+   - `refused_after_stop`（Starting だけ）で、最後の停止の番号 `fence`（鏡の `AtomicU64`）が `seq` より大きい（`refused_by_fence(class, seq, fence)`。`take_next` の `verdict` と同じ関数） → `Err(StoppedFirst)`（`Phase::Refused` を記録）。
+   - `waits_with_deadline`（Starting・Normal だけ）で、受付から60秒（`limits.wait`）→ `Err(Expired)`（記録）。
+   - **自分の役割の**記録がすべて「消えた」か「窓が過ぎた」 → 待ちを終える。
+   - どれでもなければ、次の期限（自分の役割の窓の最も近い `killed_at + 10秒`、`accepted_at + 60秒`）まで待つ。**監視されていない記録**（`watched = false`。13.4）が窓の中にあるときは、期限を `probe_interval`（200ms）以内に切り、起きるたびに `Store::probe(id)`（記録の `try_wait`。終了していれば消して `ring`）を呼ぶ（W7）。
+5. 待ちを終えたら、`Gate`（予約つき）を返す。`gate.run(f)` が `push_reserved`（`counted` を増やさず、`Busy` を再判定しない）で積む。ほかの出口は `Gate` を捨てて予約を返す。
+6. その後は今の経路：`wait_reply`（受付から60秒の期限は、待った時間も含む。起点は `accepted_at` のまま）。
+
+**待ちの途中に持つもの**：`Gate` の予約（`Drop` で返る）だけ。**ロック・手番・共有の待ち手の表は持たない**。別の役割の窓・別の待ち手の中断や panic で、足止めされない・進めなくなる経路が無い。
 
 ```mermaid
 stateDiagram-v2
-  [*] --> 受付済み: admit（Starting の run）
-  受付済み --> 列へ: 窓の中の記録が無く、待ち手もいない
-  受付済み --> 予約: 窓がある（counted に1件）
+  [*] --> 受付済み: admit（子を起動しうる入口の run_async）
+  受付済み --> 積む: 自分の役割の窓が無い
+  受付済み --> 予約: 窓がある（Starting・Normal は counted に1件）
   予約 --> 断られた_混雑: 256件。Busy
-  予約 --> 受付で待つ: 実行のスレッドは止まらない
-  受付で待つ --> 列へ: 記録が消えた／killed_at+10秒が過ぎた（手番が来たら）
-  受付で待つ --> 断られた_停止先: Stop が fence を上げた。StoppedFirst
+  予約 --> 受付で待つ: スレッドを使わない。実行のスレッドも止まらない
+  受付で待つ --> 積む: 記録が消えた／killed_at+10秒が過ぎた
+  受付で待つ --> 断られた_停止先: Stop が fence を上げた（Starting だけ）。StoppedFirst
   受付で待つ --> 断られた_閉鎖: 列が閉じた・実行のスレッドが止まった。Stopped
-  受付で待つ --> 断られた_期限: 受付から60秒。Expired
-  列へ --> 実行中: 実行のスレッドが取り出す（Started）
+  受付で待つ --> 断られた_期限: 受付から60秒（Starting・Normal だけ）。Expired
+  受付で待つ --> 捨てられた: future の drop・panic。予約を返す
+  積む --> 実行中: seq の順に差し込み、実行のスレッドが取り出す（Started）
   実行中 --> 完了: ensure_clear（待たない）。記録が残れば engine_unconfirmed
   完了 --> [*]
   断られた_混雑 --> [*]
   断られた_停止先 --> [*]
   断られた_閉鎖 --> [*]
   断られた_期限 --> [*]
+  捨てられた --> [*]
 ```
 
-**待ちの期限（起点・意味）**：記録ごとの `killed_at + 10秒`。待ちに入った時刻から数え直さない。たとえば、`kill` から8秒後に来た要求は、あと2秒だけ待つ。10秒を過ぎた記録は待たない（今の「期限の後の要求は、待たずに1回だけ確かめて即座に答える」と同じ）。待ち手の上限は、どの場合も `DEADLINE`（10秒）。
+**待ちの期限（起点・意味）**：記録ごとの `killed_at + 10秒`。待ちに入った時刻から数え直さない。たとえば、`kill` から8秒後に来た要求は、あと2秒だけ待つ。10秒を過ぎた記録は待たない（今の「期限の後の要求は、待たずに1回だけ確かめて即座に答える」と同じ）。待ちは、どの場合も `DEADLINE`（10秒）を超えない（I34）。入った時に見えた記録だけを待つ。
 
-**C1 との関係（2b の `fence`）**：Stop だけが `fence` を上げる（Mute は上げない。V1）。待っている Starting は、`seq < fence` なら断られる。Stop より後に受け付けた Starting は、鳴らされても `fence < seq` なので待ち続ける。Stop を積む `push` は、列のロックを放した後に `Bell` を鳴らす（`ring`）。`fence` は列のロックの中の値のほかに、`AtomicU64` の鏡を `Release` で書く（待ち手が列のロックを取らずに `Acquire` で読む。U6 と同じ規則。`Bell` と列のロックを同時に持たないため）。起きた待ち手の確認と、列の `take_next` の確認の2段で、取りこぼさない（積んだ後に停止が来ても `verdict` が断る）。
+**C1 との関係（2b の `fence`）**：Stop だけが `fence` を上げる（Mute は上げない。V1）。待っている Starting は、`seq < fence` なら断られる。Stop より後に受け付けた Starting は、`fence < seq` で断られず、窓が閉じれば積まれる。Stop を積む `push` は、列のロックを放した後に `Bell` を鳴らす（`ring`）。`fence` は列のロックの中の値のほかに、`AtomicU64` の鏡を `Release` で書き、待ち手が列のロックを取らずに `Acquire` で読む（U6 と同じ規則。`Bell` と列のロックを同時に持たないため）。待ち手の確認と、列の `take_next` の `verdict` の2段で、取りこぼさない。**Stop は `Launch::None`（起動しない）なので、待たず、`run_blocking` に入って `push` に届く。窓待ちがスレッドを使わないので、プールが窓待ちで埋まって Stop が `push` に届かない経路が無い**（Z19）。
 
-**手番（FIFO）**：受付の番号の小さい待ち手から積む。複数の Starting が窓の外で待つと、鳴らされたときのスレッドの起きる順が不定で、受付の順 A→B が B→A に入れ替わりうる（2a は閉包の中で待っていたので、積んだ順が保たれていた。11.17 の (a) より広い入れ替わり）。`waiting` が空でなければ、窓が無くても新しい Starting は待ち手に加わり、手番を待つ（W6）。待ち手に入らない入口（`post`・Normal・Release など）は、待ち手を追い越す。これは N3 の目的（ほかの入口は止まらない）。
+**順序：列を `seq` の順にする（手番の代わり）**：
 
-**待ち手の数**：1件が1つのブロッキングスレッドを最大10秒使うが、予約が C4 の 256 件に数えるので、スレッドの上限（512。12.16 の V11）の半分を超えない。
+- **通常の列（`jobs`）へは、積むとき `seq` の順に差し込む**（後ろから探す。ほぼ末尾）。`take_next` は先頭から取るだけで、取り出す関数が1か所なのは変わらない。**停止の列（Stop・Mute）は今のまま積んだ順**（先着の順。V10）。
+- 受付の番号 A<B の2つが、窓の待ちで積むのが B→A の順になっても、列の中は A→B。**すでに取り出されて実行された操作との順は変えない**（後から積まれた小さい `seq` は、まだ列にある大きい `seq` の前に入るだけで、実行済みを追い越さない）。待ち手に入らない入口（`Launch::None`）が先に積んで実行されれば、それは追い越される（N3 の目的。13.16 の (c)）。
+- **`fence`・受付から60秒の判定と矛盾しない**：どちらも `seq`・`accepted_at`（受付の時点）が起点で、積む時刻・列の位置に依らない（12.6 の「判定は `seq` だけ」を保つ）。`cancel_waiting`（`seq` で探す）・`verdict` も位置に依らない。
+- **11章・12章の不変条件の書き換え**：11章 I3「列は積んだ順（FIFO）」と 12章 I14「通常の列の中は積んだ順」を、**「停止の列は積んだ順、通常の列は `seq` の順」**へ読み替える（取り出す関数が `take_next` の1か所なのは変えない）。11.4 の「列の順は積んだ順で、受付の番号の順ではない」・11.17 (a)（`admit` と積むまでの間の追い越し）・12.5 の `push` の「`push_back`」・K11（受付 A→B、積む順 B→A、実行 B→A）の期待値は、通常の列では **A→B に変わる**（`admit` と積むまでの間の追い越しが閉じる。**既存の試験の期待値の変更**。13.13・W9）。
+- **手番は持たない**（前の版の `waiting`・手番を削除）：先に待つ別の役割の窓が、別の役割の入口を足止めしない（Z14）。先行者の中断・panic で次が進めない経路が無い（Z10・Z16）。
+
+**同期の呼び出し元の洗い出し（Sol の決定 2。実装の最初に今のコードで数え直す）**：
+
+| 呼び出し元 | スレッド | 待ち |
+|---|---|---|
+| コマンド（`commands/*`）・`obs.rs:46-86`（`ReachTone`。`async fn` の中の `spawn_blocking`）・`updates.rs`・`migration.rs`・`temporary_session.rs` | async の中 | **`run_async`**（待ちはスレッドなし。今の `run_blocking`／`spawn_blocking` の書き方を `run_async` に置き換える。約 90 か所の機械的な書き換え。11.4 の「`run_async` は足さない」を、この理由で取り消す。13.18） |
+| warmup（`lib.rs` の専用のスレッド。Starting。窓は起動時に空） | 専用のスレッド | 同期の `Ticket::run`（`Bell` の Condvar）。プールを使わない |
+| scheduler（Tick。`Launch::None`） | 専用のスレッド | 待たない |
+| `setup` の emitter（Normal。`Launch::None`） | メインのスレッド | 待たない（待ってはならない） |
+| トレイ・ショートカット（`post`） | イベントループ・OS のコールバック | 待たない。窓の中は待たずに失敗（W2） |
+| 試験の貸し出し（`Ticket::lock`） | 試験のスレッド | 待たない |
+
+**規則**：ブロッキングのプールのスレッドの上で、同期の `Ticket::run` の窓待ちをしない（プールの上の呼び出し元は、すべて async の中なので `run_async` を使う）。構造の試験（Z22）が、`commands/`・`obs.rs`・`updates.rs`・`migration.rs`・`temporary_session.rs` に `run_blocking`／`spawn_blocking` の中で `.run(` を呼ぶ形が残っていないことを固定する。
+
+**待ち手の数**：窓待ちはスレッドを使わない（async のタスク）ので、プール（既定 512。12.16 の V11）を使い切らない。数える仕事（Starting・Normal）の待ちは予約が 256 件に数える。Release・Mute の待ちは数えない（断らない・取りこぼさない。12章の I15・I26）が、1件ずつ小さなタスクで、窓が閉じるか最大10秒で終わる。
 
 ### 13.7 実行のスレッドの中の再確認（決めること 4）
 
@@ -1654,7 +1694,7 @@ if failed → Err(error(slots))                             // repeated は、�
 - **結果が今と同じになる場合**：受付の側で待った Starting（窓が過ぎるまで待ってから積まれた）は、ここに来る時に窓が過ぎているので、今と同じ「1回の要求につき記録ごとに1つ」進めて `engine_unconfirmed`（J-13）。待っている間に終了した子は、reaper が記録を消しているので、ここで通る（作り直せる。B18 と同じ結果）。
 - **結果が変わる場合**：受付の側で待てない `post`（トレイ・ショートカット）は、窓の中にある記録を待たずに失敗する（今の文言。W2 の決定）。数を進めないのは、短い間隔の再試行が3回で「Auralyn を終了して…」に化けるのを防ぐため（W3。承認済み）。窓が過ぎた後は、今と同じく進める。`Launch` の表の付け漏れで受付の側が待たなかった入口も、同じ経路で待たずに失敗する（安全側）。
 - **待ちの直後に記録が増えた場合**（受付で待った後・実行までの間に、別の経路が新しい記録を置いた）：窓の中なので、待たずに数を進めずに失敗する（13.16 の (a)）。
-- **`recheck`（更新の前。`engine_life.rs:192`）**：変えない（待たず、残れば数を進める）。ただし消した後に `ring`。
+- **`recheck`（更新の前。`engine_life.rs:192`）**：待たず、残っていれば `engine_unconfirmed` で失敗するのは今のまま。**数を進めるのは、その記録の窓が過ぎた後だけ**（窓の中の `recheck` は数えない。`ensure_clear` と同じ規則。Sol の指摘：更新の再試行だけで10秒以内に再起動の案内に達しない）。消した後に `ring`。窓の内外を Z20 で試験する。
 - **2c との関係**：2c の「子の起動の門」（12.20.4 の Y10）は `ensure_clear` の後・`new_engine` の前（`audio.rs:907-909`）に置く予定で、位置は変わらない。「`ensure_clear` の待ちの間に停止が来ても…」は、待ちが実行のスレッドの外へ出たので、**受付の側で `StoppedFirst` になる**（13.6）。2c の記述はその分だけ短くなる。
 
 ### 13.8 `retire_child` の最大2秒と、二重に待たない形（決めること 5）
@@ -1677,13 +1717,13 @@ if failed → Err(error(slots))                             // repeated は、�
 | # | 瞬間 | 順序（3） | 結果 |
 |---|---|---|---|
 | 1 | 子の終了を確かめられない（2秒） | A：`retire_child`：`kill`→2秒の確認→`push`（`recorded` を加算）→R を起こす | A は次の仕事へ。以後 A は待たない |
-| 2 | 記録の窓の中に Starting（番号 9）が届く | C：予約→`waiting` に 9→待つ。A は止まらない（ほかの入口・読み取り・停止が進む） | 実行のスレッドは動き続ける（N3） |
-| 3 | 待ち中に子が終わる | R：`wait` が真→`finish(id)`（記録を消す。`Child`・`Job` はロックの外）→`ring`。C：記録が消えた・手番→予約を `push_reserved`。A：`ensure_clear`→記録が無い→子を作る | 今の「待っている間に終われば作れる」（B18）と同じ結果 |
+| 2 | 記録の窓の中に Starting（番号 9）が届く | C：予約→`Bell` を非同期に待つ（スレッドを使わない）。A は止まらない（ほかの入口・読み取り・停止が進む） | 実行のスレッドは動き続ける（N3） |
+| 3 | 待ち中に子が終わる | R：`wait` が真→`finish(id)`（記録を消す。`Child`・`Job` はロックの外）→`ring`。C：記録が消えた→予約を `push_reserved`。A：`ensure_clear`→記録が無い→子を作る | 今の「待っている間に終われば作れる」（B18）と同じ結果 |
 | 4 | 待ち中に10秒（`killed_at` から）が過ぎる | C：`wait_timeout` が切れる→窓が過ぎた→積む。A：`ensure_clear`：窓が過ぎている→`unconfirmed += 1`→`engine_unconfirmed` | 上限（10秒）と結果は今と同じ |
 | 5 | 待ち中に Stop（10）が届く | S：`interrupt_restore`→`admit`(10)→`push`：`F = 10`、鏡を更新→列のロックを放す→`ring`。C(9)：起きる→`9 < 10`→`Err(StoppedFirst)`（`Refused`）、予約を返す。A：Stop を実行（待ち手がいても先に取り出す） | 待ちが起きて開始を断る。Stop は待たされない |
 | 6 | 待ち中に Stop より後に受け付けた Starting（11）が届く | C(11)：窓があるので待つ。`F = 10 < 11` で断られない | 窓が閉じれば実行（C1 と同じ） |
 | 7 | 待ち中に Mute | A が Mute を実行（停止のレーン）。`F` は動かない。待ち手は起きない | Mute は待ち手を断らない（V1）。起こさない。Mute 自身が子を起動しうるときは、列へ積む前に受付で窓まで待つ（W2。断らず、数えず、期限で進む） |
-| 8 | 待ち手が3人（9・10・11）、窓が閉じる | R：`ring`。起きる順は不定だが、手番は最小の `seq` のみ→9 が積む→`ring`→10→11 | 積む順＝受付の順（13.6） |
+| 8 | 待ち手が3人（9・10・11）、窓が閉じる（または別の待ち手が中断した） | R：`ring`。C(9)・C(10)・C(11) は、それぞれ起きた順にすぐ `push_reserved`（手番を待たない）。列の中は `seq` の順に差し込まれ、スレッドの起きる順（11→9→10 など）に依らず 9→10→11。9 が `Drop`・panic で消えても 10・11 は進む | 実行の順＝受付の番号の順（13.6）。先行者の中断で次が止まらない（Z10・Z16） |
 | 9 | 待ち中に列が閉じる・実行のスレッドが異常終了 | `close`・`close_and_take` が列のロックを放した後に `ring`。C：`Err(Stopped)`、予約を返す | 待ち手が残らない（I35。Z9・Z16） |
 | 10 | 待ち中に受付から60秒 | C：`Err(Expired)`（記録）。予約を返す | 今の `Expired` と同じ（ただし窓は最大10秒なので、起こりにくい） |
 | 11 | 窓の外の通常の要求（記録なし） | C：`Store` の短いロック1回→速い道→`push` | 変わらない |
@@ -1708,7 +1748,10 @@ if failed → Err(error(slots))                             // repeated は、�
 | I39 | `Bell` を鳴らすのは、記録の消去・Stop による `fence` の更新・列の閉鎖（異常終了の回収を含む）。**他のロックを持たずに**鳴らす。ロックの順は `Bell`→`Store.slots` だけ |
 | I40 | `retire_child` の2秒の確認は、実行のスレッドの中の1回だけ。reaper は `killed_at` からの残りだけを待ち、2秒を待ち直さない |
 | I41 | reaper のスレッドは join しない。終わる条件（観測・記録なし・`Store` なし）以外で、アプリの終了を妨げない。`Drop`・`drain`・Job の回収は今のまま |
-| I42 | 待ち手は、受付の番号の最小から積む。`waiting` が空でない間、新しい Starting も待ち手に加わる |
+| I42 | **通常の列は `seq` の順**（停止の列は積んだ順）。差し込むのは `push` の1か所、取り出すのは `take_next` の1か所。実行済みの操作は追い越さない。`fence`・60秒の判定は `seq`・`accepted_at` だけに依り、位置に依らない。**手番・共有の待ち手の表は持たない**（11章 I3・12章 I14 の読み替え。13.6） |
+| I43 | 受付の待ちは**スレッドを使わない**（コマンド層は `run_blocking` に入る前に非同期で待つ）。待ちの途中で持つのは `Gate` の予約だけ。ブロッキングのプールを窓待ちで使い切らない。Stop は待たず、常に `push` に届く |
+| I44 | `Gate` は予約を `Drop` で返す。future の drop・panic・どの出口でも `counted` が戻る。同期の `Ticket::run` の窓待ちは、プールのスレッドの上で行わない |
+| I45 | `recheck` も `ensure_clear` も、数を進めるのは、その記録の窓が過ぎた後だけ。窓の中の失敗は数えない。reaper は待機中に `Store` の強い参照を持たない（照合・更新のときだけ `upgrade`） |
 
 ### 13.12 変える箇所の一覧（`ファイル:関数`、今の行）
 
@@ -1731,9 +1774,10 @@ if failed → Err(error(slots))                             // repeated は、�
 | `audio.rs:2762-2775`・`2943-2969` | `prepare_update`・`Drop` | 変えない |
 | `audio/control.rs:291-296,333-345` | `Shared`・`try_new` | `retired: Arc<Store>`。ホストを移す前に取り、`JobQueue` へ `Bell` を渡す |
 | `audio/control.rs:552-569` | `Ticket::run` | `guard_reentrancy` の後に `await_reaper`（13.6）。`push_reserved` |
-| `audio/control.rs`（新設の関数） | `Ticket::await_reaper` | 13.6 の手順。`record_refused` の使い回し |
+| `audio/control.rs`（新設の関数） | `AudioControl::run_async`・`gate`（同期版 `gate_blocking`）・`Gate` | 13.6 の手順。`Gate` は予約を持ち `Drop` で返す。`record_refused` の使い回し。tokio の `sync`・`time` の機能が有効かは実装で確認 |
+| `commands/audio.rs`（65）・`commands/bundles.rs`（13）・`commands/profiles.rs`・`commands/voice_check.rs`（8）・`obs.rs:49,71`・`updates.rs`・`migration.rs`・`temporary_session.rs` | `run_blocking(… state.run(…))`・`spawn_blocking(… host.run(…))` | `state.run_async(entry, f).await` へ置き換える（機械的。文言の写しは今のまま）。`commands/mod.rs:7-13` の `run_blocking` は、ほかのブロッキング処理のために残す |
 | `audio/control/queue.rs:77-125` | `QueueState`・`JobQueue::new` | `Bell` の複製・`fence` の鏡（`AtomicU64`）を持つ |
-| `audio/control/queue.rs:141-168` | `push` | Stop が `fence` を上げた後、**列のロックを放してから** `ring`。予約つきの `push_reserved`（数を増やさない） |
+| `audio/control/queue.rs:141-168` | `push` | Stop が `fence` を上げた後、**列のロックを放してから** `ring`。予約つきの `push_reserved`（数を増やさない）。**通常の列へは `seq` の順に差し込む**（後ろから探す。`take_next` は先頭から取るだけ。停止の列は積んだ順） |
 | `audio/control/queue.rs:215-231` | `close`・`close_and_take` | 放した後に `ring`（異常終了の回収でも） |
 | `audio/control/queue.rs:276-284` | `verdict` | `fence` による断りの判定を `refused_by_fence(class, seq, fence)` に切り出し、受付の側の待ちと共有 |
 | `audio/control/queue.rs`（新設） | `reserve`・`Reservation`・`fence()` | 予約（`counted`）。`Drop` で返す |
@@ -1741,7 +1785,7 @@ if failed → Err(error(slots))                             // repeated は、�
 | `audio/control.rs:597`・`post_mix.rs:296,324,534`・`mixing_bundle.rs:258`・`lib.rs:313` | `retired.clone()`・`try_new` | 変えない |
 
 試験のコード：
-- 新設：`audio/tests/reaper_seam.rs`（窓口。13.13）・`audio/tests/reaper_tests.rs`（Z1〜Z18）。
+- 新設：`audio/tests/reaper_seam.rs`（窓口。13.13）・`audio/tests/reaper_tests.rs`（Z1〜Z22）。
 - 寄せる：`engine_life_tests.rs`（57か所）・`post_mix_life_tests.rs`（37）・`reply_deadline_tests.rs`（10）・`link_tests.rs`（6。`:392`・`:635-665`）・`mixing_bundle_tests.rs`（2。`:47,166`）。
 - `control/class.rs` の構造の試験（Y31）：`impl Launch` の `match` を網羅の一覧に足す。`class_tests.rs`。表の網羅は Z17。
 
@@ -1749,8 +1793,8 @@ if failed → Err(error(slots))                             // repeated は、�
 
 **合格の条件**
 1. 既存の試験が、13.13 の「寄せ」だけで、期待値を変えずに通る。**形が変わるのは `b17_d7` の1本だけ**（「窓の長さを実時間で縮める」。下）。
-2. Z1〜Z18 が通る。
-3. 「壊して確かめる」の (a)〜(r) で、対応する Z が落ちる。
+2. Z1〜Z22 が通る。
+3. 「壊して確かめる」の (a)〜(x) で、対応する Z が落ちる。
 4. `npm run verify -- --static --rust` が通る。
 5. 実機（未実施）：終わらない子を作る手段が実機には無い（外から `kill` を拒否する子は用意できない）。(i) 実プロセスの `Scripted` でない `OsProcess` の経路は Z1b で確かめる（実の子を、`kill` せずに記録へ置いて、外から終わらせる）。(ii) W5（`docs/TESTING.md`）の測り直しは、reader の通知の順に影響しないので不要だが、通常の開始・停止を実機で1回確かめる。
 
@@ -1769,8 +1813,9 @@ if failed → Err(error(slots))                             // repeated は、�
 | `set_timing(&host, Timing)`・`wait_cleared(&host, role, limit)`・`reaper_threads(&host)`・`kills(&host)` | 新規。窓を縮める・記録が消えるまで実時間で待つ・生きている reaper の数・`kill` の再送の数（`Store` の試験用の項目） |
 
 - **変えないもの**：`seam::set_job`・`set_assign`・`set_resume`・`on_stage`・`elapsed`・`Stage::Retired`、`.child`（`AudioHost` の動いている子。`engine_life_tests` 21・`post_mix_life_tests` 47）。`.child` は reaper が持つ「記録の子」とは別で、壊れない。
+- **期限に依存する既存の試験は、期限を越えてから呼ぶ形に改める**（Sol の指摘：既存の J-13 の試験は `Ticket::run` を通らず連続で呼び、旧 `settle` が進めた仮想時計に依存していた）。窓口の `pass_window(&host)`（縮めた窓が実時間で過ぎるまで待つ）を、加算を期待する各要求の前に入れる。**件数・文言の期待値は維持する**。対象は `b17_d7`・`b18`・`j13`（`engine_life_tests.rs:341`。1回目→更新→3回目）・`post_mix_life_tests.rs:167-188`（`counts` が `[2]`・`[1]`・`[2]`）・`reply_deadline_tests` の `t9`。`recheck` は窓の中では数えない（Z20）ので、`j13` の更新の経路は窓の後に呼ぶ。
 - **`b17_d7`（`engine_life_tests.rs:262`）**：「2秒で記録へ移る・同じ役割の子を作らない・期限は最初の `kill` から10秒」。後ろ2つを、窓を `Timing { deadline: 300ms }` に縮めて、**受付の側の待ち**（`Ticket::run`）と実行のスレッドの `ensure_clear` で確かめる形にする。期待値（`spawn_count == 1`・数 `[1]`→`[2]`・2回目は待たない）は同じ。「10秒」そのものは、`Timing::default().deadline == 10秒` を別の試験（Z17）で固定する。
-- **`b18`・`b17b`・`j13`・`w2`・`drop_waits…`・`link_tests:635`・`reply_deadline_tests:121`**：窓口に替えるだけ。`j13` の3回は、窓を縮め、窓が過ぎた後の要求で数える（`prepare_update` の `recheck` は今のまま数える）。
+- **`b18`・`b17b`・`j13`・`w2`・`drop_waits…`・`link_tests:635`・`reply_deadline_tests:121`**：窓口に替える（上の「期限を越えてから呼ぶ」を除く）。
 - `config_storage_tests` は `retired`・`seam` を参照しない（`link_seam` だけ）。触らない。
 
 **足す試験（`Z1`〜`Z18`。置き場所は `audio/tests/reaper_tests.rs`。待ちは門と `wait_cleared` で、時間切れは失敗の上限。窓は `Timing` で300ms程度に縮める）**
@@ -1779,22 +1824,26 @@ if failed → Err(error(slots))                             // repeated は、�
 |---|---|---|
 | Z1 | `z1_the_reaper_removes_the_record_when_the_child_exits_and_rings_the_bell` | `Scripted`（`stuck`）で記録を置く→`pending == 1`→解放→`wait_cleared`で `pending == 0`。`Bell` が鳴り、`counts` が空。Z1b：**実の子**（`OsProcess`）を `adopt` で置き、外から終わらせると、reaper が `WaitForSingleObject` で観測して消す。消す時 `slots` を持ったまま `Child`・`Job` を落とさない（落とす間に別のスレッドが `pending` を呼べる） |
 | Z2 | `z2_the_reaper_retries_the_kill_before_the_deadline_and_not_after` | `Timing { deadline: 600ms, retry_kill: 200ms }`。期限の前は約200msごとに `kill` が増え（`kills`）、期限の後は増えない。期限の後も待ち続け、解放すると消える |
-| Z3 | `z3_a_reaper_ends_when_its_record_is_gone_or_the_store_is_dropped` | `recheck`・`ensure_clear`・`drain` が先に消すと、reaper が `rescan` 以内に終わる（`reaper_threads == 0`）。`Store` を落としても終わる。join しない（`drop` が戻る） |
+| Z3 | `z3_a_reaper_ends_when_its_record_is_gone_or_the_store_is_dropped_and_holds_no_strong_reference_while_waiting` | `recheck`・`ensure_clear`・`drain` が先に消すと、reaper が `rescan` 以内に終わる（`reaper_threads == 0`）。**2本の reaper が待機中に、最後の外部の所有者を落とすと、`Store`（と Job の `Drop` の数）が消え、2本とも `rescan` 以内に終わる**（待機中に強い参照を持つ改変で落ちる）。join しない（`drop` が戻る） |
 | Z4 | `z4_a_child_that_never_exits_keeps_its_record_and_blocks_nobody` | 終わらない `Scripted`。窓が過ぎるまで受付で待った Starting が積まれ、実行のスレッドが `engine_unconfirmed`（`[1]`）。2回目は待たず（`[2]`）、3回目は `repeated`（J-13）。ホストの `drop` は共通2秒以内に戻り、reaper は `rescan` 以内に終わる |
 | Z5 | `z5_other_entries_proceed_on_the_actor_while_a_starting_run_waits` | 窓の中で子を起動しうる `run`（Starting・Normal・Release・Mute の各1件）を待たせる間、`get_audio_state` などの `Launch::None` の入口・Stop・`post`・`records()`・`note` が実行のスレッドで進む（門で確認）。待っている Starting は `[Accepted]` だけで、`Started` が付かない。実行のスレッドは `queue_len` を通じて空 |
-| Z6 | `z6_a_waiting_start_runs_when_the_child_exits_in_time` | 窓の中で待つ→子が終わる→reaper が消す→待ちが終わり、積まれ、`ensure_clear` を通って子を作る（`spawn_count == 2`）。数は消える（B18 と同じ結果） |
+| Z6 | `z6_a_waiting_start_runs_when_the_child_exits_while_the_window_is_still_open` | **窓を長く（5秒）取り**、窓が開いている間に子が終わる→reaper が消す→待ちが終わり、窓の期限より前に積まれ（経過が窓より十分短い）、`ensure_clear` を通って子を作る（`spawn_count == 2`）。数は消える（B18）。期限で起きても通ってしまう形にしない |
 | Z7 | `z7_a_waiting_start_ends_at_the_deadline_measured_from_the_first_kill` | `killed_at` から窓の7割が過ぎた時刻に来た要求は、残りの3割だけ待つ（今の10秒の起点）。窓が過ぎたら積まれ、`engine_unconfirmed`・`[1]`。窓が過ぎた後の要求は待たずに `[2]` |
 | Z8 | `z8_a_stop_during_the_wait_wakes_it_and_refuses_the_start_with_stopped_first` | 待つ Starting（9）の後に Stop（10）。待ちが起き、`Err(StoppedFirst)`・閉包を呼ばない・`[Accepted, Refused]`・`counted == 0`。Stop は待たされず先に実行される。Stop の後に受け付けた Starting（11）は起きず、窓が閉じれば実行される。**Mute は待ちを起こさず、断らない** |
-| Z9 | `z9_a_closed_queue_or_an_aborted_actor_releases_every_waiter` | 待ち手が複数いる間に、列を閉じる／実行のスレッドを異常終了させる（X14 の継ぎ目）。全員が `Err(Stopped)`（固まらない。時間切れは失敗）。予約は返る |
-| Z10 | `z10_waiters_count_toward_the_256_and_every_exit_returns_the_reservation` | 上限を縮める。窓の中で上限まで Starting を待たせると、次は待たずに `Err(Busy)`。`Ok`・`StoppedFirst`・`Stopped`・`Expired` のどの出口でも、`counted` が元に戻る（`Drop`。panic でも） |
+| Z9 | `z9_a_closed_queue_or_an_aborted_actor_releases_every_waiter_while_the_window_is_open` | **窓を長く取り**、待ち手が複数いる間に、列を閉じる／実行のスレッドを異常終了させる（X14 の継ぎ目）。全員が窓の期限より前に `Err(Stopped)`（期限で起きて通る形にしない。時間切れは失敗）。予約は返る。同期・非同期の両方 |
+| Z10 | `z10_waiters_count_toward_the_256_and_every_exit_returns_the_reservation_even_when_aborted` | 上限を縮める。窓の中で上限まで Starting を待たせると、次は待たずに `Err(Busy)`。`Ok`・`StoppedFirst`・`Stopped`・`Expired` のどの出口でも `counted` が元に戻る。**`gate` を通った後・積む直前の future の drop と panic**でも戻り、**ほかの待ち手は進む**（手番を持たないので、先行者の中断で止まらない）。Release・Mute の待ちは断らず、数えず、窓の期限で進む |
 | Z11 | `z11_a_post_fails_at_once_inside_the_window_without_counting_and_every_launching_run_waits` | 窓の中で、`post`（トレイのミュート・ショートカットの Starting）が子を起動しようとすると、待たずに（50ms 以内に）`engine_unconfirmed`（今の文言）。同じ窓で、`Launch` が起動しうる `run`（Starting・Normal・Release・Mute。Z5 の4種）は受付で待ち、窓の後に進む。`Launch::None` の入口は待たない。`counts` は進まない。窓が過ぎた後の同じ要求は進む。トレイ・ショートカットは失敗を今と同じ経路で捨てる／通知する |
-| Z12 | `z12_the_unconfirmed_decision_does_not_depend_on_how_fast_the_reaper_clears` | `reply_timed_out`・`cut_off`（`WriteTimeout`）・起動の確認の3か所。`retire_child` が記録を置いた直後に reaper が消す（継ぎ目：`AfterPush` で観測を即座に真にする）ようにしても、結果が `engine_unconfirmed` のまま（`REPLY_TIMED_OUT`・元の I/O エラーに化けない）。累計 `recorded` を使わない改変で落ちる |
-| Z13 | `z13_no_wait_or_bell_happens_while_the_slots_lock_is_held_and_removals_do_not_double_drop` | 待ち手が待つ間、`pending`・`recheck`・`push` が戻る。`finish`・`ensure_clear`・`recheck`・`drain` を同時に当てても、`Child`・`Job` の `Drop` は1回（`Drop` の数を数える `Scripted`）。ソースを読む構造の試験：`ensure_clear`・`finish` の本体に `sleep`・`wait`・`recv` が無い |
-| Z14 | `z14_a_post_mix_record_is_shared_waited_for_and_cleared_like_a_primary_one` | `share` した子のホストが `PostMix` の記録を置く→`post_mix` の `Add`（`Both`/`PostMix`）は受付で待つ→主だけを起動する `start_audio`（`Primary`）は待たずに進む（W4）→子の記録が消えると待っていたものが進む。子の起動は、実行のスレッドでは待たない再確認 |
-| Z15 | `z15_a_dead_or_failing_reaper_never_hangs_a_waiter_or_the_actor` | `Scripted` の `wait` が panic する／`WAIT_FAILED` を返し続ける。待ち手は窓の期限で進み、実行のスレッドは `engine_unconfirmed` で返る。`recheck` は `try_wait` で消せる。スレッドの生成の失敗（`watched = false`）も、待たずに進む（W7） |
-| Z16 | `z16_waiters_start_in_acceptance_order_after_the_window_closes` | Starting を A・B・C の順に受け付けて待たせ、窓を閉じる。`Started` の記録の順が A→B→C（鳴らされたスレッドの順に依らない）。`waiting` が空でない間は、窓が無くても新しい Starting が手番に並ぶ。手番の判定を外す改変で落ちる（繰り返す） |
+| Z12 | `z12_the_unconfirmed_decision_does_not_depend_on_how_fast_the_reaper_clears` | `reply_timed_out`・`cut_off`（`WriteTimeout`）・起動の確認の3か所。`retire_child` が記録を置いた後、**呼び出し側を継ぎ目で止め、reaper が記録を消し終えるまで（`pending == 0` を確認するまで）返さない**。その後に `recorded` の比較へ進ませて、結果が `engine_unconfirmed` のまま（`REPLY_TIMED_OUT`・元の I/O エラーに化けない）であることを確かめる。`pending` の比較に戻す改変で、必ず落ちる（消去を待たせるので、速さの運に依らない） |
+| Z13 | `z13_no_wait_or_bell_happens_while_the_slots_lock_is_held_and_removals_do_not_double_drop` | 待ち手が待つ間、`pending`・`recheck`・`push` が戻る。`finish`・`ensure_clear`・`recheck`・`drain` を同時に当てても、`Child`・`Job` の `Drop` は1回（`Drop` の数を数える `Scripted`）。**同じ役割に別の `id` の記録を2つ置き、片方だけを消しても、もう片方が残る**（役割の全件を消す改変で落ちる）。ソースを読む構造の試験：`ensure_clear`・`finish` の本体に `sleep`・`wait`・`recv` が無い |
+| Z14 | `z14_a_post_mix_record_is_waited_for_only_by_the_entries_that_launch_that_role` | `share` した子のホストが `PostMix` の記録を置く→**`post_mix` の `Add`（`PostMix`）を先に待ちに入れ、その後に主だけを起動する `start_audio`（`Primary`）を送る**→`start_audio` は待たずに進む（別の役割の窓で足止めされない。W4。手番が無い）→子の記録が消えると、待っていた `Add` が進む。子の起動は、実行のスレッドでは待たない再確認 |
+| Z15 | `z15_a_dead_or_failing_reaper_never_hangs_a_waiter_or_the_actor_and_an_unwatched_record_is_still_waited_for` | `Scripted` の `wait` が panic する／`WAIT_FAILED` を返し続ける。待ち手は窓の期限で進み、実行のスレッドは `engine_unconfirmed` で返る。`recheck` は `try_wait` で消せる。**スレッドの生成・ハンドルの複製の失敗（`watched = false`）の記録は、窓の中の通常の `run` を即座に失敗させず、元の期限（窓）までは受付で待つ**。待っている間に子が終われば、`probe_interval` 以内に消えて進む（W7） |
+| Z16 | `z16_queued_jobs_run_in_acceptance_order_whatever_order_the_waiters_wake_in` | Starting を A・B・C の順に受け付けて待たせ、窓を閉じる。起きる順を継ぎ目で C→A→B にしても、`Started` の記録の順が A→B→C（`seq` の順の差し込み）。すでに実行された操作を追い越さない。`fence`・60秒の判定が積む順に依らない。**A が積む直前に中断・panic しても、B・C は進む**。停止の列は積んだ順のまま。差し込みを `push_back` に戻す改変で落ちる |
 | Z17 | `z17_the_production_timing_and_the_structure_are_fixed` | `Timing::default()` が `deadline == 10秒`・`retry_kill == 2秒`、`REPEAT_AT == 3`、`CONFIRM == 2秒`。構造：`impl Launch` が網羅の `match`（`_ =>` なし。Y31 へ足す）。ソースの入口の名前・要求と `NAME_LAUNCH`・`REQUEST_LAUNCH` が一致し、表の古い名前が無い。未知は `Both`。`ensure_engine_running`・`execute_command` を通りうる入口（数え直しの結果）が、`None` になっていない。`Ticket::lock`（試験の貸し出し）は待たない。reaper が `Child`・`Job` を持たない（`reaper.rs` に `Child`・`JobHandle` の型が現れない） |
-| Z18 | `z18_a_gated_start_that_waited_behaves_like_the_old_in_lock_wait_end_to_end` | 今の `engine_life_tests` の J-13 の流れ（`b17_d7`・`j13`）を、`AudioControl` の `run` 経由で通す：1回目 `engine_unconfirmed`、更新（`prepare_update`）で2回目、3回目が「Auralyn を終了して…」。待っている間、ほかの入口（読み取り）が止まらないことが今との違い |
+| Z18 | `z18_a_gated_start_that_waited_behaves_like_the_old_in_lock_wait_end_to_end` | 今の `engine_life_tests` の J-13 の流れ（`b17_d7`・`j13`）を、`AudioControl` の `run_async` 経由で通す：1回目 `engine_unconfirmed`、更新（`prepare_update`。窓の後）で2回目、3回目が「Auralyn を終了して…」。待っている間、ほかの入口（読み取り）が止まらないことが今との違い |
+| Z19 | `z19_window_waits_use_no_blocking_thread_so_a_stop_always_reaches_the_queue` | ブロッキングのスレッドのプールを小さく絞る（試験用のランタイム）。窓の中で、プールより多い数の Release・Mute・Starting を `run_async` で待たせても（スレッドを使わない）、Stop の `run_async` が `push` に届き、窓の内側で先に実行される。プールの空きを確かめる改変（`spawn_blocking` で待つ）で落ちる |
+| Z20 | `z20_recheck_counts_only_after_the_window_and_the_update_retry_does_not_escalate` | `prepare_update` を、窓の中で3回呼ぶ：すべて `engine_unconfirmed` の最初の文言で、`counts` が進まない。窓の後に呼ぶと進む（今の更新の経路の数え方）。窓の内外で試験する |
+| Z21 | `z21_cancel_safety_a_dropped_command_future_returns_its_reservation` | 窓の中で `run_async` の future を、待ちの途中・`gate` の直後・`spawn_blocking` の直前で捨てる。予約が返り（`counted == 0`）、ほかの待ち手は進む |
+| Z22 | `z22_sync_callers_are_inventoried_and_the_pool_threads_never_wait_on_a_window` | 構造の試験：`commands/`・`obs.rs`・`updates.rs`・`migration.rs`・`temporary_session.rs` に、`run_blocking`／`spawn_blocking` の中で `.run(` を呼ぶ形が残っていない（`run_async` を使う）。同期の呼び出し元（warmup・scheduler・`setup`）の表と一致する。warmup（専用のスレッド）の同期の窓待ちは、窓が閉じれば進む |
 
 **壊して確かめる（一時的な改変）**：
 (a) reaper が記録を消さない（観測しても `finish` を呼ばない）→ Z1・Z6。
@@ -1812,9 +1861,15 @@ if failed → Err(error(slots))                             // repeated は、�
 (m) reaper の panic を `catch_unwind` しない／`watched` を見ない → Z15。
 (n) reaper が `Child`・`Job` を持って先に落とす → Z17・Z1b（確認前に Job が落ちて別の子を殺す改変は、Z1 の `Drop` の数で検出）。
 (o) 窓が過ぎる前の失敗で数を進める → Z11・Z4。窓が過ぎた後に進めない → Z4・Z7・Z18。
-(p) 手番を外す（鳴らされた順に積む） → Z16。
+(p) 通常の列の差し込みを `push_back` に戻す／手番・共有の待ち手の表を足す → Z16・Z14。
 (q) `impl Launch` に `_ =>` を足す／種類（`JobClass`）で待つかを決める／未知を `None` にする → Z17（Y31）。
 (r) 役割の絞りを外す（主の `start_audio` が `PostMix` の記録を待つ）／絞りすぎる（`PostMix` を起動する入口が待たない） → Z14。
+(s) 窓待ちに `spawn_blocking`（プールのスレッド）を使う → Z19。
+(t) `Gate` の予約を `Drop` で返さない／future の drop で残る → Z10・Z21。
+(u) `recheck` が窓の中で数を進める → Z20。
+(v) reaper が待機中に `Store` の強い参照を持つ → Z3。
+(w) 監視できない記録（`watched = false`）を待ちの対象から外す → Z15。
+(x) `pending` の比較に戻す／消去を待たせない試験の形に戻す → Z12。
 
 ### 13.14 利用者から見て変わること
 
@@ -1826,7 +1881,7 @@ if failed → Err(error(slots))                             // repeated は、�
   - 結果：**要承認の項目は残っていない**。Mute が窓の中で子を起動しうるときは、実行の前に最大10秒、呼び出し側で待つ（停止のレーンの順は、列へ積んだ後のもの。待ちの間も Stop は先に実行される）。
 - 上の W3 の意味：窓の中で失敗した要求（`post` と、待ちの後に新しい記録が増えた場合）は、J-13 の「3回続けて」に数えない。短い間隔の再試行で3回に早く達しないための扱いで、今の「1回の要求が最大10秒待ってから1つ進める」の意味を保つ。
 （W4 は決定済み。上の決定のとおり、起動する側の役割だけ待つので、この差は無くなった）
-- **利用者に見えないが変わるもの**：遅れて終了した子の記録が、次の要求を待たずに自動で消える（J-9 の「復帰の表示」は出さない。F1b）。受付の順 A→B は手番で保つ。`Ticket::run` の待ちが、予約として 256 件に入る。
+- **利用者に見えないが変わるもの**：遅れて終了した子の記録が、次の要求を待たずに自動で消える（J-9 の「復帰の表示」は出さない。F1b）。受付の待ちはスレッドを使わない（ブロッキングのプールを窓待ちで使い切らず、停止が常に届く）。実行の順は `seq` の順（通常の列。K11 の期待値が変わる。W9）。待ちのうち数える仕事は、予約として 256 件に入る。
 - **変わらないもの**：`engine_unconfirmed` の文言・`REPEAT_AT`・待ちの上限（10秒）・`recheck`（更新の前）の挙動・`Drop` の共通2秒・Job の回収・通知の名前・中身・順・`engine_generation`・N2。
 - **新しい文言・新しい通知は無い**。
 
@@ -1840,18 +1895,22 @@ if failed → Err(error(slots))                             // repeated は、�
 | W2（決定済み 2026-11-23） | 受付の側の待ちの対象 | **子を起動しうる操作は全部待つ**（種類によらない。`post` だけ待たずに失敗）。属性 `Launch` を `JobClass` とは別に、網羅の形で1か所に持つ。実装の最初に、起動しうる入口・要求を今のコードで数え直す |
 | W3（決定済み 2026-11-23） | `ensure_clear` の数の進め方 | **窓が過ぎた後だけ進める**（承認）。受付で待った入口の結果は今と同じで、`post` の連続の失敗が3回に早く達しない |
 | W4（決定済み 2026-11-23） | 待つ役割 | **起動する側の役割の記録だけ**（両方を起動しうるものは両方）。役割を `Launch` に含める |
-| W5 | 待ち手を C4 の 256 件に数えるか | **数える**（予約）。ブロッキングスレッドを使い切らない。件数を減らす出口を全部 `Drop` で守る（I36） |
-| W6 | 待ち手を受付の番号の順に積むか | **積む**（手番）。2a の積んだ順（A→B）を保つ。外すと、窓が閉じた瞬間に順が不定になる（Z16） |
-| W7 | reaper のスレッド生成・ハンドル複製の失敗：待たずに進む（`watched = false`）／`retire_child` が同期の待ちに戻る | **待たずに進む**。実行のスレッドの `ensure_clear` が `try_wait` で確かめるので、固まらない。まれな経路で、早めの `engine_unconfirmed` が出うる |
+| W5 | 待ち手を C4 の 256 件に数えるか | **数える仕事（Starting・Normal）だけ数える**（予約）。Release・Mute は数えず、断らない（I15・I26）。待ちはスレッドを使わないので、プールを使い切らない（I43） |
+| W6（決定済み 統括） | 待ち手を受付の番号の順に積むか（手番） | **手番はやめた**。通常の列を `seq` の順に差し込んで順序を保つ（13.6。Sol の P1 を受けて） |
+| W7 | reaper のスレッド生成・ハンドル複製の失敗：待たずに進む／元の期限までは待つ | **元の期限までは受付で待つ**（監視の成否と期限を分ける。`probe_interval` ごとに `try_wait`）。reaper が無くても固まらず、通常の `run` も窓の中で即失敗しない（Sol の指摘） |
 | W8 | `retire_child` の最大2秒を reaper へ移すか、「遅れて確認できたら復帰を表示」（J-9）を入れるか | **この段は移さない**（7.2）。F1b で、`Teardown`・履歴 `process_confirmed` と一緒に |
+| W9 | 通常の列を `seq` の順にすることで、K11（`control_tests`。受付 A→B・積む順 B→A・実行 B→A）と X1 の「B.run を先に積めば B→A」の期待値が A→B に変わる。変えるか、窓待ちをした仕事にだけ `seq` の順を使うか | **全体を `seq` の順にする**（統括の決定）。実装の最初に、`push` の順に依る既存の試験を数え直し、期待値の変更を一覧にして示す（11.17 (a) の「積むまでの間の追い越し」が閉じるだけ。結果は今の `Mutex` より決定的） |
+| W10 | 非同期の入口の形：`run_async`（受付の待ち＋`spawn_blocking`）／`gate` だけを足し、今の `run_blocking` を残す | **`run_async`**。書き換えが1行で済み、`gate` を通し忘れる入口が出ない（付け忘れは `Launch` の表と Z22 が検出）。`tokio` の `sync`・`time` の機能は実装で確認 |
 
 ### 13.16 既知の狭い競合として残るもの
 
 - **(a) 受付で待った後・実行の前に、新しい記録が増える**：受付の側は、待ちに入った時に見えた記録だけを待つ（I34）。その後に増えた記録は、実行のスレッドの `ensure_clear` が待たずに失敗にする（窓の中なら数えない）。`retire_child` が新しく記録を置くのは、その要求自身の失敗（実行のスレッドの中）に限られるので、起こるのは、ほかの入口の閉包が同じ間に子を回収して失敗した場合だけ。
 - **(b) 速い道の見落とし**：待ちの要否を確かめた直後に別のスレッドが記録を置くと、その Starting は待たずに積まれ、(a) と同じ結果になる。
-- **(c) 待ち手に入らない入口が、待ち手を追い越す**（Normal・Release・`post`・Mute）：受付の番号の順は保たれない（N3 の目的。11.17 の (a)）。Starting 同士は手番で保たれる。
+- **(c) 待ち手に入らない入口（`Launch::None`。Normal の読み取り・Stop・Tick など）は、待っている操作を追い越す**：N3 の目的。待ちをした操作の順は `seq` の順に保たれる。**すでに実行された操作より前には入れない**（13.6）。
 - **(d) `Launch` の表の付け違い**：役割を狭く付けると、待たずに失敗する（安全側）。広く付けると、余計に最大10秒待つ。入口の数え直しと構造の試験（Z17）で表の漏れ・古さは落ちるが、役割の誤りは実装のレビューで1件ずつ見る（12.17 の (g) と同じ性質）。
-- **(e) reaper が止まった記録は、次の要求まで残る**：reaper が panic・生成失敗なら、記録は `ensure_clear` が `try_wait` で消すまで残る（13.10 の 13）。待ち手は窓の期限で進む。
+- **(e) reaper が止まった記録は、次の要求まで残る**：reaper が panic・生成失敗なら、記録は `probe`・`ensure_clear` が `try_wait` で消すまで残る（13.10 の 13）。待ち手は窓の期限まで待ち、`probe_interval`（200ms）ごとに確かめるので、終了した子は最大200ms の遅れで進む。
+- **(i) Release・Mute の待ちは件数に数えない**：窓の中で大量に来ても、小さなタスクが窓（最大10秒）で終わる。断らない設計（I15・I26）の代償。
+- **(j) 受付の番号の順の差し込みは、実行済みの操作を追い越さない**：A の窓待ちが長引く間に、窓待ちをしない B（`Launch::None`）が先に実行されれば、B→A。
 - **(f) 実行のスレッドの `retire_child` の最大2秒・`ensure_engine_running` の起動の確認（最大10秒）・`wait_notified`（2秒）・応答の待ちは、実行のスレッドを止めたまま**（7.2。12.17 の (b)）。この段が外へ出すのは `ensure_clear` の最大10秒だけ。
 - **(g) 子がまったく終わらないとき、reaper のスレッドはアプリの終了まで1本残る**（1秒ごとに確かめるだけ。`drain` の後は終わる）。
 - **(h) 実機での確認は未実施**：`OsProcess` の経路は実プロセスの試験（Z1b）で確かめるが、`kill` を拒否する実の子を実機で作る手段は無い。
@@ -1863,10 +1922,11 @@ if failed → Err(error(slots))                             // repeated は、�
 |---|---|
 | (1) 解除・後始末が断られて状態が残る | **Release・Mute・Stop の待ちは、解除・後始末を断らず、遅らせて状態を残さない**：Release は、子を起動しうる場合に受付で待つが（W2）、待ちは**断らない**（`StoppedFirst`・`Busy`・`Expired` の対象外のまま。12章の I15・I26・I21 を変えない。種類の規則は変えない：I33）。待ちは**窓の期限（最大10秒）で必ず進む**ので、reaper が死んでも、終わらない子でも、解除は遅れても必ず実行のスレッドへ届く（Z10・Z15）。Stop は起動しないので待たない。待っている間に先に実行される Stop・Mute があっても、Release の取り消し・解除の入口が列から落ちることはない。断られうる `StoppedFirst` は取得に当たる Starting の待ちだけで、取ったものは無い。待ちが付ける**予約は、どの出口でも `Drop` で返る**（I36・Z10。panic でも）。`Store` の記録は、reaper・`ensure_clear`・`recheck`・`drain` の4経路のどれかが必ず消せる（reaper が死んでも `try_wait` が消す。I31・Z15）。記録が消えても Job は確認の後にだけ落ちる（I32）。**当たらない** |
 | (2) エラーが別の意味に化けて状態を壊す | 新しい `ControlError`・新しい文言は無い。待ちの出口は既存の `StoppedFirst`・`Stopped`・`Expired`・`Busy`。待ちが終わること自体はエラーではなく、後の `engine_unconfirmed` は今の型のまま（`anyhow` の downcast が通る）。**reaper の速さで `engine_unconfirmed` が `REPLY_TIMED_OUT`・元の I/O エラーに化ける**新しい危険は、設計の途中で見つけ、**累計 `recorded` の差で判定する**ことで閉じた（13.8・I38・Z12）。`StoppedFirst` を IPC・実行のスレッドの中へ出さない（I19 を変えない）。**当たらない（見つけて閉じた）** |
-| (3) 異常終了で待ち手が解放されない | 受付の待ちは、(i) 列の閉鎖・実行のスレッドの異常終了の回収（`close`・`close_and_take`）が**ロックを放した後に `ring`**（I39）、(ii) `wait_timeout` が常に次の期限までの有限の長さ（reaper が死んでも、`Bell` を鳴らす経路が壊れても、窓の期限か60秒で進む。I35）、(iii) `Mutex` の poison は `into_inner` で進む。実行のスレッドの異常終了の回収（I13・I28）は、列の全 `Run` の `tx` を落とすままで変えない。受付の側の待ち手は列の外にいて `tx` を持たないので、回収が通る `close_and_take` が、列のロックを放した後に `ring` して解放する（Z9。(h) の改変で検出）。reaper 自体の panic は `catch_unwind` で記録を `watched = false` にし、誰も待たせない。**当たらない** |
+| (3) 異常終了で待ち手が解放されない | 受付の待ちは、(i) 列の閉鎖・実行のスレッドの異常終了の回収（`close`・`close_and_take`）が**ロックを放した後に `ring`**（I39）、(ii) 待ちが常に次の期限までの有限の長さ（`timeout_at`／`wait_timeout`。非同期・同期の両方）（reaper が死んでも、`Bell` を鳴らす経路が壊れても、窓の期限か60秒で進む。I35）、(iii) `Mutex` の poison は `into_inner` で進む。実行のスレッドの異常終了の回収（I13・I28）は、列の全 `Run` の `tx` を落とすままで変えない。受付の側の待ち手は列の外にいて `tx` を持たないので、回収が通る `close_and_take` が、列のロックを放した後に `ring` して解放する（Z9。(h) の改変で検出）。reaper 自体の panic は `catch_unwind` で記録を `watched = false` にし、誰も待たせない。**当たらない** |
 | (4) 実行中の閉包に割り込む | 待つのは `Ticket::run` の、列へ積む**前**の呼び出し側のスレッド。実行のスレッドも、走っている閉包も止めない・起こさない（J-18）。reaper は、ホスト・列・通知・IPC を持たず触らない（I32）。Stop が来て断るのは、**まだ列に積んでいない仕事**だけ（始まった閉包の途中で `StoppedFirst` を出さない。12章の I17 を変えない）。reaper が `kill()` をやり直すのは、**手放した後の記録の子**だけで、動いているホストの子ではない（I32）。2c の「子の起動の門」の位置（`ensure_clear` の後。`audio.rs:907-909`）も変えない。**当たらない** |
 | 追加：ロックの輪 | `Bell`→`Store.slots` だけ。`JobQueue` のロックは `Bell` と同時に持たない。`slots` を持ったまま待つ・`Bell` を鳴らす・`Child`/`Job` を落とすことがない（I30・Z13）。reader は reaper にも `Bell` にも触れない（11.10 の「reader が待つのは `order` だけ」を保つ） |
-| 追加：順序の退行 | Starting 同士の受付の順 A→B は手番で保つ（I42・Z16）。待ち手に入らない入口は追い越すのが N3 の目的（13.16 の (c)） |
+| 追加：順序の退行 | 通常の列を `seq` の順に差し込むので、Starting 同士・窓待ちの有無によらず受付の番号の順が保たれる（I42・Z16）。**手番・共有の待ち手の表を持たない**ので、先行者の中断・panic で次が進めない経路が無い（Z10・Z16）。待ち手に入らない入口の追い越しは N3 の目的（13.16 の (c)(j)） |
+| 追加：受付の待ちが、停止の投入やほかの入口の受付に必要な資源（スレッド・手番・ロック）を使い切る | **スレッド**：窓待ちは `run_blocking` に入る前の非同期の待ちで、ブロッキングのプールを使わない（I43）。Stop は待たず、常に `push` に届く（Z19。プールを絞って確かめる）。**手番**：持たない（I42）。別の役割の窓・別の待ち手の中断で足止めされない（Z14・Z16）。**ロック**：待ちの間は何も持たず、`Gate` の予約だけ（I44）。`Bell`→`Store.slots` の順だけ（I30）。**予約（256）**：数える仕事だけで、Stop・Release・Mute の投入を断らない（I15）。**当たらない** |
 
 ### 13.18 洗い出しと今のコードで食い違っていた点
 
@@ -1874,5 +1934,6 @@ if failed → Err(error(slots))                             // repeated は、�
 2. 洗い出しの「ホストのロックを持ったまま」は、2a の実装で**実行のスレッドを止める**待ちに変わった（`Mutex<AudioHost>` は無い。11章）。N3 の動機は、停止の列（12章）が実行のスレッドの中の待ちに届かないこと。
 3. 7.2 の「子を起動しうる入口」は、字面では 12.4 の Starting に限らない。**Normal・Release・Mute・`post` も `execute_command` 経由で子を起動しうる**（12.17 の (e)・12.18 の 4）。利用者の決定（W2）で、種類によらず起動しうる入口を全部待たせ、`post` だけ待たずに失敗にする。入口の一覧は、実装の最初に今のコードで数え直す。
 4. `audio-session-controller.md` 4.4 の最終の形（「`Child` は reaper が持つ。親は Job と複製したプロセスのハンドル」。223・224 行）と違い、この段は **`Child` を記録に残し、reaper が複製ハンドルで待つ**（W1）。2.3-A の「`ensure_clear` は、期限まで reaper の知らせを条件変数で待つ」は、7.2 により、受付の側の待ちへ置き換わった。
-5. **洗い出しに無かった事実（新規）**：(i) `Store` は `AudioHost::new` の中で作られ、`AudioControl` から見えない（`audio.rs:553-557`・`control.rs:333`）。`host.retired()` の口を足す。(ii) `audio.rs` の6か所が `pending(role) > recorded` で「終了を確かめられなかった」を判定している。reaper が記録を先に消すと、エラーの文言が変わる（13.8）。累計 `recorded` が要る。(iii) 試験の継ぎ目（`try_wait`・時計）は `thread_local!` なので、reaper のスレッドには届かない。`Scripted` の読み取り元と共有のセルが要る（13.13）。(iv) 記録の `killed_at` に仮想時計を使うと、実時間の待ち（受付の側・reaper）と混ざる。実時間にする（13.4）。(v) 受付の側の待ちは、列へ積むより前の「受付の番号と積む順」の入れ替わりを広げる。手番で保つ（13.6）。
+5. **洗い出しに無かった事実（新規）**：(i) `Store` は `AudioHost::new` の中で作られ、`AudioControl` から見えない（`audio.rs:553-557`・`control.rs:333`）。`host.retired()` の口を足す。(ii) `audio.rs` の6か所が `pending(role) > recorded` で「終了を確かめられなかった」を判定している。reaper が記録を先に消すと、エラーの文言が変わる（13.8）。累計 `recorded` が要る。(iii) 試験の継ぎ目（`try_wait`・時計）は `thread_local!` なので、reaper のスレッドには届かない。`Scripted` の読み取り元と共有のセルが要る（13.13）。(iv) 記録の `killed_at` に仮想時計を使うと、実時間の待ち（受付の側・reaper）と混ざる。実時間にする（13.4）。(v) 受付の側の待ちは、列へ積むより前の「受付の番号と積む順」の入れ替わりを広げる。通常の列の `seq` 順の差し込みで保つ（13.6）。
 6. 洗い出し 5章の試験数：`.retired`・`seam::` の参照は、`engine_life_tests` 57・`post_mix_life_tests` 37・`reply_deadline_tests` 10・`link_tests` 6・`mixing_bundle_tests` 2（`link_seam::` を除いて数え直した。計 112）。10章 U5 の「`.child`」は `AudioHost::child`（動いている子）で、reaper で壊れない。
+7. **11.4 の「`run_async` は足さない」を取り消す**（Sol の P2。256 件の上限は、窓待ちがブロッキングのスレッドを使うと、Release・Mute の待ちを数えないので守れない）。窓待ちだけを、スレッドを使わない非同期の入口 `run_async` へ出す。受付の列の順の「積んだ順」（11章 I3・12章 I14・11.17 (a)）は、通常の列について「`seq` の順」へ変わる（13.6。K11・X1 の期待値の変更。W9）。
