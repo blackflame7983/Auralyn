@@ -9,7 +9,7 @@ pub(crate) async fn post_mix(
 ) -> Result<audio::post_mix::Snapshot, String> {
     let host = state.0.clone();
     let entry =
-        audio::Entry::command("post_mix").class(audio::control::request_class::post_mix(&request));
+        audio::Entry::command("post_mix").request(audio::control::request_class::post_mix(&request));
     super::run_blocking(move || {
         host.run(entry, move |host| -> Result<_, String> {
             host.post_mix(request).map_err(|error| error.to_string())
@@ -120,7 +120,7 @@ pub(crate) async fn peak_protection(
 ) -> Result<audio_engine::peak_protection::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("peak_protection")
-        .class(audio::control::request_class::peak_protection(&config));
+        .request(audio::control::request_class::peak_protection(&config));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -138,7 +138,7 @@ pub(crate) async fn broadcast_true_peak(
 ) -> Result<audio_engine::true_peak_limiter::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("broadcast_true_peak")
-        .class(audio::control::request_class::broadcast_true_peak(&config));
+        .request(audio::control::request_class::broadcast_true_peak(&config));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -156,7 +156,7 @@ pub(crate) async fn live_output(
 ) -> Result<audio_engine::live_output::Status, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("live_output")
-        .class(audio::control::request_class::live_output(&config));
+        .request(audio::control::request_class::live_output(&config));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -174,7 +174,7 @@ pub(crate) async fn mixing(
 ) -> Result<audio::mixing::Snapshot, String> {
     let state = state.0.clone();
     let entry =
-        audio::Entry::command("mixing").class(audio::control::request_class::mixing(&request));
+        audio::Entry::command("mixing").request(audio::control::request_class::mixing(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -296,7 +296,7 @@ pub(crate) async fn audio_frontend_bootstrap(
 ) -> Result<audio::frontend_bootstrap::Reply, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("audio_frontend_bootstrap")
-        .class(audio::control::request_class::frontend_bootstrap(&request));
+        .request(audio::control::request_class::frontend_bootstrap(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -581,7 +581,7 @@ pub(crate) async fn session_rack(
 ) -> Result<crate::ipc::SessionRackReply, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("session_rack")
-        .class(audio::control::request_class::session_rack(&request));
+        .request(audio::control::request_class::session_rack(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -1139,7 +1139,7 @@ pub(crate) async fn builtin_effects(
 ) -> Result<crate::audio_engine::builtin::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("builtin_effects")
-        .class(audio::control::request_class::builtin_effects(&request));
+        .request(audio::control::request_class::builtin_effects(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -1158,7 +1158,7 @@ pub(crate) async fn set_loudness_measurement(
 ) -> Result<(), String> {
     let host = state.0.clone();
     let entry = audio::Entry::command("set_loudness_measurement")
-        .class(audio::control::request_class::set_loudness_measurement(&id));
+        .request(audio::control::request_class::set_loudness_measurement(&id));
     tauri::async_runtime::spawn_blocking(move || {
         host.run(entry, move |host| -> Result<_, String> {
             host.set_loudness_measurement(id).map_err(|e| e.to_string())
@@ -1195,7 +1195,7 @@ pub(crate) async fn auto_gain(
 ) -> Result<audio_engine::auto_gain::Snapshot, String> {
     let host = state.0.clone();
     let entry = audio::Entry::command("auto_gain")
-        .class(audio::control::request_class::auto_gain(&request));
+        .request(audio::control::request_class::auto_gain(&request));
     tauri::async_runtime::spawn_blocking(move || {
         host.run(entry, move |host| -> Result<_, String> {
             host.auto_gain(request).map_err(|e| e.to_string())
@@ -1253,7 +1253,7 @@ pub(crate) async fn set_channel_scan(
 ) -> Result<(), String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("set_channel_scan")
-        .class(audio::control::request_class::set_channel_scan(active));
+        .request(audio::control::request_class::set_channel_scan(active));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -1417,7 +1417,7 @@ pub(crate) async fn live_modes(
 ) -> Result<crate::audio_engine::live_modes::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("live_modes")
-        .class(audio::control::request_class::live_modes(&request));
+        .request(audio::control::request_class::live_modes(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {
@@ -1490,7 +1490,7 @@ pub(crate) async fn noise_measurement(
 ) -> Result<crate::audio_engine::core::noise_learning::Snapshot, String> {
     let state = state.0.clone();
     let entry = audio::Entry::command("noise_measurement")
-        .class(audio::control::request_class::noise_measurement(&request));
+        .request(audio::control::request_class::noise_measurement(&request));
     super::run_blocking(move || {
         state
             .run(entry, move |host| -> Result<_, String> {

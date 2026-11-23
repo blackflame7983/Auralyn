@@ -163,7 +163,7 @@ fn y4_the_decision_follows_the_acceptance_number_not_the_push_order() {
     control.run(normal(), |_| ()).unwrap();
     assert_eq!(
         entries(&order),
-        ["stop:ok", "late:ok", "early:StoppedFirst"],
+        ["stop:ok", "early:StoppedFirst", "late:ok"],
         "停止の後に積まれても、停止より前に受け付けた Starting は断られ、後に受け付けたものは実行される"
     );
 }

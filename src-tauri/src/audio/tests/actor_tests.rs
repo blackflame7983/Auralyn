@@ -201,7 +201,7 @@ fn x1_jobs_run_in_the_order_they_were_queued() {
     hold.release();
     control.run(cmd("end"), |_| ()).unwrap();
     r2.join().unwrap();
-    assert_eq!(*order.lock().unwrap(), ["p1", "r2", "p3", "B", "A"]);
+    assert_eq!(*order.lock().unwrap(), ["p1", "r2", "p3", "A", "B"]);
     let granted: Vec<_> = control
         .admission()
         .records()
@@ -209,7 +209,7 @@ fn x1_jobs_run_in_the_order_they_were_queued() {
         .filter(|r| r.phase == Phase::Started && ["A", "B"].contains(&r.entry.name))
         .map(|r| r.entry.name)
         .collect();
-    assert_eq!(granted, ["B", "A"], "実行の順は積んだ順（K11）");
+    assert_eq!(granted, ["A", "B"], "実行の順は受付の番号の順（13.6。K11 は別の試験）");
 }
 
 // X2：すべての閉包が、呼び出しとは別の1つのスレッドで走る。`run`は、閉包の中の通知が終わるまで戻らない。

@@ -139,7 +139,8 @@ fn used_entries() -> Vec<(String, String, bool)> {
                 let tail = text[close..].trim_start();
                 let tail = tail.strip_prefix(',').unwrap_or(tail).trim_start();
                 let tail = tail.strip_prefix(')').unwrap_or(tail).trim_start();
-                found.push((name, format!("{kind} {file}"), tail.starts_with(".class(")));
+                found.push((name, format!("{kind} {file}"), tail.starts_with(".class(") || tail.starts_with(".request("),
+                ));
             }
         }
     }

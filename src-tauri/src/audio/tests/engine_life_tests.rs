@@ -42,7 +42,7 @@ fn start(host: &mut AudioHost) -> Result<AudioConfig> {
 fn stuck_primary() -> (AudioHost, Observer) {
     let (mut host, observer) = scripted_parts([]);
     host.ensure_engine_running().unwrap();
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     host.kill_engine();
     (host, observer)
 }
@@ -56,7 +56,7 @@ fn w1a_job_creation_failure_ends_the_suspended_child_and_a_later_start_works() {
     assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
     assert!(observer.probe(0).wait_exit(5000), "子が終わっている");
     assert!(host.child.is_none() && host.engine_job.is_none());
-    assert_eq!(host.retired.pending(Role::Primary), 0);
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
     assert_eq!(
         host.engine_generation, 0,
         "登録していないので世代は進まない"
@@ -72,19 +72,19 @@ fn w1a_job_creation_failure_ends_the_suspended_child_and_a_later_start_works() {
 fn w1b_assignment_failure_blocks_the_same_role_until_the_exit_is_confirmed() {
     let (mut host, observer) = scripted_parts([]);
     seam::set_assign(seam::Assign::Fails);
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     let error = host.ensure_engine_running().unwrap_err();
     assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
-    assert_eq!(host.retired.pending(Role::Primary), 1, "確かめられない");
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 1, "確かめられない");
     assert!(observer.probe(0).wait_exit(5000), "kill は実際に届いている");
     seam::set_assign(seam::Assign::Real);
     let error = host.ensure_engine_running().unwrap_err();
     assert!(!unconfirmed(&error).repeated);
     assert_eq!(observer.spawn_count(), 1, "作らない");
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     host.ensure_engine_running().unwrap();
     assert_eq!(observer.spawn_count(), 2);
-    assert_eq!(host.retired.pending(Role::Primary), 0);
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
     finish(host, observer);
 }
 
@@ -122,7 +122,7 @@ fn w1c_a_resume_result_of_zero_or_failure_ends_the_child_and_fails_the_start() {
         let error = host.ensure_engine_running().unwrap_err();
         assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
         assert!(observer.probe(0).wait_exit(5000), "子が終わっている");
-        assert!(host.child.is_none() && host.retired.pending(Role::Primary) == 0);
+        assert!(host.child.is_none() && reaper_seam::pending(&host, Role::Primary) == 0);
         seam::set_resume(seam::Resume::Real);
         host.ensure_engine_running().unwrap();
         assert_eq!(observer.spawn_count(), 2);
@@ -172,7 +172,7 @@ fn w1c_a_child_whose_external_suspend_is_never_released_is_retired_and_the_start
         crate::audio::writer::set_limits_for_test(None, Some(Duration::from_millis(500)));
         seam::set_resume(seam::Resume::ExternalSuspend(None));
         if !confirmed {
-            seam::set_wait(seam::Wait::Stuck);
+            reaper_seam::stuck();
         }
         let error = host.ensure_engine_running().unwrap_err();
         seam::set_resume(seam::Resume::Real);
@@ -181,11 +181,11 @@ fn w1c_a_child_whose_external_suspend_is_never_released_is_retired_and_the_start
         if confirmed {
             assert_eq!(error.to_string(), engine_life::LAUNCH_FAILED);
             assert!(observer.probe(0).wait_exit(5000), "子が回収されている");
-            assert_eq!(host.retired.pending(Role::Primary), 0);
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
         } else {
             assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
-            assert_eq!(host.retired.pending(Role::Primary), 1);
-            seam::set_wait(seam::Wait::Real);
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
+            reaper_seam::real();
         }
         // 次の操作で作り直せる（確かめられなかった場合は、終了を確かめた後）。
         assert!(observer.probe(0).wait_exit(5000));
@@ -207,7 +207,7 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     let guard = ChildGuard::new(host.spawn_engine_binary(cmd).unwrap());
     let probe = ProcessProbe::open(guard.id()).unwrap();
     let (child, job, suspended) =
-        engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+        reaper_seam::contain(&host, Role::Primary, guard.release()).unwrap();
     let guard = ChildGuard::new(child);
     // 停止の状態で作ったので、再開の戻り値は1以上（外の停止が重なっていれば2以上）。
     assert!(job.is_some());
@@ -220,7 +220,7 @@ fn the_product_spawn_creates_the_child_suspended_so_the_resume_succeeds() {
     let guard = ChildGuard::new(host.spawn_engine_binary(cmd_exe()).unwrap());
     let probe = ProcessProbe::open(guard.id()).unwrap();
     let (child, job, suspended) =
-        engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+        reaper_seam::contain(&host, Role::Primary, guard.release()).unwrap();
     seam::set_resume(seam::Resume::Real);
     let guard = ChildGuard::new(child);
     assert!(
@@ -264,22 +264,23 @@ fn b17_d7_an_unconfirmed_child_is_recorded_after_two_seconds_and_blocks_a_new_on
     let (mut host, observer) = stuck_primary();
     let after_kill = seam::elapsed();
     assert!(after_kill >= Duration::from_secs(2) && after_kill < Duration::from_millis(2100));
-    assert_eq!(host.retired.pending(Role::Primary), 1);
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
     assert!(host.child.is_none() && !host.get_state().is_running);
+    // 窓の中の要求は、待たずに失敗し、数を進めない。
     let error = host.ensure_engine_running().unwrap_err();
     assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
-    let first = seam::elapsed();
-    assert!(
-        first >= Duration::from_secs(10) && first < Duration::from_millis(10100),
-        "待ちは最初の kill から10秒まで: {first:?}"
-    );
+    assert_eq!(reaper_seam::counts(&host, Role::Primary), [0]);
+    assert_eq!(seam::elapsed(), after_kill, "待たない");
+    // 窓（最初の kill から期限まで）が過ぎた後の要求は、待たずに答え、記録ごとに数を1つ進める。
+    reaper_seam::pass_window(&host);
+    let error = host.ensure_engine_running().unwrap_err();
+    assert_eq!(unconfirmed(&error), EngineUnconfirmed { repeated: false });
     assert_eq!(observer.spawn_count(), 1, "新しい子を作らない");
-    assert_eq!(host.retired.counts(Role::Primary), [1]);
-    // 期限の後の要求は、待たずに1回だけ確かめて即座に答える（期限を要求ごとにやり直さない）。
+    assert_eq!(reaper_seam::counts(&host, Role::Primary), [1]);
     let error = host.ensure_engine_running().unwrap_err();
     assert!(!unconfirmed(&error).repeated);
-    assert_eq!(seam::elapsed(), first, "待たない");
-    assert_eq!(host.retired.counts(Role::Primary), [2]);
+    assert_eq!(seam::elapsed(), after_kill, "待たない");
+    assert_eq!(reaper_seam::counts(&host, Role::Primary), [2]);
     finish(host, observer);
 }
 
@@ -289,11 +290,11 @@ fn b18_a_child_that_ends_late_is_cleared_by_the_next_request_and_the_role_can_st
     let (mut host, observer) = stuck_primary();
     assert!(host.ensure_engine_running().is_err());
     assert!(observer.probe(0).wait_exit(5000), "遅れて終了した");
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     host.ensure_engine_running().unwrap();
     assert_eq!(observer.spawn_count(), 2);
-    assert_eq!(host.retired.pending(Role::Primary), 0);
-    assert!(host.retired.counts(Role::Primary).is_empty());
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
+    assert!(reaper_seam::counts(&host, Role::Primary).is_empty());
     finish(host, observer);
 }
 
@@ -302,14 +303,14 @@ fn b18_a_child_that_ends_late_is_cleared_by_the_next_request_and_the_role_can_st
 fn b17b_a_try_wait_error_is_not_evidence_of_exit_and_does_not_respawn() {
     let (mut host, observer) = scripted_parts([]);
     host.ensure_engine_running().unwrap();
-    seam::set_wait(seam::Wait::Fails);
+    reaper_seam::fails();
     let error = host.ensure_engine_running().unwrap_err();
     assert!(!unconfirmed(&error).repeated);
     assert_eq!(observer.spawn_count(), 1, "作り直さない");
     assert!(host.child.is_none());
-    assert_eq!(host.retired.pending(Role::Primary), 1);
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
     assert!(observer.probe(0).wait_exit(5000), "kill は届いている");
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     host.ensure_engine_running().unwrap();
     assert_eq!(observer.spawn_count(), 2);
     finish(host, observer);
@@ -320,13 +321,13 @@ fn b17b_a_try_wait_error_is_not_evidence_of_exit_and_does_not_respawn() {
 fn w2_a_primary_write_failure_records_the_child_before_returning_the_original_error() {
     let (mut host, observer) = scripted_parts([]);
     host.ensure_engine_running().unwrap();
-    seam::set_wait(seam::Wait::Stuck);
+    reaper_seam::stuck();
     host.fail_writes_for_test();
     let error = host
         .execute_running_command(IpcCommand::GetDevices)
         .unwrap_err();
     assert!(error.to_string().contains("Stdin not available"));
-    assert_eq!(host.retired.pending(Role::Primary), 1);
+    assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
     assert!(host.child.is_none());
     assert!(observer
         .recorder
@@ -340,6 +341,7 @@ fn w2_a_primary_write_failure_records_the_child_before_returning_the_original_er
 #[test]
 fn j13_the_third_unconfirmed_request_changes_the_japanese_message_on_both_paths() {
     let (mut host, observer) = stuck_primary();
+    reaper_seam::pass_window(&host);
     let first = start(&mut host).unwrap_err().to_string();
     assert_eq!(first, JA_FIRST_FINAL);
     assert_eq!(localize_audio_error(first), JA_FIRST_FINAL);
@@ -355,9 +357,9 @@ fn j13_the_third_unconfirmed_request_changes_the_japanese_message_on_both_paths(
     );
     assert_eq!(observer.spawn_count(), 1);
     assert!(observer.probe(0).wait_exit(5000), "遅れて終了した");
-    seam::set_wait(seam::Wait::Real);
+    reaper_seam::real();
     host.prepare_update().unwrap();
-    assert!(host.maintenance && host.retired.pending(Role::Primary) == 0);
+    assert!(host.maintenance && reaper_seam::pending(&host, Role::Primary) == 0);
     finish(host, observer);
 }
 
@@ -659,7 +661,7 @@ fn only_a_resume_result_of_two_or_more_asks_for_the_start_confirmation() {
         seam::set_resume(seam::Resume::Returns(result));
         let guard = ChildGuard::new(host.spawn_engine_binary(cmd_exe()).unwrap());
         let (child, _job, suspended) =
-            engine_life::contain_and_resume(&host.retired, Role::Primary, guard.release()).unwrap();
+            reaper_seam::contain(&host, Role::Primary, guard.release()).unwrap();
         seam::set_resume(seam::Resume::Real);
         assert_eq!(suspended, confirmation, "戻り値 {result}");
         // 実際には再開していない（戻り値だけの差し替え）。停止したままの子を残さない。

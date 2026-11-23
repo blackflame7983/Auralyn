@@ -652,6 +652,10 @@ impl AudioHost {
         self.conditions.clone()
     }
 
+    fn retired(&self) -> Arc<engine_life::Store> {
+        self.retired.clone()
+    }
+
     /// ホストが出す通知。`hold_notices` の間は保持して、回収の後に出す。
     fn notice<S: Serialize + Clone>(&self, name: &'static str, payload: S) {
         {
@@ -943,7 +947,7 @@ impl AudioHost {
         // 起動の失敗にする（J-24）。戻り値が1の通常の起動には、この確認を足さない。
         if externally_suspended {
             // 記録の数は、確認を始める前に控える（確認の中の C2 で記録された子も数える）。
-            let recorded = self.retired.pending(self.role());
+            let recorded = self.retired.recorded(self.role());
             self.confirming_start = true;
             let outcome = self.execute_running_command(IpcCommand::StartIdentityCapability);
             self.confirming_start = false;
@@ -962,7 +966,7 @@ impl AudioHost {
                 if let Some(unconfirmed) = unconfirmed {
                     return Err(unconfirmed.into());
                 }
-                if self.retired.pending(self.role()) > recorded {
+                if self.retired.recorded(self.role()) > recorded {
                     return Err(self.retired.unconfirmed_error().into());
                 }
                 return Err(anyhow!(engine_life::LAUNCH_FAILED));
@@ -1146,7 +1150,7 @@ impl AudioHost {
     fn reply_timed_out(&mut self) -> Result<IpcResponse> {
         let link = self.link.clone();
         let won = link.close(CloseCause::ReplyTimeout);
-        let recorded = self.retired.pending(self.role());
+        let recorded = self.retired.recorded(self.role());
         // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
         if self.confirming_start {
             self.kill_primary_engine();
@@ -1164,7 +1168,7 @@ impl AudioHost {
         if !self.post_role && !self.confirming_start {
             self.notice("audio-error", "音声エンジンとの通信が切れました");
         }
-        if self.retired.pending(self.role()) > recorded {
+        if self.retired.recorded(self.role()) > recorded {
             return Err(anyhow::Error::new(self.retired.unconfirmed_error()));
         }
         Err(anyhow!(REPLY_TIMED_OUT))
@@ -1173,14 +1177,14 @@ impl AudioHost {
     /// 書き込みの失敗・期限切れで接続を切り離す（2.3）。書きかけのJSONや遅い応答が残る接続を再利用しない。
     fn cut_off(&mut self, cause: CloseCause, error: std::io::Error) -> anyhow::Error {
         let won = self.link.close(cause);
-        let recorded = self.retired.pending(self.role());
+        let recorded = self.retired.recorded(self.role());
         if self.confirming_start {
             // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
             self.kill_primary_engine();
         } else {
             self.kill_engine();
         }
-        let unconfirmed = self.retired.pending(self.role()) > recorded;
+        let unconfirmed = self.retired.recorded(self.role()) > recorded;
         // 終了の通知を出すのは競りに勝った側だけ。EOF が先なら reader が出している。
         if won {
             self.notice("audio-error", "音声エンジンとの通信が切れました");
@@ -3182,6 +3186,10 @@ mod class_tests;
 #[cfg(test)]
 #[path = "audio/tests/link_seam.rs"]
 mod link_seam;
+
+#[cfg(test)]
+#[path = "audio/tests/reaper_seam.rs"]
+mod reaper_seam;
 
 #[cfg(test)]
 #[path = "audio/tests/link_cell_tests.rs"]

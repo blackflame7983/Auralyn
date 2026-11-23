@@ -4,7 +4,9 @@
 //! 外の変数が持つ。内側のループは借りるか、外の変数との間で出し入れするだけで、所有したまま
 //! panic しうる区間を作らない。実行する仕事も断る仕事も、取り出したら`current`に置く。
 use super::class::{is_start_request, JobClass};
-use super::queue::{ActorPoint, Job, JobKind, JobQueue, Payload, PostFn, Reply, RunFn, Taken};
+use super::queue::{
+    ActorPoint, Job, JobKind, JobQueue, Payload, PostFn, Reply, ReplyTx, RunFn, Taken,
+};
 use super::{Admission, ControlError, Entry, Phase};
 use crate::audio::AudioHost;
 use std::cell::Cell;
@@ -149,13 +151,19 @@ fn execute(
     let started = Instant::now();
     match kind {
         JobKind::Run { tx, f } => {
-            let (reply, outcome) = run_job(f, host, *poisoned);
+            let (reply, outcome) = {
+                let _scope = queue.store().begin_closure();
+                run_job(f, host, *poisoned)
+            };
             finish.completed(started);
-            reply_to(queue, &tx, reply);
+            reply_to(queue, tx, reply);
             outcome
         }
         JobKind::Post { f } => {
-            let outcome = post_job(f, host, *poisoned);
+            let outcome = {
+                let _scope = queue.store().begin_closure();
+                post_job(f, host, *poisoned)
+            };
             finish.completed(started);
             outcome
         }
@@ -168,9 +176,12 @@ fn execute(
     }
 }
 
-fn reply_to(queue: &JobQueue, tx: &std::sync::mpsc::SyncSender<Reply>, reply: Reply) {
+/// 送れなかった返事は、`Drop` が panic しても実行のスレッドを壊さないよう、ここで捨てる。
+fn reply_to(queue: &JobQueue, tx: ReplyTx, reply: Reply) {
     queue.run_seam(ActorPoint::BeforeReply);
-    let _ = tx.send(reply);
+    if let Err(unsent) = tx.send(reply) {
+        let _ = catch_unwind(AssertUnwindSafe(|| drop(unsent)));
+    }
     queue.run_seam(ActorPoint::AfterReply);
 }
 
@@ -208,7 +219,7 @@ fn refuse(kind: JobKind, error: ControlError, queue: &JobQueue) -> Outcome {
     match kind {
         JobKind::Run { tx, f } => {
             drop(f);
-            reply_to(queue, &tx, Reply::Refused(error));
+            reply_to(queue, tx, Reply::Refused(error));
             Outcome::Done
         }
         JobKind::Post { f } => {

@@ -389,7 +389,7 @@ fn t6_c2_retires_the_child_while_the_reader_is_stuck_in_the_middle_of_a_chain() 
             let error = host.execute_running_command(big_state()).unwrap_err();
             (
                 error.to_string(),
-                host.retired.pending(engine_life::Role::Primary),
+                reaper_seam::pending(&host, engine_life::Role::Primary),
             )
         })
     };
@@ -632,7 +632,7 @@ fn a_writer_that_shares_the_link_aborts_once_the_host_closes_it() {
 // P2 4：C2 の文言。子の終了を確かめられたときだけ「終了しました」。確かめられなければ `engine_unconfirmed`。
 #[test]
 fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
-    use super::engine_life::{seam, EngineUnconfirmed, Role};
+    use super::engine_life::{EngineUnconfirmed, Role};
     for confirmed in [true, false] {
         let (mut host, observer) = scripted_parts([]);
         host.ensure_engine_running().unwrap();
@@ -640,7 +640,7 @@ fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
         host.replace_writer_for_test(writer::Writer::start(gate.clone(), host.link.clone()));
         writer::set_limits_for_test(Some(Duration::from_millis(200)), None);
         if !confirmed {
-            seam::set_wait(seam::Wait::Stuck);
+            reaper_seam::stuck();
         }
         let error = host
             .execute_running_command(IpcCommand::GetDevices)
@@ -649,20 +649,21 @@ fn p2_c2_message_depends_on_whether_the_exit_was_confirmed() {
         if confirmed {
             assert_eq!(error.to_string(), WRITE_TIMED_OUT);
             assert!(error.downcast_ref::<EngineUnconfirmed>().is_none());
-            assert_eq!(host.retired.pending(Role::Primary), 0);
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 0);
         } else {
             assert_eq!(
                 error.downcast_ref::<EngineUnconfirmed>().copied(),
                 Some(EngineUnconfirmed { repeated: false })
             );
             assert_eq!(error.to_string(), engine_life::UNCONFIRMED_JA);
-            assert_eq!(host.retired.pending(Role::Primary), 1);
-            // J-13：作り直しの要求が確かめられない回数を、同じ記録で数える。
+            assert_eq!(reaper_seam::pending(&host, Role::Primary), 1);
+            // J-13：作り直しの要求が確かめられない回数を、同じ記録で数える（窓が過ぎた後の失敗だけ）。
+            reaper_seam::pass_window(&host);
             for _ in 0..3 {
                 host.ensure_engine_running().unwrap_err();
             }
-            assert!(host.retired.unconfirmed_error().repeated);
-            seam::set_wait(seam::Wait::Real);
+            assert!(reaper_seam::unconfirmed(&host).repeated);
+            reaper_seam::real();
         }
         writer::set_limits_for_test(None, None);
         drop(host);

@@ -1,13 +1,15 @@
 //! 受付の列。葉のロックだけを持ち、持っている間に閉包・通知・I/O・ほかのロックを使わない。
 //!
-//! 列は2つのレーンを持つ。停止のレーン（Stop・Mute）が先に取り出され、通常のレーンは積んだ順に取り出す。
-use super::class::{JobClass, Lane};
+//! 列は2つのレーンを持つ。停止のレーン（Stop・Mute）が先に取り出され、どちらのレーンも受付の番号の順に並ぶ。
+//! 子を起動しうる仕事は、受付の時点で見えていた記録の窓が開いている間、列の中で保留する（飛ばす）。
+use super::class::{JobClass, Lane, Launch};
 use super::{ControlError, Entry};
+use crate::audio::engine_life::{OpenWindow, Store, PROBE_INTERVAL};
 use crate::audio::AudioHost;
 use std::any::Any;
 use std::collections::VecDeque;
 use std::sync::mpsc::SyncSender;
-use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 pub(super) type Payload = Box<dyn Any + Send>;
@@ -22,10 +24,26 @@ pub(super) enum Reply {
     Refused(ControlError),
 }
 
+/// 返事の送信端。`Job`だけが持ち、送るときに待たない。
+pub(super) enum ReplyTx {
+    Sync(SyncSender<Reply>),
+    Async(tokio::sync::oneshot::Sender<Reply>),
+}
+
+impl ReplyTx {
+    /// 送れなかった返事（受け手が先に捨てられた）は、そのまま返す。
+    pub(super) fn send(self, reply: Reply) -> Result<(), Reply> {
+        match self {
+            Self::Sync(tx) => tx.send(reply).map_err(|error| error.0),
+            Self::Async(tx) => tx.send(reply),
+        }
+    }
+}
+
 pub(super) enum JobKind {
     /// 返事の送信端は`Job`だけが持つ。閉包の中へ入れない。
     Run {
-        tx: SyncSender<Reply>,
+        tx: ReplyTx,
         f: RunFn,
     },
     Post {
@@ -39,6 +57,9 @@ pub(super) struct Job {
     pub(super) seq: u64,
     pub(super) entry: Entry,
     pub(super) class: JobClass,
+    pub(super) launch: Launch,
+    /// 受付の時点で記録に見えていた最後の通し番号。保留はこの番号以下の記録の窓だけで決める。
+    pub(super) known: u64,
     pub(super) accepted_at: Instant,
     pub(super) kind: JobKind,
 }
@@ -103,12 +124,13 @@ type Seam = std::sync::Arc<dyn Fn(ActorPoint) + Send + Sync>;
 pub(super) struct JobQueue {
     state: Mutex<QueueState>,
     ready: Condvar,
+    store: Arc<Store>,
     #[cfg(test)]
     seam: Mutex<Option<Seam>>,
 }
 
 impl JobQueue {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(store: Arc<Store>) -> Self {
         Self {
             state: Mutex::new(QueueState {
                 stop_lane: VecDeque::new(),
@@ -119,6 +141,7 @@ impl JobQueue {
                 closed: false,
             }),
             ready: Condvar::new(),
+            store,
             #[cfg(test)]
             seam: Mutex::new(None),
         }
@@ -159,36 +182,72 @@ impl JobQueue {
             state.counted += 1;
         }
         match job.class.lane() {
-            Lane::Stop => state.stop_lane.push_back(job),
-            Lane::Regular => state.jobs.push_back(job),
+            Lane::Stop => insert_in_order(&mut state.stop_lane, job),
+            Lane::Regular => insert_in_order(&mut state.jobs, job),
         }
         drop(state);
         self.ready.notify_one();
         Ok(())
     }
 
+    /// 記録の変化を知らせる。列のロックを取ってから起こすので、窓を読んで待つまでの間の鳴らしを取りこぼさない。
+    pub(super) fn wake(&self) {
+        let _state = self.lock();
+        self.ready.notify_all();
+    }
+
+    pub(super) fn store(&self) -> &Arc<Store> {
+        &self.store
+    }
+
     /// 次の仕事を`slot`へ置き、実行か断りかを返す。閉じていれば`None`（残件は回収が扱う）。
-    /// 取り出す関数はここだけ。停止のレーンを先に取り出す。
+    /// 取り出す関数はここだけ。停止のレーンを先に、どちらも受付の番号の小さい順に見る。
+    /// 断る仕事は保留中でも断り、窓が開いている仕事は飛ばす。窓は列のロックの中で1回だけ読む。
     pub(super) fn take_next(&self, slot: &mut Option<Job>) -> Option<Taken> {
         let mut state = self.lock();
+        let mut probed = false;
         loop {
             if state.closed {
                 return None;
             }
             self.run_seam(ActorPoint::QueueLockHeld);
-            if let Some(job) = state.stop_lane.pop_front() {
-                *slot = Some(job);
-                return Some(Taken::Run);
-            }
-            if let Some(job) = state.jobs.pop_front() {
-                let taken = verdict(&job, state.fence, state.limits.wait);
-                *slot = Some(job);
+            let now = Instant::now();
+            let windows = self.store.open_windows(now);
+            let scan = scan_lanes(&state, &windows, now);
+            if let Some((lane, at, taken)) = scan.picked {
+                let queue = match lane {
+                    Lane::Stop => &mut state.stop_lane,
+                    Lane::Regular => &mut state.jobs,
+                };
+                *slot = queue.remove(at);
                 return Some(taken);
             }
-            state = self
-                .ready
-                .wait(state)
-                .unwrap_or_else(PoisonError::into_inner);
+            if scan.unwatched && !probed {
+                drop(state);
+                self.store.probe_unwatched();
+                probed = true;
+                state = self.lock();
+                continue;
+            }
+            probed = false;
+            let timeout = match (scan.next_wake, scan.unwatched) {
+                (Some(wake), true) => Some(wake.min(PROBE_INTERVAL)),
+                (Some(wake), false) => Some(wake),
+                (None, true) => Some(PROBE_INTERVAL),
+                (None, false) => None,
+            };
+            state = match timeout {
+                Some(timeout) => {
+                    self.ready
+                        .wait_timeout(state, timeout.max(Duration::from_millis(1)))
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0
+                }
+                None => self
+                    .ready
+                    .wait(state)
+                    .unwrap_or_else(PoisonError::into_inner),
+            };
         }
     }
 
@@ -270,6 +329,66 @@ impl JobQueue {
 
     #[cfg(not(test))]
     pub(super) fn run_seam(&self, _point: ActorPoint) {}
+}
+
+/// 受付の番号の順に差し込む（後ろから探す。ほぼ末尾）。
+fn insert_in_order(lane: &mut VecDeque<Job>, job: Job) {
+    let at = lane
+        .iter()
+        .rposition(|queued| queued.seq < job.seq)
+        .map_or(0, |last| last + 1);
+    lane.insert(at, job);
+}
+
+struct Scan {
+    picked: Option<(Lane, usize, Taken)>,
+    /// 保留中の仕事の、次の窓の終わり・受付からの期限までの短い方。
+    next_wake: Option<Duration>,
+    /// 保留の理由に、監視されていない記録がある。
+    unwatched: bool,
+}
+
+/// 仕事が起動しうる役割の、受付の時点で見えていた記録の窓。
+fn held_by(job: &Job, windows: &[OpenWindow]) -> Vec<OpenWindow> {
+    let roles = job.launch.roles();
+    windows
+        .iter()
+        .copied()
+        .filter(|window| window.id <= job.known && roles.contains(&window.role))
+        .collect()
+}
+
+/// 取り出せる仕事を、停止のレーン→通常のレーンの順に、番号の小さい順に探す。
+fn scan_lanes(state: &QueueState, windows: &[OpenWindow], now: Instant) -> Scan {
+    let mut scan = Scan {
+        picked: None,
+        next_wake: None,
+        unwatched: false,
+    };
+    for (lane, queue) in [
+        (Lane::Stop, &state.stop_lane),
+        (Lane::Regular, &state.jobs),
+    ] {
+        for (at, job) in queue.iter().enumerate() {
+            let taken = verdict(job, state.fence, state.limits.wait);
+            let held = held_by(job, windows);
+            if taken != Taken::Run || held.is_empty() {
+                scan.picked = Some((lane, at, taken));
+                return scan;
+            }
+            for window in held {
+                let remaining = window.until.saturating_duration_since(now);
+                scan.next_wake = Some(scan.next_wake.map_or(remaining, |wake| wake.min(remaining)));
+                scan.unwatched |= !window.watched;
+            }
+            if job.class.waits_with_deadline() {
+                let remaining =
+                    (job.accepted_at + state.limits.wait).saturating_duration_since(now);
+                scan.next_wake = Some(scan.next_wake.map_or(remaining, |wake| wake.min(remaining)));
+            }
+        }
+    }
+    scan
 }
 
 /// 通常のレーンの先頭を、停止より前の受付か期限切れなら断る。
