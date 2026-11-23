@@ -472,32 +472,35 @@ pub async fn apply_settings(
     let audio = app.state::<crate::audio::AudioState>().0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = guard;
-        let mut host = audio
-            .lock(crate::audio::Entry::new(
-                crate::audio::EntryKind::Migration,
-                "apply_migration",
-            ))
-            .map_err(|_| "音声状態を取得できません")?;
-        host.check_can_interrupt().map_err(|e| e.to_string())?;
-        let previous = snapshot(&root, ui)?;
-        if !restore {
-            let incoming = std::mem::take(&mut bundle.files);
-            bundle.files = previous.files.clone();
-            bundle.files.extend(incoming);
-        }
-        validate(&bundle)?;
-        // バックアップ成功後にだけ停止・書き込みへ進む。通常版の領域は参照しない。
-        if !restore {
-            write_json(&root.join(BACKUP), &previous)?;
-        }
-        host.prepare_update().map_err(|e| e.to_string())?;
-        if let Err(error) = apply_files(&root, &bundle, &previous) {
-            let rollback = apply_files(&root, &previous, &bundle);
-            host.finish_update_attempt();
-            rollback.map_err(|rollback| format!("{error}; 復旧にも失敗しました: {rollback}"))?;
-            return Err(format!("移行に失敗し、移行前の設定へ戻しました: {error}"));
-        }
-        Ok(())
+        audio
+            .run(
+                crate::audio::Entry::new(crate::audio::EntryKind::Migration, "apply_migration"),
+                move |host| -> Result<(), String> {
+                    host.check_can_interrupt().map_err(|e| e.to_string())?;
+                    let previous = snapshot(&root, ui)?;
+                    if !restore {
+                        let incoming = std::mem::take(&mut bundle.files);
+                        bundle.files = previous.files.clone();
+                        bundle.files.extend(incoming);
+                    }
+                    validate(&bundle)?;
+                    // バックアップ成功後にだけ停止・書き込みへ進む。通常版の領域は参照しない。
+                    if !restore {
+                        write_json(&root.join(BACKUP), &previous)?;
+                    }
+                    host.prepare_update().map_err(|e| e.to_string())?;
+                    if let Err(error) = apply_files(&root, &bundle, &previous) {
+                        let rollback = apply_files(&root, &previous, &bundle);
+                        host.finish_update_attempt();
+                        rollback.map_err(|rollback| {
+                            format!("{error}; 復旧にも失敗しました: {rollback}")
+                        })?;
+                        return Err(format!("移行に失敗し、移行前の設定へ戻しました: {error}"));
+                    }
+                    Ok(())
+                },
+            )
+            .map_err(|_| "音声状態を取得できません")?
     })
     .await
     .map_err(|e| e.to_string())?

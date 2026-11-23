@@ -667,3 +667,35 @@ fn timeout_waits_ten_seconds_retires_the_child_sends_no_stop_and_does_not_block_
         "次の命令は送られる"
     );
 }
+
+// X4：閉包の panic の後、以後の入口は今の3つの文言を返す。実行のスレッドは生きている。
+#[test]
+fn x4_a_panicking_closure_poisons_with_the_same_texts_and_the_actor_survives() {
+    let f = Fixture::new([]);
+    let app = mock(&f);
+    let control = f.control.clone();
+    let panicked = std::thread::spawn(move || {
+        control.run(audio::Entry::command("poison"), |_| -> () {
+            panic!("poison the audio state")
+        })
+    })
+    .join();
+    assert!(panicked.is_err(), "panic は呼び出し側へ投げ直される");
+    assert_eq!(
+        run(start_audio(app.state(), options(), None)).unwrap_err(),
+        "Failed to lock audio state"
+    );
+    assert_eq!(
+        run(get_audio_state(app.state())).unwrap_err(),
+        "Failed to lock audio state"
+    );
+    assert_eq!(
+        run(get_saved_audio_config(app.state())).unwrap_err(),
+        "音声設定を取得できません"
+    );
+    assert_eq!(
+        f.control.run(audio::Entry::command("alive"), |_| 1),
+        Err(audio::ControlError::Poisoned),
+        "実行のスレッドは生きていて、poison を返す"
+    );
+}

@@ -1,7 +1,7 @@
 pub(crate) mod conditions;
 pub(crate) mod control;
 pub(crate) mod emit;
-pub use control::{AudioControl, Entry, EntryKind};
+pub use control::{AudioControl, ControlError, Entry, EntryKind};
 mod deadline;
 mod engine_exit;
 pub(crate) mod engine_life;
@@ -303,6 +303,9 @@ pub struct AudioHost {
     kept_writers: Vec<writer::Writer>,
     #[cfg(test)]
     test_engine_launcher: Option<Arc<dyn Fn() -> Result<Child> + Send + Sync>>,
+    /// 試験で、ホストの破棄の最初に一度だけ呼ぶ。破棄を門で止める・panic させる。
+    #[cfg(test)]
+    drop_seam: Option<Arc<dyn Fn() + Send + Sync>>,
     cached_devices: Option<AudioDeviceList>,
     engine_generation: u64,
     bundle_change_generation: Option<u64>,
@@ -571,6 +574,8 @@ impl AudioHost {
             kept_writers: Vec::new(),
             #[cfg(test)]
             test_engine_launcher: None,
+            #[cfg(test)]
+            drop_seam: None,
             cached_devices: None,
             engine_generation: 0,
             bundle_change_generation: None,
@@ -2937,6 +2942,10 @@ impl AudioHost {
 
 impl Drop for AudioHost {
     fn drop(&mut self) {
+        #[cfg(test)]
+        if let Some(seam) = self.drop_seam.take() {
+            seam();
+        }
         // アプリ終了によるkillを、readerの異常終了通知から除外する。writer は join しない。
         self.close_connection(CloseCause::Intentional);
         self.conditions.retire_engine();
@@ -3054,6 +3063,13 @@ fn start_with_mute(
 // Global state container
 pub struct AudioState(pub control::AudioControl);
 
+/// トレイのミュート切替。失敗は捨てる（実行のスレッドが止まっていても何もしない）。
+pub(crate) fn tray_mute_toggle(host: Result<&mut AudioHost, control::ControlError>) {
+    if let Ok(host) = host {
+        let _ = host.toggle_global_mute();
+    }
+}
+
 /// Translate common audio engine errors into user-friendly Japanese messages.
 pub fn localize_audio_error(e: String) -> String {
     let lower = e.to_lowercase();
@@ -3126,6 +3142,10 @@ mod engine_life_tests;
 #[cfg(test)]
 #[path = "audio/tests/control_tests.rs"]
 mod control_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/actor_tests.rs"]
+mod actor_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_seam.rs"]

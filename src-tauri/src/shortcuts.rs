@@ -6,7 +6,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -415,16 +415,17 @@ pub fn dispatch(app: AppHandle, id: u32) {
     } else {
         0
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        let result = (|| -> anyhow::Result<()> {
-            let audio = app.state::<crate::audio::AudioState>();
-            let mut host = audio
-                .0
-                .lock(crate::audio::Entry::new(
-                    crate::audio::EntryKind::Shortcut,
-                    "global_shortcut",
-                ))
-                .map_err(|_| ShortcutError::AudioStateUnavailable)?;
+    let audio = app.state::<crate::audio::AudioState>().0.clone();
+    let notify_app = app.clone();
+    post_shortcut_work(
+        &audio,
+        Arc::new(move |notice| {
+            let _ = notify_app.emit("shortcut-error", notice);
+        }),
+        Arc::new(|job| {
+            tauri::async_runtime::spawn_blocking(job);
+        }),
+        move |host| {
             // 開始前に待機していた操作は、入力開始後に実行しない。
             let shortcuts = app.state::<Shortcuts>();
             let mut gate = shortcuts
@@ -523,17 +524,62 @@ pub fn dispatch(app: AppHandle, id: u32) {
                 }
             }
             Ok(())
-        })();
-        if let Err(error) = result {
-            let notice = error
-                .downcast_ref::<ShortcutError>()
-                .cloned()
-                .unwrap_or_else(|| ShortcutError::ActionFailed {
-                    detail: error.to_string(),
-                });
-            let _ = app.emit("shortcut-error", notice);
-        }
-    });
+        },
+    );
+}
+
+pub(crate) type Notifier = Arc<dyn Fn(ShortcutError) + Send + Sync>;
+pub(crate) type Spawner = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
+
+fn shortcut_notice(error: &anyhow::Error) -> ShortcutError {
+    error
+        .downcast_ref::<ShortcutError>()
+        .cloned()
+        .unwrap_or_else(|| ShortcutError::ActionFailed {
+            detail: error.to_string(),
+        })
+}
+
+/// OS のコールバックの上では`emit`を呼ばない（Tauri の`emit`は競合すると止まる）。通知は別のスレッドへ渡す。
+/// ランタイムが終わった後の`spawn_blocking`の panic はコールバックへ抜けさせず、通知を諦める。
+pub(crate) fn notify_shortcut_error_off_callback(
+    spawn: &Spawner,
+    notify: Notifier,
+    error: ShortcutError,
+) {
+    let job: Box<dyn FnOnce() + Send> = Box::new(move || notify(error));
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spawn(job))).is_err() {
+        log::warn!("ショートカットのエラー通知を出せませんでした");
+    }
+}
+
+/// ショートカットの本体を実行のスレッドへ積んで、待たずに戻る。積めない・実行できないときは、
+/// コールバックの外で`AudioStateUnavailable`を通知する。
+pub(crate) fn post_shortcut_work(
+    control: &crate::audio::AudioControl,
+    notify: Notifier,
+    spawn: Spawner,
+    work: impl FnOnce(&mut crate::audio::AudioHost) -> anyhow::Result<()> + Send + 'static,
+) {
+    let (closure_notify, closure_spawn) = (notify.clone(), spawn.clone());
+    let posted = control.post(
+        crate::audio::Entry::new(crate::audio::EntryKind::Shortcut, "global_shortcut"),
+        move |host| match host {
+            Ok(host) => {
+                if let Err(error) = work(host) {
+                    closure_notify(shortcut_notice(&error));
+                }
+            }
+            Err(_) => notify_shortcut_error_off_callback(
+                &closure_spawn,
+                closure_notify,
+                ShortcutError::AudioStateUnavailable,
+            ),
+        },
+    );
+    if posted.is_err() {
+        notify_shortcut_error_off_callback(&spawn, notify, ShortcutError::AudioStateUnavailable);
+    }
 }
 
 #[cfg(test)]
@@ -817,5 +863,135 @@ mod tests {
         b = defaults();
         b[1].action = Action::MuteToggle;
         assert!(validate(&b).is_err());
+    }
+
+    fn notice_log() -> (
+        Notifier,
+        Arc<Mutex<Vec<ShortcutError>>>,
+        std::sync::mpsc::Sender<()>,
+    ) {
+        let log: Arc<Mutex<Vec<ShortcutError>>> = Arc::default();
+        let (release, gate) = std::sync::mpsc::channel::<()>();
+        let gate = Mutex::new(gate);
+        let sink = log.clone();
+        let notify: Notifier = Arc::new(move |notice| {
+            let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(10));
+            sink.lock().unwrap().push(notice);
+        });
+        (notify, log, release)
+    }
+
+    fn thread_spawner() -> Spawner {
+        Arc::new(|job| {
+            std::thread::spawn(job);
+        })
+    }
+
+    fn control() -> crate::audio::AudioControl {
+        crate::audio::AudioControl::new(crate::audio::AudioHost::new(
+            std::env::temp_dir().join(format!("auralyn-shortcut-{}", std::process::id())),
+        ))
+    }
+
+    fn returns_within_the_gate(what: &str, f: impl FnOnce() + Send + 'static) {
+        let (done, wait) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            f();
+            let _ = done.send(());
+        });
+        wait.recv_timeout(Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("時間内に戻らなかった: {what}"));
+    }
+
+    fn wait_for(log: &Arc<Mutex<Vec<ShortcutError>>>, len: usize) {
+        let started = Instant::now();
+        while log.lock().unwrap().len() < len {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "通知が出なかった"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    // X11：閉じた列への`post`は、通知の発行が止まっていても、コールバックを塞がない。通知は別のスレッドで1回出る。
+    #[test]
+    fn x11_a_closed_queue_notifies_off_the_callback_and_never_blocks_it() {
+        let control = control();
+        control.close_for_test();
+        let (notify, log, release) = notice_log();
+        let called = Arc::new(AtomicBool::new(false));
+        let flag = called.clone();
+        let spawn = thread_spawner();
+        returns_within_the_gate("post_shortcut_work on a closed queue", move || {
+            post_shortcut_work(&control, notify, spawn, move |_| {
+                flag.store(true, Ordering::SeqCst);
+                Ok(())
+            });
+        });
+        assert!(log.lock().unwrap().is_empty(), "通知の発行は止まっている");
+        assert!(!called.load(Ordering::SeqCst), "閉じた列では本体を呼ばない");
+        release.send(()).unwrap();
+        wait_for(&log, 1);
+        assert_eq!(*log.lock().unwrap(), [ShortcutError::AudioStateUnavailable]);
+    }
+
+    // X11：poison した後も、本体は呼ばれず、`AudioStateUnavailable`が1回だけ出る。実行のスレッドの上では`emit`しない。
+    #[test]
+    fn x11_a_poisoned_control_maps_to_audio_state_unavailable_off_the_callback() {
+        let control = control();
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            control.run(crate::audio::Entry::command("poison"), |_| -> () {
+                panic!("poison the audio state")
+            })
+        }));
+        assert!(poisoned.is_err());
+        let (notify, log, release) = notice_log();
+        release.send(()).unwrap();
+        let called = Arc::new(AtomicBool::new(false));
+        let flag = called.clone();
+        post_shortcut_work(&control, notify, thread_spawner(), move |_| {
+            flag.store(true, Ordering::SeqCst);
+            Ok(())
+        });
+        wait_for(&log, 1);
+        assert_eq!(*log.lock().unwrap(), [ShortcutError::AudioStateUnavailable]);
+        assert!(!called.load(Ordering::SeqCst));
+    }
+
+    // X11：`spawn_blocking`が使えないとき（ランタイムの終了後）も、コールバックへ panic を抜けさせない。
+    #[test]
+    fn x11_a_failing_spawner_never_panics_into_the_callback() {
+        let control = control();
+        control.close_for_test();
+        let (notify, log, _release) = notice_log();
+        let spawn: Spawner = Arc::new(|_| panic!("the runtime is gone"));
+        post_shortcut_work(&control, notify, spawn, |_| Ok(()));
+        assert!(log.lock().unwrap().is_empty());
+    }
+
+    // 本体の失敗は、実行のスレッドの上で今と同じ文言の通知になる。`ShortcutError`はそのまま、それ以外は`ActionFailed`。
+    #[test]
+    fn a_failing_body_is_reported_with_the_same_notices() {
+        let control = control();
+        let (notify, log, release) = notice_log();
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        post_shortcut_work(&control, notify.clone(), thread_spawner(), |_| {
+            Err(ShortcutError::GainPending.into())
+        });
+        post_shortcut_work(&control, notify, thread_spawner(), |_| {
+            Err(anyhow::anyhow!("detail"))
+        });
+        wait_for(&log, 2);
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                ShortcutError::GainPending,
+                ShortcutError::ActionFailed {
+                    detail: "detail".into()
+                }
+            ]
+        );
     }
 }
