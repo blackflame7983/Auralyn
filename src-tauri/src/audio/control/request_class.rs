@@ -179,6 +179,10 @@ pub(crate) fn live_output<T>(config: &Option<T>) -> JobClass {
     option_class("live_output", config)
 }
 
+pub(crate) fn set_channel_scan(active: bool) -> JobClass {
+    request_class("set_channel_scan", if active { "True" } else { "False" })
+}
+
 pub(crate) fn set_loudness_measurement(id: &Option<u64>) -> JobClass {
     option_class("set_loudness_measurement", id)
 }

@@ -572,6 +572,19 @@ fn release_pairs() -> Vec<(&'static str, Entry, Entry)> {
             }),
         ),
         (
+            "noise_measurement(Invalidate)",
+            noise(noise_learning::Request::Invalidate),
+            noise(noise_learning::Request::Start {
+                epoch: "e".into(),
+                generation: "g".into(),
+            }),
+        ),
+        (
+            "set_channel_scan(false)",
+            cmd("set_channel_scan").class(classes::set_channel_scan(false)),
+            cmd("set_channel_scan").class(classes::set_channel_scan(true)),
+        ),
+        (
             "set_loudness_measurement(None)",
             cmd("set_loudness_measurement").class(classes::set_loudness_measurement(&None)),
             cmd("set_loudness_measurement").class(classes::set_loudness_measurement(&Some(1))),

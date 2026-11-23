@@ -130,7 +130,7 @@ pub(crate) const NAME_CLASSES: &[(&str, JobClass)] = &[
     ("set_built_in_effects", JobClass::Starting),
     ("set_global_bypass", JobClass::Starting),
     ("set_input_channels", JobClass::Starting),
-    ("set_channel_scan", JobClass::Starting),
+    ("set_channel_scan", JobClass::Normal),
     ("play_test_tone", JobClass::Starting),
     ("measure_round_trip", JobClass::Starting),
     ("probe_loopback", JobClass::Starting),
@@ -203,6 +203,7 @@ pub(crate) const REQUEST_ENTRIES: &[&str] = &[
     "broadcast_true_peak",
     "live_output",
     "set_loudness_measurement",
+    "set_channel_scan",
 ];
 
 /// 要求の変種ごとの種類。`request_class`の関数は変種の名前を返すだけで、種類はこの表で決まる。
@@ -271,7 +272,7 @@ pub(crate) const REQUEST_CLASSES: &[RequestClass] = &[
     rc("noise_measurement", "Snapshot", JobClass::Normal),
     rc("noise_measurement", "Start", JobClass::Starting),
     rc("noise_measurement", "Cancel", JobClass::Release),
-    rc("noise_measurement", "Invalidate", JobClass::Normal),
+    rc("noise_measurement", "Invalidate", JobClass::Release),
     rc("noise_measurement", "Approve", JobClass::Normal),
     rc("voice_check_preview", "Open", JobClass::Normal),
     rc("voice_check_preview", "Status", JobClass::Normal),
@@ -305,6 +306,8 @@ pub(crate) const REQUEST_CLASSES: &[RequestClass] = &[
     rc("broadcast_true_peak", "Some", JobClass::Starting),
     rc("live_output", "None", JobClass::Normal),
     rc("live_output", "Some", JobClass::Starting),
+    rc("set_channel_scan", "True", JobClass::Starting),
+    rc("set_channel_scan", "False", JobClass::Release),
     rc("set_loudness_measurement", "None", JobClass::Release),
     rc("set_loudness_measurement", "Some", JobClass::Starting),
 ];
@@ -344,6 +347,8 @@ pub(crate) const REQUEST_PAIRS: &[(&str, &str, &str)] = &[
     ("voice_check_preview", "PrepareProposal", "CancelCandidate"),
     ("noise_measurement", "Start", "Cancel"),
     ("set_loudness_measurement", "Some", "None"),
+    ("set_channel_scan", "True", "False"),
+    ("noise_measurement", "Start", "Invalidate"),
     ("session_rack", "Begin", "Finish"),
     ("live_modes", "Arm", "Disarm"),
 ];

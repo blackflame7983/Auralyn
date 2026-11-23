@@ -1252,14 +1252,13 @@ pub(crate) async fn set_channel_scan(
     active: bool,
 ) -> Result<(), String> {
     let state = state.0.clone();
+    let entry = audio::Entry::command("set_channel_scan")
+        .class(audio::control::request_class::set_channel_scan(active));
     super::run_blocking(move || {
         state
-            .run(
-                audio::Entry::command("set_channel_scan"),
-                move |host| -> Result<_, String> {
-                    host.set_channel_scan(active).map_err(|e| e.to_string())
-                },
-            )
+            .run(entry, move |host| -> Result<_, String> {
+                host.set_channel_scan(active).map_err(|e| e.to_string())
+            })
             .map_err(|error| error.text("Failed to lock audio state"))?
     })
     .await

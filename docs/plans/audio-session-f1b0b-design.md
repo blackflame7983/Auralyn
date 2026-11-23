@@ -955,6 +955,8 @@ thread::spawn(move || loop {
 | `play_voice_check` | `stop_voice_check_playback` | |
 | OBS の `play`（`obs.rs:51`） | OBS の `stop`（`obs.rs:73`） | `EntryKind::Obs` |
 | `live_modes(Arm)` | `live_modes(Disarm)` | 要求の単位（V13 の数え直しで足した） |
+| `set_channel_scan(true)` | `set_channel_scan(false)` | 要求の単位。名前の既定は Normal で、`active` で決める |
+| `noise_measurement(Start)` | `noise_measurement(Invalidate)` | 要求の単位 |
 
 Release は、2b では、取り出す時の断り（fence）・上限・期限のどれも受けない。子の起動の門（2c。12.20）が入るときは、Release にも効かせる（取り消しだけのために子を起動しない）。
 
@@ -983,17 +985,18 @@ Release は、2b では、取り出す時の断り（fence）・上限・期限�
 | `session_rack`（`:584`） | `SessionRackRequest` | 読み取り（`Snapshot`）・`Retain`・**`Add`（予約の中で走る復元の一部。停止で断らない。Sol の3回目の指摘）** | **Release**：`Finish`（予約の解放）。**Starting**：`Begin`（予約を取る） |
 | `builtin_effects`（`:1142`） | `builtin::Request` | 読み取り | `Apply`・`Undo`・`Redo`・`ApplyProposal` |
 | `auto_gain`（`:1201`） | `auto_gain::Request` | `Status`・`Devices` | **Release**：`Cancel`・`StopPreview`（録音・試聴を止める）。**Starting**：`Initialize`・`Begin`・`Preview`・`Apply`・`Restore`・`UndoHistory`・`RedoHistory` |
-| `noise_measurement`（`:1497`） | `noise_learning::Request` | `Snapshot`・`Invalidate`・`Approve` | **Release**：`Cancel`。**Starting**：`Start` |
+| `noise_measurement`（`:1497`） | `noise_learning::Request` | `Snapshot`・`Approve` | **Release**：`Cancel`・`Invalidate`（`Cancel` と同じ処理で測定を止め、結果と試聴候補を失効させる。環境変更時の呼び出しが `Busy`・`Expired` で断られると、変更前の結果が残る。Sol のレビュー）。**Starting**：`Start` |
 | `voice_check_preview`（`voice_check.rs:10`。`Request.action`） | `preview::Action` | `Open`・`Status`・`HistoryStatus`・`Devices`・`CandidateStatus`（セッションの取得と読み取り） | **Release**：`Stop`・`Close`・`CancelCandidate`（候補とその試聴を片付ける。`voice_check_preview.rs:105,1207`）。**Starting**：`Start`・`Update`・`ApplyNoise`・`UndoNoise`・`RedoNoise`（再生・適用）と、候補を作る `PrepareCandidate`・`PrepareProposal`・`PrepareNoise` |
 | `audio_frontend_bootstrap`（`:298`） | `frontend_bootstrap::Request`（列挙ではなく構造体。`config: Option<Config>`） | 自動開始の設定が無い・`host` が空（開始しない。`Attached`・`Inactive` を返すだけ） | 自動開始の設定がある（`WithConfig`。開始を伴う） |
 | `peak_protection`（`:118`）・`broadcast_true_peak`（`:137`）・`live_output`（`:156`） | `Option<Config>` | `None`（読み取り） | `Some`（適用） |
+| `set_channel_scan`（`:1257`） | `active: bool` | — | **Release**：`false`（信号監視の解除。最後の利用者が画面を閉じたときに送り、再試行されない。Sol のレビュー）。**Starting**：`true` |
 | `set_loudness_measurement`（`:1163`） | `Option<u64>` | — | **Release**：`None`（計測の解除）。**Starting**：`Some`（開始） |
 | ショートカット（`global_shortcut`） | 動作 | （分けない。1回の押下は1つの仕事で、比較の動作も状態の読み取りの後に切替を行う） | ミュート以外の動作はすべて Starting（`global_shortcut`）。ミュートの3動作は Mute（`global_shortcut_mute`） |
 | `enumerate_devices_async`・`broadcast_bundle`・`apply_owned` | 段・用途 | 12.4 の改名（Release・Normal へ分ける） | `apply_owned`（適用）だけ |
 
 要求の列挙は `match` で `_ =>` を使わず（V15）、要求を足すと分類の漏れがコンパイルで見つかる。
 
-**実装時の数え直し（V13・V15。2026-11-23）**：各入口の本体と要求の列挙を今のコードで読み直した。上の表のうち、設計書の初版と違ったものは次の4点。(1) `live_modes` の `Disarm` は、`Arm`（本番保護の有効化）の対になる解除なので **Release**（初版は「ほか切替・復元」の Starting）。`Save`・`BindProfile` は定義の保存なので Normal、`Recover`・`Arm` は Starting。(2) `audio_frontend_bootstrap` の要求は列挙ではなく構造体なので、自動開始の設定の有無（`host` が空でない `config`）で決める。(3) ショートカットは、1回の押下が1つの仕事（比較の動作も状態の読み取りの後に切替をする）なので、ミュート以外は全部 Starting にした。(4) `voice_check_preview` の `Open` は録音の試聴の取得ではなくセッションの取得だけなので Normal（`Close` が対の解放）、`ApplyNoise`・`UndoNoise`・`RedoNoise`・`Update` は適用なので Starting。`mixing` の `Levels`・`Reload`・`Reset` は Normal（`Configure` だけが子を起動して選択を適用する）。名前で決める入口は、数え直した結果、Starting の名前が32、要求で決める入口が10で、合計42のまま。`voice_check.rs` の `export_voice_check_wav`・`export_voice_check`・`analyze_voice_check` は Normal。予約・区間を取ってから中で複数の操作を積む入口は、`session_rack` のほかに見つからなかった（配信セットの `begin_live_changes_bundle`〜`end_live_changes_bundle` の間は別の入口 `apply_owned`・`undo_owned` が走り、更新の `prepare_update`〜`finish_update_attempt` の間は音声の入口を積まない）。要求の分類は `class.rs` の `REQUEST_CLASSES` に、要求を名前に直す関数は `request_class.rs` に置いた。
+**実装時の数え直し（V13・V15。2026-11-23）**：各入口の本体と要求の列挙を今のコードで読み直した。上の表のうち、設計書の初版と違ったものは次の4点。(1) `live_modes` の `Disarm` は、`Arm`（本番保護の有効化）の対になる解除なので **Release**（初版は「ほか切替・復元」の Starting）。`Save`・`BindProfile` は定義の保存なので Normal、`Recover`・`Arm` は Starting。(2) `audio_frontend_bootstrap` の要求は列挙ではなく構造体なので、自動開始の設定の有無（`host` が空でない `config`）で決める。(2の2) Sol の実装レビューで2件を足した：`set_channel_scan` は `active == false` が信号監視の解除なので要求で決め（`false` は Release、`true` は Starting）、`noise_measurement(Invalidate)` は測定と候補の失効（`Cancel` と同じ処理）なので Release にした。同じ形（真偽・`Option` で始める・止めるを兼ねる入口、名前に Cancel 等を含まない失効・解除の要求）を洗い直したが、ほかには無かった（`set_noise_reduction`・`set_built_in_effects`・`set_noise_control_config`・`set_global_bypass`・ピーク保護・`live_output`・`mixing(Configure)` の無効化・`post_mix(Enable)` は、確保したものを返す解除ではなく設定の変更なので Starting・Normal のまま）。(3) ショートカットは、1回の押下が1つの仕事（比較の動作も状態の読み取りの後に切替をする）なので、ミュート以外は全部 Starting にした。(4) `voice_check_preview` の `Open` は録音の試聴の取得ではなくセッションの取得だけなので Normal（`Close` が対の解放）、`ApplyNoise`・`UndoNoise`・`RedoNoise`・`Update` は適用なので Starting。`mixing` の `Levels`・`Reload`・`Reset` は Normal（`Configure` だけが子を起動して選択を適用する）。名前で決める入口は、数え直した結果、Starting の名前が32、要求で決める入口が10で、合計42のまま。`voice_check.rs` の `export_voice_check_wav`・`export_voice_check`・`analyze_voice_check` は Normal。予約・区間を取ってから中で複数の操作を積む入口は、`session_rack` のほかに見つからなかった（配信セットの `begin_live_changes_bundle`〜`end_live_changes_bundle` の間は別の入口 `apply_owned`・`undo_owned` が走り、更新の `prepare_update`〜`finish_update_attempt` の間は音声の入口を積まない）。要求の分類は `class.rs` の `REQUEST_CLASSES` に、要求を名前に直す関数は `request_class.rs` に置いた。
 
 **名前の表（既定）**：`class.rs` の `fn class_of(entry: Entry) -> JobClass`（名前の `match`。要求で決める入口の既定は Normal）。`admit` で受付の番号と一緒に決め、`Job` に持たせる。**未知の名前は Starting**。名前の前に、`EntryKind` で決まるものがある（`Scheduler` は Tick、`Tray` は Mute）。付け忘れても、停止の後に開始するほうへは倒さない。試験の名前 `"a"`・`"holder"` などは Starting になるが、停止を積まない試験では結果が変わらない）。ショートカットは、押された動作がミュートなら名前を `"global_shortcut_mute"`、そうでなければ `"global_shortcut"` にして `post` する（`post_shortcut_work` に `Entry` を渡す）。
 
