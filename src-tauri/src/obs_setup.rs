@@ -1538,10 +1538,9 @@ mod tests {
 
     #[test]
     fn history_full_message_matches_frontend_literal() {
-        assert_eq!(
-            HISTORY_FULL,
-            "変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。"
-        );
+        // 画面は、この文言との全文一致で「履歴が満杯」を判断する。
+        let screen = include_str!("../../src/components/features/AudioSettings/ObsSafeSetup.tsx");
+        assert!(screen.contains(&format!("=== '{HISTORY_FULL}'")));
     }
 
     fn timing_request(additional: i64) -> TimingPreviewRequest {
