@@ -455,7 +455,7 @@ pub async fn apply_settings(
     if preview.applying.swap(true, Ordering::AcqRel) {
         return Err("設定を移行中です。".into());
     }
-    let guard = Applying(preview.applying.clone());
+    let _guard = Applying(preview.applying.clone());
     let root = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let mut bundle = if restore {
         serde_json::from_slice(&fs::read(root.join(BACKUP)).map_err(|e| e.to_string())?)
@@ -470,39 +470,34 @@ pub async fn apply_settings(
     };
     validate(&bundle)?;
     let audio = app.state::<crate::audio::AudioState>().0.clone();
-    crate::commands::detached(async move {
-        let _guard = guard;
-        audio
-            .run_async(
-                crate::audio::Entry::new(crate::audio::EntryKind::Migration, "apply_migration"),
-                move |host| -> Result<(), String> {
-                    host.check_can_interrupt().map_err(|e| e.to_string())?;
-                    let previous = snapshot(&root, ui)?;
-                    if !restore {
-                        let incoming = std::mem::take(&mut bundle.files);
-                        bundle.files = previous.files.clone();
-                        bundle.files.extend(incoming);
-                    }
-                    validate(&bundle)?;
-                    // バックアップ成功後にだけ停止・書き込みへ進む。通常版の領域は参照しない。
-                    if !restore {
-                        write_json(&root.join(BACKUP), &previous)?;
-                    }
-                    host.prepare_update().map_err(|e| e.to_string())?;
-                    if let Err(error) = apply_files(&root, &bundle, &previous) {
-                        let rollback = apply_files(&root, &previous, &bundle);
-                        host.finish_update_attempt();
-                        rollback.map_err(|rollback| {
-                            format!("{error}; 復旧にも失敗しました: {rollback}")
-                        })?;
-                        return Err(format!("移行に失敗し、移行前の設定へ戻しました: {error}"));
-                    }
-                    Ok(())
-                },
-            )
-            .await
-            .map_err(|error| error.text("音声状態を取得できません"))?
-    })
+    crate::commands::call(
+        &audio,
+        crate::audio::Entry::new(crate::audio::EntryKind::Migration, "apply_migration"),
+        "音声状態を取得できません",
+        move |host| -> Result<(), String> {
+            host.check_can_interrupt().map_err(|e| e.to_string())?;
+            let previous = snapshot(&root, ui)?;
+            if !restore {
+                let incoming = std::mem::take(&mut bundle.files);
+                bundle.files = previous.files.clone();
+                bundle.files.extend(incoming);
+            }
+            validate(&bundle)?;
+            // バックアップ成功後にだけ停止・書き込みへ進む。通常版の領域は参照しない。
+            if !restore {
+                write_json(&root.join(BACKUP), &previous)?;
+            }
+            host.prepare_update().map_err(|e| e.to_string())?;
+            if let Err(error) = apply_files(&root, &bundle, &previous) {
+                let rollback = apply_files(&root, &previous, &bundle);
+                host.finish_update_attempt();
+                rollback
+                    .map_err(|rollback| format!("{error}; 復旧にも失敗しました: {rollback}"))?;
+                return Err(format!("移行に失敗し、移行前の設定へ戻しました: {error}"));
+            }
+            Ok(())
+        },
+    )
     .await
 }
 

@@ -57,64 +57,60 @@ pub(crate) async fn save_profile(
     audio_extras: Option<ProfileAudioExtras>,
     builtin_fx_amount: Option<f32>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
-    async move {
-        let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-        state
-            .run_async(
-                audio::Entry::command("save_profile"),
-                move |host| -> Result<_, String> {
-                    let mut audio_config = None;
-                    let mut noise_control = None;
-                    let mut builtin_fx = None;
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    super::call(
+        &state.0,
+        audio::Entry::command("save_profile"),
+        "Failed to lock audio state",
+        move |host| -> Result<_, String> {
+            let mut audio_config = None;
+            let mut noise_control = None;
+            let mut builtin_fx = None;
 
-                    if categories.include_audio_config {
-                        let captured = profile::capture_current_profile(
-                            host,
-                            name.clone(),
-                            plugins.clone(),
-                            audio_extras.clone(),
-                        )?;
-                        audio_config = captured.audio_config;
-                    }
+            if categories.include_audio_config {
+                let captured = profile::capture_current_profile(
+                    host,
+                    name.clone(),
+                    plugins.clone(),
+                    audio_extras.clone(),
+                )?;
+                audio_config = captured.audio_config;
+            }
 
-                    if categories.include_noise_control || categories.include_builtin_fx {
-                        let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
-                        if categories.include_noise_control {
-                            noise_control = Some(ProfileNoiseControl {
-                                enabled: stats.noise_reduction_enabled,
-                                mode: stats.noise_reduction_mode.clone(),
-                                strength: stats.noise_control_strength,
-                                voice_guard: stats.noise_voice_guard,
-                                learned_profile: None,
-                            });
-                        }
-                        if categories.include_builtin_fx {
-                            builtin_fx = Some(ProfileBuiltinFx {
-                                preset: stats.built_in_effects_preset.clone(),
-                                enabled: stats.built_in_effects_enabled,
-                                amount: builtin_fx_amount.unwrap_or(stats.built_in_effects_amount),
-                                singing: stats.built_in_singing,
-                                reverb: stats.built_in_reverb,
-                                deesser: stats.built_in_deesser,
-                            });
-                        }
-                    }
+            if categories.include_noise_control || categories.include_builtin_fx {
+                let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
+                if categories.include_noise_control {
+                    noise_control = Some(ProfileNoiseControl {
+                        enabled: stats.noise_reduction_enabled,
+                        mode: stats.noise_reduction_mode.clone(),
+                        strength: stats.noise_control_strength,
+                        voice_guard: stats.noise_voice_guard,
+                        learned_profile: None,
+                    });
+                }
+                if categories.include_builtin_fx {
+                    builtin_fx = Some(ProfileBuiltinFx {
+                        preset: stats.built_in_effects_preset.clone(),
+                        enabled: stats.built_in_effects_enabled,
+                        amount: builtin_fx_amount.unwrap_or(stats.built_in_effects_amount),
+                        singing: stats.built_in_singing,
+                        reverb: stats.built_in_reverb,
+                        deesser: stats.built_in_deesser,
+                    });
+                }
+            }
 
-                    let preset = Preset::build_from_parts(
-                        name.clone(),
-                        &categories,
-                        plugins,
-                        audio_config,
-                        noise_control,
-                        builtin_fx,
-                    );
-                    presets::save_preset(&config_dir, &name, &preset)
-                },
-            )
-            .await
-            .map_err(|error| error.text("Failed to lock audio state"))?
-    }
+            let preset = Preset::build_from_parts(
+                name.clone(),
+                &categories,
+                plugins,
+                audio_config,
+                noise_control,
+                builtin_fx,
+            );
+            presets::save_preset(&config_dir, &name, &preset)
+        },
+    )
     .await
 }
 
@@ -134,7 +130,6 @@ pub(crate) async fn apply_profile(
     skip_backup: Option<bool>,
     sound_only: Option<bool>,
 ) -> Result<ApplyProfileSummary, String> {
-    let state = state.0.clone();
     let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let mut profile = presets::load_preset(&config_dir, &name)?;
@@ -145,28 +140,25 @@ pub(crate) async fn apply_profile(
     })
     .await?;
     if profile.audio_config.is_some() {
-        super::audio::enumerate_devices_async(state.clone(), false).await?;
+        super::audio::enumerate_devices_async(state.0.clone(), false).await?;
     }
-    async move {
-        state
-            .run_async(
-                audio::Entry::command("apply_profile"),
-                move |host| -> Result<_, String> {
-                    profile::apply_profile(
-                        &config_dir,
-                        host,
-                        &profile,
-                        device_substitutions,
-                        skip_backup.unwrap_or(false),
-                        backup_plugins,
-                        backup_audio_extras,
-                        &current_plugin_ids,
-                    )
-                },
+    super::call(
+        &state.0,
+        audio::Entry::command("apply_profile"),
+        "Failed to lock audio state",
+        move |host| -> Result<_, String> {
+            profile::apply_profile(
+                &config_dir,
+                host,
+                &profile,
+                device_substitutions,
+                skip_backup.unwrap_or(false),
+                backup_plugins,
+                backup_audio_extras,
+                &current_plugin_ids,
             )
-            .await
-            .map_err(|error| error.text("Failed to lock audio state"))?
-    }
+        },
+    )
     .await
 }
 
@@ -187,34 +179,30 @@ pub(crate) async fn restore_backup_profile(
     backup_plugins: Vec<PresetPlugin>,
     backup_audio_extras: Option<ProfileAudioExtras>,
 ) -> Result<ApplyProfileSummary, String> {
-    let state = state.0.clone();
     let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let profile = presets::load_preset(&config_dir, presets::BACKUP_PROFILE_NAME)?;
         Ok((config_dir, profile))
     })
     .await?;
-    super::audio::enumerate_devices_async(state.clone(), false).await?;
-    async move {
-        state
-            .run_async(
-                audio::Entry::command("restore_backup_profile"),
-                move |host| -> Result<_, String> {
-                    profile::apply_profile(
-                        &config_dir,
-                        host,
-                        &profile,
-                        None,
-                        true, // 復元時は再バックアップしない
-                        backup_plugins,
-                        backup_audio_extras,
-                        &current_plugin_ids,
-                    )
-                },
+    super::audio::enumerate_devices_async(state.0.clone(), false).await?;
+    super::call(
+        &state.0,
+        audio::Entry::command("restore_backup_profile"),
+        "Failed to lock audio state",
+        move |host| -> Result<_, String> {
+            profile::apply_profile(
+                &config_dir,
+                host,
+                &profile,
+                None,
+                true, // 復元時は再バックアップしない
+                backup_plugins,
+                backup_audio_extras,
+                &current_plugin_ids,
             )
-            .await
-            .map_err(|error| error.text("Failed to lock audio state"))?
-    }
+        },
+    )
     .await
 }
 

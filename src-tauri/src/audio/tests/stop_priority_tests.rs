@@ -1,10 +1,8 @@
 //! 停止の優先・停止より前の受付の断り・上限・期限（F1b-0b-2b。12章）の試験 Y1〜Y18。
 //! 待ちはすべて門（`mpsc`）で、時間切れは失敗の上限。上限と期限は、列ごとの設定を縮めて確かめる。
 use super::class_tests::{production_source, src};
-use super::compat_support::scripted_parts;
 use super::control::{
-    scheduler_continues, ActorPoint, AudioControl, ControlError, Entry, EntryKind, Phase,
-    RunAsyncError,
+    scheduler_continues, ActorPoint, ControlError, Entry, EntryKind, Phase, RunAsyncError,
 };
 use super::queue_support::*;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -764,81 +762,4 @@ fn z22_callers_are_inventoried_and_the_pool_threads_never_hold_the_queue() {
     let start = wait.find("async fn wait_reply_async").unwrap();
     let end = wait[start..].find("\n    }\n").unwrap() + start;
     assert!(!wait[start..end].contains("spawn_blocking"));
-}
-
-// Z29：呼び出し元の future を捨てても、後処理・所有物を持つ入口の本体は最後まで進む（detached）。
-#[test]
-fn z29_a_detached_entry_finishes_its_aftermath_even_if_the_caller_is_dropped() {
-    let (host, observer) = scripted_parts([]);
-    let control = AudioControl::new(host);
-    let runtime = runtime();
-    struct Guard(Arc<AtomicBool>);
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-        }
-    }
-    let guard_dropped = Arc::new(AtomicBool::new(false));
-    let guard = Guard(guard_dropped.clone());
-    let worker = control.clone();
-    let caller = runtime.spawn(async move {
-        crate::commands::detached(async move {
-            let _guard = guard;
-            worker
-                .run_async(cmd("prepare_update"), |host| host.prepare_update().is_ok())
-                .await
-                .map_err(|error| error.text("x"))?;
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            worker
-                .run_async(cmd("finish_update_attempt"), |host| {
-                    host.finish_update_attempt()
-                })
-                .await
-                .map_err(|error| error.text("x"))?;
-            Ok(())
-        })
-        .await
-    });
-    wait_until("the update is prepared", || {
-        control.admission().accepted_of(EntryKind::Command) >= 1
-    });
-    caller.abort();
-    let _ = runtime.block_on(caller);
-    assert!(
-        !guard_dropped.load(Ordering::SeqCst),
-        "所有物は処理の完了まで保たれる"
-    );
-    wait_until("the aftermath runs", || {
-        guard_dropped.load(Ordering::SeqCst)
-    });
-    let maintenance = control.run(normal(), |host| host.maintenance).unwrap();
-    assert!(!maintenance, "取り消されても maintenance は解除される");
-    let _ = std::fs::remove_dir_all(&observer.dir);
-}
-
-// Z30：後処理・所有物を持つ入口は、共通の口（detached）を使う。
-#[test]
-fn z30_entries_with_aftermath_use_the_detached_door() {
-    for (file, function) in [
-        ("updates.rs", "pub async fn install_update"),
-        (
-            "temporary_session.rs",
-            "pub(crate) async fn restart_temporary_session",
-        ),
-        ("migration.rs", "pub async fn apply_settings"),
-        (
-            "commands/voice_check.rs",
-            "pub(crate) async fn analyze_voice_check",
-        ),
-    ] {
-        let text = production_source(&src().join(file));
-        let start = text
-            .find(function)
-            .unwrap_or_else(|| panic!("{file} に {function} が無い"));
-        let end = text[start..].find("\n}\n").unwrap() + start;
-        assert!(
-            text[start..end].contains("detached("),
-            "{file} の {function} が detached を使わない"
-        );
-    }
 }

@@ -4,15 +4,18 @@ pub(crate) mod bundles;
 pub(crate) mod profiles;
 pub(crate) mod voice_check;
 
-/// 音声の操作の後に、後処理・後始末・所有物（排他ガード・作業領域・`maintenance` の解除・`app.exit`）を持つ入口の
-/// 本体全体を、呼び出し元の取り消しから独立したタスクで走らせる。呼び出し元はその完了を待つだけで、
-/// future を捨てても、投入した仕事と後処理は最後まで進む。
-pub(crate) async fn detached<T: Send + 'static>(
-    work: impl std::future::Future<Output = Result<T, String>> + Send + 'static,
-) -> Result<T, String> {
-    tauri::async_runtime::spawn(work)
+/// 音声の列へ閉包を投入して結果を待つ。受付・列の失敗は`fallback`を含む利用者向けの文言に、閉包の失敗は
+/// `to_string()`にする。
+pub(crate) async fn call<R: Send + 'static, E: std::fmt::Display>(
+    control: &crate::audio::AudioControl,
+    entry: crate::audio::Entry,
+    fallback: &'static str,
+    f: impl FnOnce(&mut crate::audio::AudioHost) -> Result<R, E> + Send + 'static,
+) -> Result<R, String> {
+    control
+        .run_async(entry, move |host| f(host).map_err(|e| e.to_string()))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.text(fallback))?
 }
 
 pub(super) async fn run_blocking<T: Send + 'static>(
