@@ -28,7 +28,7 @@ impl CallbackBuffers {
 }
 
 /// グローバルミュート、ストリーム障害、停止で戻る経路は、遷移中でもデバイス出力を無音にする。
-pub(super) fn write_device_silence(data: &mut [f32]) {
+pub(in crate::audio_engine::core) fn write_device_silence(data: &mut [f32]) {
     data.fill(0.0);
 }
 
@@ -50,7 +50,7 @@ pub(in crate::audio_engine::core) struct PluginControls {
 }
 
 impl PluginControls {
-    pub(super) fn new(rate: u32, shared: Arc<PluginHealthShared>) -> Self {
+    pub(in crate::audio_engine::core) fn new(rate: u32, shared: Arc<PluginHealthShared>) -> Self {
         Self {
             bypassed: [false; MAX_PLUGINS],
             muted: [false; MAX_PLUGINS],
@@ -581,7 +581,7 @@ pub(in crate::audio_engine::core) struct PluginBlock<'a> {
 
 // 入力callbackが所有する状態。構築時に確保し、処理時は借用だけを行う。
 // 実際の出力値から測定し、無効な間は走査しない。RTでの確保は行わない。
-pub(super) fn measure_output_loudness(
+pub(in crate::audio_engine::core) fn measure_output_loudness(
     data: &[f32],
     channels: usize,
     output_pair: [usize; 2],
@@ -609,7 +609,7 @@ pub(super) fn measure_output_loudness(
 
 // 選択入力をplanarへ変換し、同じ信号を録音とメーターへ渡す。
 #[allow(clippy::too_many_arguments)]
-pub(super) fn route_and_meter_input(
+pub(in crate::audio_engine::core) fn route_and_meter_input(
     frames: usize,
     queue_input_channels: usize,
     input_buf: &[f32],
@@ -658,7 +658,7 @@ pub(super) fn route_and_meter_input(
 }
 
 // callbackでは退避失敗したprocessorを保持し続け、解放しない。
-pub(super) fn flush_pending_retire(
+pub(in crate::audio_engine::core) fn flush_pending_retire(
     pending_retire: &mut [Option<DisposedProcessor>; MAX_PLUGINS],
     retire_prod: &mut <HeapRb<DisposedProcessor> as Split>::Prod,
 ) {
@@ -786,46 +786,53 @@ fn remove_from_order(order: &mut [u8; MAX_PLUGINS], len: &mut usize, idx: u8) {
 }
 
 // 受信済みコマンドの適用先はcallback中だけ借用する。所有値は既存の保持先に残す。
-pub(super) struct CommandContext<'a> {
-    pub(super) consumer: &'a mut <HeapRb<AudioThreadMessage> as Split>::Cons,
-    pub(super) retire_prod: &'a mut <HeapRb<DisposedProcessor> as Split>::Prod,
-    pub(super) pending_rejected:
+pub(in crate::audio_engine::core) struct CommandContext<'a> {
+    pub(in crate::audio_engine::core) consumer: &'a mut <HeapRb<AudioThreadMessage> as Split>::Cons,
+    pub(in crate::audio_engine::core) retire_prod:
+        &'a mut <HeapRb<DisposedProcessor> as Split>::Prod,
+    pub(in crate::audio_engine::core) pending_rejected:
         &'a mut crate::audio_engine::deferred_drop::DeferredDrop<DisposedProcessor>,
-    pub(super) pending_retire: &'a mut [Option<DisposedProcessor>; MAX_PLUGINS],
-    pub(super) rt_processors: &'a mut [Option<VstProcessor>; MAX_PLUGINS],
-    pub(super) rt_active_count: &'a mut usize,
-    pub(super) controls: &'a mut PluginControls,
-    pub(super) rt_cohort_change_applied: &'a mut bool,
-    pub(super) output_timing: &'a mut Option<crate::audio_engine::frame_timing::OutputRecorder>,
-    pub(super) worker_generation_controls: Option<&'a crate::audio_engine::split_monitor::Controls>,
-    pub(super) measurement_ready: bool,
-    pub(super) upstream_first_frame: u64,
-    pub(super) rt_voice: &'a mut crate::audio_engine::live_modes::RtVoice,
-    pub(super) rt_reverb: &'a mut crate::audio_engine::reverb::Reverb,
-    pub(super) live_shared: &'a crate::audio_engine::live_modes::Shared,
-    pub(super) rt_global_mute: &'a mut bool,
-    pub(super) rt_comparison: &'a mut crate::audio_engine::comparison::Transition,
-    pub(super) rt_input_gain: &'a mut f32,
-    pub(super) rt_input_l: &'a mut usize,
-    pub(super) rt_input_r: &'a mut usize,
-    pub(super) rt_physical_input: &'a mut [usize; 2],
-    pub(super) separated: bool,
-    pub(super) rt_noise_control: &'a mut Option<RtNoiseControl>,
-    pub(super) rt_noise_learning: &'a mut RtNoiseLearning,
-    pub(super) output_nr_failed: &'a AtomicBool,
-    pub(super) noise_applied_revision: &'a AtomicU64,
-    pub(super) builtin_applied: &'a AtomicU64,
-    pub(super) rt_loudness: &'a mut LoudnessMeter,
-    pub(super) loudness_start: &'a mut crate::audio_engine::queue_recovery::MeasurementGate,
-    pub(super) queue_recovery: &'a crate::audio_engine::queue_recovery::Recovery,
-    pub(super) measurement_processed: &'a mut u64,
-    pub(super) rt_output_gain: &'a mut Smoother,
-    pub(super) rt_capture: &'a mut auto_gain::RtCapture,
-    pub(super) rt_voice_check: &'a mut RtVoiceCheck,
-    pub(super) rt_test_tone: &'a mut RtTestTone,
+    pub(in crate::audio_engine::core) pending_retire:
+        &'a mut [Option<DisposedProcessor>; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) rt_processors: &'a mut [Option<VstProcessor>; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) rt_active_count: &'a mut usize,
+    pub(in crate::audio_engine::core) controls: &'a mut PluginControls,
+    pub(in crate::audio_engine::core) rt_cohort_change_applied: &'a mut bool,
+    pub(in crate::audio_engine::core) output_timing:
+        &'a mut Option<crate::audio_engine::frame_timing::OutputRecorder>,
+    pub(in crate::audio_engine::core) worker_generation_controls:
+        Option<&'a crate::audio_engine::split_monitor::Controls>,
+    pub(in crate::audio_engine::core) measurement_ready: bool,
+    pub(in crate::audio_engine::core) upstream_first_frame: u64,
+    pub(in crate::audio_engine::core) rt_voice: &'a mut crate::audio_engine::live_modes::RtVoice,
+    pub(in crate::audio_engine::core) rt_reverb: &'a mut crate::audio_engine::reverb::Reverb,
+    pub(in crate::audio_engine::core) live_shared: &'a crate::audio_engine::live_modes::Shared,
+    pub(in crate::audio_engine::core) rt_global_mute: &'a mut bool,
+    pub(in crate::audio_engine::core) rt_comparison:
+        &'a mut crate::audio_engine::comparison::Transition,
+    pub(in crate::audio_engine::core) rt_input_gain: &'a mut f32,
+    pub(in crate::audio_engine::core) rt_input_l: &'a mut usize,
+    pub(in crate::audio_engine::core) rt_input_r: &'a mut usize,
+    pub(in crate::audio_engine::core) rt_physical_input: &'a mut [usize; 2],
+    pub(in crate::audio_engine::core) separated: bool,
+    pub(in crate::audio_engine::core) rt_noise_control: &'a mut Option<RtNoiseControl>,
+    pub(in crate::audio_engine::core) rt_noise_learning: &'a mut RtNoiseLearning,
+    pub(in crate::audio_engine::core) output_nr_failed: &'a AtomicBool,
+    pub(in crate::audio_engine::core) noise_applied_revision: &'a AtomicU64,
+    pub(in crate::audio_engine::core) builtin_applied: &'a AtomicU64,
+    pub(in crate::audio_engine::core) rt_loudness: &'a mut LoudnessMeter,
+    pub(in crate::audio_engine::core) loudness_start:
+        &'a mut crate::audio_engine::queue_recovery::MeasurementGate,
+    pub(in crate::audio_engine::core) queue_recovery:
+        &'a crate::audio_engine::queue_recovery::Recovery,
+    pub(in crate::audio_engine::core) measurement_processed: &'a mut u64,
+    pub(in crate::audio_engine::core) rt_output_gain: &'a mut Smoother,
+    pub(in crate::audio_engine::core) rt_capture: &'a mut auto_gain::RtCapture,
+    pub(in crate::audio_engine::core) rt_voice_check: &'a mut RtVoiceCheck,
+    pub(in crate::audio_engine::core) rt_test_tone: &'a mut RtTestTone,
 }
 
-pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
+pub(in crate::audio_engine::core) fn apply_commands(context: CommandContext<'_>) -> bool {
     let CommandContext {
         consumer,
         retire_prod,
