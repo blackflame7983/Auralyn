@@ -96,7 +96,7 @@ NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRE
    (Get-FileHash $child[0].ExecutablePath -ErrorAction Stop).Hash -eq (Get-FileHash $release -ErrorAction Stop).Hash
    ```
 
-   子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test`、`cargo build --bin audio_engine`、`npm run rebuild-engine` は、debug フォルダーの子を debug の子に戻すので、測定の間は実行しない。**注意：今のソースから作った debug の子は、WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる。debug の子では W5 を測れない。#829 で扱う。**
+   子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test`、`cargo build --bin audio_engine`、`npm run rebuild-engine` は、debug フォルダーの子を debug の子に戻すので、測定の間は実行しない。debug の子が WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる問題は、出力 callback の状態を `Box` の `OutputCallback` に移して直した（#829）。確かめ方：`npm run rebuild-engine` で debug の子を作り、単独で起動して標準入力へ `{"type":"Start","payload":{"input_source":null,"host":"WASAPI","input":null,"output":null,"input_id":null,"output_id":null,"buffer_size":512,"sample_rate":48000,"initial_controls":null,"channel_routing":null}}` を1行送る。落ちずに `Started`、または出力のストリームを作った後の `Error`（入力の音声の到着を確認できない、など）の応答が返ればよい。機器の解決の失敗など、出力を作る前の `Error` では、直した箇所を通ったことにならない。確認が済んだら `{"type":"Stop"}` を送る（音が出る可能性がある）。上の W5 の実測は release の子で行ったもので、debug の子での測定は未実施。
 2. 起動したら、「Tauri MCP による実アプリの確認」のうち、**CLI のセッションを開始して `connected: true` を確かめる部分だけ**を行う。その節の起動手順（`npm run rebuild-engine` と `tauri dev`）は実行しない（release の子を debug の子で上書きするため）。
 3. Rust 側の記録は、ログの `emit-trace` の行。`seq` は呼んだ順の通し番号、`kind=emit` は `emit` を呼ぶ直前、`kind=return` は `start_audio`・`stop_audio`・`restart_audio_engine` が結果を返す直前、`unix_us` は壁時計、`thread` は呼んだスレッド。
 4. WebView 側の記録は、アプリを開いた時点で入っている。購読の登録の完了（`listen-registered`）が揃ってから測る。`window.__auralynW5.length` を、場面の前後に控える。

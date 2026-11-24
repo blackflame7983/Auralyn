@@ -1,11 +1,15 @@
 //! 起動時の非RT準備とストリーム構築。資源の回収・再試行は lifecycle に従う。
 use super::input::{InputCallback, InputStream};
+use super::output::{OutputCallback, OutputCallbackContext};
 use super::*;
 #[path = "startup_callbacks.rs"]
 mod callbacks;
 pub(in crate::audio_engine::core) use callbacks::PluginBlock;
-pub(super) use callbacks::PluginControls;
 use callbacks::*;
+pub(super) use callbacks::{
+    apply_commands, flush_pending_retire, measure_output_loudness, route_and_meter_input,
+    write_device_silence, CommandContext, PluginControls,
+};
 
 struct ResolvedDevices {
     input: Option<cpal::Device>,
@@ -641,19 +645,19 @@ impl Engine {
 
         // Init Ring Buffers
         let ring = HeapRb::<AudioThreadMessage>::new(32);
-        let (producer, mut consumer) = ring.split();
+        let (producer, consumer) = ring.split();
         self.command_tx = Some(producer);
 
         let retire_rb = HeapRb::<DisposedProcessor>::new(32);
-        let (mut retire_prod, retire_cons) = retire_rb.split();
+        let (retire_prod, retire_cons) = retire_rb.split();
         self.retire_rx = Some(retire_cons);
 
-        let mut level_prod = self.prepare_meter_channel();
+        let level_prod = self.prepare_meter_channel();
         let loudness_rb = HeapRb::<LoudnessReading>::new(64);
-        let (mut loudness_prod, loudness_cons) = loudness_rb.split();
+        let (loudness_prod, loudness_cons) = loudness_rb.split();
         self.loudness_rx = Some(loudness_cons);
-        let mut rt_loudness = LoudnessMeter::new(self.current_sample_rate as u32);
-        let mut loudness_start = crate::audio_engine::queue_recovery::MeasurementGate::default();
+        let rt_loudness = LoudnessMeter::new(self.current_sample_rate as u32);
+        let loudness_start = crate::audio_engine::queue_recovery::MeasurementGate::default();
 
         let rt_channel_scan = self.prepare_channel_scan(in_stream_config.sample_rate);
         let scan_control = self.scan_control.clone();
@@ -724,7 +728,7 @@ impl Engine {
         };
         let output_queue_diagnostics = queue_diagnostics.clone();
         let input_queue_diagnostics = queue_diagnostics;
-        let mut queue_recovery = crate::audio_engine::queue_recovery::Recovery::new(
+        let queue_recovery = crate::audio_engine::queue_recovery::Recovery::new(
             audio_rb.capacity().get() / in_stream_config.channels as usize,
             out_stream_config.sample_rate as usize,
             1,
@@ -740,16 +744,16 @@ impl Engine {
         });
         let mut processors_vec = processors_vec?;
 
-        let mut plugin_controls = self.prepare_plugin_controls();
+        let plugin_controls = self.prepare_plugin_controls();
 
         let channels_len = out_stream_config.channels as usize;
         let max_frames_per_callback = self.processing_block_capacity;
         // 固定容量をコールバックの構築前に確保する。
         let CallbackBuffers {
-            input: mut input_buf,
-            planar_a: mut planar_buf_a,
-            planar_b: mut planar_buf_b,
-            planar_dry: mut planar_buf_dry,
+            input: input_buf,
+            planar_a: planar_buf_a,
+            planar_b: planar_buf_b,
+            planar_dry: planar_buf_dry,
         } = CallbackBuffers::new(
             self.current_input_channels,
             channels_len,
@@ -773,13 +777,12 @@ impl Engine {
                 .prepare(self.current_sample_rate as u32),
         );
         let peak_shared = self.peak_shared.clone();
-        let mut rt_peak = crate::audio_engine::peak_protection::Rt::new(
+        let rt_peak = crate::audio_engine::peak_protection::Rt::new(
             self.peak_config,
             self.current_sample_rate as u32,
         );
-        let (mut rt_global_mute, mut rt_input_gain, mut rt_output_gain) =
-            self.initial_callback_levels();
-        let mut rt_comparison = crate::audio_engine::comparison::Transition::new(
+        let (rt_global_mute, mut rt_input_gain, rt_output_gain) = self.initial_callback_levels();
+        let rt_comparison = crate::audio_engine::comparison::Transition::new(
             self.global_bypass,
             self.current_sample_rate as u32,
         );
@@ -788,17 +791,17 @@ impl Engine {
         self.gain_main_device = out_dev.id().ok().map(|id| id.to_string());
         let (capture_tx, capture_rx) = auto_gain::capture_queue();
         self.gain_capture_rx = Some(capture_rx);
-        let mut rt_capture = auto_gain::RtCapture::new(
+        let rt_capture = auto_gain::RtCapture::new(
             self.gain_shared.clone(),
             capture_tx,
             self.current_sample_rate as u32,
         );
         let mut rt_input_l = self.input_channel_l;
-        let mut rt_physical_input = [self.input_channel_l, self.input_channel_r];
+        let rt_physical_input = [self.input_channel_l, self.input_channel_r];
         let rt_output_routing = self.output_routing;
         let mut rt_input_r = self.input_channel_r;
         let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
-        let mut rt_noise_control = RtNoiseControl::prepare(
+        let rt_noise_control = RtNoiseControl::prepare(
             self.current_sample_rate as u32,
             NoiseSettings {
                 enabled: self.noise_reduction_enabled,
@@ -807,9 +810,9 @@ impl Engine {
                 voice_guard: self.noise_voice_guard,
             },
         );
-        let mut rt_noise_learning = RtNoiseLearning::new(self.noise_learning.clone());
+        let rt_noise_learning = RtNoiseLearning::new(self.noise_learning.clone());
         let (initial_builtin, _) = self.initial_builtin()?;
-        let mut rt_voice = crate::audio_engine::live_modes::RtVoice::new(
+        let rt_voice = crate::audio_engine::live_modes::RtVoice::new(
             crate::audio_engine::live_modes::Voice::prepare(
                 &initial_builtin,
                 self.current_sample_rate.round().clamp(8_000.0, 384_000.0) as u32,
@@ -817,8 +820,8 @@ impl Engine {
             .map_err(|error| anyhow!(error))?,
         );
         let initial_live_revision = self.live_modes.start();
-        let mut initial_live_ack = false;
-        let mut rt_cohort_change_applied = false;
+        let initial_live_ack = false;
+        let rt_cohort_change_applied = false;
         let live_shared = self.live_modes.shared.clone();
         let builtin_applied = self.builtin.applied.clone();
         let noise_applied_revision = self.noise_applied_revision.clone();
@@ -828,7 +831,7 @@ impl Engine {
         if let Some(buffers) = self.voice_check_buffers.current().cloned() {
             rt_voice_check.attach_buffers(buffers);
         }
-        let mut rt_test_tone = RtTestTone::new(rt_sample_rate_hz);
+        let rt_test_tone = RtTestTone::new(rt_sample_rate_hz);
 
         let frames_counter = self.frames_processed.clone();
 
@@ -846,7 +849,7 @@ impl Engine {
         self.input_callbacks = input_callbacks.clone();
 
         let mmcss_set_out = Arc::new(AtomicBool::new(false));
-        let (mut callback_processors, returned_processors) = callback_owner(CallbackProcessors {
+        let (callback_processors, returned_processors) = callback_owner(CallbackProcessors {
             reverb: crate::audio_engine::reverb::Reverb::new(
                 initial_builtin.reverb.unwrap_or_default(),
                 callback_rate,
@@ -945,7 +948,7 @@ impl Engine {
         let mut worker_controls = None;
         let mut broadcast_frames: Option<crate::audio_engine::split_monitor::BroadcastRx> = None;
         let mut broadcast_mixer = None;
-        let mut broadcast_block = if self.live_output_config.split_processing {
+        let broadcast_block = if self.live_output_config.split_processing {
             vec![
                 crate::audio_engine::split_monitor::BroadcastFrame::default();
                 max_frames_per_callback
@@ -953,7 +956,7 @@ impl Engine {
         } else {
             Vec::new()
         };
-        let mut upstream_recovery = vec![1.0f32; max_frames_per_callback];
+        let upstream_recovery = vec![1.0f32; max_frames_per_callback];
         if separated {
             anyhow::ensure!(channels_len == 2, "処理分離の出力構成を開始できません");
             let queue = Arc::new(
@@ -1090,7 +1093,7 @@ impl Engine {
             ))
         });
         self.process_shared = process_shared.clone();
-        let mut process_renderer = if is_process {
+        let process_renderer = if is_process {
             let (callback, owner) = callback_owner(
                 crate::audio_engine::process_capture::clock::Renderer::with_rates_and_capacity(
                     crate::audio_engine::process_capture::RATE,
@@ -1104,22 +1107,22 @@ impl Engine {
             None
         };
         let process_output_shared = process_shared.clone();
-        let mut process_starved_at = None;
+        let process_starved_at = None;
         let input_failed = self.stream_failed.clone();
         let input_process_failed = input_failed.clone();
         let input_resampling_failed = self.resampling_failed.clone();
-        let mut worker_generation = 0;
-        let mut upstream_consumed = 0u64;
-        let mut measurement_processed = 0;
+        let worker_generation = 0;
+        let upstream_consumed = 0u64;
+        let measurement_processed = 0;
         let worker_generation_controls = worker_controls.clone();
         let dsp_silence = self.mode_silence.shared.clone();
         let output_silence = self.mode_silence.shared.clone();
         let monitor_silence = self.mode_silence.shared.clone();
         let input_silence = self.mode_silence.shared.clone();
-        let mut post_epoch = 0u64;
-        let mut post_previous = None;
+        let post_epoch = 0u64;
+        let post_previous = None;
         let post_mix_controls = self.mixing_shared.clone();
-        let mut post_renderer = if let Some(mapping) = &mut self.post_mapping {
+        let post_renderer = if let Some(mapping) = &mut self.post_mapping {
             anyhow::ensure!(
                 separated && self.mixing_start.is_some() && mapping.ready() && !mapping.failed(),
                 "ミックス後VSTの準備が整っていません"
@@ -1149,796 +1152,92 @@ impl Engine {
             } else {
                 f32::from_bits(levels as u32)
             };
-            let mut monitor_trim =
+            let monitor_trim =
                 super::super::gain_ramp::GainRamp::new(initial_monitor_gain, callback_rate);
             // スイープ用の領域はストリーム構築時に確保し、コールバックでは再利用する。
             let measure_bridge = measure_output;
-            let mut measure_dry = vec![0.0f32; max_frames_per_callback.max(1)];
+            let measure_dry = vec![0.0f32; max_frames_per_callback.max(1)];
             let mut main_stop_fade = super::super::stop_fade::StopFadeRt::new(
                 self.stop_fade.clone(),
                 super::super::stop_fade::MAIN,
                 callback_rate,
             );
-            let mut process_output =
-                move |data: &mut [f32], output_context: OutputCallbackContext<'_>| {
-                    let OutputCallbackContext {
-                        info,
-                        mut stop_fade,
-                    } = output_context;
-                    if dsp_silence.drain_worker() {
-                        measure_bridge.abandon_stopped();
-                        if let Some(mixer) = &mut broadcast_mixer {
-                            mixer.get_mut().reset();
-                        }
-                        if let Some(queue) = &mut broadcast_frames {
-                            queue.skip(queue.occupied_len());
-                        } else {
-                            audio_cons.skip(
-                                audio_cons.occupied_len() / queue_input_channels
-                                    * queue_input_channels,
-                            );
-                        }
-                        dsp_silence.worker_drained();
-                        data.fill(0.0);
-                        return;
-                    }
-                    rt_peak.sync(&peak_shared);
-                    if let Some(sender) = &mut live_sender {
-                        sender.get_mut().begin_block();
-                    }
-                    if let Some(controls) = &worker_generation_controls {
-                        let generation = controls.generation.load(Ordering::Acquire);
-                        if generation != worker_generation {
-                            if let Some(mixer) = &mut broadcast_mixer {
-                                mixer.get_mut().reset();
-                            }
-                            let skipped = broadcast_frames.as_mut().map_or_else(
-                                || audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2,
-                                |queue| queue.skip(queue.occupied_len()),
-                            );
-                            upstream_consumed = upstream_consumed.saturating_add(skipped as u64);
-                            worker_generation = generation;
-                            measure_bridge.abandon_stopped();
-                            data.fill(0.0);
-                            return;
-                        }
-                    }
-                    let timing_begin = output_timing.as_ref().map_or(0, |timing| timing.now_ns());
-                    let CallbackProcessors {
-                        processors: rt_processors,
-                        reverb: rt_reverb,
-                        pending_retire,
-                        pending_rejected,
-                    } = callback_processors.get_mut();
-                    if output_nr_failed.load(Ordering::Acquire)
-                        || output_resampling_failed.load(Ordering::Acquire)
-                        || output_stream_failed.load(Ordering::Acquire)
-                    {
-                        measure_bridge.abandon_stopped();
-                        write_device_silence(data);
-                        return;
-                    }
-                    let Some(actual_frames) = lifecycle::output_block_frames(
-                        data,
-                        channels_len,
-                        max_frames_per_callback,
-                        &output_stream_failed,
-                        &output_capacity_failed,
-                    ) else {
-                        measure_bridge.abandon_stopped();
-                        return;
-                    };
-                    let measurement_ticket = worker_generation_controls
-                        .as_ref()
-                        .map(|c| c.measurement_ticket());
-                    let upstream_first_frame = upstream_consumed;
-                    if let Some(queue) = &mut broadcast_frames {
-                        for (index, frame) in
-                            broadcast_block[..actual_frames].iter_mut().enumerate()
-                        {
-                            let Some(value) = queue.try_pop() else {
-                                output_stream_failed.store(true, Ordering::Release);
-                                measure_bridge.abandon_stopped();
-                                write_device_silence(data);
-                                return;
-                            };
-                            *frame = value;
-                            upstream_recovery[index] = value.recovery_gain;
-                        }
-                        upstream_consumed = upstream_consumed.saturating_add(actual_frames as u64);
-                    }
-                    // Monitorのunity ACKと、このblock自体の回復係数が揃うまで開始要求をFIFOに残す。
-                    // 既に転送済みのfade blockを録音・測定の先頭として扱わない。
-                    let measurement_ready = worker_generation_controls
-                        .as_ref()
-                        .zip(measurement_ticket)
-                        .is_none_or(|(c, ticket)| {
-                            c.measurement_ready_at(ticket, upstream_first_frame)
-                                && upstream_recovery[..actual_frames]
-                                    .iter()
-                                    .all(|gain| *gain == 1.0)
-                        });
-                    if !initial_live_ack {
-                        live_shared
-                            .accepted
-                            .fetch_max(initial_live_revision, Ordering::Release);
-                        live_shared
-                            .completed
-                            .fetch_max(initial_live_revision, Ordering::Release);
-                        initial_live_ack = true;
-                    }
-                    flush_pending_retire(pending_retire, &mut retire_prod);
-
-                    let now = Instant::now();
-                    if !mmcss_set_out.load(Ordering::Relaxed) {
-                        // SAFETY: 現在のコールバックスレッドの疑似ハンドルと定義済み優先度を渡す。
-                        unsafe {
-                            use windows::Win32::System::Threading::{
-                                GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
-                                THREAD_PRIORITY_TIME_CRITICAL,
-                            };
-                            let priority = if time_critical_audio_threads_enabled() {
-                                THREAD_PRIORITY_TIME_CRITICAL
-                            } else {
-                                THREAD_PRIORITY_HIGHEST
-                            };
-                            let _ = SetThreadPriority(GetCurrentThread(), priority);
-                        }
-                        mmcss_set_out.store(true, Ordering::Relaxed);
-                    }
-
-                    if let Some(frames) = data.len().checked_div(channels_len) {
-                        let _ = frames_counter.fetch_add(frames as u64, Ordering::Relaxed);
-                    }
-
-                    if !apply_commands(CommandContext {
-                        consumer: &mut consumer,
-                        retire_prod: &mut retire_prod,
-                        pending_rejected,
-                        pending_retire,
-                        rt_processors,
-                        rt_active_count: &mut rt_active_count,
-                        controls: &mut plugin_controls,
-                        rt_cohort_change_applied: &mut rt_cohort_change_applied,
-                        output_timing: &mut output_timing,
-                        worker_generation_controls: worker_generation_controls.as_deref(),
-                        measurement_ready,
-                        upstream_first_frame,
-                        rt_voice: &mut rt_voice,
-                        rt_reverb,
-                        live_shared: &live_shared,
-                        rt_global_mute: &mut rt_global_mute,
-                        rt_comparison: &mut rt_comparison,
-                        rt_input_gain: &mut rt_input_gain,
-                        rt_input_l: &mut rt_input_l,
-                        rt_input_r: &mut rt_input_r,
-                        rt_physical_input: &mut rt_physical_input,
-                        separated,
-                        rt_noise_control: &mut rt_noise_control,
-                        rt_noise_learning: &mut rt_noise_learning,
-                        output_nr_failed: &output_nr_failed,
-                        noise_applied_revision: &noise_applied_revision,
-                        builtin_applied: &builtin_applied,
-                        rt_loudness: &mut rt_loudness,
-                        loudness_start: &mut loudness_start,
-                        queue_recovery: &queue_recovery,
-                        measurement_processed: &mut measurement_processed,
-                        rt_output_gain: &mut rt_output_gain,
-                        rt_capture: &mut rt_capture,
-                        rt_voice_check: &mut rt_voice_check,
-                        rt_test_tone: &mut rt_test_tone,
-                    }) {
-                        measure_bridge.abandon_stopped();
-                        write_device_silence(data);
-                        return;
-                    }
-
-                    let channels = channels_len;
-                    let frames = actual_frames;
-                    // 先頭サンプルを出すブロックの開始側で、入力が書き終えたフレーム数を一度読む。
-                    let measure_hold = measure_bridge.blocks_downstream();
-                    let measure_action = if frames <= measure_dry.len() {
-                        measure_bridge.render(frames, rt_global_mute, &mut measure_dry)
-                    } else {
-                        measure_bridge.abandon_stopped();
-                        super::super::latency_measure::OutputAction::Passthrough
-                    };
-
-                    // --- 1. Efficient Input Data Fetch & De-interleaving ---
-                    // 測定・別再生中は通常マイクの回復を開始しない。
-                    if let Some(id) = loudness_start.take_ready(&queue_recovery) {
-                        rt_loudness.reset(Some(id));
-                    }
-                    let recovery_blocked = rt_global_mute
-                        || measure_hold
-                        || rt_test_tone.is_active()
-                        || rt_voice_check.is_playback_active()
-                        || rt_voice_check.is_recording_active()
-                        || rt_capture.is_active()
-                        || rt_loudness.id.is_some()
-                        || loudness_start.blocks_recovery();
-                    let skip_frames = queue_recovery.begin_block(
-                        audio_cons.occupied_len() / queue_input_channels,
-                        frames,
-                        output_queue_diagnostics.max_burst(),
-                        recovery_blocked || separated || is_process,
-                    );
-                    if skip_frames > 0 {
-                        if let Some(timing) = &output_timing {
-                            timing.invalidate_recovery();
-                        }
-                        // f32のskipはindex更新。完全frameだけをconsumerが回収する。
-                        let skipped = audio_cons.skip(skip_frames * queue_input_channels)
-                            / queue_input_channels;
-                        output_queue_diagnostics.record_recovery(
-                            skipped,
-                            queue_recovery.status(),
-                            queue_recovery.target(),
-                            queue_recovery.high(),
-                        );
-                    } else {
-                        output_queue_diagnostics.record_recovery(
-                            0,
-                            queue_recovery.status(),
-                            queue_recovery.target(),
-                            queue_recovery.high(),
-                        );
-                    }
-                    let to_read = frames * queue_input_channels;
-                    let mut reprime_wait = false;
-                    let (consumed_frames, timing_read) = if broadcast_frames.is_some() {
-                        for (output, frame) in input_buf[..to_read]
-                            .as_chunks_mut::<2>()
-                            .0
-                            .iter_mut()
-                            .zip(&broadcast_block[..frames])
-                        {
-                            *output = frame.voice;
-                        }
-                        (frames, 0)
-                    } else if let Some(renderer) = &mut process_renderer {
-                        use crate::audio_engine::process_capture::clock::{
-                            underrun_action, Interleaved, UnderrunAction,
-                        };
-                        let renderer = renderer.get_mut();
-                        let before = renderer.rendered;
-                        let waiting_before = renderer.waiting;
-                        renderer
-                            .render(&mut input_buf[..to_read], &mut Interleaved(&mut audio_cons));
-                        if renderer.failed {
-                            let shared = process_output_shared
-                                .as_ref()
-                                .expect("プロセス取得の共有状態");
-                            if !renderer.failed_underrun {
-                                shared.failed.store(true, Ordering::Release);
-                            } else {
-                                let began = process_starved_at.get_or_insert(shared.elapsed_ms());
-                                match underrun_action(shared.packet_age_ms(), || {
-                                    shared.elapsed_ms().saturating_sub(*began)
-                                }) {
-                                    UnderrunAction::DiscardAndReprime => {
-                                        let discarded = audio_cons.occupied_len() / 2;
-                                        audio_cons.skip(discarded * 2);
-                                        shared.paused(discarded);
-                                        renderer.wait_for_audio();
-                                        process_starved_at = None;
-                                    }
-                                    UnderrunAction::Fail => {
-                                        shared.failed.store(true, Ordering::Release);
-                                    }
-                                    UnderrunAction::Wait => {}
-                                }
-                            }
-                        }
-                        if let Some(shared) = &process_output_shared {
-                            renderer.report_resume(shared);
-                            shared.rendered(renderer, audio_cons.occupied_len() / 2);
-                        }
-                        // 再primingの待ちは無音を返す正常な状態。このcallbackの不足は警告に入れない。
-                        reprime_wait = renderer.waiting > waiting_before;
-                        (renderer.rendered.saturating_sub(before) as usize, 0)
-                    } else if let Some(timing) = &output_timing {
-                        queue_diagnostics::read_complete_frames_observed(
-                            &mut audio_cons,
-                            &mut input_buf[..to_read],
-                            queue_input_channels,
-                            || timing.now_ns(),
-                        )
-                    } else {
-                        (
-                            queue_diagnostics::read_complete_frames(
-                                &mut audio_cons,
-                                &mut input_buf[..to_read],
-                                queue_input_channels,
-                            ),
-                            0,
-                        )
-                    };
-                    // 分離時の主入力キューは本人用callbackだけが読む。
-                    // 配信workerまで加えると読出しと不足を二重計上してしまう。
-                    if !separated {
-                        if reprime_wait {
-                            output_queue_diagnostics.record_reprime_wait(frames, consumed_frames);
-                        } else {
-                            output_queue_diagnostics.record_output(frames, consumed_frames);
-                        }
-                    }
-
-                    let ([in_max_l, in_max_r], record_block_start) = route_and_meter_input(
-                        frames,
-                        queue_input_channels,
-                        &input_buf,
-                        rt_input_l,
-                        rt_input_r,
-                        rt_input_gain,
-                        &mut planar_buf_a,
-                        channels,
-                        &mut rt_voice_check,
-                    );
-
-                    if rt_voice_check.is_playback_active() {
-                        // 再生中はマイク入力をミュート（処理チェーンは無音で継続）
-                        for channel in &mut planar_buf_a[..channels.min(2)] {
-                            channel[..frames].fill(0.0);
-                        }
-                    }
-
-                    if rt_test_tone.is_active() || measure_hold {
-                        // テスト音と往復測定のあいだは、マイクを配信と本人用の後段へ流さない。
-                        for channel in &mut planar_buf_a[..channels.min(2)] {
-                            channel[..frames].fill(0.0);
-                        }
-                    }
-
-                    if !music_input {
-                        if channels >= 2 {
-                            rt_noise_learning.analyze_block(
-                                &planar_buf_a[0][..frames],
-                                Some(&planar_buf_a[1][..frames]),
-                                frames,
-                            );
-                        } else if channels == 1 {
-                            rt_noise_learning.analyze_block(
-                                &planar_buf_a[0][..frames],
-                                None,
-                                frames,
-                            );
-                        }
-
-                        if let Some(control) = &mut rt_noise_control {
-                            let profile_available = rt_noise_learning
-                                .shared
-                                .profile_valid
-                                .load(Ordering::Acquire);
-                            control.begin_block(NoiseAnalysis {
-                                speech: rt_noise_learning
-                                    .shared
-                                    .speech_detected
-                                    .load(Ordering::Relaxed),
-                                profile_rms: profile_available.then(|| {
-                                    rt_noise_learning
-                                        .shared
-                                        .accepted_rms_ppm
-                                        .load(Ordering::Relaxed)
-                                        as f32
-                                        / 1_000_000.0
-                                }),
-                                learned_mix: rt_noise_learning.shared.applied_mix(),
-                                has_learned_mix: rt_noise_learning
-                                    .shared
-                                    .has_applied_mix
-                                    .load(Ordering::Acquire),
-                            });
-                            if channels >= 2 {
-                                let (left, right) = planar_buf_a.split_at_mut(1);
-                                for (left, right) in
-                                    left[0][..frames].iter_mut().zip(&mut right[0][..frames])
-                                {
-                                    let output = control.process_sample(*left, *right);
-                                    *left = output[0];
-                                    *right = output[1];
-                                }
-                            } else if channels == 1 {
-                                for sample in &mut planar_buf_a[0][..frames] {
-                                    *sample = control.process_sample(*sample, *sample)[0];
-                                }
-                            }
-                        }
-
-                        if channels >= 2 {
-                            let (left, right) = planar_buf_a.split_at_mut(1);
-                            for (left, right) in
-                                left[0].iter_mut().zip(right[0].iter_mut()).take(frames)
-                            {
-                                let output = rt_voice.process([*left, *right]);
-                                *left = output[0];
-                                *right = output[1];
-                            }
-                        } else {
-                            for sample in planar_buf_a[0].iter_mut().take(frames) {
-                                *sample = rt_voice.process([*sample; 2])[0];
-                            }
-                        }
-                        if let Some((revision, builtin_revision)) = rt_voice.take_completed() {
-                            live_shared.completed.fetch_max(revision, Ordering::Release);
-                            builtin_applied.fetch_max(builtin_revision, Ordering::Release);
-                        }
-
-                        // 独立残響: voiceのactiveに依存させず、VSTへ渡す前に加算する。
-                        if rt_global_mute {
-                            rt_reverb.reset();
-                        } else if channels > 1 {
-                            let (left, remaining) = planar_buf_a.split_at_mut(1);
-                            for (left, right) in
-                                left[0].iter_mut().zip(remaining[0].iter_mut()).take(frames)
-                            {
-                                let result = rt_reverb.process([*left, *right], false);
-                                *left = result[0];
-                                *right = result[1];
-                            }
-                        } else {
-                            for sample in planar_buf_a[0].iter_mut().take(frames) {
-                                *sample = rt_reverb.process([*sample; 2], false)[0];
-                            }
-                        }
-                    }
-
-                    rt_comparison
-                        .begin_block(frames, rt_active_count > 0 && plugin_controls.order_len > 0);
-                    let comparison_settled = rt_comparison.settled();
-                    let current_source_is_a = plugin_controls.process(PluginBlock {
-                        processors: rt_processors,
-                        planar_buf_a: &mut planar_buf_a,
-                        planar_buf_b: &mut planar_buf_b,
-                        dry: &mut planar_buf_dry,
-                        channels,
-                        frames,
-                        active_count: &mut rt_active_count,
-                        global_bypass: rt_comparison.bypassed(),
-                        retire_prod: Some(&mut retire_prod),
-                        pending_retire: Some(pending_retire),
-                    });
-
-                    // --- 3. Result Interleaving & Output Metering ---
-                    let final_buf = if current_source_is_a {
-                        &mut planar_buf_a
-                    } else {
-                        &mut planar_buf_b
-                    };
-                    rt_comparison.apply(final_buf, channels, frames);
-
-                    if rt_capture.is_active() {
-                        let invalid = rt_global_mute
-                            || rt_test_tone.is_active()
-                            || rt_voice_check.is_playback_active()
-                            || in_max_l >= 0.999
-                            || in_max_r >= 0.999;
-                        for i in 0..frames {
-                            let l = final_buf
-                                .first()
-                                .and_then(|b| b.get(i))
-                                .copied()
-                                .unwrap_or(0.0);
-                            let r = final_buf
-                                .get(1)
-                                .and_then(|b| b.get(i))
-                                .copied()
-                                .unwrap_or(l);
-                            rt_capture.sample(
-                                auto_gain::capture_channels(l, r, rt_input_l == rt_input_r),
-                                invalid,
-                            );
-                        }
-                    }
-                    if rt_voice_check.is_recording_active() {
-                        for i in 0..frames {
-                            let proc_l = final_buf
-                                .first()
-                                .and_then(|buf| buf.get(i))
-                                .copied()
-                                .unwrap_or(0.0);
-                            let proc_r = final_buf
-                                .get(1)
-                                .and_then(|buf| buf.get(i))
-                                .copied()
-                                .unwrap_or(proc_l);
-                            rt_voice_check.record_processed_at(
-                                record_block_start + i as u64,
-                                proc_l,
-                                proc_r,
-                            );
-                        }
-                        // 加工前後の最終ブロックが揃ってから公開・完了通知する。
-                        rt_voice_check.advance_recording(frames);
-                    }
-                    if let Some(mixer) = &mut broadcast_mixer {
-                        mixer
-                            .get_mut()
-                            .process(final_buf, &broadcast_block[..frames]);
-                    }
-                    if let Some(renderer) = &mut post_renderer {
-                        let music_generation = post_mix_controls
-                            .as_ref()
-                            .and_then(|shared| shared.read())
-                            .map_or(0, |settings| settings.mute_generation);
-                        let current = (dsp_silence.ticket(), worker_generation, music_generation);
-                        if post_previous != Some(current) {
-                            post_epoch = post_epoch.wrapping_add(1);
-                            post_previous = Some(current);
-                        }
-                        let generation = post_epoch;
-                        if !renderer.get_mut().process(
-                            final_buf,
-                            frames,
-                            rt_global_mute,
-                            generation,
-                            rt_comparison.bypassed(),
-                        ) {
-                            output_stream_failed.store(true, Ordering::Release);
-                            measure_bridge.abandon_stopped();
-                            write_device_silence(data);
-                            return;
-                        }
-                    }
-
-                    let cohort_normal_mic = comparison_settled
-                        && !rt_global_mute
-                        && !measure_hold
-                        && !rt_test_tone.is_active()
-                        && !rt_voice_check.is_playback_active();
-                    if let Some(sender) = &mut live_sender {
-                        sender.get_mut().normal(cohort_normal_mic);
-                    }
-                    if rt_global_mute
-                        || measure_hold
-                        || rt_test_tone.is_active()
-                        || rt_voice_check.is_playback_active()
-                    {
-                        for _ in 0..frames {
-                            queue_recovery.next_gain();
-                        }
-                    }
-                    if rt_global_mute {
-                        // ミュート中もゲインの反映を完了させる。出力は無音のまま。
-                        for _ in 0..frames {
-                            rt_output_gain.next();
-                            rt_peak.process([0.0; 2]);
-                        }
-                        write_device_silence(data);
-                        // Zero metering too implies output is silence
-                        let _ = level_prod.try_push(MeterLevels {
-                            input: [in_max_l, in_max_r],
-                            output: [0.0, 0.0],
-                        });
-                    } else if measure_action == super::super::latency_measure::OutputAction::Replace
-                    {
-                        // テスト音と同じく gain とピーク保護だけを通し、配信へは送らない。
-                        data.fill(0.0);
-                        let output_pair = if separated {
-                            [0, 1]
-                        } else {
-                            super::super::queue_diagnostics::routed_output_pair(
-                                rt_output_routing,
-                                is_asio,
-                                rt_physical_input,
-                                channels,
-                            )
-                        };
-                        let mut out_max_l = 0.0f32;
-                        let mut out_max_r = 0.0f32;
-                        for i in 0..frames {
-                            let gain = rt_output_gain.next();
-                            let sample = measure_dry.get(i).copied().unwrap_or(0.0) * gain;
-                            let [main_l, main_r] = rt_peak.process([sample, sample]);
-                            let sent = write_faded_output_frame(
-                                &mut data[i * channels..(i + 1) * channels],
-                                output_pair,
-                                [main_l, main_r],
-                                stop_fade.as_deref_mut(),
-                            );
-                            out_max_l = out_max_l.max(sent[0]);
-                            out_max_r = out_max_r.max(sent[1]);
-                        }
-                        let _ = level_prod.try_push(MeterLevels {
-                            input: [0.0, 0.0],
-                            output: [out_max_l, out_max_r],
-                        });
-                    } else if rt_test_tone.is_active() {
-                        data.fill(0.0);
-                        let output_pair = if separated {
-                            [0, 1]
-                        } else {
-                            super::super::queue_diagnostics::routed_output_pair(
-                                rt_output_routing,
-                                is_asio,
-                                rt_physical_input,
-                                channels,
-                            )
-                        };
-                        let mut out_max_l = 0.0f32;
-                        let mut out_max_r = 0.0f32;
-
-                        for i in 0..frames {
-                            let gain = rt_output_gain.next();
-                            let (tone_l, tone_r) = rt_test_tone.sample();
-                            let main_l = tone_l * gain;
-                            let main_r = tone_r * gain;
-                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
-
-                            let sent = write_faded_output_frame(
-                                &mut data[i * channels..(i + 1) * channels],
-                                output_pair,
-                                [main_l, main_r],
-                                stop_fade.as_deref_mut(),
-                            );
-                            out_max_l = out_max_l.max(sent[0]);
-                            out_max_r = out_max_r.max(sent[1]);
-                        }
-
-                        let _ = level_prod.try_push(MeterLevels {
-                            input: [0.0, 0.0],
-                            output: [out_max_l, out_max_r],
-                        });
-                    } else if rt_voice_check.is_playback_active() {
-                        data.fill(0.0);
-                        let output_pair = if separated {
-                            [0, 1]
-                        } else {
-                            super::super::queue_diagnostics::routed_output_pair(
-                                rt_output_routing,
-                                is_asio,
-                                rt_physical_input,
-                                channels,
-                            )
-                        };
-                        let mut out_max_l = 0.0f32;
-                        let mut out_max_r = 0.0f32;
-
-                        for i in 0..frames {
-                            let gain = rt_output_gain.next();
-                            let (main_l, main_r) = rt_voice_check.read_playback_sample();
-                            let main_l = main_l * gain;
-                            let main_r = main_r * gain;
-                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
-
-                            let sent = write_faded_output_frame(
-                                &mut data[i * channels..(i + 1) * channels],
-                                output_pair,
-                                [main_l, main_r],
-                                stop_fade.as_deref_mut(),
-                            );
-                            out_max_l = out_max_l.max(sent[0]);
-                            out_max_r = out_max_r.max(sent[1]);
-                        }
-
-                        let _ = level_prod.try_push(MeterLevels {
-                            input: [0.0, 0.0],
-                            output: [out_max_l, out_max_r],
-                        });
-                    } else {
-                        // Initialize output with silence
-                        data.fill(0.0);
-
-                        // 入力選択とは独立した、実際に存在する出力ペアへ送る。
-                        let output_pair = if separated {
-                            [0, 1]
-                        } else {
-                            super::super::queue_diagnostics::routed_output_pair(
-                                rt_output_routing,
-                                is_asio,
-                                rt_physical_input,
-                                channels,
-                            )
-                        };
-
-                        let mut out_max_l = 0.0f32;
-                        let mut out_max_r = 0.0f32;
-                        for i in 0..frames {
-                            let gain = rt_output_gain.next();
-                            let main_l = final_buf
-                                .first()
-                                .and_then(|buf| buf.get(i))
-                                .copied()
-                                .unwrap_or(0.0)
-                                * gain;
-                            let main_r = final_buf
-                                .get(1)
-                                .and_then(|buf| buf.get(i))
-                                .copied()
-                                .unwrap_or(main_l)
-                                * gain;
-
-                            // 既存gain/routingの後で、左右へ同一の回復fadeを1回だけ適用。
-                            let recovery_gain = queue_recovery.next_gain() * upstream_recovery[i];
-                            let main_l = main_l * recovery_gain;
-                            let main_r = main_r * recovery_gain;
-                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
-
-                            if let Some(sender) = &mut live_sender {
-                                sender.get_mut().send([main_l, main_r]);
-                            }
-                            let levels = monitor_levels.load(Ordering::Relaxed);
-                            let monitor_gain = if separated {
-                                1.0
-                            } else if levels >> 32 != 0 {
-                                0.0
-                            } else {
-                                f32::from_bits(levels as u32)
-                            };
-                            monitor_trim.set_target(monitor_gain);
-                            let monitor_gain = monitor_trim.next();
-                            let main_l = main_l * monitor_gain;
-                            let main_r = main_r * monitor_gain;
-                            // Left
-                            let sent = write_faded_output_frame(
-                                &mut data[i * channels..(i + 1) * channels],
-                                output_pair,
-                                [main_l, main_r],
-                                stop_fade.as_deref_mut(),
-                            );
-                            out_max_l = out_max_l.max(sent[0]);
-                            out_max_r = out_max_r.max(sent[1]);
-                        }
-
-                        let _ = level_prod.try_push(MeterLevels {
-                            input: [in_max_l, in_max_r],
-                            output: [out_max_l, out_max_r],
-                        });
-                    }
-                    rt_peak.report(&peak_shared, 0);
-                    measure_output_loudness(
-                        data,
-                        channels,
-                        if separated {
-                            [0, 1]
-                        } else {
-                            super::super::queue_diagnostics::routed_output_pair(
-                                rt_output_routing,
-                                is_asio,
-                                rt_physical_input,
-                                channels,
-                            )
-                        },
-                        &mut rt_loudness,
-                        &mut loudness_prod,
-                    );
-                    rt_capture
-                        .shared
-                        .confirmed_gain
-                        .store(rt_output_gain.current().to_bits(), Ordering::Release);
-                    rt_capture.shared.settled.store(
-                        rt_output_gain.current() == rt_output_gain.target(),
-                        Ordering::Release,
-                    );
-                    if measurement_ready
-                        && measurement_ticket
-                            .is_some_and(|ticket| ticket & !3 == measurement_processed & !3)
-                    {
-                        if let Some((controls, ticket)) =
-                            worker_generation_controls.as_ref().zip(measurement_ticket)
-                        {
-                            controls.finish_measurement_block(
-                                ticket,
-                                rt_voice_check.is_recording_active()
-                                    || rt_capture.is_active()
-                                    || rt_loudness.id.is_some()
-                                    || loudness_start.blocks_recovery(),
-                            );
-                        }
-                    }
-                    callback_diagnostics.record(actual_frames, now.elapsed().as_micros() as u64);
-                    if let Some(timing) = &mut output_timing {
-                        timing.record_context(
-                            consumed_frames,
-                            frames,
-                            timing_begin,
-                            timing_read,
-                            info.map(|info| info.timestamp().callback),
-                            cohort_normal_mic
-                                && (separated || monitor_levels.load(Ordering::Acquire) >> 32 == 0),
-                        );
-                    }
-                };
+            let mut output_callback = Box::new(OutputCallback {
+                dsp_silence,
+                measure_bridge,
+                broadcast_mixer,
+                broadcast_frames,
+                audio_cons,
+                queue_input_channels,
+                rt_peak,
+                peak_shared,
+                live_sender,
+                worker_generation_controls,
+                worker_generation,
+                upstream_consumed,
+                output_timing,
+                callback_processors,
+                output_nr_failed,
+                output_resampling_failed,
+                output_stream_failed,
+                output_capacity_failed,
+                channels_len,
+                max_frames_per_callback,
+                broadcast_block,
+                upstream_recovery,
+                initial_live_ack,
+                live_shared,
+                initial_live_revision,
+                retire_prod,
+                mmcss_set_out,
+                frames_counter,
+                consumer,
+                rt_active_count,
+                plugin_controls,
+                rt_cohort_change_applied,
+                rt_voice,
+                rt_global_mute,
+                rt_comparison,
+                rt_input_gain,
+                rt_input_l,
+                rt_input_r,
+                rt_physical_input,
+                separated,
+                rt_noise_control,
+                rt_noise_learning,
+                noise_applied_revision,
+                builtin_applied,
+                rt_loudness,
+                loudness_start,
+                queue_recovery,
+                measurement_processed,
+                rt_output_gain,
+                rt_capture,
+                rt_voice_check,
+                rt_test_tone,
+                measure_dry,
+                output_queue_diagnostics,
+                is_process,
+                process_renderer,
+                process_output_shared,
+                process_starved_at,
+                input_buf,
+                planar_buf_a,
+                planar_buf_b,
+                planar_buf_dry,
+                music_input,
+                post_mix_controls,
+                post_renderer,
+                post_epoch,
+                post_previous,
+                level_prod,
+                rt_output_routing,
+                is_asio,
+                monitor_trim,
+                monitor_levels,
+                loudness_prod,
+                callback_diagnostics,
+            });
             let output_result = if let (Some(mut monitor), Some(queue), Some(controls)) =
                 (monitor_renderer, broadcast_queue, worker_controls)
             {
@@ -1946,7 +1245,7 @@ impl Engine {
                 match crate::audio_engine::split_monitor::Worker::start_gated(
                     move |data| {
                         let ticket = output_silence.ticket();
-                        process_output(
+                        output_callback.process(
                             data,
                             OutputCallbackContext {
                                 info: None,
@@ -2016,7 +1315,7 @@ impl Engine {
                         );
                         let ticket = output_silence.ticket();
                         main_stop_fade.begin_block();
-                        process_output(
+                        output_callback.process(
                             data,
                             OutputCallbackContext {
                                 info: Some(info),
@@ -2267,13 +1566,8 @@ impl Engine {
     }
 }
 
-struct OutputCallbackContext<'a> {
-    info: Option<&'a cpal::OutputCallbackInfo>,
-    stop_fade: Option<&'a mut super::super::stop_fade::StopFadeRt>,
-}
-
 // 全出力枝でtrim・保護の後に同じ停止倍率を掛け、物理出力へ書く。
-fn write_faded_output_frame(
+pub(super) fn write_faded_output_frame(
     output: &mut [f32],
     pair: [usize; 2],
     samples: [f32; 2],

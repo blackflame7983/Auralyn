@@ -40,6 +40,8 @@ mod meter;
 mod mixing_state;
 #[path = "core/native_stream.rs"]
 mod native_stream;
+#[path = "core/output.rs"]
+mod output;
 #[path = "core/post_mix.rs"]
 mod post_mix;
 #[path = "core/session_rack.rs"]
