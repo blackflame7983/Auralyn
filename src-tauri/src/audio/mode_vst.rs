@@ -2335,7 +2335,7 @@ pub(super) mod tests {
         assert_eq!(status.error.as_deref(), Some(message));
     }
 
-    // T11：切断した接続の応答（EOF・競りに負けた EOF の切断）は、`Engine Crashed/Exited` に写して復旧の経路へ進む。
+    // T11：切断した接続の応答は、`Engine Crashed/Exited` に写して復旧の経路へ進む。
     #[test]
     fn t11_a_disconnected_reply_maps_to_engine_exited_and_never_rolls_back() {
         let mut host = open_link_host();
@@ -2900,7 +2900,7 @@ pub(super) mod tests {
     }
 
     // T7（競合3 (b)）：reader が EOF の競りに勝って止まっている間に、別の入口が接続を捨てても、待ち手の送り側は
-    // reader の手に残る。tick の受け取りは、期限の中では `Empty`。解放して通知が出た後に `Eof`。回収は進む。
+    // reader の手に残る。tick の受け取りは、期限の中では `Empty`。通知が出た後に切断で解放される。回収は進む。
     #[test]
     fn t7_a_host_close_while_the_eof_is_paused_keeps_the_tick_waiting_for_the_notices() {
         let (mut host, recorder, pause, finishing) = tick_waiting_while_eof_is_paused();

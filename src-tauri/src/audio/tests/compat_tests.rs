@@ -467,28 +467,6 @@ fn d3_kill_engine_before_restart_emits_only_conditions_changed() {
     );
 }
 
-// A9(b)：旧 reader が最初の照合（epoch）を通った後に、接続が変わる。F1a は今の窓を固定する（F1b の D-6 で閉じる）。
-// 新しい接続の`running = true`が、旧 reader の再照合の失敗で`false`に上書きされる。`false`を返し、通知は出ない。
-#[test]
-fn a9b_stale_engine_event_overwrites_the_new_connection_running_flag_in_the_known_window() {
-    use super::conditions::{set_after_running_store_hook, Conditions};
-    let conditions = Arc::new(Conditions::default());
-    let old_epoch = conditions.new_engine();
-    let new_side = conditions.clone();
-    set_after_running_store_hook(move || {
-        new_side.new_engine();
-        new_side.lifecycle(true);
-    });
-    assert!(
-        !conditions.engine_event(old_epoch, true),
-        "再照合に失敗するので、旧 reader は通知しない"
-    );
-    assert!(
-        conditions.snapshot().is_err(),
-        "現行の窓：新しい接続の running が false で上書きされる"
-    );
-}
-
 // §5：`MixingSourceFailed`・`MixingOutputFailed`は、動いている現行の接続でだけ、`audio-conditions-changed`のあとに旧の通知（ペイロードなし）で転送される。
 #[test]
 fn mixing_failures_forward_conditions_then_the_legacy_notification_only_while_running() {

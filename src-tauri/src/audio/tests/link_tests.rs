@@ -674,7 +674,7 @@ fn mixing_selection() -> crate::audio_engine::mixing::Start {
 }
 
 // 6回目：reader は接続（`LinkCell`）を閉じるとき、待ち手の送り側も同じ区間で取り出す。閉じた直後で止めても、
-// - 先に登録した待ち手は、writer の `Aborted` を経て、`Eof`（`Engine Crashed/Exited`）で解放される。
+// - 先に登録した待ち手は、writer の `Aborted` を経て、切断（`Engine Crashed/Exited`）で解放される。
 // - EOF の通知（K13 の3つの列）は欠けずに出る。
 // - 配信ミックスの子とオケの入力の選択は残る（主の EOF で捨てない）。
 #[test]
@@ -749,7 +749,7 @@ fn exited_payload(recorder: &emit::Recorder) -> serde_json::Value {
 }
 
 // S1（F1b-0b-1 で反転済み。設計 9.8・T2）：書き込みを始めていない VST の操作は、終了の原因に載らない。
-// (i) `begin` が先：登録は通るが writer は書かず（`Aborted`）、原因は `unknown`。待ち手は `Eof` で解放される。
+// (i) `begin` が先：登録は通るが writer は書かず（`Aborted`）、原因は `unknown`。待ち手は切断で解放される。
 // (ii) EOF の競りが先：`begin` は `CLOSED`。登録は起きない。
 #[test]
 fn an_unsent_vst_operation_is_not_named_as_the_exit_cause() {

@@ -272,7 +272,7 @@ impl Reader {
     }
 
     /// stdout の終端（2.4）。先に接続を EOF で閉じる競りを行う。「閉じた」は `LinkCell` だけで決まる。
-    /// 勝った側だけが、通知を出し、待ち手へ `Eof` を送る。
+    /// 勝った側だけが、通知を出した後で待ち手を切断で解放する。
     pub(super) fn finish(&self) {
         log::warn!("Engine stdout closed.");
         // 意図した停止、または Host の切り離しが先なら、通知は出さず、待ち手は切断で解放されている。
