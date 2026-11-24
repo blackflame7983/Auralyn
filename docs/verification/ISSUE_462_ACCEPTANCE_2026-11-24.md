@@ -1,0 +1,55 @@
+# #462 実機確認の記録（実際に落ちる・固まる VST での確認）
+
+- 日付：2026-11-24
+- 基点：main `56662ee5`（ブランチ `codex/vst-crash-462`）。製品のコードは変えていない（変更は試験用の VST3 と文書だけ）。
+- 目的：#477・#483・#484・#487 の実装が、模擬ではなく実際に落ちる VST で期待どおり働くかを確かめる。
+- 確認の範囲：実アプリでの画面・ログ・保存状態の確認。実音・聴感・長時間運転の合格ではない。
+
+## 使ったもの
+
+| 項目 | 内容 |
+|---|---|
+| 試験用 VST | `src-tauri/examples/crash_vst3.rs`（「Auralyn Crash Test」）。release ビルド。組み立て方は [TESTING.md](../TESTING.md) の「落ちる・固まるVSTでの実機の確認（#462）」。最後の DLL の SHA-256 `79C739036536D7C1B9258EC84E55B17CDC097981165BD6A22A4DA70C9A136A69` |
+| Host | debug ビルド。`npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json`、Tauri MCP CLI 0.13.2 で操作 |
+| 音声エンジン | **release** の `audio_engine.exe`（SHA-256 `8D88BFD71550C75C2510C8FBB17D3D4B34A9EEFE9A515068D46CD54643E91D8A`）を `target\debug\audio_engine.exe` に写して使った。理由：今のソースの debug の子は、機器を開く `Start` で `thread 'main' has overflowed its stack` により落ちる（[TESTING.md](../TESTING.md) の W 群の注記、#829。この確認の初回にも再現した）。確認の後、元の debug の子へ戻した |
+| 組み合わせ | ラックは「Acon Digital Limit」（ほかの VST の役）と試験用 VST。音声は WASAPI の既定の入出力で動かした |
+| 利用者のデータ | `%APPDATA%\com.kuro7983.auralynhost`、`%LOCALAPPDATA%\com.kuro7983.auralynhost`（WebView の localStorage を含む）、`%LOCALAPPDATA%\Auralyn` を確認の前に退避し、終了後に元を消して写しを戻した。ファイル数・サイズ・更新時刻が一致（0 件の食い違い）。 |
+
+スクリーンショットはすべて `C:\Users\black\AppData\Local\Temp\claude\3dbb37881e860599\6aed8848-3157-40b6-88df-a08707423617\scratchpad\shots\` の下（以下は番号だけ記す）。
+
+## 場面ごとの結果
+
+| # | 場面 | 結果 | 根拠 |
+|---|---|---|---|
+| 1 | `load` | 合格 | 音声を動かした状態で、flag `load` のまま試験用 VST を追加した。約 0.3 秒で音声エンジンが落ち、復旧画面に「停止直前に操作中だったVST（原因未確定）」と VST のパス、「Auralyn Crash Test.vst3の読み込みの途中で音声エンジンが停止しました。」が出た（15）。「このVSTを除いて再試行」で音声が再開し、Limit が戻り、試験用 VST は入らなかった（16）。ログ：`Audio engine exited: ExitPayload { cause: "vst_operation", op: Some("load"), path: Some(...), class_id: Some("524E1C7A…") }` |
+| 2 | 復元の途中（`set_state`） | 合格 | 状態は 12 文字（8 バイト `AURALYN1`）を保存済み。flag `set_state` にしてアプリを終了し、起動し直した。自動の復元で落ち、操作は `restore`、「Auralyn Crash Test.vst3の復元の途中で音声エンジンが停止しました。」（24）。「除いて再試行」で Limit が戻り、Home に「一部のVSTを復元できていません」「読み込めていないVST：Auralyn Crash Test」、VST ページにも同じ表示（25・26）。保存セッション（localStorage）は Limit 456 文字・試験用 VST 12 文字のまま変わらず、自動保存は止まったまま。flag を消して「保存済みの並びを読み直す」で両方が戻った（27） |
+| 3 | `open_editor` | 合格 | 「Auralyn Crash Testの編集画面を開く操作の途中で音声エンジンが停止しました。」（28）。ログは `op: Some("open_editor")` に `plugin_id`・`name` つき。「除いて再試行」で試験用 VST だけが外れた（29） |
+| 4 | `get_state` | 合格 | VST の行を操作して自動保存を起こすと落ち、「Auralyn Crash Testの状態の取得の途中で音声エンジンが停止しました。」（30・31）。取得は VST ごとの要求なので VST が特定できる |
+| 5a | `process`（音声が動いている間に VST を読み込む） | 合格（注あり） | `cause: "unknown"`、文言は「音声エンジンが停止しました。原因のVSTは特定できません。」（32）。ただし同じ画面に「停止直前に操作中だったVST（原因未確定）」として試験用 VST のパスも出た（読み込み・復元中の印から。後述の観察 3） |
+| 5b | `process`（音声を止めてから開始） | 合格（注あり） | 開始の直後に落ちると、Host は機器の問題として扱う：`cause: "device_open"`、「機器を開く途中、または音声を始めた直後に停止しました。原因は確定していません。」。VST は名指しされない。ボタンは「機器を開かずに止めたままにする／別の機器を選ぶ／全セッションを再読み込み／保存済み構成を保持してVSTなしで再開」で、「このVSTを除いて再試行」はない（33）。VST を断定しない点は期待どおり。除外はできない（観察 4） |
+| 6 | `hang:open_editor` | 合格（画面の表示は未実装） | 編集を開く操作から約 6 秒で `Control stall: command=OpenEditor plugin_id=... module=Some("Auralyn Crash Test.vst3") elapsed_ms=5927` がエラーログ（エンジンの標準出力経由の `audio_engine::core::control_stall`）に出た。約 30 秒で「Force Killing Audio Engine」により切り離され、復旧画面（「音声エンジンとの通信が切れました」と VST のパス、除外ボタンあり）が出た（37・38）。6〜30 秒の間は画面に何も出ない（既知の制限 (c)） |
+| 7 | 通常の終了と再起動 | 合格 | flag なしで `quit_app`。残るプロセスなし。再起動で音声が自動で始まり、復旧画面は出ず、ラック（Limit のみ → 後で Limit と試験用 VST）が復元された（21・40）。復旧画面を出したまま終了して再起動した場合も、復旧画面は出なかった（36） |
+
+## 観察（期待どおりでない点・気づき。製品のコードは直していない）
+
+1. 復旧画面の本文で「原因は確定していません。」と「停止の原因は確定していません。」が続けて2回出る（全場面、15・24・28 など）。
+2. `load` では Host が VST の表示名を持たないので、VST の名前の代わりに DLL の完全なパスを出す（本文は「Auralyn Crash Test.vst3の…」とファイル名）。復元・編集・状態の取得では名前が出る。
+3. 5a で、文言「原因のVSTは特定できません」と「停止直前に操作中だったVST（原因未確定）」が同時に出る。後者は読み込み・復元中の印（`vst_host_pending_plugin`）による従来の候補で、この場面では復元の直後だったため試験用 VST と一致した。無関係な読み込み中の VST を候補に出す可能性がある。未確認。
+4. 5b のとおり、音声の開始直後に VST が落ちると「機器の問題」として扱われ、VST を除く操作が出ない。VST の除外は「保存済み構成を保持してVSTなしで再開」のみ。
+5. 場面 2 で、除外後の表示は「読み込めていないVST」で、「未復元」という語は使っていない。
+6. 「VSTを追加」を開いた直後に「プラグイン一覧を取得できませんでした」が出て、「再試行」で解消することが2回あった（起動直後のスキャンと重なったとみられる。#462 とは別）。
+7. 初回の debug の子による失敗の後、Home に「VSTの復元を中断しました」が出て、VST の自動保存が止まった（変更が保存されない）。「保存済みの並びを読み直す」で解除できた。debug の子の失敗（#829）に由来する。
+
+## 確かめていないこと
+
+- 機器を開く途中の終了：この VST では起こせない。自動の試験だけ。
+- `processing_setup`・`remove`・`resume` の実機での停止（試験用 VST には `processing_setup` の指定があるが、実機では確かめていない）。
+- 保存状態の「内容」の一致：長さ（12 文字）と、除外の前後で変わらないことだけ。バイト列の一致は見ていない。
+- release の Host、インストーラー、MSIX での確認。debug の Host と release の子の組み合わせだけ。
+- 実音・聴感・長時間運転。確認は画面・ログ・保存状態のみ。
+- 配信ミックスの子（`--post-mix-worker`）の中で落ちる場合。
+
+## 既知の制限（利用者の決定。作らない）
+
+- (b) 除外した VST を1本ずつ戻す画面は作らない。戻すのは「保存済みの並びを読み直す」（ラック全体）だけ。
+- (c) 制御スレッドが固まった間（検出から切り離しまで、本確認で約 6〜30 秒）の画面の表示は作らない。記録はエラーログの `Control stall: command=… plugin_id=… module=…`（コマンド名・VST の id・止まった位置の DLL 名）だけ。DLL 名は止まった位置の DLL で、VST が眠って待っている間は `ntdll.dll` になる（試験用 VST を最初に眠らせた回は `ntdll.dll`、回り続ける作りに変えた後は VST の DLL 名）。
