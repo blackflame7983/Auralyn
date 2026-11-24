@@ -1,6 +1,6 @@
 //! 子の stdout を読み、応答の待ち手と通知へつなぐ（接続ごとに1本のスレッド）。
 //!
-//! ホストのロックは持たない・取らない。状態の変更は `LinkCell::enter`（閉鎖と不可分）の中だけで行い、
+//! ホストのロックは持たない・取らない。状態の変更は epoch で古い接続を弾き、
 //! 通知は `emit_order` を取った後に接続を確かめてから、列の全体を出す。
 use super::*;
 use crate::audio::emit::Notifier;
@@ -84,7 +84,7 @@ impl Reader {
                 });
             }
             EngineEvent::MixingSourceFailed | EngineEvent::MixingOutputFailed => {
-                if !self.link.enter(|| conditions.engine_changed(epoch)) {
+                if !conditions.engine_changed(epoch) {
                     return;
                 }
                 let name = if matches!(event, EngineEvent::MixingSourceFailed) {
@@ -99,7 +99,7 @@ impl Reader {
             }
             EngineEvent::Log(s) => log::info!("[Engine] {}", s),
             EngineEvent::Error(s) => {
-                if !self.link.enter(|| conditions.engine_event(epoch, false)) {
+                if !conditions.engine_event(epoch, false) {
                     return;
                 }
                 log::error!("[Engine] {}", s);
@@ -131,7 +131,7 @@ impl Reader {
                 stream_generation,
                 ended_stream_generation,
             } => {
-                if !self.link.enter(|| conditions.engine_event(epoch, false)) {
+                if !conditions.engine_event(epoch, false) {
                     return;
                 }
                 self.emit_chain(|c| {
@@ -168,7 +168,7 @@ impl Reader {
                 buffer_size,
                 stream_generation,
             } => {
-                if !self.link.enter(|| conditions.engine_event(epoch, true)) {
+                if !conditions.engine_event(epoch, true) {
                     return;
                 }
                 self.emit_chain(|c| {
@@ -192,12 +192,7 @@ impl Reader {
                 duration_ms,
             } => {
                 let active = matches!(state.as_str(), "recording" | "playing");
-                if !self.link.enter(|| {
-                    self.voice_activity.store(active, Ordering::Release);
-                    true
-                }) {
-                    return;
-                }
+                self.voice_activity.store(active, Ordering::Release);
                 #[derive(serde::Serialize, Clone)]
                 struct VoiceCheckStatePayload {
                     state: String,
@@ -295,11 +290,9 @@ impl Reader {
             let _ = c.emit("audio-engine-exited", exit);
             let _ = c.emit("audio-error", "Audio Engine Process Exited (Crash?)");
         });
-        // 通知を出し終えてから、待っている呼び出しを解放する。
+        // 通知を出し終えてから、待っている呼び出しを切断で解放する。
         self.link.mark_notified();
-        if let Some(waiter) = waiter {
-            let _ = waiter.send(ReplyOutcome::Eof);
-        }
+        drop(waiter);
     }
 }
 

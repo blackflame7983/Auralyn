@@ -1,13 +1,13 @@
 //! 子との接続の状態の正本。開閉・閉じた理由・応答の待ち・操作の記録を、1つのロックの下の状態機械にまとめる。
 //!
 //! 勝敗が決めるのは「誰が終了の通知を出すか」だけ。回収（子・writer・応答の待ち）は勝敗に関係なく行う。
-//! ロックは葉。持つ間は、メモリの更新（`enter` の効果は、ロックを取らない原子操作だけ）と待たない `mpsc` の送信・破棄だけを
-//! する。例外は `wait_notified` の待ち。
+//! ロックは葉。持つ間は、メモリの更新と待たない `mpsc` の送信・破棄だけをする。例外は `wait_notified` の待ち。
 use super::engine_exit::{ExitPayload, OperationLog};
 use super::replies::{ReplyOutcome, CLOSED};
 use crate::ipc::{Command, Response};
 use anyhow::{anyhow, Result};
-use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
@@ -26,37 +26,10 @@ pub(super) enum CloseCause {
     ReplyTimeout,
 }
 
-const OPEN: u8 = 0;
-
-impl CloseCause {
-    fn code(self) -> u8 {
-        match self {
-            Self::Intentional => 1,
-            Self::Eof => 2,
-            Self::WriteFailed => 3,
-            Self::WriteTimeout => 4,
-            Self::ReplyTimeout => 5,
-        }
-    }
-
-    fn from_code(code: u8) -> Option<Self> {
-        match code {
-            1 => Some(Self::Intentional),
-            2 => Some(Self::Eof),
-            3 => Some(Self::WriteFailed),
-            4 => Some(Self::WriteTimeout),
-            5 => Some(Self::ReplyTimeout),
-            _ => None,
-        }
-    }
-}
-
 enum State {
     Idle,
-    /// 要求を登録した。writer はまだ書き込みを始めていない。
-    Registered(Sender<ReplyOutcome>),
-    /// writer が書き込みを始めた。
-    InFlight(Sender<ReplyOutcome>),
+    /// 応答を待っている（書き込みを始めたかどうかは操作の記録が持つ）。
+    Waiting(Sender<ReplyOutcome>),
     Closed(CloseCause),
 }
 
@@ -94,97 +67,47 @@ impl Refused {
 pub(super) struct LinkCell {
     inner: Mutex<Inner>,
     notified: Condvar,
-    /// 開閉の鏡。正本は `inner`。遷移のたびに、ロックの中で書く。
-    phase: AtomicU8,
     /// 試験の継ぎ目：`wait_notified` に入った回数。
     #[cfg(test)]
     waits_entered: std::sync::atomic::AtomicUsize,
-    /// 試験の継ぎ目：ロックを取ろうとして、すでに持たれていた回数。
-    #[cfg(test)]
-    contended: std::sync::atomic::AtomicUsize,
-}
-
-/// 試験の継ぎ目：`enter` が、接続の確認を通った直後・状態の変更の前に、一度だけ呼ぶ（試験のスレッドごと）。
-/// ロックを持ったまま呼ばれる。
-#[cfg(test)]
-pub(super) mod after_check_before_effect {
-    use std::cell::RefCell;
-
-    thread_local! {
-        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
-    }
-
-    pub(in crate::audio) fn set(hook: impl FnOnce() + 'static) {
-        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
-    }
-
-    pub(super) fn run() {
-        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
-            hook();
-        }
-    }
 }
 
 impl LinkCell {
-    fn with(state: State, phase: u8) -> Self {
+    fn with(state: State) -> Self {
         Self {
             #[cfg(test)]
             waits_entered: std::sync::atomic::AtomicUsize::new(0),
-            #[cfg(test)]
-            contended: std::sync::atomic::AtomicUsize::new(0),
             inner: Mutex::new(Inner {
                 state,
                 eof_notified: false,
                 log: OperationLog::default(),
             }),
             notified: Condvar::new(),
-            phase: AtomicU8::new(phase),
         }
     }
 
     pub(super) fn open() -> Self {
-        Self::with(State::Idle, OPEN)
+        Self::with(State::Idle)
     }
 
     /// 子のいない状態。接続を作る前と、手放した後。
     pub(super) fn closed() -> Self {
-        let cause = CloseCause::Intentional;
-        Self::with(State::Closed(cause), cause.code())
+        Self::with(State::Closed(CloseCause::Intentional))
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        #[cfg(test)]
-        match self.inner.try_lock() {
-            Ok(guard) => return guard,
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => return poisoned.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                self.contended.fetch_add(1, Ordering::AcqRel);
-            }
-        }
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// reader が、状態の変更と通知の前に1回呼ぶ。閉鎖と同じロックの下で「閉じていない」を確かめ、
-    /// 閉じていなければ `effect`（ロックを取らない原子操作だけ）を行って、その結果を返す。
-    /// 閉じていれば `false`（`effect` は呼ばない）。`close` が戻った後は、`effect` は走らない。
-    pub(super) fn enter(&self, effect: impl FnOnce() -> bool) -> bool {
-        let inner = self.lock();
-        if matches!(inner.state, State::Closed(_)) {
-            return false;
-        }
-        #[cfg(test)]
-        after_check_before_effect::run();
-        let proceed = effect();
-        drop(inner);
-        proceed
-    }
-
     pub(super) fn is_open(&self) -> bool {
-        self.phase.load(Ordering::Acquire) == OPEN
+        !matches!(self.lock().state, State::Closed(_))
     }
 
     pub(super) fn cause(&self) -> Option<CloseCause> {
-        CloseCause::from_code(self.phase.load(Ordering::Acquire))
+        match self.lock().state {
+            State::Closed(cause) => Some(cause),
+            State::Idle | State::Waiting(_) => None,
+        }
     }
 
     /// 応答の待ちを登録する。`command` があれば、その操作の記録も始める。
@@ -195,12 +118,12 @@ impl LinkCell {
     fn try_begin(&self, command: Option<&Command>) -> Result<Receiver<ReplyOutcome>, Refused> {
         let mut inner = self.inner.lock().map_err(|_| Refused::Poisoned)?;
         match inner.state {
-            State::Registered(_) | State::InFlight(_) => return Err(Refused::Busy),
+            State::Waiting(_) => return Err(Refused::Busy),
             State::Closed(_) => return Err(Refused::Closed),
             State::Idle => {}
         }
         let (sender, receiver) = mpsc::channel();
-        inner.state = State::Registered(sender);
+        inner.state = State::Waiting(sender);
         match command {
             Some(command) => inner.log.begin(command, Instant::now()),
             None => inner.log.begin_untracked(),
@@ -211,18 +134,10 @@ impl LinkCell {
     /// writer が書き込みの直前に呼ぶ。閉じていれば `false`（書かない）。
     pub(super) fn mark_sent(&self) -> bool {
         let mut inner = self.lock();
-        match std::mem::replace(&mut inner.state, State::Idle) {
-            State::Registered(sender) => {
-                inner.state = State::InFlight(sender);
+        match inner.state {
+            State::Closed(_) => false,
+            State::Waiting(_) => {
                 inner.log.mark_sent();
-                true
-            }
-            State::Closed(cause) => {
-                inner.state = State::Closed(cause);
-                false
-            }
-            State::InFlight(sender) => {
-                inner.state = State::InFlight(sender);
                 true
             }
             State::Idle => true,
@@ -242,13 +157,11 @@ impl LinkCell {
             return false;
         }
         inner.log.response(&response, Instant::now());
-        let (State::Registered(sender) | State::InFlight(sender)) =
-            std::mem::replace(&mut inner.state, State::Idle)
-        else {
+        let State::Waiting(sender) = std::mem::replace(&mut inner.state, State::Idle) else {
             return false;
         };
         // 待ち手が受け取りをやめていても、応答の消費は完了する。
-        let _ = sender.send(ReplyOutcome::Response {
+        let _ = sender.send(ReplyOutcome {
             resp: Box::new(response),
             received_at,
         });
@@ -258,7 +171,7 @@ impl LinkCell {
     /// 待ちを取り消す。閉じた状態は変えない。
     pub(super) fn cancel(&self) {
         let mut inner = self.lock();
-        if matches!(inner.state, State::Registered(_) | State::InFlight(_)) {
+        if matches!(inner.state, State::Waiting(_)) {
             inner.state = State::Idle;
         }
     }
@@ -270,9 +183,8 @@ impl LinkCell {
             return None;
         }
         let previous = std::mem::replace(&mut inner.state, State::Closed(CloseCause::Eof));
-        self.phase.store(CloseCause::Eof.code(), Ordering::Release);
         let waiter = match previous {
-            State::Registered(sender) | State::InFlight(sender) => Some(sender),
+            State::Waiting(sender) => Some(sender),
             State::Idle | State::Closed(_) => None,
         };
         let exit = inner.log.exit(Instant::now());
@@ -287,7 +199,6 @@ impl LinkCell {
             return false;
         }
         drop(std::mem::replace(&mut inner.state, State::Closed(cause)));
-        self.phase.store(cause.code(), Ordering::Release);
         match cause {
             CloseCause::WriteFailed | CloseCause::WriteTimeout => inner.log.abandon(),
             CloseCause::ReplyTimeout => inner.log.timeout(),
@@ -326,34 +237,18 @@ impl LinkCell {
     #[cfg(test)]
     pub(super) fn set_open_for_test(&self, open: bool) {
         let mut inner = self.lock();
-        let (state, phase) = if open {
-            (State::Idle, OPEN)
+        inner.state = if open {
+            State::Idle
         } else {
-            let cause = CloseCause::Intentional;
-            (State::Closed(cause), cause.code())
+            State::Closed(CloseCause::Intentional)
         };
-        inner.state = state;
         inner.eof_notified = false;
-        self.phase.store(phase, Ordering::Release);
-    }
-
-    /// 試験で、ロックを持ったまま `f` を呼ぶ（鏡の読み取りがロックを待たないことの確認用）。
-    #[cfg(test)]
-    pub(super) fn hold_for_test<R>(&self, f: impl FnOnce() -> R) -> R {
-        let _held = self.lock();
-        f()
     }
 
     /// 試験で、`wait_notified` に入った回数。
     #[cfg(test)]
     pub(super) fn waits_entered_for_test(&self) -> usize {
         self.waits_entered.load(Ordering::Acquire)
-    }
-
-    /// 試験で、ロックを取ろうとして、すでに持たれていた回数（`close` が `enter` を待ったことの観測）。
-    #[cfg(test)]
-    pub(super) fn lock_contended_for_test(&self) -> usize {
-        self.contended.load(Ordering::Acquire)
     }
 
     #[cfg(test)]
@@ -371,8 +266,7 @@ impl LinkCell {
     pub(super) fn shape_for_test(&self) -> Shape {
         match self.lock().state {
             State::Idle => Shape::Idle,
-            State::Registered(_) => Shape::Registered,
-            State::InFlight(_) => Shape::InFlight,
+            State::Waiting(_) => Shape::Waiting,
             State::Closed(cause) => Shape::Closed(cause),
         }
     }
@@ -382,8 +276,7 @@ impl LinkCell {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Shape {
     Idle,
-    Registered,
-    InFlight,
+    Waiting,
     Closed(CloseCause),
 }
 
@@ -428,10 +321,7 @@ mod tests {
     }
 
     fn response_of(outcome: ReplyOutcome) -> Response {
-        match outcome {
-            ReplyOutcome::Response { resp, .. } => *resp,
-            ReplyOutcome::Eof => panic!("EOF ではなく応答のはず"),
-        }
+        *outcome.resp
     }
 
     fn cause_of(exit: &ExitPayload) -> String {
@@ -533,7 +423,7 @@ mod tests {
         let link = LinkCell::open();
         assert_eq!(link.shape_for_test(), Shape::Idle);
         let _rx = link.begin(Some(&load())).unwrap();
-        assert_eq!(link.shape_for_test(), Shape::Registered);
+        assert_eq!(link.shape_for_test(), Shape::Waiting);
         assert!(link.with_log_for_test(|log| log.in_flight_for_test()));
         assert!(link
             .begin(None)
@@ -541,10 +431,9 @@ mod tests {
             .to_string()
             .contains("前の音声操作の応答待ちです"));
         assert!(link.mark_sent());
-        assert_eq!(link.shape_for_test(), Shape::InFlight);
+        assert_eq!(link.shape_for_test(), Shape::Waiting);
         assert!(link.begin(None).is_err(), "書き込み中も待ちは1件");
         assert!(link.mark_sent(), "二度目も書いてよい");
-        assert_eq!(link.shape_for_test(), Shape::InFlight);
         assert!(link.deliver(Response::Success));
         assert_eq!(link.shape_for_test(), Shape::Idle);
         assert!(link.begin(None).is_ok());
@@ -588,11 +477,8 @@ mod tests {
         assert!(!link.close(CloseCause::WriteFailed));
         assert!(!link.close(CloseCause::ReplyTimeout));
         assert_eq!(cause_of(&win.exit), "vst_operation");
-        win.waiter
-            .expect("送り側は reader の手にある")
-            .send(ReplyOutcome::Eof)
-            .unwrap();
-        assert!(matches!(waiter.recv().unwrap(), ReplyOutcome::Eof));
+        drop(win.waiter.expect("送り側は reader の手にある"));
+        assert!(waiter.recv().is_err());
     }
 
     // T4：負けた `close` は、操作の記録に触れない。終了の原因は、先に閉じた側が採る本当の VST のまま。
@@ -686,13 +572,9 @@ mod tests {
         let waiter = link.begin(None).unwrap();
         let stamp = Instant::now() - Duration::from_secs(3);
         assert!(link.deliver_at(Response::Success, stamp));
-        match waiter.recv().unwrap() {
-            ReplyOutcome::Response { received_at, resp } => {
-                assert_eq!(received_at, stamp);
-                assert!(matches!(*resp, Response::Success));
-            }
-            ReplyOutcome::Eof => panic!("応答のはず"),
-        }
+        let ReplyOutcome { received_at, resp } = waiter.recv().unwrap();
+        assert_eq!(received_at, stamp);
+        assert!(matches!(*resp, Response::Success));
         let loaded = Response::PluginLoaded {
             id: "id-a".into(),
             name: "Echo".into(),
@@ -809,6 +691,8 @@ mod tests {
         assert!(!link.deliver(Response::Success));
         link.cancel();
         assert!(link.mark_sent());
+        link.mark_notified();
+        assert!(link.is_open());
         assert!(link.close_eof().is_some());
         assert!(!link.close(CloseCause::Intentional));
     }

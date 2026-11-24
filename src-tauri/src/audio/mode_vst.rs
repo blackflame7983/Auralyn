@@ -568,13 +568,13 @@ impl AudioHost {
             }
             match pending.receiver.try_recv() {
                 // 期限の後に届いた応答は、受け取りが遅れなくても期限切れとして扱う。
-                Ok(ReplyOutcome::Response { received_at, .. })
+                Ok(ReplyOutcome { received_at, .. })
                     if received_at > pending.sent + pending.limit =>
                 {
                     self.fail_mode_deadline(tx, "VST切替の応答が不明です");
                     return;
                 }
-                Ok(ReplyOutcome::Response { resp, .. }) => {
+                Ok(ReplyOutcome { resp, .. }) => {
                     // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
                     if self.connection_lost() {
                         self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
@@ -593,7 +593,7 @@ impl AudioHost {
                     }
                 }
                 // 切断した接続は、復旧の経路へ進む（ロールバックを始めない）。
-                Ok(ReplyOutcome::Eof) | Err(TryRecvError::Disconnected) => {
+                Err(TryRecvError::Disconnected) => {
                     self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
                     return;
                 }
@@ -1796,7 +1796,7 @@ pub(super) mod tests {
             transaction.journaled = true;
             host.set_link_for_test(true);
             transaction.pending = Some(Pending {
-                receiver: link_seam::begin_request(&host, None).unwrap(),
+                receiver: host.link.begin(None).unwrap(),
                 writer: None,
                 sent: Instant::now(),
                 limit: Duration::from_secs(10),
@@ -2152,13 +2152,13 @@ pub(super) mod tests {
             transaction.condition_pending = Some(host.conditions.begin());
             let (_writer_sender, writer) = std::sync::mpsc::channel();
             transaction.pending = Some(Pending {
-                receiver: link_seam::begin_request(&host, None).unwrap(),
+                receiver: host.link.begin(None).unwrap(),
                 writer: Some(writer),
                 sent: Instant::now(),
                 limit: Duration::from_secs(10),
             });
             host.mode_vst.transaction = Some(transaction);
-            link_seam::deliver(&host, IpcResponse::Success);
+            host.link.deliver(IpcResponse::Success);
             host.poll_mode_vst();
             assert!(host
                 .mode_vst
@@ -2319,7 +2319,7 @@ pub(super) mod tests {
 
     fn pending(host: &AudioHost, writer: Option<WriteResult>) -> Pending {
         Pending {
-            receiver: link_seam::begin_request(host, None).unwrap(),
+            receiver: host.link.begin(None).unwrap(),
             writer: writer.map(write_done),
             sent: Instant::now(),
             limit: Duration::from_secs(10),
@@ -2337,22 +2337,15 @@ pub(super) mod tests {
 
     // T11：切断した接続の応答（EOF・競りに負けた EOF の切断）は、`Engine Crashed/Exited` に写して復旧の経路へ進む。
     #[test]
-    fn t11_an_eof_or_disconnected_reply_maps_to_engine_exited_and_never_rolls_back() {
-        for eof in [true, false] {
-            let mut host = open_link_host();
-            let mut transaction = journaled(Step::Restore(0));
-            transaction.pending = Some(pending(&host, None));
-            host.mode_vst.transaction = Some(transaction);
-            let sender = link_seam::win_eof(&host).unwrap();
-            if eof {
-                sender.send(ReplyOutcome::Eof).unwrap();
-            } else {
-                drop(sender);
-            }
-            host.poll_mode_vst();
-            failed_with_recovery(&host, "Engine Crashed/Exited");
-            assert!(host.child.is_none());
-        }
+    fn t11_a_disconnected_reply_maps_to_engine_exited_and_never_rolls_back() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        drop(link_seam::win_eof(&host).unwrap());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.child.is_none());
     }
 
     // T11：書き込みの結果を、切断の検出より先に判定する。EOF が先に見えていても、書き込みの失敗が結果になる。
@@ -2382,7 +2375,7 @@ pub(super) mod tests {
         assert!(host.mode_vst.busy(), "EOF の結果が届くまで待つ");
         let waiting = host.mode_vst.transaction.as_ref().unwrap();
         assert!(waiting.pending.as_ref().unwrap().writer.is_none());
-        sender.send(ReplyOutcome::Eof).unwrap();
+        drop(sender);
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
         // 期限を過ぎても EOF の結果が来なければ、今の「応答が不明」で復旧の経路へ。
@@ -2432,7 +2425,8 @@ pub(super) mod tests {
         );
         failed_with_recovery(&host, "Engine Crashed/Exited");
         assert!(
-            !link_seam::operation_in_flight(&host) && !link_seam::operation_awaiting(&host),
+            !host.link.with_log_for_test(|log| log.in_flight_for_test())
+                && !link_seam::operation_awaiting(&host),
             "閉じた接続には、何も登録しない"
         );
         assert_eq!(
@@ -2458,7 +2452,7 @@ pub(super) mod tests {
         transaction.generation = host.engine_generation + 1;
         transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
         host.mode_vst.transaction = Some(transaction);
-        link_seam::deliver(&host, IpcResponse::Success);
+        host.link.deliver(IpcResponse::Success);
         host.poll_mode_vst();
         failed_with_recovery(&host, "音声エンジンの世代または接続が変わりました");
     }
@@ -2476,7 +2470,7 @@ pub(super) mod tests {
 
     /// 製品の経路（`mode_step_command` → `send_mode_command`）で送った保留。書き込みの段は省く。
     fn sent_pending(host: &mut AudioHost, step: Step, sent_ago: Duration) -> Pending {
-        link_seam::cancel(host);
+        host.link.cancel();
         host.writer = Some(writer::Writer::start(
             sinks::Recording::default(),
             host.link.clone(),
@@ -2540,7 +2534,7 @@ pub(super) mod tests {
             assert_eq!(pending.limit, expected);
             let written = pending.writer.take().unwrap();
             written.recv_timeout(Duration::from_secs(5)).unwrap();
-            link_seam::cancel(&host);
+            host.link.cancel();
         }
     }
 
@@ -2549,11 +2543,7 @@ pub(super) mod tests {
         let (mut host, recorder) = recorded_host();
         let pending = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(15));
         let received_at = pending.sent + Duration::from_secs(12);
-        assert!(link_seam::deliver_at(
-            &host,
-            silence_snapshot(false),
-            received_at
-        ));
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
         poll_with(&mut host, Step::SilenceBegin, pending);
         assert!(
             host.mode_vst.busy(),
@@ -2598,11 +2588,7 @@ pub(super) mod tests {
         let mut host = open_link_host();
         let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
         let received_at = pending.sent + Duration::from_secs(9);
-        assert!(link_seam::deliver_at(
-            &host,
-            silence_snapshot(false),
-            received_at
-        ));
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
         poll_with(&mut host, Step::SilencePoll, pending);
         assert!(
             host.mode_vst.busy(),
@@ -2614,11 +2600,7 @@ pub(super) mod tests {
         let mut host = open_link_host();
         let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
         let received_at = pending.sent + Duration::from_secs(11);
-        assert!(link_seam::deliver_at(
-            &host,
-            silence_snapshot(false),
-            received_at
-        ));
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
         poll_with(&mut host, Step::SilencePoll, pending);
         failed_with_recovery(&host, "VST切替の応答が不明です");
         assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
@@ -2636,12 +2618,12 @@ pub(super) mod tests {
             written.recv_timeout(Duration::from_secs(5)).unwrap().result,
             WriteResult::Ok
         ));
-        link_seam::deliver(&host, IpcResponse::Success);
+        host.link.deliver(IpcResponse::Success);
         let outcome = mode.receiver.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(
-            matches!(outcome, ReplyOutcome::Response { resp, .. } if matches!(*resp, IpcResponse::Success))
+            matches!(outcome, ReplyOutcome { resp, .. } if matches!(*resp, IpcResponse::Success))
         );
-        let slot = link_seam::reply_slot(&host);
+        let slot = host.link.clone();
         let observed = recording.clone();
         let reply = std::thread::spawn(move || {
             let started = Instant::now();
@@ -2786,10 +2768,7 @@ pub(super) mod tests {
         let mut transaction = journaled(Step::Restore(0));
         transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
         host.mode_vst.transaction = Some(transaction);
-        assert!(link_seam::deliver(
-            &host,
-            IpcResponse::Error("load refused".into())
-        ));
+        assert!(host.link.deliver(IpcResponse::Error("load refused".into())));
         host.link.close(CloseCause::Eof);
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");
@@ -2802,7 +2781,7 @@ pub(super) mod tests {
         let mut transaction = journaled(Step::Restore(0));
         transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
         host.mode_vst.transaction = Some(transaction);
-        link_seam::deliver(&host, IpcResponse::Error("load refused".into()));
+        host.link.deliver(IpcResponse::Error("load refused".into()));
         host.poll_mode_vst();
         let rolled = host.mode_vst.transaction.as_ref().unwrap();
         assert!(rolled.rollback);
@@ -2831,10 +2810,7 @@ pub(super) mod tests {
         let mut transaction = journaled(Step::Restore(0));
         transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
         host.mode_vst.transaction = Some(transaction);
-        assert!(link_seam::deliver(
-            &host,
-            IpcResponse::Error("load refused".into())
-        ));
+        assert!(host.link.deliver(IpcResponse::Error("load refused".into())));
         host.link.close(CloseCause::Eof);
         host.poll_mode_vst();
         failed_with_recovery(&host, "Engine Crashed/Exited");

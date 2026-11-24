@@ -21,20 +21,6 @@ thread_local! {
         const { std::cell::Cell::new((None, None)) };
     static EOF_WAIT_OVERRIDE: std::cell::Cell<Option<std::time::Duration>> =
         const { std::cell::Cell::new(None) };
-    static EOF_WAIT_EXCEEDED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-}
-
-/// 上限を過ぎて、通知の前に終了を返すことを、警告として1回記録する。
-pub(super) fn warn_eof_wait_exceeded() {
-    log::warn!("EOF の通知を待つ上限を過ぎたため、通知の前に終了を返します");
-    #[cfg(test)]
-    EOF_WAIT_EXCEEDED.with(|count| count.set(count.get() + 1));
-}
-
-/// このスレッドで、上限を過ぎた回数。
-#[cfg(test)]
-pub(super) fn eof_wait_exceeded_for_test() -> u32 {
-    EOF_WAIT_EXCEEDED.with(|count| count.get())
 }
 
 pub(super) fn eof_wait() -> std::time::Duration {

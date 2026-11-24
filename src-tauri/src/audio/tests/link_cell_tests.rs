@@ -1,4 +1,4 @@
-//! F1b-0b-1：`LinkCell` の試験のうち、reader・writer・Host をまたぐもの（設計 9.7 の T6・T8・T9）。
+//! F1b-0b-1：`LinkCell` の試験のうち、reader・writer・Host をまたぐもの（設計 9.7 の T6・T8）。
 //! 遷移の表そのもの（T1・T2）は `link.rs`、`mark_sent`（T3）は `writer.rs`、配信ミックス（T5）は
 //! `post_mix_life_tests.rs`、tick（T7）は `mode_vst.rs` にある。
 use super::compat_support::*;
@@ -83,16 +83,12 @@ fn paused_eof_reader(host: &AudioHost) -> (Pause, std::thread::JoinHandle<()>) {
 fn the_loser_waits_for_the_notices_without_holding_any_lock() {
     for late_response in [false, true] {
         let (mut host, observer) = silent_host();
-        let rx = link_seam::begin_request(&host, None).unwrap();
+        let rx = host.link.begin(None).unwrap();
         let limit = Duration::from_secs(10);
         let flushed_at = Instant::now() - Duration::from_secs(12);
         if late_response {
             let received_at = flushed_at + limit + Duration::from_secs(1);
-            assert!(link_seam::deliver_at(
-                &host,
-                IpcResponse::Success,
-                received_at
-            ));
+            assert!(host.link.deliver_at(IpcResponse::Success, received_at));
         }
         let (pause, reader_thread) = paused_eof_reader(&host);
         let link = host.link.clone();
@@ -159,12 +155,12 @@ fn the_notice_is_marked_only_after_the_chain_is_out() {
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
 
-// T6 (ii)：上限。reader を解放しないと、`EOF_WAIT` の後に `Engine Crashed/Exited` で戻り、警告は1回だけ。
+// T6 (ii)：上限。reader を解放しないと、`EOF_WAIT` の後に `Engine Crashed/Exited` で戻る。
 // そのあとで reader を解放しても、通知は1列だけ出る。
 #[test]
 fn the_wait_for_the_notices_is_capped_and_the_chain_is_not_doubled() {
     let (mut host, observer) = silent_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     writer::set_eof_wait_for_test(Some(Duration::from_millis(300)));
     let started = Instant::now();
@@ -178,7 +174,6 @@ fn the_wait_for_the_notices_is_capped_and_the_chain_is_not_doubled() {
         elapsed >= Duration::from_millis(300) && elapsed < Duration::from_secs(3),
         "待ちに足された時間は上限の近く: {elapsed:?}"
     );
-    assert_eq!(writer::eof_wait_exceeded_for_test(), 1, "警告は1回だけ");
     assert_eq!(count(&observer, "audio-engine-exited"), 0, "通知の前に返る");
     pause.release();
     reader_thread.join().unwrap();
@@ -197,13 +192,9 @@ fn the_wait_for_the_notices_is_capped_and_the_chain_is_not_doubled() {
 #[test]
 fn losing_to_something_other_than_eof_does_not_wait() {
     let (mut host, observer) = silent_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let received_at = Instant::now() - Duration::from_secs(1);
-    assert!(link_seam::deliver_at(
-        &host,
-        IpcResponse::Success,
-        received_at
-    ));
+    assert!(host.link.deliver_at(IpcResponse::Success, received_at));
     assert!(host.link.close(CloseCause::WriteFailed));
     writer::set_eof_wait_for_test(Some(Duration::from_secs(10)));
     let started = Instant::now();
@@ -224,7 +215,6 @@ fn losing_to_something_other_than_eof_does_not_wait() {
         elapsed < Duration::from_secs(3),
         "待たずに戻る: {elapsed:?}"
     );
-    assert_eq!(writer::eof_wait_exceeded_for_test(), 0);
     drop(host);
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
@@ -261,38 +251,5 @@ fn the_link_lock_is_not_held_while_the_reader_is_stuck_in_emit() {
     finishing.join().unwrap();
     assert_eq!(observer.recorder.names(), NOTICES);
     drop(host);
-    let _ = std::fs::remove_dir_all(&observer.dir);
-}
-
-// T9：鏡。`LinkCell` のロックを持たれていても、`is_open`・`cause`・通知の列の直前の確認は、ロックを待たずに戻る。
-// 遷移の直後の鏡は `Closed` を示す。
-#[test]
-fn the_mirror_is_read_without_the_lock_and_follows_the_transitions() {
-    let (host, observer) = scripted_parts([]);
-    let link = Arc::new(super::link::LinkCell::open());
-    let reader = reader::Reader {
-        link: link.clone(),
-        voice_activity: host.voice_activity.clone(),
-        notifier: host.emitter.clone(),
-        conditions: host.conditions.clone(),
-        epoch: host.conditions.new_engine(),
-        engine_generation: 1,
-        pause: None,
-    };
-    let reads = link.hold_for_test(|| {
-        let link = link.clone();
-        returns_promptly(
-            "ロックを持たれた間の鏡の読み取り",
-            move || {
-                reader.handle_event(EngineEvent::EditorOpened { id: "a".into() });
-                (link.is_open(), link.cause())
-            },
-        )
-    });
-    assert_eq!(reads, (true, None));
-    assert_eq!(observer.recorder.names(), ["plugin-editor-opened"]);
-    assert!(link.close(CloseCause::WriteFailed));
-    assert!(!link.is_open());
-    assert_eq!(link.cause(), Some(CloseCause::WriteFailed));
     let _ = std::fs::remove_dir_all(&observer.dir);
 }

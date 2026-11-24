@@ -3,7 +3,7 @@
 //! 順は門・`Recorder::block_after`・継ぎ目・到達の数で作る。`sleep` で順を作らない。
 use super::compat_support::*;
 use super::engine_life::{seam, EngineUnconfirmed, Role};
-use super::link::{after_check_before_effect, CloseCause};
+use super::link::CloseCause;
 use super::link_seam::reader_for;
 use super::*;
 use std::sync::atomic::AtomicU64;
@@ -139,38 +139,30 @@ fn revision(host: &AudioHost) -> Result<u64, String> {
     host.conditions.snapshot().map(|witness| witness.revision())
 }
 
-// Q1：S6 の反転。閉じた接続の reader は `voice_activity` を立てない。閉じる前なら立つ。
+// Q1：閉じた接続の reader が `voice_activity` を立てても、更新の確認は「ボイスチェック中」とは言わない。
+// 開いている間は、立っていれば断る。
 #[test]
-fn q1_a_closed_reader_cannot_raise_voice_activity() {
-    let (host, recorder) = open_host();
+fn q1_a_stale_voice_activity_does_not_block_an_update_once_the_link_is_closed() {
+    let (mut host, recorder) = open_host();
     let reader = reader_for(&host, 0);
     reader.handle_event(voice("recording"));
-    assert!(
-        host.voice_activity.load(Ordering::Acquire),
-        "開いている間は立つ"
-    );
-    reader.handle_event(voice("idle"));
-    assert!(!host.voice_activity.load(Ordering::Acquire));
-    reader.handle_event(voice("playing"));
-    assert!(host.voice_activity.load(Ordering::Acquire));
-    assert_eq!(recorder.names(), ["voice-check-state"; 3]);
+    assert_eq!(recorder.names(), ["voice-check-state"]);
+    let refusal = host.check_can_interrupt().unwrap_err().to_string();
+    assert!(refusal.contains("ボイスチェック"), "{refusal}");
     assert!(host.link.close(CloseCause::Intentional));
     host.voice_activity.store(false, Ordering::Release);
-    recorder.clear();
-    for state in ["recording", "playing", "idle"] {
-        reader.handle_event(voice(state));
-        assert!(
-            !host.voice_activity.load(Ordering::Acquire),
-            "閉じた後は立たない: {state}"
-        );
-    }
-    assert!(recorder.names().is_empty(), "通知も出ない");
+    reader.handle_event(voice("playing"));
+    assert!(
+        host.voice_activity.load(Ordering::Acquire),
+        "旧い書き込みは届く"
+    );
+    assert!(host.check_can_interrupt().is_ok());
 }
 
-// Q2：epoch が古くないまま接続だけが閉じているとき、状態を変える4種は何も変えず、通知も出さない。
+// Q2：接続が閉じられ、epoch が失効した後の旧い行は、状態を変える種類でも何も変えず、通知も出さない。
 // 接続が開いていれば、今のとおり変わり、通知が出る。
 #[test]
-fn q2_a_closed_reader_changes_no_conditions_for_each_gated_event() {
+fn q2_a_retired_reader_changes_no_conditions_for_each_gated_event() {
     let gated = [
         ("mixing-source", EngineEvent::MixingSourceFailed),
         ("mixing-output", EngineEvent::MixingOutputFailed),
@@ -192,7 +184,9 @@ fn q2_a_closed_reader_changes_no_conditions_for_each_gated_event() {
             recorder.clear();
             if closed {
                 assert!(host.link.close(CloseCause::Intentional));
+                host.conditions.retire_engine();
             }
+            let before = if closed { revision(&host) } else { before };
             reader.handle_event(event.clone());
             let after = revision(&host);
             if closed {
@@ -204,83 +198,6 @@ fn q2_a_closed_reader_changes_no_conditions_for_each_gated_event() {
             }
         }
     }
-}
-
-// Q3：確認と状態の変更は、閉鎖に対して不可分。確認の直後・効果の前の門（`enter` の中）に reader を止め、
-// 別スレッドで閉じる。`close` は `enter` のロックを待ち、効果が終わるまで戻らない。
-#[test]
-fn q3_close_is_atomic_with_the_check_and_the_state_change() {
-    // 門の中：効果は閉鎖より前の事象として残り、閉じる側の確定（`store(false)`）が後から上書きする。
-    for finalize in [false, true] {
-        let (host, _recorder) = open_host();
-        let reader = reader_for(&host, 0);
-        let link = host.link.clone();
-        let voice_activity = host.voice_activity.clone();
-        let (entered_tx, entered_rx) = mpsc::channel();
-        let (release_tx, release_rx) = mpsc::channel::<()>();
-        let reader_thread = std::thread::spawn(move || {
-            after_check_before_effect::set(move || {
-                entered_tx.send(()).unwrap();
-                release_rx.recv().unwrap();
-            });
-            reader.handle_event(voice("recording"));
-        });
-        entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-        let (done_tx, done_rx) = mpsc::channel();
-        let closer = {
-            let (link, voice_activity) = (link.clone(), voice_activity.clone());
-            std::thread::spawn(move || {
-                assert!(link.close(CloseCause::Intentional));
-                if finalize {
-                    voice_activity.store(false, Ordering::Release);
-                }
-                done_tx.send(()).unwrap();
-            })
-        };
-        wait_until("close が enter のロックを待つ", || {
-            link.lock_contended_for_test() == 1
-        });
-        assert!(
-            done_rx.try_recv().is_err(),
-            "close は、効果が終わるまで戻らない"
-        );
-        release_tx.send(()).unwrap();
-        reader_thread.join().unwrap();
-        closer.join().unwrap();
-        done_rx.recv().unwrap();
-        assert_eq!(
-            voice_activity.load(Ordering::Acquire),
-            !finalize,
-            "効果が先、閉鎖と確定が後（finalize={finalize}）"
-        );
-        assert!(!link.is_open());
-    }
-    // 門の前：閉じた後の `enter` は偽で、何も変わらない。
-    let (host, recorder) = open_host();
-    let reader = reader_for(&host, 0);
-    assert!(host.link.close(CloseCause::Intentional));
-    reader.handle_event(voice("recording"));
-    assert!(!host.voice_activity.load(Ordering::Acquire));
-    assert!(recorder.names().is_empty());
-    // `enter` の後・通知の列の前：通知は出ない。状態は閉鎖より前の事象として残り、確定が上書きする。
-    let (host, recorder) = open_host();
-    let epoch = host.conditions.new_engine();
-    let reader = reader_for(&host, epoch);
-    let notifier = host.emitter.clone();
-    std::thread::scope(|scope| {
-        notifier.chain(|_| {
-            let waiting = scope.spawn(|| reader.handle_event(started()));
-            wait_until("列が順序のロックの前に着く", || {
-                notifier.arrivals_for_test() == 1
-            });
-            assert!(host.link.close(CloseCause::Intentional));
-            drop(waiting);
-        });
-    });
-    assert!(recorder.names().is_empty());
-    assert!(revision(&host).is_ok(), "閉鎖より前の事象の状態は残る");
-    host.conditions.retire_engine();
-    assert!(revision(&host).is_err(), "確定が上書きする");
 }
 
 /// 閉じ方（`ensure_engine_running` の3経路）。
@@ -383,9 +300,7 @@ fn run_case(close: Close, clear: Clear, hold: Option<Hold>) {
             );
             assert!(!host.voice_activity.load(Ordering::Acquire));
             old_reader.handle_event(started());
-            old_reader.handle_event(voice("recording"));
             assert!(host.conditions.snapshot().is_err());
-            assert!(!host.voice_activity.load(Ordering::Acquire));
             assert!(stages
                 .lock()
                 .unwrap()
@@ -632,20 +547,6 @@ fn q9_the_failure_result_is_decided_and_returned_without_waiting_for_the_reader(
     }
 }
 
-// Q10：`LinkCell` のロックが poison されても、`enter`・`close`・`mark_notified` は panic せず進む。
-#[test]
-fn q10_a_poisoned_link_lock_does_not_break_enter_or_the_closers() {
-    let link = Arc::new(super::link::LinkCell::open());
-    let poisoner = link.clone();
-    let _ = std::thread::spawn(move || poisoner.hold_for_test(|| panic!("poison the link lock")))
-        .join();
-    assert!(link.enter(|| true), "poison でも、開いていれば効果を行う");
-    assert!(!link.enter(|| false), "効果の結果を返す");
-    link.mark_notified();
-    assert!(link.close(CloseCause::Intentional));
-    assert!(!link.enter(|| true), "閉じた後は偽");
-}
-
 /// `source` の中で、`marker` の次の `(` から、対応する `)` までの本文。
 fn spans<'a>(source: &'a str, marker: &str) -> Vec<&'a str> {
     let mut found = Vec::new();
@@ -691,25 +592,7 @@ fn body<'a>(source: &'a str, name: &str) -> &'a str {
 #[test]
 fn q11_the_state_changes_the_logs_and_the_waits_stay_where_the_design_puts_them() {
     let reader = include_str!("../reader.rs");
-    // 例外：`finish`（EOF の勝者。`enter` しない）。
     let production = reader.split("pub(super) fn finish").next().unwrap();
-    for needle in ["engine_event(", "engine_changed(", "voice_activity.store("] {
-        for (index, _) in production.match_indices(needle) {
-            let before = &production[..index];
-            let line_start = before.rfind('\n').map_or(0, |at| at + 1);
-            let recent: Vec<&str> = production[..index].lines().rev().take(3).collect();
-            assert!(
-                production[line_start..index].contains("self.link.enter(")
-                    || recent.iter().any(|line| line.contains("self.link.enter(")),
-                "状態の変更は `enter` の中だけ: {needle}"
-            );
-        }
-    }
-    for body in spans(production, "self.link.enter(") {
-        for banned in ["log::", "emit", "lock(", "recv", "sleep"] {
-            assert!(!body.contains(banned), "enter の効果に入れない: {banned}");
-        }
-    }
     for body in spans(production, "emit_chain(") {
         assert!(
             !body.contains("[Engine]"),
