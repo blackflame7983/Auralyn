@@ -1435,6 +1435,40 @@ describe('音楽鑑賞のセットアップの入力と出力（#806）', () => 
         expect(screen.getByRole('combobox', { name: message('ja', 'guide.copy.208') })).toHaveValue('CABLE Input (VB-Audio)');
     });
 
+    it('音楽鑑賞で聴く機器を選び直してから OBS へ選び直しても、出力は配信向けの仮想ケーブルになる', async () => {
+        inputs = [mic, device('CABLE Output', true)]; outputs = [cable, device('Headphones'), { ...device('Speakers'), is_default: false }];
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: message('ja', 'wizard.musicGoal') }));
+        const actions = () => within(screen.getByTestId('setup-actions'));
+        await waitFor(() => expect(actions().getByRole('button', { name: '次へ' })).toBeEnabled());
+        fireEvent.click(actions().getByRole('button', { name: '次へ' }));
+        fireEvent.change(screen.getByRole('combobox', { name: message('ja', 'guide.copy.206') }), { target: { value: 'Speakers' } });
+        fireEvent.click(actions().getByRole('button', { name: '戻る' }));
+        fireEvent.click(actions().getByRole('button', { name: '戻る' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        await waitFor(() => expect(actions().getByRole('button', { name: '次へ' })).toBeEnabled());
+        fireEvent.click(actions().getByRole('button', { name: '次へ' }));
+        expect(screen.getByRole('radio', { name: message('ja', 'guide.copy.202') })).toBeChecked();
+        expect(screen.getByRole('combobox', { name: message('ja', 'guide.copy.208') })).toHaveValue('CABLE Input (VB-Audio)');
+    });
+
+    it('音楽鑑賞で Windows の既定を CABLE Input に替えて再検出しても、表示した聴く機器を保つ', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [{ ...cable, is_default: false }, device('Headphones'), { ...device('Speakers'), is_default: false }];
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: message('ja', 'wizard.musicGoal') }));
+        const next = () => within(screen.getByTestId('setup-actions')).getByRole('button', { name: '次へ' });
+        await waitFor(() => expect(next()).toBeEnabled());
+        fireEvent.click(next());
+        const select = screen.getByRole('combobox', { name: message('ja', 'guide.copy.206') });
+        expect(select).toHaveValue('Headphones');
+        outputs = outputs.map(d => ({ ...d, is_default: d.name === cable.name }));
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'guide.copy.220') }));
+        await waitFor(() => expect(invoke).toHaveBeenCalledWith('get_audio_devices', expect.objectContaining({ forceRefresh: true })));
+        await waitFor(() => expect(screen.getByRole('button', { name: message('ja', 'guide.copy.220') })).toBeEnabled());
+        expect(screen.getByRole('combobox', { name: message('ja', 'guide.copy.206') })).toHaveValue('Headphones');
+        expect(next()).toBeEnabled();
+    });
+
     it('機器の読み込み中に音楽鑑賞を選んでも、読み込み後に既定の物理出力が入る', async () => {
         inputs = [device('CABLE Output', true)]; outputs = [cable, device('Headphones')];
         let release!: () => void;
