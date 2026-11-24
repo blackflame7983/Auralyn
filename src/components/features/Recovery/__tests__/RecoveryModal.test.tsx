@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RecoveryModal } from '../RecoveryModal';
-import type { AudioEngineExit } from '@/lib/audioEngineExit';
+import { rememberCrashedPlugin, type AudioEngineExit } from '@/lib/audioEngineExit';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 
@@ -118,6 +118,19 @@ it.each([undefined, { cause: 'unknown' }, { cause: 'vst_operation' }] as const)(
     ]);
     expect(buttons[0]).toHaveClass('bg-primary');
     expect(buttons[3]).not.toHaveClass('bg-primary');
+});
+
+it('原因が確定していないことは1回だけ伝える', () => {
+    render(<Example onClose={vi.fn()} exit={{ cause: 'vst_operation' }} />);
+    expect(dialog().textContent?.match(/確定していません/g)).toHaveLength(1);
+});
+
+it('特定できない次の終了で、前回の除外候補を出さない', () => {
+    rememberCrashedPlugin({ cause: 'vst_operation', op: 'load', path: 'A.vst3' });
+    rememberCrashedPlugin({ cause: 'unknown' });
+    render(<Example onClose={vi.fn()} exit={{ cause: 'unknown' }} />);
+    expect(screen.queryByText('A.vst3')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'このVSTを除いて再試行' })).toBeNull();
 });
 
 it('原因候補がない従来の終了では再読み込みを主ボタンにする', () => {
