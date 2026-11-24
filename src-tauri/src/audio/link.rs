@@ -207,6 +207,22 @@ impl LinkCell {
         true
     }
 
+    /// 応答の期限切れで閉じる。`close(ReplyTimeout)` と同じ後始末をし、勝てば、記録を捨てる前に
+    /// 書き込み済みの VST の操作を取り出して返す。
+    pub(super) fn close_reply_timeout(&self) -> (bool, Option<ExitPayload>) {
+        let mut inner = self.lock();
+        if matches!(inner.state, State::Closed(_)) {
+            return (false, None);
+        }
+        drop(std::mem::replace(
+            &mut inner.state,
+            State::Closed(CloseCause::ReplyTimeout),
+        ));
+        let exit = inner.log.timed_out_vst(Instant::now());
+        inner.log.timeout();
+        (true, exit)
+    }
+
     /// EOF の通知の列を出し終えたことを知らせる。通知の列のロックを放した後に呼ぶ。
     pub(super) fn mark_notified(&self) {
         self.lock().eof_notified = true;

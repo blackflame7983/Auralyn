@@ -202,6 +202,22 @@ impl OperationLog {
         self.in_flight = None;
     }
 
+    /// 応答の期限切れで切り離す前に、書き込み済みの VST の操作を原因として取り出す。
+    /// 機器を開く操作は含めない（期限の後も、ドライバーが開いている間は VST の責任と言えない）。
+    pub(super) fn timed_out_vst(&self, now: Instant) -> Option<ExitPayload> {
+        let pending = self
+            .in_flight
+            .as_ref()
+            .filter(|pending| pending.sent && pending.details.cause == "vst_operation")?;
+        let mut payload = pending.details.clone();
+        payload.elapsed_ms = Some(
+            now.saturating_duration_since(pending.started_at)
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
+        Some(payload)
+    }
+
     /// EOF の原因を採る。呼べるのは、接続を EOF で閉じる競りに勝った側だけ。
     pub(super) fn exit(&mut self, now: Instant) -> ExitPayload {
         // 開始後の監視中でも、書き込みを始めた現在のVST操作を優先する。

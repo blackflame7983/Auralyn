@@ -270,6 +270,63 @@ fn t13_a_lost_race_leaves_the_vst_operation_as_the_exit_cause() {
     let _ = std::fs::remove_dir_all(&observer.dir);
 }
 
+/// 期限切れで切り離し、そのとき出た通知の名前と、終了の通知の中身を返す。
+fn cut_off_after_sending(command: IpcCommand) -> (Vec<String>, Option<serde_json::Value>) {
+    let (mut host, observer) = silent_host();
+    observer.recorder.clear();
+    let rx = link_seam::register_sent_operation(&host, &command);
+    host.await_reply(
+        Ok(done_with(
+            WriteResult::Ok,
+            Instant::now() - Duration::from_secs(40),
+        )),
+        rx,
+        Duration::from_secs(30),
+    )
+    .unwrap_err();
+    assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    let names: Vec<String> = observer
+        .recorder
+        .names()
+        .into_iter()
+        .filter(|name| name.starts_with("audio-e"))
+        .collect();
+    let exited = observer
+        .recorder
+        .events()
+        .into_iter()
+        .find(|(name, _)| name == "audio-engine-exited")
+        .map(|(_, payload)| payload);
+    drop(host);
+    let _ = std::fs::remove_dir_all(&observer.dir);
+    (names, exited)
+}
+
+// T16：固まった VST の操作が期限で切り離されると、reader の EOF と同じ通知（終了→旧の文字列の audio-error）が出る。
+// 復旧画面が除外の候補を出せる。VST の操作でない命令は、今のまま「通信が切れました」だけ。
+#[test]
+fn t16_a_cut_off_vst_operation_is_reported_as_the_exit_cause() {
+    let (names, exited) = cut_off_after_sending(IpcCommand::OpenEditor {
+        id: "plugin-1".into(),
+    });
+    assert_eq!(
+        names,
+        ["audio-engine-exited", "audio-error"],
+        "終了の通知、旧の audio-error の順に1回ずつ"
+    );
+    let exited = exited.unwrap();
+    assert_eq!(exited["cause"], "vst_operation");
+    assert_eq!(exited["op"], "open_editor");
+    assert_eq!(exited["pluginId"], "plugin-1");
+}
+
+#[test]
+fn t16_a_cut_off_command_that_is_not_a_vst_operation_keeps_the_plain_notice() {
+    let (names, exited) = cut_off_after_sending(IpcCommand::GetDevices);
+    assert_eq!(names, ["audio-error"]);
+    assert!(exited.is_none());
+}
+
 // S7（F1b-0a-2 設計 9章の1点目）：B の命令 `Start` も、期限で切り離される。子は回収され、`Stop` は送られず、
 // `audio-error` は1回。`Start` の `device_open` の記録は、作り直した接続へ持ち越されない。
 // 10秒の互換の試験（`commands/audio/compat_tests.rs`）は、A の `SetChannelScan` のまま。

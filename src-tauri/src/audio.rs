@@ -1200,7 +1200,7 @@ impl AudioHost {
     /// EOF に負けたときは、回収の後に、reader が通知を出し終えるのを（上限つきで）待ってから返す。
     fn reply_timed_out(&mut self) -> Result<IpcResponse> {
         let link = self.link.clone();
-        let won = link.close(CloseCause::ReplyTimeout);
+        let (won, vst_exit) = link.close_reply_timeout();
         let recorded = self.retired.recorded(self.role());
         // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
         if self.confirming_start {
@@ -1217,7 +1217,15 @@ impl AudioHost {
             return Ok(IpcResponse::Error(ENGINE_EXITED.to_string()));
         }
         if !self.post_role && !self.confirming_start {
-            self.notice("audio-error", "音声エンジンとの通信が切れました");
+            match vst_exit {
+                // 固まった VST を復旧画面の除外候補にするため、reader の EOF と同じ通知を出す。
+                Some(exit) => {
+                    log::error!("Audio engine exited: {exit:?}");
+                    self.notice("audio-engine-exited", exit);
+                    self.notice("audio-error", "Audio Engine Process Exited (Crash?)");
+                }
+                None => self.notice("audio-error", "音声エンジンとの通信が切れました"),
+            }
         }
         if self.retired.recorded(self.role()) > recorded {
             return Err(anyhow::Error::new(
