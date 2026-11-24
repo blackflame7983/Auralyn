@@ -127,6 +127,7 @@ it('原因が確定していないことは1回だけ伝える', () => {
 
 it('特定できない次の終了で、前回の除外候補を出さない', () => {
     rememberCrashedPlugin({ cause: 'vst_operation', op: 'load', path: 'A.vst3' });
+    expect(localStorage.getItem('vst_host_detected_crash_plugin')).toContain('A.vst3');
     rememberCrashedPlugin({ cause: 'unknown' });
     render(<Example onClose={vi.fn()} exit={{ cause: 'unknown' }} />);
     expect(screen.queryByText('A.vst3')).toBeNull();

@@ -83,7 +83,7 @@ const PLUGIN_NAME: &str = "Auralyn Crash Test";
 const STATE_BYTES: &[u8; 8] = b"AURALYN1";
 
 struct CrashProcessor {
-    // 音声スレッドでファイルを読まないよう、process の指定は setupProcessing / setActive で控える。
+    // 音声スレッドでファイルを読まないよう、process の指定は setupProcessing で控える。
     process_mode: AtomicU8,
 }
 
@@ -174,11 +174,7 @@ impl IComponentTrait for CrashProcessor {
         kResultOk
     }
 
-    unsafe fn setActive(&self, state: TBool) -> tresult {
-        if state != 0 {
-            self.process_mode
-                .store(requested("process"), Ordering::Relaxed);
-        }
+    unsafe fn setActive(&self, _state: TBool) -> tresult {
         kResultOk
     }
 
@@ -190,6 +186,7 @@ impl IComponentTrait for CrashProcessor {
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
         trip("get_state");
         // 復元で setState が呼ばれるよう、空でない状態を返す。
+        // SAFETY: state はホストが渡した IBStream へのポインター。null なら None になる。
         let Some(stream) = (unsafe { ComRef::from_raw(state) }) else {
             return kInvalidArgument;
         };

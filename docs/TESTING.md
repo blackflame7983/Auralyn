@@ -403,7 +403,7 @@ cargo test --locked --lib audio::post_mix::life_tests
 試験用の VST3「Auralyn Crash Test」（`src-tauri/examples/crash_vst3.rs`。配布しない）は、指定した操作で `abort` する、または止まらずに回り続ける。指定は `%TEMP%\auralyn-crash-vst3.txt`（前後の空白は無視）に書く。
 
 - 操作名：`load`・`set_state`・`get_state`・`open_editor`・`processing_setup`・`process`。`hang:<操作名>` なら落ちずに固まる。ファイルがない・一致しないときは普通に動く。
-- 落とすのは、実行ファイル名が `audio_engine` で始まるプロセスの中だけ（スキャナーでは落とさない）。`process` は `setupProcessing`／`setActive` でファイルを読んで控えるので、音声スレッドではファイルを読まない。
+- 落とすのは、実行ファイル名が `audio_engine` で始まるプロセスの中だけ（スキャナーでは落とさない）。`process` は `setupProcessing` でファイルを読んで控えるので、音声スレッドではファイルを読まない。
 
 ```powershell
 $env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
