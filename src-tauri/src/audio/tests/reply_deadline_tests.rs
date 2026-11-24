@@ -156,7 +156,7 @@ fn t9_the_message_depends_on_whether_the_exit_was_confirmed() {
 fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_retires_the_child() {
     let (mut host, observer) = silent_host();
     observer.recorder.clear();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
     release_when_retired(&pause);
@@ -194,7 +194,7 @@ fn t3_when_eof_won_the_race_the_deadline_reports_the_exit_silently_and_still_ret
 fn the_c3_loser_waits_for_the_eof_notices() {
     let (mut host, observer) = silent_host();
     observer.recorder.clear();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let (pause, reader_thread) = paused_eof_reader(&host);
     wait_until("reader が EOF の競りに勝つ", || !host.link.is_open());
     let link = host.link.clone();
@@ -317,13 +317,13 @@ fn s7_attempt(respawn: bool) {
         host.ensure_engine_running().unwrap();
         assert_eq!(observer.spawn_count(), 2, "次の操作で作り直す");
         assert_eq!(
-            link_seam::exit_record(&host)["cause"],
+            serde_json::to_value(host.link.exit_for_test()).unwrap()["cause"],
             "unknown",
             "作り直した接続へ、機器を開く記録を持ち越さない"
         );
     } else {
         assert_eq!(
-            link_seam::exit_record(&host)["cause"],
+            serde_json::to_value(host.link.exit_for_test()).unwrap()["cause"],
             "device_open",
             "期限切れの `Start` は、応答までの間、機器を開く記録を残す"
         );
@@ -341,33 +341,27 @@ fn t4_the_deadline_is_judged_by_received_at_even_when_the_receive_is_late() {
     let limit = Duration::from_secs(10);
     let flushed_at = Instant::now() - Duration::from_secs(12);
 
-    let rx = link_seam::begin_request(&host, None).unwrap();
-    assert!(link_seam::deliver_at(
-        &host,
-        IpcResponse::Success,
-        flushed_at + Duration::from_secs(1)
-    ));
+    let rx = host.link.begin(None).unwrap();
+    assert!(host
+        .link
+        .deliver_at(IpcResponse::Success, flushed_at + Duration::from_secs(1)));
     let response = host
         .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, limit)
         .unwrap();
     assert!(matches!(response, IpcResponse::Success));
     assert!(host.link.is_open() && host.child.is_some());
 
-    let rx = link_seam::begin_request(&host, None).unwrap();
-    assert!(link_seam::deliver_at(
-        &host,
-        IpcResponse::Success,
-        flushed_at + Duration::from_secs(11)
-    ));
+    let rx = host.link.begin(None).unwrap();
+    assert!(host
+        .link
+        .deliver_at(IpcResponse::Success, flushed_at + Duration::from_secs(11)));
     let error = host
         .await_reply(Ok(done_with(WriteResult::Ok, flushed_at)), rx, limit)
         .unwrap_err();
     assert_eq!(error.to_string(), REPLY_TIMED_OUT);
     assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
     assert_eq!(
-        link_seam::begin_request(&host, None)
-            .unwrap_err()
-            .to_string(),
+        host.link.begin(None).unwrap_err().to_string(),
         replies::CLOSED,
         "待ちが閉じる"
     );

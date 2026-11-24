@@ -798,18 +798,19 @@ mod tests {
         link_seam::register_sent_operation(&host, &Command::OpenEditor { id: "id-a".into() });
         assert_eq!(link_seam::plugin_records(&host), 1);
         let old_link = host.link.clone();
-        let old_record = link_seam::operation_record(&host);
         host.reset_engine_reader();
         assert!(!Arc::ptr_eq(&old_link, &host.link));
         assert!(!old_link.close(super::super::link::CloseCause::Eof));
-        assert!(!old_record.is_same_record(&link_seam::operation_record(&host)));
         assert_eq!(
-            old_record.plugin_count(),
+            old_link.with_log_for_test(|log| log.plugin_count_for_test()),
             1,
             "旧い接続の記録は、作り直しで消えない"
         );
         assert_eq!(link_seam::plugin_records(&host), 0);
-        assert_eq!(link_seam::exit_record(&host)["cause"], "unknown");
+        assert_eq!(
+            serde_json::to_value(host.link.exit_for_test()).unwrap()["cause"],
+            "unknown"
+        );
     }
 
     #[test]
@@ -828,7 +829,7 @@ mod tests {
         host.reset_engine_reader();
         let link = host.link.clone();
         assert!(host.execute_running_command_inner(load()).is_err());
-        assert!(!link_seam::operation_in_flight(&host));
+        assert!(!host.link.with_log_for_test(|log| log.in_flight_for_test()));
         assert!(!link_seam::operation_awaiting(&host));
         assert!(!link.close(super::super::link::CloseCause::Eof));
     }

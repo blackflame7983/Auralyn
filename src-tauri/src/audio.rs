@@ -1184,14 +1184,10 @@ impl AudioHost {
             rx.recv_timeout(remaining)
         };
         match outcome {
-            Ok(ReplyOutcome::Response { resp, received_at }) if received_at <= deadline => {
-                Ok(*resp)
-            }
-            Ok(ReplyOutcome::Response { .. }) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                self.reply_timed_out()
-            }
-            // EOF の通知は出し終えている。切断で解放された場合も、今の EOF と同じ結果にする。
-            Ok(ReplyOutcome::Eof) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Ok(ReplyOutcome { resp, received_at }) if received_at <= deadline => Ok(*resp),
+            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => self.reply_timed_out(),
+            // 切断で解放された。EOF なら、通知は出し終えている。
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 Ok(IpcResponse::Error(ENGINE_EXITED.to_string()))
             }
         }
@@ -1216,7 +1212,7 @@ impl AudioHost {
             if link.cause() == Some(CloseCause::Eof)
                 && !link.wait_notified(Instant::now() + writer::eof_wait())
             {
-                writer::warn_eof_wait_exceeded();
+                log::warn!("EOF の通知を待つ上限を過ぎたため、通知の前に終了を返します");
             }
             return Ok(IpcResponse::Error(ENGINE_EXITED.to_string()));
         }
@@ -2804,7 +2800,7 @@ impl AudioHost {
                 "変更を反映済みです。再起動してから操作してください。"
             ));
         }
-        if self.voice_activity.load(Ordering::Acquire) {
+        if self.link.is_open() && self.voice_activity.load(Ordering::Acquire) {
             return Err(anyhow!(
                 "ボイスチェックの録音・試聴を終了してから更新してください。"
             ));

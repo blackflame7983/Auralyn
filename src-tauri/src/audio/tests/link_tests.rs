@@ -143,8 +143,8 @@ fn t1_c2_a_stalled_child_is_cut_off_after_the_write_limit_and_the_next_operation
 #[test]
 fn t2_a_write_failure_wins_over_an_early_response() {
     let (mut host, recorder) = open_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
-    assert!(link_seam::deliver(&host, IpcResponse::Success));
+    let rx = host.link.begin(None).unwrap();
+    assert!(host.link.deliver(IpcResponse::Success));
     let error = host
         .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
         .unwrap_err();
@@ -157,7 +157,7 @@ fn t2_a_write_failure_wins_over_an_early_response() {
 #[test]
 fn t2_when_eof_won_the_close_a_write_failure_still_decides_the_result_but_stays_silent() {
     let (mut host, recorder) = open_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let _waiter = link_seam::win_eof(&host).expect("待ち手がいる");
     let error = host
         .await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
@@ -172,7 +172,7 @@ fn t2_when_eof_won_the_close_a_write_failure_still_decides_the_result_but_stays_
 fn t2_when_the_write_failure_won_the_close_the_late_eof_emits_nothing() {
     let (mut host, recorder) = open_host();
     let reader = reader_for(&host, 0);
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     host.await_reply(Ok(done_with(broken_pipe(), Instant::now())), rx, a_limit())
         .unwrap_err();
     recorder.clear();
@@ -183,37 +183,31 @@ fn t2_when_the_write_failure_won_the_close_the_late_eof_emits_nothing() {
 // T2：`Aborted`（EOF で閉じていたので書かなかった）は書き込みの失敗にならず、EOF の結果を待つ。
 #[test]
 fn t2_aborted_is_not_a_write_failure_and_waits_for_the_eof_result() {
-    for drop_the_sender in [false, true] {
-        let (mut host, recorder) = open_host();
-        let rx = link_seam::begin_request(&host, None).unwrap();
-        let sender = link_seam::win_eof(&host).expect("待ち手がいる");
-        let release = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
-            if drop_the_sender {
-                drop(sender);
-            } else {
-                sender.send(ReplyOutcome::Eof).unwrap();
-            }
-        });
-        let response = host
-            .await_reply(
-                Ok(done_with(WriteResult::Aborted, Instant::now())),
-                rx,
-                a_limit(),
-            )
-            .unwrap();
-        release.join().unwrap();
-        assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
-        assert_eq!(host.engine_generation, 0, "接続を捨て直していない");
-        assert!(!names(&recorder).contains(&"audio-error".to_owned()));
-    }
+    let (mut host, recorder) = open_host();
+    let rx = host.link.begin(None).unwrap();
+    let sender = link_seam::win_eof(&host).expect("待ち手がいる");
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        drop(sender);
+    });
+    let response = host
+        .await_reply(
+            Ok(done_with(WriteResult::Aborted, Instant::now())),
+            rx,
+            a_limit(),
+        )
+        .unwrap();
+    release.join().unwrap();
+    assert!(matches!(response, IpcResponse::Error(text) if text == EXITED));
+    assert_eq!(host.engine_generation, 0, "接続を捨て直していない");
+    assert!(!names(&recorder).contains(&"audio-error".to_owned()));
 }
 
 // T3：応答の期限は `flushed_at` から数える。`WriteDone` の受け取りを遅らせても、期限は延びない。
 #[test]
 fn t3_the_reply_deadline_counts_from_flushed_at_not_from_when_the_done_is_received() {
     let (mut host, _) = open_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let flushed_at = Instant::now() - Duration::from_millis(9_800);
     let started = Instant::now();
     let error = host
@@ -228,15 +222,13 @@ fn t3_the_reply_deadline_counts_from_flushed_at_not_from_when_the_done_is_receiv
     // 期限切れ（C3）で接続を閉じる。待ちは残らず、閉じた接続が新しい要求を断る。
     assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
     assert_eq!(
-        link_seam::begin_request(&host, None)
-            .unwrap_err()
-            .to_string(),
+        host.link.begin(None).unwrap_err().to_string(),
         replies::CLOSED
     );
     // 受け取りが早ければ、期限の中の応答は採る。
     let (mut host, _) = open_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
-    let slot = link_seam::reply_slot(&host);
+    let rx = host.link.begin(None).unwrap();
+    let slot = host.link.clone();
     let late = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(100));
         slot.deliver(IpcResponse::Success)
@@ -335,7 +327,7 @@ fn t5_the_waiter_is_released_only_after_the_eof_notices_are_out() {
 fn t5_an_eof_that_lost_the_close_emits_nothing_and_the_waiter_maps_to_engine_exited() {
     let (host, recorder) = open_host();
     let reader = reader_for(&host, 0);
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     assert!(host.link.close(CloseCause::Intentional));
     reader.finish();
     assert!(names(&recorder).is_empty());
@@ -345,7 +337,7 @@ fn t5_an_eof_that_lost_the_close_emits_nothing_and_the_waiter_maps_to_engine_exi
     ));
     // 呼び出し側は、切断で解放された待ち手を今の EOF と同じ結果にする。
     let (mut host, _) = open_host();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     assert!(host.link.close(CloseCause::Intentional));
     host.close_connection(CloseCause::Intentional);
     let response = host
@@ -682,7 +674,7 @@ fn mixing_selection() -> crate::audio_engine::mixing::Start {
 }
 
 // 6回目：reader は接続（`LinkCell`）を閉じるとき、待ち手の送り側も同じ区間で取り出す。閉じた直後で止めても、
-// - 先に登録した待ち手は、writer の `Aborted` を経て、`Eof`（`Engine Crashed/Exited`）で解放される。
+// - 先に登録した待ち手は、writer の `Aborted` を経て、切断（`Engine Crashed/Exited`）で解放される。
 // - EOF の通知（K13 の3つの列）は欠けずに出る。
 // - 配信ミックスの子とオケの入力の選択は残る（主の EOF で捨てない）。
 #[test]
@@ -695,7 +687,7 @@ fn t4_a_reader_stopped_just_after_closing_the_link_still_releases_the_waiter_and
     host.post_mix.adopt_child_for_test(post);
     host.mixing.selected = Some(mixing_selection());
     let epoch = host.conditions.new_engine();
-    let rx = link_seam::begin_request(&host, None).expect("接続は開いている");
+    let rx = host.link.begin(None).expect("接続は開いている");
     let pause = reader::Pause::closed();
     let mut reader = reader_for(&host, epoch);
     reader.pause = Some(pause.clone());
@@ -757,13 +749,13 @@ fn exited_payload(recorder: &emit::Recorder) -> serde_json::Value {
 }
 
 // S1（F1b-0b-1 で反転済み。設計 9.8・T2）：書き込みを始めていない VST の操作は、終了の原因に載らない。
-// (i) `begin` が先：登録は通るが writer は書かず（`Aborted`）、原因は `unknown`。待ち手は `Eof` で解放される。
+// (i) `begin` が先：登録は通るが writer は書かず（`Aborted`）、原因は `unknown`。待ち手は切断で解放される。
 // (ii) EOF の競りが先：`begin` は `CLOSED`。登録は起きない。
 #[test]
 fn an_unsent_vst_operation_is_not_named_as_the_exit_cause() {
     let (mut host, recorder) = open_host();
     let epoch = host.conditions.new_engine();
-    let rx = link_seam::begin_request(&host, Some(&unsent_load())).unwrap();
+    let rx = host.link.begin(Some(&unsent_load())).unwrap();
     let pause = reader::Pause::closed();
     let mut reader = reader_for(&host, epoch);
     reader.pause = Some(pause.clone());
@@ -788,7 +780,8 @@ fn an_unsent_vst_operation_is_not_named_as_the_exit_cause() {
 
     let (host, recorder, pause, finishing) = host_with_a_paused_eof_reader();
     assert_eq!(
-        link_seam::begin_request(&host, Some(&unsent_load()))
+        host.link
+            .begin(Some(&unsent_load()))
             .unwrap_err()
             .to_string(),
         replies::CLOSED
@@ -799,12 +792,12 @@ fn an_unsent_vst_operation_is_not_named_as_the_exit_cause() {
 }
 
 // S4（F1b-0b-1 で反転済み。設計 9.8）：reader が EOF の競りに勝って止まっている間に、別の入口の
-// `drop_connection` が走っても、待ち手の送り側は reader の手に残る。待ち手は、通知3件の後に `Eof` で解放される。
+// `drop_connection` が走っても、待ち手の送り側は reader の手に残る。待ち手は、通知3件の後に切断で解放される。
 #[test]
 fn a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter() {
     let (mut host, recorder) = open_host();
     let epoch = host.conditions.new_engine();
-    let rx = link_seam::begin_request(&host, None).unwrap();
+    let rx = host.link.begin(None).unwrap();
     let pause = reader::Pause::closed();
     let mut reader = reader_for(&host, epoch);
     reader.pause = Some(pause.clone());
@@ -820,7 +813,7 @@ fn a_host_close_before_the_eof_race_still_reports_the_exit_to_the_waiter() {
         [CC, "audio-engine-exited", "audio-error"],
         "通知3件の後に、待ち手が解放される"
     );
-    assert!(matches!(rx.recv().unwrap(), ReplyOutcome::Eof));
+    assert!(rx.recv().is_err());
 }
 
 // S5（F1b-0b-1 で反転済み。設計 9.8）：EOF が先に勝っていても、`cut_off`（書き込みの失敗）は記録に触れない。
@@ -865,19 +858,17 @@ fn cut_off_leaves_the_operation_as_the_exit_cause_when_eof_won() {
     }
 }
 
-// S6（F1b-0b-4 で、期待値を `false` へ反転した。設計 9.8・14.12）：
-// 閉じた接続の reader は、`VoiceCheckState` が来ても `voice_activity` を立てない。
+// S6：閉じた接続の reader は、`VoiceCheckState` が来ても通知を出さない。
+// `voice_activity` は立ちうるが、更新の確認は閉じた接続では読まない（`n2_tests` の Q1）。
 #[test]
-fn s6_a_closed_reader_cannot_raise_voice_activity() {
+fn s6_a_closed_reader_emits_no_voice_check_notice() {
     let (host, recorder) = open_host();
     let reader = reader_for(&host, 0);
     assert!(host.link.close(CloseCause::Intentional));
-    host.voice_activity.store(false, Ordering::Release);
     reader.handle_event(EngineEvent::VoiceCheckState {
         state: "recording".into(),
         position_ms: 0,
         duration_ms: 0,
     });
-    assert!(!host.voice_activity.load(Ordering::Acquire));
     assert!(names(&recorder).is_empty(), "通知は出ない");
 }

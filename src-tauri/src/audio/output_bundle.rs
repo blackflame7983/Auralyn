@@ -174,7 +174,7 @@ mod tests {
         let stdout = child.stdout.take().unwrap();
         host.child = Some(child);
         host.set_link_for_test(true);
-        let slot = link_seam::reply_slot(&host);
+        let slot = host.link.clone();
         let worker = std::thread::spawn(move || {
             let mut commands = Vec::new();
             for line in BufReader::new(stdout).lines() {
@@ -244,7 +244,7 @@ mod tests {
         host.is_global_muted = true;
         host.bundle_change_generation = Some(host.engine_generation);
         host.bundle_interrupt = Some(host.conditions.restore_interrupt());
-        let slot = link_seam::reply_slot(&host);
+        let slot = host.link.clone();
         let worker = std::thread::spawn(move || {
             let mut stopped = false;
             for line in BufReader::new(stdout).lines() {

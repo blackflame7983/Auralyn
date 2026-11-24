@@ -2,30 +2,8 @@
 use crate::ipc::Command;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
+    Arc, Mutex, MutexGuard, PoisonError,
 };
-
-#[cfg(test)]
-type Hook = Box<dyn FnOnce()>;
-
-#[cfg(test)]
-thread_local! {
-    static AFTER_RUNNING_STORE: std::cell::RefCell<Option<Hook>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// 試験用：`engine_event`が最初の照合を通って`running`を書いた直後に、同じスレッドで1回だけ呼ぶ。
-#[cfg(test)]
-pub(crate) fn set_after_running_store_hook(hook: impl FnOnce() + 'static) {
-    AFTER_RUNNING_STORE.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
-}
-
-#[cfg(test)]
-fn run_after_running_store_hook() {
-    if let Some(hook) = AFTER_RUNNING_STORE.with(|slot| slot.borrow_mut().take()) {
-        hook();
-    }
-}
 
 #[derive(Default, Debug)]
 pub(crate) struct Conditions {
@@ -34,6 +12,8 @@ pub(crate) struct Conditions {
     running: AtomicBool,
     engine_epoch: AtomicU64,
     interrupt: AtomicU64,
+    /// 接続の切り替えと、接続からの`running`の書き込みを順に並べる。中で他のロックを取らない。
+    engine: Mutex<()>,
 }
 
 #[derive(Clone)]
@@ -120,33 +100,31 @@ impl Conditions {
         }
         result
     }
+    fn engine_lock(&self) -> MutexGuard<'_, ()> {
+        self.engine.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     pub(super) fn new_engine(&self) -> u64 {
+        let _engine = self.engine_lock();
         let epoch = self.engine_epoch.fetch_add(1, Ordering::SeqCst) + 1;
         self.lifecycle(false);
         epoch
     }
 
     pub(super) fn retire_engine(&self) {
+        let _engine = self.engine_lock();
         self.engine_epoch.fetch_add(1, Ordering::SeqCst);
         self.lifecycle(false);
     }
 
+    /// 照合と書き込みが切り替えと同じロックの中なので、古い接続の通知は新しい接続の`running`を上書きしない。
     pub(super) fn engine_event(&self, epoch: u64, running: bool) -> bool {
+        let _engine = self.engine_lock();
         if self.engine_epoch.load(Ordering::SeqCst) != epoch {
             return false;
         }
-        self.pending.fetch_add(1, Ordering::SeqCst);
-        self.revision.fetch_add(1, Ordering::SeqCst);
-        self.running.store(running, Ordering::SeqCst);
-        #[cfg(test)]
-        run_after_running_store_hook();
-        let current = self.engine_epoch.load(Ordering::SeqCst) == epoch;
-        if !current {
-            self.running.store(false, Ordering::SeqCst);
-        }
-        self.revision.fetch_add(1, Ordering::SeqCst);
-        self.pending.fetch_sub(1, Ordering::SeqCst);
-        current
+        self.lifecycle(running);
+        true
     }
     // オケだけの失敗は、停止済みの主入力を再開扱いにせず確認履歴だけ失効する。
     pub(super) fn engine_changed(&self, epoch: u64) -> bool {
