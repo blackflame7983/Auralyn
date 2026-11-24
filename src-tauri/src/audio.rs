@@ -1222,7 +1222,7 @@ impl AudioHost {
                 Some(exit) => {
                     log::error!("Audio engine exited: {exit:?}");
                     self.notice("audio-engine-exited", exit);
-                    self.notice("audio-error", "Audio Engine Process Exited (Crash?)");
+                    self.notice("audio-error", engine_exit::EXITED_NOTICE);
                 }
                 None => self.notice("audio-error", "音声エンジンとの通信が切れました"),
             }

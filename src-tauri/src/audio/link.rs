@@ -201,7 +201,9 @@ impl LinkCell {
         drop(std::mem::replace(&mut inner.state, State::Closed(cause)));
         match cause {
             CloseCause::WriteFailed | CloseCause::WriteTimeout => inner.log.abandon(),
-            CloseCause::ReplyTimeout => inner.log.timeout(),
+            CloseCause::ReplyTimeout => {
+                inner.log.timeout(Instant::now());
+            }
             CloseCause::Intentional | CloseCause::Eof => {}
         }
         true
@@ -218,9 +220,7 @@ impl LinkCell {
             &mut inner.state,
             State::Closed(CloseCause::ReplyTimeout),
         ));
-        let exit = inner.log.timed_out_vst(Instant::now());
-        inner.log.timeout();
-        (true, exit)
+        (true, inner.log.timeout(Instant::now()))
     }
 
     /// EOF の通知の列を出し終えたことを知らせる。通知の列のロックを放した後に呼ぶ。
