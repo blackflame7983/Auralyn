@@ -499,8 +499,8 @@ fn t12_the_retire_finishes_while_the_reader_is_stuck_in_emit_whether_c3_wins_or_
         assert_eq!(pending, 0, "終了を確かめて回収済み");
         assert_eq!(
             count(&f, "audio-engine-exited"),
-            usize::from(eof_wins),
-            "EOF に勝った reader が、解放の後に EOF の通知を出す"
+            1,
+            "VST の操作の終了は、勝った側（EOF の reader か C3 の Host）が解放の後に1回出す"
         );
         if eof_wins {
             let names = f.recorder.names();
