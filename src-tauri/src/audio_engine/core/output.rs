@@ -1016,6 +1016,7 @@ mod tests {
                 );
             });
             assert_eq!(counts, (0, 0), "block {block}");
+            assert!(data.iter().all(|v| v.is_finite()), "block {block}");
             let worst = data
                 .iter()
                 .zip(&expected)
