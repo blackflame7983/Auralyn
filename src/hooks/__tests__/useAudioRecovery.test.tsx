@@ -29,6 +29,17 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'setInputChannels').mockResolvedValue(undefined);
 });
 afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks(); vi.useRealTimers(); });
+// Rust の startup.rs の stream_error_text が送る文言と対になる。
+it.each(['Stream Error: device lost', 'Input Stream Error: device lost'])('機器のストリームエラー「%s」で再開を予約する', async payload => {
+    const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    renderHook(() => useAudioRecovery()); notify('audio-stream-error', payload); await tick(2000);
+    expect(start).toHaveBeenCalledOnce();
+});
+it('Stream Error を含まない通知では再開を予約しない', async () => {
+    const start = vi.spyOn(audioApi, 'start');
+    renderHook(() => useAudioRecovery()); notify('audio-stream-error', 'something else'); await tick(2000);
+    expect(start).not.toHaveBeenCalled();
+});
 it.each(['snapshot', 'actual'])('%sの遅い状態取得中に手動停止したら復旧とch設定・成功通知を行わない', async waiting => {
     let finish!: () => void;
     if (waiting === 'snapshot') {

@@ -25,14 +25,14 @@
     {
       "file": "src-tauri/src/audio_engine/core.rs",
       "rule": "rust/suppression",
-      "hash": "132e71531be49c3b2511d3095d4905ab1a3f8f3b791eb2ffb2812f3f8aa7483b",
+      "hash": "ccbca013eb5f54a80bed1e76d9a8271ba0d4ad457a67ddb8803f95b9308e49f1",
       "count": 6,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },
     {
       "file": "src-tauri/src/audio_engine/core/startup.rs",
       "rule": "rust/suppression",
-      "hash": "a66e7a1e49ecd6345e14bb47348312917765c3049a933b7ddc2015718902a551",
+      "hash": "bd199823ad706fa374286c5e9e737f3993944541fcb9e6d40f6977b18526d95b",
       "count": 4,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },
@@ -102,7 +102,7 @@
     {
       "file": "src-tauri/src/obs_setup.rs",
       "rule": "rust/suppression",
-      "hash": "dc19c5ae06d830f3d8e9175501787c5f20402a8fffb7e484cbacf5dc5933d0b6",
+      "hash": "715a5ac8e7d3d01d733a1f17aa9a4fa4bfa9c9e5425692849771ac0b22fcc565",
       "count": 1,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },

@@ -762,30 +762,7 @@ export const usePlugins = () => {
         const generation = restoreGeneration.current;
         const isCurrent = () => generation === restoreGeneration.current;
         const rack = plugins;
-        const targetIndex = rack.findIndex(p => p.id === id);
-        const target = targetIndex >= 0 ? rack[targetIndex] : undefined;
-
-        const reloadAllFromUi = async () => {
-            const reloaded: Plugin[] = [];
-            for (const p of rack) {
-                if (!isCurrent()) throw new Error('復元を中断しました');
-                const restored = await audioApi.restorePlugin({ path: p.path, state: null,
-                    bypassed: !p.enabled, muted: p.muted, gain: p.gain, ...classField(p.classId) });
-                const newId = restored.id;
-                if (!isCurrent()) { await audioApi.removePlugin(newId); throw new Error('復元を中断しました'); }
-                // 再読込は元の並びのまま新しい id に付け替える。path だけで探すと同じファイルの別クラスを開く。
-                reloaded.push({
-                    ...p,
-                    id: newId,
-                    ...(restored.classId ? { classId: restored.classId } : {}),
-                    ...layoutField(restored.channelLayout),
-                    ...(restored.name ? { name: restored.name } : {}),
-                });
-                setPlugins([...reloaded]);
-            }
-            setPlugins(reloaded);
-            return reloaded;
-        };
+        const target = rack.find(p => p.id === id);
 
         try {
             await audioApi.openEditor(id);
@@ -793,36 +770,6 @@ export const usePlugins = () => {
             if (!isCurrent()) return;
             const message = `${e}`;
             console.error(`Failed to open editor for ${id}`, e);
-
-            // If the engine got restarted/crashed, all plugin IDs become invalid.
-            if (message.includes("loaded_count=0")) {
-                if (!target) {
-                    toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.editorFailed')), { description: t('pluginNotices.rawDetail', { detail: message }) });
-                    return;
-                }
-
-                const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.restoringAfterRestart')));
-                try {
-                    const release = beginRackRestore();
-                    let reloaded: Plugin[];
-                    try {
-                        setPlugins([]);
-                        reloaded = await reloadAllFromUi();
-                    } finally {
-                        release();
-                    }
-                    const reopened = reloaded[targetIndex];
-                    if (!reopened) {
-                        throw new Error("復元後に対象プラグインが見つかりませんでした");
-                    }
-                    await audioApi.openEditor(reopened.id);
-                    toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.editorOpened')), { id: toastId });
-                    return;
-                } catch (err) {
-                    toast.error(renderPluginNotice(t, pluginNotice('pluginNotices.pluginRestoreFailed')), { id: toastId, description: t('pluginNotices.rawDetail', { detail: String(err) }) });
-                    return;
-                }
-            }
 
             // Single plugin re-load fallback (stale id or removed plugin)
             if (message.includes("Plugin not found") && target) {

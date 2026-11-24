@@ -40,6 +40,6 @@ it.each([
     expect(JSON.stringify(value)).not.toContain('do-not-copy');
 });
 
-it.each([['401 timeout','authentication'],['AUTH connection refused','authentication'],['timed out','timeout'],['failed to connect','refused']])('既存prefix順序を変えず%sを分類する', (error,code)=>{
+it.each([['401 timeout','authentication'],['AUTH connection refused','authentication'],['timed out','timeout'],['OBS への接続がタイムアウトしました','timeout'],['failed to connect','refused']])('既存prefix順序を変えず%sを分類する', (error,code)=>{
     expect(obsConnectionFailureNotice(error,1234).code).toBe(code);
 });

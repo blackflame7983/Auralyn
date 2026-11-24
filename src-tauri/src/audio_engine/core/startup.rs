@@ -67,6 +67,15 @@ impl StartAttemptLog {
     }
 }
 
+/// `audio-stream-error` の文言。画面の `useAudioRecovery.ts` が `Stream Error` の部分一致で自動再開を予約する。
+pub(super) fn stream_error_text(detail: impl std::fmt::Display) -> String {
+    format!("Stream Error: {detail}")
+}
+
+fn input_stream_error_text(detail: impl std::fmt::Display) -> String {
+    format!("Input {}", stream_error_text(detail))
+}
+
 fn resolve_source_devices(
     host_name_str: &str,
     input_name: Option<&str>,
@@ -636,7 +645,7 @@ impl Engine {
         let output_failed = self.stream_failed.clone();
         let err_fn_ipc = move |err: cpal::StreamError| {
             output_failed.store(true, Ordering::Release);
-            let msg = OutputMessage::Event(EngineEvent::Error(format!("Stream Error: {}", err)));
+            let msg = OutputMessage::Event(EngineEvent::Error(stream_error_text(err)));
             if let Ok(json) = serde_json::to_string(&msg) {
                 println!("IPC:{}", json);
                 let _ = io::stdout().flush();
@@ -1382,10 +1391,8 @@ impl Engine {
                 },
                 move |err| {
                     input_failed.store(true, Ordering::Release);
-                    let msg = OutputMessage::Event(EngineEvent::Error(format!(
-                        "Input Stream Error: {}",
-                        err
-                    )));
+                    let msg =
+                        OutputMessage::Event(EngineEvent::Error(input_stream_error_text(err)));
                     if let Ok(json) = serde_json::to_string(&msg) {
                         println!("IPC:{}", json);
                     }
@@ -1582,6 +1589,13 @@ pub(super) fn write_faded_output_frame(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn device_stream_errors_keep_the_marker_the_frontend_recovery_matches() {
+        let err = cpal::StreamError::DeviceNotAvailable;
+        assert!(super::stream_error_text(&err).contains("Stream Error"));
+        assert!(super::input_stream_error_text(&err).contains("Stream Error"));
+    }
+
     #[test]
     fn fade481_main_sine_after_trim_routes_and_converges_without_allocations() {
         use crate::audio_engine::stop_fade::{SignalCheck, StopFade, StopFadeRt, MAIN};

@@ -32,7 +32,7 @@ export function obsConnectionFailureNotice(error: unknown, port: number): ObsCon
     if (message.includes('401') || message.includes('auth')) {
         return { code: 'authentication', key: failureKeys.authentication };
     }
-    if (message.includes('timeout') || message.includes('timed out')) {
+    if (message.includes('timeout') || message.includes('timed out') || message.includes('タイムアウト')) {
         return { code: 'timeout', key: failureKeys.timeout, args: { port } };
     }
     if (message.includes('connection refused') || message.includes('failed to connect')) {
