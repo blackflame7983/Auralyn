@@ -475,22 +475,21 @@ fn y16_busy_expired_and_stopped_first_map_to_the_approved_texts_at_the_commands(
     f.control
         .run(audio::Entry::command("get_audio_state"), |_| ())
         .unwrap();
-    f.control.set_limits(1, long, long, long);
+    f.control.set_limits(1, long, long);
     let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
     assert_eq!(
         run(get_audio_state(app.state())).unwrap_err(),
         audio::control::BUSY_TEXT
     );
     drop(holder);
-    f.control
-        .set_limits(256, Duration::from_millis(50), long, long);
+    f.control.set_limits(256, Duration::from_millis(50), long);
     let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
     assert_eq!(
         run(get_audio_state(app.state())).unwrap_err(),
         audio::control::EXPIRED_TEXT
     );
     drop(holder);
-    f.control.set_limits(256, long, long, long);
+    f.control.set_limits(256, long, long);
     let holder = f.control.lock(audio::Entry::command("holder")).unwrap();
     std::thread::scope(|scope| {
         let state = app.state();

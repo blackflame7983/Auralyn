@@ -26,7 +26,7 @@ pub(super) fn control() -> AudioControl {
 /// 上限と期限を縮めた列。警告の長さは長いまま。
 pub(super) fn limited(max_counted: usize, wait: Duration) -> AudioControl {
     let control = control();
-    control.set_limits(max_counted, wait, LONG, LONG);
+    control.set_limits(max_counted, wait, LONG);
     control
 }
 

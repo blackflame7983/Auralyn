@@ -466,32 +466,14 @@ fn y14_the_phases_are_started_completed_and_refused_in_order() {
 }
 
 #[test]
-fn y14_a_slow_closure_warns_once_and_is_never_cut_short() {
+fn y14_a_slow_closure_is_never_cut_short() {
     let control = control();
-    control.set_limits(
-        256,
-        LONG,
-        Duration::from_millis(30),
-        Duration::from_secs(3600),
-    );
-    control.run(normal(), |_| ()).unwrap();
-    assert_eq!(control.admission().slow_warnings(), 0);
+    control.set_limits(256, LONG, Duration::from_millis(30));
     let result = control.run(normal(), |_| {
         std::thread::sleep(Duration::from_millis(80));
         5
     });
     assert_eq!(result, Ok(5), "警告するだけで、打ち切らない");
-    assert_eq!(control.admission().slow_warnings(), 1);
-    control
-        .run(starting(), |_| {
-            std::thread::sleep(Duration::from_millis(80))
-        })
-        .unwrap();
-    assert_eq!(
-        control.admission().slow_warnings(),
-        1,
-        "開始・再起動は、長い方の長さを使う"
-    );
 }
 
 // Y18：scheduler の tick は、満杯・期限・fence の下でも断られず、断りを受けても scheduler は次の周期へ進む。

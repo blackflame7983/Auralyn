@@ -596,6 +596,15 @@ fn release_pairs() -> Vec<(&'static str, Entry, Entry)> {
             })),
             cmd("session_rack").class(classes::session_rack(&rack_begin())),
         ),
+        (
+            "live_modes(Disarm)",
+            cmd("live_modes").class(classes::live_modes(&live_modes::Request::Disarm {
+                intent: live_intent(),
+            })),
+            cmd("live_modes").class(classes::live_modes(&live_modes::Request::Arm {
+                intent: live_intent(),
+            })),
+        ),
     ]
 }
 

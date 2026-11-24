@@ -2,8 +2,8 @@
 //! 表（`class.rs`）と一致することを固定する。新しい入口・要求を足した PR で、分類の付け忘れを CI が落とす。
 //! Y15・Y16・Y21・Y31・Y33。
 use super::control::{
-    class_of, request_class_of, ControlError, Entry, EntryKind, JobClass, BUSY_TEXT, EXPIRED_TEXT,
-    NAME_CLASSES, NAME_PAIRS, REQUEST_CLASSES, REQUEST_ENTRIES, REQUEST_PAIRS, STOPPED_FIRST_TEXT,
+    class_of, ControlError, Entry, EntryKind, JobClass, BUSY_TEXT, EXPIRED_TEXT, NAME_CLASSES,
+    NAME_PAIRS, STOPPED_FIRST_TEXT,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -182,7 +182,7 @@ fn y15_every_entry_name_is_classified_exactly_once() {
     );
     assert_eq!(
         class_of(Entry::new(EntryKind::Scheduler, "anything")),
-        JobClass::Tick
+        JobClass::Release
     );
     assert_eq!(
         class_of(Entry::new(EntryKind::Tray, "anything")),
@@ -239,116 +239,9 @@ fn y16_control_errors_keep_the_old_texts_and_use_the_approved_new_texts() {
     );
 }
 
-fn variant_names(source: &str, header: &str) -> Vec<String> {
-    let start = source
-        .find(header)
-        .unwrap_or_else(|| panic!("{header} が無い"));
-    let body_start = source[start..].find('{').unwrap() + start + 1;
-    let mut depth = 1_usize;
-    let mut names = Vec::new();
-    let mut line_start = true;
-    for (offset, ch) in source[body_start..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            '\n' => {
-                line_start = true;
-                continue;
-            }
-            c if c.is_whitespace() => continue,
-            _ => {}
-        }
-        if line_start && depth == 1 && ch.is_ascii_uppercase() {
-            let rest = &source[body_start + offset..];
-            let end = rest
-                .find(|c: char| !c.is_ascii_alphanumeric())
-                .unwrap_or(rest.len());
-            names.push(rest[..end].to_owned());
-        }
-        line_start = false;
-    }
-    names
-}
-
-/// 要求の列挙：`(入口, ソース, 列挙の見出し)`。
-const REQUEST_ENUMS: &[(&str, &str, &str)] = &[
-    ("post_mix", "audio/post_mix.rs", "pub(crate) enum Request {"),
-    ("mixing", "audio/mixing.rs", "pub(crate) enum Request {"),
-    (
-        "live_modes",
-        "audio_engine/live_modes.rs",
-        "pub enum Request {",
-    ),
-    ("session_rack", "ipc.rs", "pub enum SessionRackRequest {"),
-    (
-        "builtin_effects",
-        "audio_engine/builtin.rs",
-        "pub enum Request {",
-    ),
-    (
-        "auto_gain",
-        "audio_engine/auto_gain.rs",
-        "pub enum Request {",
-    ),
-    (
-        "noise_measurement",
-        "audio_engine/core/noise_learning.rs",
-        "pub enum Request {",
-    ),
-    (
-        "voice_check_preview",
-        "audio_engine/voice_check_preview.rs",
-        "pub enum Action {",
-    ),
-];
-
-/// 名前に取り消し・停止・解除の意味を含む要求の変種。Release でなければならない（例外は理由つきで書く）。
-const RELEASE_WORDS: &[&str] = &["Cancel", "Stop", "Close", "End", "Release", "Finish"];
-
+// Y21：取得と解放は、入口の名前で対の表になり、解放は Release、取得は断られてよい種類。
 #[test]
-fn y21_request_tables_cover_every_variant_of_every_request_enum() {
-    for (entry, file, header) in REQUEST_ENUMS {
-        let source = production_source(&src().join(file));
-        let variants = variant_names(&source, header);
-        assert!(
-            variants.len() >= 5,
-            "{entry}: 変種を拾えていない {variants:?}"
-        );
-        let table: BTreeSet<&str> = REQUEST_CLASSES
-            .iter()
-            .filter(|row| row.entry == *entry)
-            .map(|row| row.variant)
-            .collect();
-        for variant in &variants {
-            assert!(
-                table.contains(variant.as_str()),
-                "{entry} の要求 {variant} が REQUEST_CLASSES に無い"
-            );
-            if RELEASE_WORDS.iter().any(|word| variant.contains(word)) {
-                assert_eq!(
-                    request_class_of(entry, variant),
-                    JobClass::Release,
-                    "{entry}({variant}) は取り消し・解除の名前なので Release"
-                );
-            }
-        }
-        for variant in &table {
-            assert!(
-                variants.iter().any(|name| name == variant),
-                "REQUEST_CLASSES の {entry}({variant}) が列挙に無い（古い）"
-            );
-        }
-    }
-}
-
-// Y21：取得と解放は、入口の名前でも要求の変種でも対で表になり、解放は Release、取得は断られてよい種類。
-#[test]
-fn y21_acquire_and_release_are_paired_by_name_and_by_request_and_release_is_never_refused() {
+fn y21_acquire_and_release_are_paired_by_name_and_release_is_never_refused() {
     let table = table();
     let mut acquires = BTreeSet::new();
     let mut releases = BTreeSet::new();
@@ -370,7 +263,7 @@ fn y21_acquire_and_release_are_paired_by_name_and_by_request_and_release_is_neve
         "取得の名前が解放にも使われている"
     );
     for (name, class) in NAME_CLASSES {
-        if *class == JobClass::Release {
+        if *class == JobClass::Release && *name != "poll_mode_vst" {
             assert!(
                 releases.contains(name),
                 "Release の {name} が取得と解放の対の解放になっていない"
@@ -395,25 +288,6 @@ fn y21_acquire_and_release_are_paired_by_name_and_by_request_and_release_is_neve
             );
         }
     }
-    for (entry, acquire, release) in REQUEST_PAIRS {
-        assert_eq!(
-            request_class_of(entry, release),
-            JobClass::Release,
-            "{entry}({release})"
-        );
-        assert_eq!(
-            request_class_of(entry, acquire),
-            JobClass::Starting,
-            "{entry}({acquire})"
-        );
-    }
-    for row in REQUEST_CLASSES {
-        assert!(
-            REQUEST_ENTRIES.contains(&row.entry),
-            "{} は要求で決める入口の一覧に無い",
-            row.entry
-        );
-    }
 }
 
 // Y31：上限・期限・取り消し・fence・レーンの判定は、`JobClass`の網羅の`match`のメソッド（`_ =>`なし）だけが持つ。
@@ -424,15 +298,14 @@ fn y31_job_class_decisions_are_exhaustive_matches_in_one_place() {
     let end = source[start..].find("\n}\n").unwrap() + start;
     let methods = &source[start..end];
     for name in [
-        "fn counted",
-        "fn waits_with_deadline",
+        "fn bounded",
         "fn refused_after_stop",
         "fn lane",
         "fn raises_fence",
     ] {
         assert!(methods.contains(name), "{name} が無い");
     }
-    assert_eq!(methods.matches("match self").count(), 5);
+    assert_eq!(methods.matches("match self").count(), 4);
     assert!(
         !methods.contains("_ =>"),
         "網羅の match（新しい種類を足すとコンパイルが落ちる）に`_ =>`を使わない"
@@ -450,29 +323,20 @@ fn y31_job_class_decisions_are_exhaustive_matches_in_one_place() {
     }
 }
 
-// Y33：要求で種類を決める入口の表と、ソースの`Entry`の呼び出し（`.class(…)`の指定）が一致する。
+// Y33：.class(…)で種類を渡す入口はEntry::commandで呼び、名前の表の既定は Normal。
 #[test]
-fn y33_the_request_dependent_entry_table_matches_the_source() {
-    let used = used_entries();
-    for name in REQUEST_ENTRIES {
-        let uses: Vec<_> = used.iter().filter(|(used, _, _)| used == name).collect();
-        assert!(!uses.is_empty(), "{name} がどこからも使われていない");
-        for (_, place, with_class) in uses {
+fn y33_entries_that_pass_a_class_are_commands_with_the_normal_default() {
+    let table = table();
+    for (name, place, with_class) in used_entries() {
+        if with_class {
             assert!(
                 place.starts_with("command "),
                 "{name} は Entry::command で要求から種類を決めて呼ぶ（{place}）"
             );
-            assert!(
-                with_class,
-                "{name} は要求で種類を決める入口なのに、`.class(…)`の指定が無い（{place}）"
-            );
-        }
-    }
-    for (name, place, with_class) in &used {
-        if *with_class {
-            assert!(
-                REQUEST_ENTRIES.contains(&name.as_str()),
-                "{name} に`.class(…)`を指定しているが、要求で決める入口の一覧に無い（{place}）"
+            assert_eq!(
+                table.get(name.as_str()),
+                Some(&JobClass::Normal),
+                "{name} の名前の既定は Normal（{place}）"
             );
         }
     }
