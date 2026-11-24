@@ -11,10 +11,9 @@ pub(crate) async fn voice_check_preview(
     state: State<'_, audio::AudioState>,
     request: crate::audio_engine::voice_check::preview::Request,
 ) -> Result<crate::audio_engine::voice_check::preview::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("voice_check_preview")
         .class(audio::control::request_class::voice_check_preview(&request));
-    super::call(&state, entry, "Failed to lock audio state", move |host| {
+    super::call(&state.0, entry, "Failed to lock audio state", move |host| {
         host.voice_check_preview(request)
     })
     .await
@@ -61,9 +60,8 @@ pub(crate) async fn start_voice_check(
     state: State<'_, audio::AudioState>,
     max_ms: Option<u32>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("start_voice_check"),
         "Failed to lock audio state",
         move |host| host.start_voice_check(max_ms.unwrap_or(10_000)),
@@ -73,9 +71,8 @@ pub(crate) async fn start_voice_check(
 
 #[tauri::command]
 pub(crate) async fn stop_voice_check(state: State<'_, audio::AudioState>) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("stop_voice_check"),
         "Failed to lock audio state",
         move |host| host.stop_voice_check(),
@@ -89,9 +86,8 @@ pub(crate) async fn play_voice_check(
     source: String,
     loop_playback: Option<bool>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("play_voice_check"),
         "Failed to lock audio state",
         move |host| host.play_voice_check(source, loop_playback.unwrap_or(true)),
@@ -103,9 +99,8 @@ pub(crate) async fn play_voice_check(
 pub(crate) async fn stop_voice_check_playback(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("stop_voice_check_playback"),
         "Failed to lock audio state",
         move |host| host.stop_voice_check_playback(),
@@ -118,7 +113,6 @@ pub(crate) async fn export_voice_check_wav(
     state: State<'_, audio::AudioState>,
     source: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     let path = super::run_blocking(move || {
         Ok(rfd::FileDialog::new()
             .set_file_name("voice-check.wav")
@@ -130,7 +124,7 @@ pub(crate) async fn export_voice_check_wav(
     match path {
         Some(p) => {
             super::call(
-                &state,
+                &state.0,
                 audio::Entry::command("export_voice_check_wav"),
                 "Failed to lock audio state",
                 move |host| host.export_voice_check(p.to_string_lossy().to_string(), source),
@@ -147,9 +141,8 @@ pub(crate) async fn export_voice_check(
     path: String,
     source: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("export_voice_check"),
         "Failed to lock audio state",
         move |host| host.export_voice_check(path, source),
@@ -162,7 +155,6 @@ pub(crate) async fn analyze_voice_check(
     app: AppHandle,
     state: State<'_, audio::AudioState>,
 ) -> Result<audio_analysis::QualityReport, String> {
-    let state = state.0.clone();
     let root = app
         .path()
         .app_cache_dir()
@@ -176,7 +168,7 @@ pub(crate) async fn analyze_voice_check(
     let raw_export = raw_path.to_string_lossy().to_string();
     let processed_export = processed_path.to_string_lossy().to_string();
     let exported = super::call(
-        &state,
+        &state.0,
         audio::Entry::command("analyze_voice_check"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {

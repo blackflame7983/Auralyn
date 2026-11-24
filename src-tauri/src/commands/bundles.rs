@@ -1989,7 +1989,7 @@ async fn capture_async(host: audio::AudioControl) -> Result<(Captured, ControlWi
         &host,
         audio::Entry::bundle("capture_async"),
         "音声状態を取得できません",
-        move |host| -> Result<_, String> { capture(host) },
+        capture,
     )
     .await
 }
@@ -2086,9 +2086,8 @@ pub(crate) async fn broadcast_bundle(
                 return Err("オケ・ミックス後VSTも保存することを選んでください。声用VSTだけの保存はプロファイルを使ってください".into());
             }
             if include_process {
-                let source = host.clone();
                 super::call(
-                    &source,
+                    &host,
                     audio::Entry::bundle("broadcast_bundle"),
                     "音声状態を取得できません",
                     move |host| host.process_snapshot_supported(),
@@ -2106,18 +2105,16 @@ pub(crate) async fn broadcast_bundle(
                 {
                     return Err("分離出力の保存には全カテゴリが必要です".into());
                 }
-                let source = host.clone();
                 super::call(
-                    &source,
+                    &host,
                     audio::Entry::bundle("broadcast_bundle"),
                     "音声状態を取得できません",
-                    move |host| -> Result<_, String> {
+                    move |host| {
                         if include_live {
                             host.full_snapshot_supported()
                         } else {
                             host.output_snapshot_supported()
                         }
-                        .map_err(|e| e.to_string())
                     },
                 )
                 .await?;
@@ -2358,14 +2355,13 @@ pub(crate) async fn broadcast_bundle(
                 .is_some_and(|receipt| receipt.runtime.is_some())
             {
                 validate_runtime_restore(&plan.before)?;
-                let check_host = host.clone();
                 let include_process = plan.bundle.process.is_some();
                 let include_live = plan.bundle.live.is_some();
                 super::call(
-                    &check_host,
+                    &host,
                     audio::Entry::bundle("broadcast_bundle"),
                     "音声状態を取得できません",
-                    move |host| -> Result<_, String> {
+                    move |host| {
                         if include_process {
                             host.process_snapshot_supported()
                         } else if include_live {
@@ -2373,7 +2369,6 @@ pub(crate) async fn broadcast_bundle(
                         } else {
                             host.checked_snapshot_supported()
                         }
-                        .map_err(|e| e.to_string())
                     },
                 )
                 .await?;
@@ -2382,15 +2377,14 @@ pub(crate) async fn broadcast_bundle(
                 || plan.bundle.output.is_some()
                 || plan.bundle.process.is_some()
             {
-                let checked_host = host.clone();
                 let include_output = plan.bundle.output.is_some();
                 let include_live = plan.bundle.live.is_some();
                 let include_process = plan.bundle.process.is_some();
                 super::call(
-                    &checked_host,
+                    &host,
                     audio::Entry::bundle("broadcast_bundle"),
                     "音声状態を取得できません",
-                    move |host| -> Result<_, String> {
+                    move |host| {
                         if include_process {
                             host.process_snapshot_supported()
                         } else if include_live {
@@ -2400,7 +2394,6 @@ pub(crate) async fn broadcast_bundle(
                         } else {
                             host.checked_snapshot_supported()
                         }
-                        .map_err(|e| e.to_string())
                     },
                 )
                 .await?;
@@ -2722,9 +2715,8 @@ async fn apply_owned(
     let target = plan.bundle;
     let verify_target = target.clone();
     let verify_devices = recovery_devices.clone();
-    let apply_host = host.clone();
     let applied = super::call(
-        &apply_host,
+        &host,
         audio::Entry::bundle("apply_owned"),
         "音声状態を取得できません",
         move |host| -> Result<_, String> {
@@ -2797,12 +2789,11 @@ async fn apply_owned(
     );
     if let Some(obs_plan) = plan.obs {
         // 自分のAuralyn変更前のwitnessを使わず、反映確認後に採り直す。
-        let conditions_host = host.clone();
         let witness = super::call(
-            &conditions_host,
+            &host,
             audio::Entry::bundle("snapshot_conditions"),
             "音声状態を取得できません",
-            move |host| -> Result<_, String> { host.conditions().snapshot() },
+            move |host| host.conditions().snapshot(),
         )
         .await;
         let result = match witness {
@@ -2876,9 +2867,8 @@ async fn undo_owned(
     let verify_devices = original_devices.clone();
     let was_running = history.was_running;
     let verify_backup = backup.clone();
-    let apply_host = host.clone();
     let summary = super::call(
-        &apply_host,
+        &host,
         audio::Entry::bundle("undo_owned"),
         "音声状態を取得できません",
         move |host| -> Result<_, String> {

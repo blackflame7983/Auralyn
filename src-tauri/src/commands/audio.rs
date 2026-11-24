@@ -7,11 +7,10 @@ pub(crate) async fn post_mix(
     state: State<'_, audio::AudioState>,
     request: audio::post_mix::Request,
 ) -> Result<audio::post_mix::Snapshot, String> {
-    let host = state.0.clone();
     let entry =
         audio::Entry::command("post_mix").class(audio::control::request_class::post_mix(&request));
     super::call(
-        &host,
+        &state.0,
         entry,
         "配信VSTの設定を取得できません",
         move |host| host.post_mix(request),
@@ -118,11 +117,10 @@ pub(crate) async fn peak_protection(
     state: State<'_, audio::AudioState>,
     config: Option<audio_engine::peak_protection::Config>,
 ) -> Result<audio_engine::peak_protection::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("peak_protection")
         .class(audio::control::request_class::peak_protection(&config));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.peak_protection(config),
@@ -135,11 +133,10 @@ pub(crate) async fn broadcast_true_peak(
     state: State<'_, audio::AudioState>,
     config: Option<audio_engine::true_peak_limiter::Config>,
 ) -> Result<audio_engine::true_peak_limiter::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("broadcast_true_peak")
         .class(audio::control::request_class::broadcast_true_peak(&config));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.broadcast_true_peak(config),
@@ -152,11 +149,10 @@ pub(crate) async fn live_output(
     state: State<'_, audio::AudioState>,
     config: Option<audio_engine::live_output::Config>,
 ) -> Result<audio_engine::live_output::Status, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("live_output")
         .class(audio::control::request_class::live_output(&config));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.live_output(config),
@@ -169,11 +165,10 @@ pub(crate) async fn mixing(
     state: State<'_, audio::AudioState>,
     request: audio::mixing::Request,
 ) -> Result<audio::mixing::Snapshot, String> {
-    let state = state.0.clone();
     let entry =
         audio::Entry::command("mixing").class(audio::control::request_class::mixing(&request));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.mixing(request),
@@ -250,9 +245,8 @@ pub(super) async fn enumerate_devices_async(
 pub(crate) async fn get_output_gain_observation(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::frontend_bootstrap::GainObservation, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_output_gain_observation"),
         "Failed to lock audio state",
         move |host| host.output_gain_observation(),
@@ -265,10 +259,9 @@ pub(crate) async fn audio_frontend_bootstrap(
     state: State<'_, audio::AudioState>,
     request: audio::frontend_bootstrap::Request,
 ) -> Result<audio::frontend_bootstrap::Reply, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("audio_frontend_bootstrap")
         .class(audio::control::request_class::frontend_bootstrap(&request));
-    super::call(&state, entry, "Failed to lock audio state", move |host| {
+    super::call(&state.0, entry, "Failed to lock audio state", move |host| {
         host.frontend_bootstrap(request)
     })
     .await
@@ -278,9 +271,8 @@ pub(crate) async fn audio_frontend_bootstrap(
 pub(crate) async fn get_saved_audio_config(
     state: State<'_, audio::AudioState>,
 ) -> Result<Option<audio::ActiveAudioConfig>, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_saved_audio_config"),
         "音声設定を取得できません",
         move |host| host.read_saved_audio_config(),
@@ -292,9 +284,8 @@ pub(crate) async fn get_saved_audio_config(
 pub(crate) async fn get_audio_state(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::AudioStateInfo, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_audio_state"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> { Ok(host.get_state()) },
@@ -306,9 +297,8 @@ pub(crate) async fn get_audio_state(
 pub(crate) async fn get_engine_tuning_config(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::EngineTuningConfig, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_engine_tuning_config"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> { Ok(host.get_engine_tuning_config()) },
@@ -321,9 +311,8 @@ pub(crate) async fn set_engine_tuning_config(
     state: State<'_, audio::AudioState>,
     config: audio::EngineTuningConfig,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_engine_tuning_config"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {
@@ -338,9 +327,8 @@ pub(crate) async fn set_engine_tuning_config(
 pub(crate) async fn get_engine_runtime_stats(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::EngineRuntimeStats, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_engine_runtime_stats"),
         "Failed to lock audio state",
         move |host| host.get_engine_runtime_stats(),
@@ -413,7 +401,6 @@ pub(crate) async fn start_audio(
         output_id,
         channel_routing,
     } = options;
-    let state = state.0.clone();
     log::debug!(
         "start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
         host,
@@ -422,7 +409,7 @@ pub(crate) async fn start_audio(
         sample_rate
     );
     let result = super::call(
-        &state,
+        &state.0,
         audio::Entry::command("start_audio"),
         "Failed to lock audio state",
         move |host_instance| -> Result<_, String> {
@@ -509,9 +496,8 @@ pub(crate) async fn stop_audio(
     conditions: State<'_, audio::conditions::ConditionState>,
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
-    let state = state.0.clone();
     let result = super::call(
-        &state,
+        &state.0,
         audio::Entry::command("stop_audio"),
         "Failed to lock audio state",
         move |host| host.stop(),
@@ -526,10 +512,9 @@ pub(crate) async fn session_rack(
     state: State<'_, audio::AudioState>,
     request: crate::ipc::SessionRackRequest,
 ) -> Result<crate::ipc::SessionRackReply, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("session_rack")
         .class(audio::control::request_class::session_rack(&request));
-    super::call(&state, entry, "Failed to lock audio state", move |host| {
+    super::call(&state.0, entry, "Failed to lock audio state", move |host| {
         host.session_rack(request)
     })
     .await
@@ -540,9 +525,8 @@ pub(crate) async fn restore_plugin(
     state: State<'_, audio::AudioState>,
     request: crate::ipc::RestorePluginRequest,
 ) -> Result<crate::ipc::RestoredPlugin, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("restore_plugin"),
         "Failed to lock audio state",
         move |host| host.restore_plugin(request),
@@ -558,9 +542,8 @@ pub(crate) async fn load_plugin(
     path: String,
     class_id: Option<String>,
 ) -> Result<crate::ipc::LoadedPlugin, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("load_plugin"),
         "Failed to lock audio state",
         move |host| host.load_plugin(&path, class_id.as_deref()),
@@ -573,9 +556,8 @@ pub(crate) async fn remove_plugin(
     state: State<'_, audio::AudioState>,
     id: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("remove_plugin"),
         "Failed to lock audio state",
         move |host| host.remove_plugin(&id),
@@ -588,9 +570,8 @@ pub(crate) async fn reorder_plugins(
     state: State<'_, audio::AudioState>,
     order: Vec<String>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("reorder_plugins"),
         "Failed to lock audio state",
         move |host| host.reorder_plugins(order),
@@ -604,9 +585,8 @@ pub(crate) async fn set_bypass(
     id: String,
     active: bool,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_bypass"),
         "Failed to lock audio state",
         move |host| host.set_bypass(&id, active),
@@ -620,9 +600,8 @@ pub(crate) async fn set_mute(
     id: String,
     active: bool,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_mute"),
         "Failed to lock audio state",
         move |host| host.set_mute(&id, active),
@@ -635,9 +614,8 @@ pub(crate) async fn resume_plugin(
     state: State<'_, audio::AudioState>,
     id: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("resume_plugin"),
         "Failed to lock audio state",
         move |host| host.resume_plugin(&id),
@@ -651,9 +629,8 @@ pub(crate) async fn set_gain(
     id: String,
     value: f32,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_gain"),
         "Failed to lock audio state",
         move |host| host.set_gain(&id, value),
@@ -677,7 +654,6 @@ pub(crate) async fn restart_audio_engine(
         output_id,
         channel_routing,
     } = options;
-    let state = state.0.clone();
     let microphone_host = host.clone();
     let needs_microphone = !input_source
         .as_ref()
@@ -698,7 +674,7 @@ pub(crate) async fn restart_audio_engine(
         .await?;
     }
     let result = super::call(
-        &state,
+        &state.0,
         audio::Entry::command("restart_audio_engine"),
         "Failed to lock audio state",
         move |audio_host| -> Result<_, String> {
@@ -808,9 +784,8 @@ pub(crate) async fn open_editor(
     state: State<'_, audio::AudioState>,
     id: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("open_editor"),
         "Failed to lock audio state",
         move |host| host.open_editor(&id),
@@ -823,9 +798,8 @@ pub(crate) async fn get_plugin_state(
     state: State<'_, audio::AudioState>,
     id: String,
 ) -> Result<String, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_plugin_state"),
         "Failed to lock audio state",
         move |host| host.get_plugin_state(&id),
@@ -855,9 +829,8 @@ pub(crate) async fn toggle_global_mute(
     conditions: State<'_, audio::conditions::ConditionState>,
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("toggle_global_mute"),
         "Failed to lock audio state",
         move |host| host.toggle_global_mute(),
@@ -872,9 +845,8 @@ pub(crate) async fn set_global_mute(
     active: bool,
 ) -> Result<(), String> {
     let _interrupt = conditions.0.interrupt_restore();
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_global_mute"),
         "Failed to lock audio state",
         move |host| host.set_global_mute(active),
@@ -887,9 +859,8 @@ pub(crate) async fn set_input_gain(
     state: State<'_, audio::AudioState>,
     value: f32,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_input_gain"),
         "Failed to lock audio state",
         move |host| host.set_input_gain(value),
@@ -903,9 +874,8 @@ pub(crate) async fn set_noise_reduction(
     active: bool,
     mode: Option<String>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_noise_reduction"),
         "Failed to lock audio state",
         move |host| host.set_noise_reduction(active, mode),
@@ -918,9 +888,8 @@ pub(crate) async fn start_noise_learning(
     state: State<'_, audio::AudioState>,
     duration_ms: Option<u32>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("start_noise_learning"),
         "Failed to lock audio state",
         move |host| host.start_noise_learning(duration_ms.unwrap_or(3000)),
@@ -932,9 +901,8 @@ pub(crate) async fn start_noise_learning(
 pub(crate) async fn cancel_noise_learning(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("cancel_noise_learning"),
         "Failed to lock audio state",
         move |host| host.cancel_noise_learning(),
@@ -951,9 +919,8 @@ pub(crate) async fn set_noise_control_config(
     voice_guard: bool,
     require_running: Option<bool>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_noise_control_config"),
         "Failed to lock audio state",
         move |host| {
@@ -978,9 +945,8 @@ pub(crate) async fn set_built_in_effects(
     singing: Option<crate::audio_engine::singing::SingingParams>,
     require_running: Option<bool>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_built_in_effects"),
         "Failed to lock audio state",
         move |host| {
@@ -1002,10 +968,9 @@ pub(crate) async fn builtin_effects(
     request: crate::audio_engine::builtin::Request,
     require_running: Option<bool>,
 ) -> Result<crate::audio_engine::builtin::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("builtin_effects")
         .class(audio::control::request_class::builtin_effects(&request));
-    super::call(&state, entry, "Failed to lock audio state", move |host| {
+    super::call(&state.0, entry, "Failed to lock audio state", move |host| {
         host.builtin_effects_routed(require_running.unwrap_or(false), request)
     })
     .await
@@ -1016,11 +981,10 @@ pub(crate) async fn set_loudness_measurement(
     state: State<'_, audio::AudioState>,
     id: Option<u64>,
 ) -> Result<(), String> {
-    let host = state.0.clone();
     let entry = audio::Entry::command("set_loudness_measurement")
         .class(audio::control::request_class::set_loudness_measurement(&id));
     super::call(
-        &host,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.set_loudness_measurement(id),
@@ -1033,9 +997,8 @@ pub(crate) async fn set_output_gain(
     state: State<'_, audio::AudioState>,
     value: f32,
 ) -> Result<(), String> {
-    let host = state.0.clone();
     super::call(
-        &host,
+        &state.0,
         audio::Entry::command("set_output_gain"),
         "音声状態を取得できません",
         move |host| host.set_output_gain(value),
@@ -1048,11 +1011,10 @@ pub(crate) async fn auto_gain(
     state: State<'_, audio::AudioState>,
     request: audio_engine::auto_gain::Request,
 ) -> Result<audio_engine::auto_gain::Snapshot, String> {
-    let host = state.0.clone();
     let entry = audio::Entry::command("auto_gain")
         .class(audio::control::request_class::auto_gain(&request));
     super::call(
-        &host,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.auto_gain(request),
@@ -1065,9 +1027,8 @@ pub(crate) async fn set_global_bypass(
     state: State<'_, audio::AudioState>,
     active: bool,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_global_bypass"),
         "Failed to lock audio state",
         move |host| host.set_global_bypass(active),
@@ -1081,9 +1042,8 @@ pub(crate) async fn set_input_channels(
     left: usize,
     right: usize,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("set_input_channels"),
         "Failed to lock audio state",
         move |host| host.set_input_channels(left, right),
@@ -1096,10 +1056,9 @@ pub(crate) async fn set_channel_scan(
     state: State<'_, audio::AudioState>,
     active: bool,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("set_channel_scan")
         .class(audio::control::request_class::set_channel_scan(active));
-    super::call(&state, entry, "Failed to lock audio state", move |host| {
+    super::call(&state.0, entry, "Failed to lock audio state", move |host| {
         host.set_channel_scan(active)
     })
     .await
@@ -1112,9 +1071,8 @@ pub(crate) async fn play_test_tone(
     duration_ms: Option<u32>,
     level_db: Option<f32>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("play_test_tone"),
         "Failed to lock audio state",
         move |host| {
@@ -1130,9 +1088,8 @@ pub(crate) async fn play_test_tone(
 
 #[tauri::command]
 pub(crate) async fn stop_test_tone(state: State<'_, audio::AudioState>) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("stop_test_tone"),
         "Failed to lock audio state",
         move |host| host.stop_test_tone(),
@@ -1145,9 +1102,8 @@ pub(crate) async fn measure_round_trip(
     state: State<'_, audio::AudioState>,
     level_db: Option<f32>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("measure_round_trip"),
         "Failed to lock audio state",
         move |host| host.measure_round_trip(level_db),
@@ -1159,9 +1115,8 @@ pub(crate) async fn measure_round_trip(
 pub(crate) async fn cancel_round_trip_measurement(
     state: State<'_, audio::AudioState>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("cancel_round_trip_measurement"),
         "Failed to lock audio state",
         move |host| host.cancel_round_trip_measurement(),
@@ -1173,9 +1128,8 @@ pub(crate) async fn cancel_round_trip_measurement(
 pub(crate) async fn get_round_trip_measurement(
     state: State<'_, audio::AudioState>,
 ) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_round_trip_measurement"),
         "Failed to lock audio state",
         move |host| host.get_round_trip_measurement(),
@@ -1192,9 +1146,8 @@ pub(crate) async fn probe_loopback(
 ) -> Result<audio::LoopbackProbeResult, String> {
     // プローブは 1.5〜2 秒ブロックするため、メインスレッドを塞がないよう
     // ブロッキングスレッドで実行する（AudioState ロックはその間保持される）
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("probe_loopback"),
         "Failed to lock audio state",
         move |host| {
@@ -1212,9 +1165,8 @@ pub(crate) async fn probe_loopback(
 pub(crate) async fn get_routing_diagnostics(
     state: State<'_, audio::AudioState>,
 ) -> Result<routing_diag::RoutingDiagnosticsReport, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_routing_diagnostics"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {
@@ -1230,11 +1182,10 @@ pub(crate) async fn live_modes(
     state: State<'_, audio::AudioState>,
     request: crate::audio_engine::live_modes::Request,
 ) -> Result<crate::audio_engine::live_modes::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("live_modes")
         .class(audio::control::request_class::live_modes(&request));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声状態を取得できません",
         move |host| host.live_modes(request),
@@ -1245,9 +1196,8 @@ pub(crate) async fn live_modes(
 pub(crate) async fn preflight_live_changes(
     state: State<'_, audio::AudioState>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("preflight_live_changes"),
         "音声状態を取得できません",
         move |host| host.preflight_live_changes(),
@@ -1259,9 +1209,8 @@ pub(crate) async fn preflight_live_changes(
 pub(crate) async fn begin_live_changes(
     state: State<'_, audio::AudioState>,
 ) -> Result<String, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("begin_live_changes"),
         "音声状態を取得できません",
         move |host| host.begin_live_changes(),
@@ -1273,9 +1222,8 @@ pub(crate) async fn end_live_changes(
     state: State<'_, audio::AudioState>,
     token: String,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("end_live_changes"),
         "音声状態を取得できません",
         move |host| host.end_live_changes(token),
@@ -1288,11 +1236,10 @@ pub(crate) async fn noise_measurement(
     state: State<'_, audio::AudioState>,
     request: crate::audio_engine::core::noise_learning::Request,
 ) -> Result<crate::audio_engine::core::noise_learning::Snapshot, String> {
-    let state = state.0.clone();
     let entry = audio::Entry::command("noise_measurement")
         .class(audio::control::request_class::noise_measurement(&request));
     super::call(
-        &state,
+        &state.0,
         entry,
         "音声の状態を取得できません",
         move |host| host.noise_measurement(request),
@@ -1393,9 +1340,8 @@ mod start_options_ipc_tests {
 pub(crate) async fn get_process_input_sources(
     state: State<'_, audio::AudioState>,
 ) -> Result<Vec<audio::process_inputs::Candidate>, String> {
-    let state = state.0.clone();
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("get_process_input_sources"),
         "音声設定を取得できません",
         move |host| host.process_input_sources(),

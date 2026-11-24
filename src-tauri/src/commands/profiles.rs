@@ -57,10 +57,9 @@ pub(crate) async fn save_profile(
     audio_extras: Option<ProfileAudioExtras>,
     builtin_fx_amount: Option<f32>,
 ) -> Result<(), String> {
-    let state = state.0.clone();
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("save_profile"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {
@@ -131,7 +130,6 @@ pub(crate) async fn apply_profile(
     skip_backup: Option<bool>,
     sound_only: Option<bool>,
 ) -> Result<ApplyProfileSummary, String> {
-    let state = state.0.clone();
     let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let mut profile = presets::load_preset(&config_dir, &name)?;
@@ -142,10 +140,10 @@ pub(crate) async fn apply_profile(
     })
     .await?;
     if profile.audio_config.is_some() {
-        super::audio::enumerate_devices_async(state.clone(), false).await?;
+        super::audio::enumerate_devices_async(state.0.clone(), false).await?;
     }
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("apply_profile"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {
@@ -181,16 +179,15 @@ pub(crate) async fn restore_backup_profile(
     backup_plugins: Vec<PresetPlugin>,
     backup_audio_extras: Option<ProfileAudioExtras>,
 ) -> Result<ApplyProfileSummary, String> {
-    let state = state.0.clone();
     let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let profile = presets::load_preset(&config_dir, presets::BACKUP_PROFILE_NAME)?;
         Ok((config_dir, profile))
     })
     .await?;
-    super::audio::enumerate_devices_async(state.clone(), false).await?;
+    super::audio::enumerate_devices_async(state.0.clone(), false).await?;
     super::call(
-        &state,
+        &state.0,
         audio::Entry::command("restore_backup_profile"),
         "Failed to lock audio state",
         move |host| -> Result<_, String> {
