@@ -26,6 +26,7 @@ export function useAudioRecovery() {
             cancelTimer?.();
         };
 
+        // 'Stream Error' は Rust の startup.rs の stream_error_text が送る文言。両側の試験で固定している。
         const errors = listen<string>('audio-stream-error', event => {
             if (!active || recovering || exhausted || !event.payload.includes('Stream Error')) return;
             if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true') return;

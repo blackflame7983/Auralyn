@@ -701,7 +701,7 @@ impl Engine {
                             _ => "レート変換に失敗したため音声を停止しました。設定を確認して再開してください。",
                         };
                         let reason = if nr_failed { "ノイズ低減のレート準備と適用が一致しないため音声を停止しました。" } else { reason };
-                        self.send_event(EngineEvent::Error(format!("Stream Error: {}", reason)));
+                        self.send_event(EngineEvent::Error(startup::stream_error_text(reason)));
                     }
                     self.voice_check_buffers.collect();
                     self.flush_pending_audio_msgs();
