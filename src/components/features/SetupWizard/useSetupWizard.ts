@@ -232,6 +232,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
                 return {
                     ...prev, input,
                     output: isAsioHost(prev.host) ? input && asioOutputFor(input, outputs)
+                        // 音楽鑑賞では Windows の既定を CABLE Input へ替えるので、表示した聴く機器を既定に追従させない。
+                        : prev.goal === 'music' && prev.output ? resolveAudioDevice(outputs.filter(d => !isVirtualOutput(d)), prev.host, prev.output.name, prev.output.id) ?? null
                         : prev.outputMode === 'default' ? verifiedDefaultOutput(outputs)
                         : outputs.find(d => d.name === prev.output?.name) || null,
                 };
@@ -306,7 +308,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig, onRestoreConfig
         setConfig(prev => goal === 'music' && prev.goal !== 'music'
             // selectHost の一覧更新はまだ反映されていないため、WASAPI の出力は取得済みの全機器から求める。
             ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(normalizeDevices(allDevicesRef.current, 'WASAPI').outputs) }
-            : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
+            // 音楽鑑賞で選んだ聴く機器は、ほかの用途の送り先に持ち越さない。
+            : prev.goal === 'music' && goal !== 'music'
+                ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(normalizeDevices(allDevicesRef.current, prev.host).outputs) }
+                : { ...prev, goal });
         // 目的は保存完了時に書く。選んだだけで中断した場合、ホームの用途を変えない。
         if (advance) setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready

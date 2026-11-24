@@ -248,7 +248,7 @@ npm run capture:ux-eval
 | `sound` | `live-home` | 音づくり | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
 | `sound-music` | `live-home` `purpose=music` | 音づくり | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
 | `audio` | `live-home` | 接続 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `setup-music-input` | `first-run` | セットアップの入力の手順（音楽鑑賞を選んで進む。`wizard.musicRoute` が見える） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
+| `setup-music-input` | `first-run` | セットアップの入力の手順（音楽鑑賞を選んで進む。`wizard.musicInputHint` が見える） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
 | `setup-music-output` | `first-run` | セットアップの出力の手順（同上） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
 | `audio-music` | `live-home` `purpose=music` | 接続（「仮想ケーブルを使う場合の接続」を開いて、`processInput.cableHelpMusic` が見える） | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
 | `appearance` | `live-home` | 外観 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
@@ -277,7 +277,7 @@ npm run capture:ux-eval
 - **入力の使い道は、ホームの表示と同じ。** `realisticAudioConfig` は保存値へ `inputSource` を書き、`purpose=music` なら入力の使い道も音楽鑑賞です。接続の「ホームの表示は「…」ですが、入力の使い道は「…」です。」と「そろえる」は、撮影のどの画像にも出ません。実際に不一致が起きたときの文は、ユニット試験で確かめます。
 - **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ入力の線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
 - **ダイアログを直接開いたときの焦点の輪。** 撮影は `?screen=` でダイアログやページを直接開きます。利用者のクリックを通らないので、ブラウザはキーボード操作の扱いにして、先頭の操作（ダイアログの×、ページの見出しなど）に `:focus-visible` の輪を出します。マウスでダイアログを開いたときは出ません。不具合として数えないでください。
-- **音楽鑑賞のセットアップの仮想ケーブルの案内は、2か所にあります。** 初回のセットアップの最初の画面「何に使いますか？」の予告は OBS・Discord の側だけです。音楽鑑賞を選んで進むと、入力の手順（2番目）と出力の手順（3番目）に、経路の文 `wizard.musicRoute`（再生アプリ → CABLE Input → CABLE Output → VST → 物理ヘッドホン）が出ます。`setup-music-input` と `setup-music-output` が、`first-run` から音楽鑑賞のカードを選んで進み、それぞれの手順で `wizard.musicRoute` が見えている状態を撮ります。接続のページの音の元には、閉じた折りたたみ「仮想ケーブルを使う場合の接続」があり、中に `processInput.cableHelpMusic`（CABLE Input と CABLE Output の設定のしかた）があります。`audio-music` が、その折りたたみを開いた状態を撮ります。
+- **音楽鑑賞のセットアップの仮想ケーブルの案内は、2か所にあります。** 初回のセットアップの最初の画面「何に使いますか？」の予告は OBS・Discord の側だけです。音楽鑑賞を選んで進むと、入力の手順（2番目）と出力の手順（3番目）に、それぞれの手順で操作する場所を示す文（入力は `wizard.musicInputHint`、出力は `wizard.musicOutputHint`）が出ます。`setup-music-input` と `setup-music-output` が、`first-run` から音楽鑑賞のカードを選んで進み、それぞれの文が見えている状態を撮ります。接続のページの音の元には、閉じた折りたたみ「仮想ケーブルを使う場合の接続」があり、中に `processInput.cableHelpMusic`（CABLE Input と CABLE Output の設定のしかた）があります。`audio-music` が、その折りたたみを開いた状態を撮ります。
 
 評価者へ渡す依頼文と決定済みの一覧（`test-results/ux-eval/<フォルダー>/PROMPT.md` と `DECIDED.md`）は、リポジトリに正本がありません。評価のたびに、撮影フォルダーの中へ作ります。上の項目は、そこへ写してください。
 

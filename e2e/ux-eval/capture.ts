@@ -26,7 +26,7 @@ interface Shot {
     outputMuted?: boolean;
     /** 接続ページの「仮想ケーブルの案内」を開いて撮る。 */
     cableHelp?: boolean;
-    /** first-run のセットアップで音楽鑑賞を選び、この手順まで進めて撮る。wizard.musicRoute の文が見えていることも確かめる。 */
+    /** first-run のセットアップで音楽鑑賞を選び、この手順まで進めて撮る。wizard.musicInputHint／wizard.musicOutputHint の文が見えていることも確かめる。 */
     musicWizardStep?: 'input' | 'output';
     surface: Surface;
     purposeLabel: string;
@@ -45,8 +45,8 @@ const music = [musicInput, musicOutput];
 
 const shots: Shot[] = [
     { name: 'setup-first', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', surface: 'wizard', purposeLabel: '配信', runningLabel: '未設定', registeredLabel: '未登録', expects: ['何に使いますか？'] },
-    { name: 'setup-music-input', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'input', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
-    { name: 'setup-music-output', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'output', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicRoute')] },
+    { name: 'setup-music-input', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'input', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicInputHint')] },
+    { name: 'setup-music-output', mock: 'first-run', theme: 'dark', locale: 'ja', purpose: 'voice', musicWizardStep: 'output', surface: 'wizard', purposeLabel: '音楽鑑賞（セットアップで選ぶ）', runningLabel: '未設定', registeredLabel: '未登録', expects: [message('ja', 'wizard.musicOutputHint')] },
     { name: 'home-voice', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '未登録', expects: ['いまの声', ...voice] },
     { name: 'home-voice-registered', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
     { name: 'home-voice-unmuted', mock: 'live-home', theme: 'dark', locale: 'ja', purpose: 'voice', registered: true, outputMuted: false, surface: 'home', purposeLabel: '配信', runningLabel: '実行中', registeredLabel: '登録済み', expects: ['いまの調整', ...voice] },
@@ -123,10 +123,11 @@ async function clearTextSelection(page: Page) {
 }
 
 // 初回のセットアップで音楽鑑賞を選び、入力の手順（2番目）か出力の手順（3番目）まで、利用者と同じ操作で進める。
-// どちらの手順にも、再生アプリから VST までの経路（wizard.musicRoute）が出る。
+// 入力の手順には wizard.musicInputHint、出力の手順には wizard.musicOutputHint が出る。
 async function advanceMusicWizard(page: Page, shot: Shot) {
     const dialog = page.getByRole('dialog').first();
-    const route = dialog.getByText(message(shot.locale, 'wizard.musicRoute'), { exact: true });
+    const route = dialog.getByText(message(shot.locale, 'wizard.musicInputHint'), { exact: true });
+    const outputHint = dialog.getByText(message(shot.locale, 'wizard.musicOutputHint'), { exact: true });
     // カードの題を2回押して、選んで進む。入場後も続く注意の動きで「静止」が成立しないので、静止の待ちだけを外す。
     await dialog.getByText(message(shot.locale, 'wizard.musicGoal'), { exact: true }).dblclick({ force: true });
     await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.musicInput'), exact: true })).toBeVisible();
@@ -137,7 +138,7 @@ async function advanceMusicWizard(page: Page, shot: Shot) {
     await input.selectOption({ label: musicInput });
     await dialog.getByRole('button', { name: message(shot.locale, 'common.next') }).click();
     await expect(dialog.getByRole('heading', { name: message(shot.locale, 'wizard.destination'), exact: true })).toBeVisible();
-    await expect(route).toBeVisible();
+    await expect(outputHint).toBeVisible();
     await clearTextSelection(page);
 }
 
