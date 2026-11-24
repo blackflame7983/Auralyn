@@ -647,6 +647,17 @@ impl OutputCallback {
                 self.queue_recovery.next_gain();
             }
         }
+        // 入力選択とは独立した、実際に存在する出力ペアへ送る。
+        let output_pair = if self.separated {
+            [0, 1]
+        } else {
+            super::super::queue_diagnostics::routed_output_pair(
+                self.rt_output_routing,
+                self.is_asio,
+                self.rt_physical_input,
+                channels,
+            )
+        };
         if self.rt_global_mute {
             // ミュート中もゲインの反映を完了させる。出力は無音のまま。
             for _ in 0..frames {
@@ -662,16 +673,6 @@ impl OutputCallback {
         } else if measure_action == super::super::latency_measure::OutputAction::Replace {
             // テスト音と同じく gain とピーク保護だけを通し、配信へは送らない。
             data.fill(0.0);
-            let output_pair = if self.separated {
-                [0, 1]
-            } else {
-                super::super::queue_diagnostics::routed_output_pair(
-                    self.rt_output_routing,
-                    self.is_asio,
-                    self.rt_physical_input,
-                    channels,
-                )
-            };
             let mut out_max_l = 0.0f32;
             let mut out_max_r = 0.0f32;
             for i in 0..frames {
@@ -693,16 +694,6 @@ impl OutputCallback {
             });
         } else if self.rt_test_tone.is_active() {
             data.fill(0.0);
-            let output_pair = if self.separated {
-                [0, 1]
-            } else {
-                super::super::queue_diagnostics::routed_output_pair(
-                    self.rt_output_routing,
-                    self.is_asio,
-                    self.rt_physical_input,
-                    channels,
-                )
-            };
             let mut out_max_l = 0.0f32;
             let mut out_max_r = 0.0f32;
 
@@ -729,16 +720,6 @@ impl OutputCallback {
             });
         } else if self.rt_voice_check.is_playback_active() {
             data.fill(0.0);
-            let output_pair = if self.separated {
-                [0, 1]
-            } else {
-                super::super::queue_diagnostics::routed_output_pair(
-                    self.rt_output_routing,
-                    self.is_asio,
-                    self.rt_physical_input,
-                    channels,
-                )
-            };
             let mut out_max_l = 0.0f32;
             let mut out_max_r = 0.0f32;
 
@@ -766,18 +747,6 @@ impl OutputCallback {
         } else {
             // Initialize output with silence
             data.fill(0.0);
-
-            // 入力選択とは独立した、実際に存在する出力ペアへ送る。
-            let output_pair = if self.separated {
-                [0, 1]
-            } else {
-                super::super::queue_diagnostics::routed_output_pair(
-                    self.rt_output_routing,
-                    self.is_asio,
-                    self.rt_physical_input,
-                    channels,
-                )
-            };
 
             let mut out_max_l = 0.0f32;
             let mut out_max_r = 0.0f32;
@@ -837,16 +806,7 @@ impl OutputCallback {
         measure_output_loudness(
             data,
             channels,
-            if self.separated {
-                [0, 1]
-            } else {
-                super::super::queue_diagnostics::routed_output_pair(
-                    self.rt_output_routing,
-                    self.is_asio,
-                    self.rt_physical_input,
-                    channels,
-                )
-            },
+            output_pair,
             &mut self.rt_loudness,
             &mut self.loudness_prod,
         );
