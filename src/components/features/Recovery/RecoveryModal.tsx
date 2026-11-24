@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { MdWarning, MdRestore, MdStop, MdRefresh } from 'react-icons/md';
 import { readPending } from '@/lib/pluginIdentity';
 import type { AudioEngineExit } from '@/lib/audioEngineExit';
+import { useCrashPluginCandidate } from '@/hooks/useCrashPluginCandidate';
 
 interface RecoveryModalProps {
     isOpen: boolean;
@@ -20,22 +21,9 @@ interface RecoveryModalProps {
 export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, onRecover, onWithoutPlugins, onKeepStopped, error, exit, onOpenDeviceSettings }) => {
     const t = useMessages();
     const deviceExit = exit?.cause === 'device_open';
-    const [pendingPlugin, setPendingPlugin] = useState<string | null>(null);
+    const pendingPlugin = useCrashPluginCandidate(isOpen, deviceExit);
     const [isLoading, setIsLoading] = useState(false);
     const [recoveryError, setRecoveryError] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            setRecoveryError(false);
-            // 機器の開始時は、残存するVSTの印を原因候補にしない。
-            const detected = localStorage.getItem('vst_host_detected_crash_plugin');
-            const pending = localStorage.getItem('vst_host_pending_plugin');
-            setPendingPlugin(deviceExit ? null : detected || pending);
-        } else {
-            // Cleanup on close
-            localStorage.removeItem('vst_host_detected_crash_plugin');
-        }
-    }, [isOpen, deviceExit]);
 
     const handleAction = async (action: () => Promise<void>) => {
         setRecoveryError(false);
@@ -65,7 +53,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
 
                     <h2 className="text-ui-heading font-bold text-destructive-text">{t('recovery.title')}</h2>
                     <p className="text-muted-foreground">
-                        {deviceExit ? t('recovery.deviceDescription') : <>{t('recovery.description')}<br />{t('recovery.unknown')}</>}
+                        {t(deviceExit ? 'recovery.deviceDescription' : 'recovery.description')}
                     </p>
 
                     {!deviceExit && pendingPlugin && (

@@ -51,3 +51,10 @@ export function crashedPluginMarker(exit: AudioEngineExit | undefined, pending: 
     if (exit?.cause === 'vst_operation' && exit.path) return pendingStorageValue({ path: exit.path, classId: exit.classId });
     return pending;
 }
+
+/** 異常終了のたびに除外候補の印を置き換える。前回の終了の印を、今回の候補として残さない。 */
+export function rememberCrashedPlugin(exit: AudioEngineExit | undefined): void {
+    const crashed = crashedPluginMarker(exit, localStorage.getItem('vst_host_pending_plugin'));
+    if (crashed) localStorage.setItem('vst_host_detected_crash_plugin', crashed);
+    else localStorage.removeItem('vst_host_detected_crash_plugin');
+}

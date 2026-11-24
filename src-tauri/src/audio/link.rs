@@ -201,10 +201,26 @@ impl LinkCell {
         drop(std::mem::replace(&mut inner.state, State::Closed(cause)));
         match cause {
             CloseCause::WriteFailed | CloseCause::WriteTimeout => inner.log.abandon(),
-            CloseCause::ReplyTimeout => inner.log.timeout(),
+            CloseCause::ReplyTimeout => {
+                inner.log.timeout(Instant::now());
+            }
             CloseCause::Intentional | CloseCause::Eof => {}
         }
         true
+    }
+
+    /// 応答の期限切れで閉じる。`close(ReplyTimeout)` と同じ後始末をし、勝てば、記録を捨てる前に
+    /// 書き込み済みの VST の操作を取り出して返す。
+    pub(super) fn close_reply_timeout(&self) -> (bool, Option<ExitPayload>) {
+        let mut inner = self.lock();
+        if matches!(inner.state, State::Closed(_)) {
+            return (false, None);
+        }
+        drop(std::mem::replace(
+            &mut inner.state,
+            State::Closed(CloseCause::ReplyTimeout),
+        ));
+        (true, inner.log.timeout(Instant::now()))
     }
 
     /// EOF の通知の列を出し終えたことを知らせる。通知の列のロックを放した後に呼ぶ。

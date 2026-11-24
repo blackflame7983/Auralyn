@@ -3773,13 +3773,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/components/features/Recovery/RecoveryModal.tsx",
-      "rule": "auralyn/owned-effects",
-      "hash": "df00d03638e35875087122dd112b88e0b39e8b4b65a7514cf0a1bfc08507806e",
-      "count": 1,
-      "reason": "既存の外部同期・描画・フォーカス契約を保持する。対象宣言の編集時に専用hookへ分離する。"
-    },
-    {
       "file": "src/components/features/Settings/__tests__/LicenseModalLocale.test.tsx",
       "rule": "@typescript-eslint/no-non-null-assertion",
       "hash": "34ec7090670cb908e4b708848d14f6de8b63eca1193944bf8f4b666e4bc56890",

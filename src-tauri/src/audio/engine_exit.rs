@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 const DEVICE_OPEN_SETTLING: Duration = Duration::from_secs(2);
+/// `audio-engine-exited` の後に出す旧の `audio-error`。フロントはこれを見て、復旧画面を二重に開かない。
+pub(super) const EXITED_NOTICE: &str = "Audio Engine Process Exited (Crash?)";
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -189,17 +191,19 @@ impl OperationLog {
         }
     }
 
-    /// Hostの待機期限を過ぎても、応答まではドライバーが機器を開いている。
-    pub(super) fn timeout(&mut self) {
+    /// 応答の期限切れ。書き込み済みの VST の操作なら、固まった原因として返す。
+    /// Hostの待機期限を過ぎても、応答まではドライバーが機器を開いている（機器の操作は返さず、残す）。
+    pub(super) fn timeout(&mut self, now: Instant) -> Option<ExitPayload> {
         if self
             .in_flight
             .as_ref()
             .is_some_and(|pending| pending.details.cause == "device_open")
         {
-            return;
+            return None;
         }
         // 遅いload応答のIDは回収するが、待機終了後のクラッシュには結び付けない。
-        self.in_flight = None;
+        let pending = self.in_flight.take()?;
+        (pending.sent && pending.details.cause == "vst_operation").then(|| pending.payload(now))
     }
 
     /// EOF の原因を採る。呼べるのは、接続を EOF で閉じる競りに勝った側だけ。
@@ -220,9 +224,15 @@ impl OperationLog {
                 ..Default::default()
             };
         };
-        let mut payload = pending.details;
+        pending.payload(now)
+    }
+}
+
+impl InFlight {
+    fn payload(self, now: Instant) -> ExitPayload {
+        let mut payload = self.details;
         payload.elapsed_ms = Some(
-            now.saturating_duration_since(pending.started_at)
+            now.saturating_duration_since(self.started_at)
                 .as_millis()
                 .min(u128::from(u64::MAX)) as u64,
         );
@@ -395,7 +405,7 @@ mod tests {
         }
 
         fn timeout(&self) {
-            self.0.lock().unwrap().timeout();
+            self.0.lock().unwrap().timeout(Instant::now());
         }
 
         fn take_exit(&self) -> ExitPayload {

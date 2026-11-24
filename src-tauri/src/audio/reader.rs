@@ -288,7 +288,7 @@ impl Reader {
         self.notifier.chain(|c| {
             let _ = c.emit("audio-conditions-changed", ());
             let _ = c.emit("audio-engine-exited", exit);
-            let _ = c.emit("audio-error", "Audio Engine Process Exited (Crash?)");
+            let _ = c.emit("audio-error", super::engine_exit::EXITED_NOTICE);
         });
         // 通知を出し終えてから、待っている呼び出しを切断で解放する。
         self.link.mark_notified();
