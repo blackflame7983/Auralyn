@@ -1422,6 +1422,37 @@ describe('音楽鑑賞のセットアップの入力と出力（#806）', () => 
         expect(screen.queryByText(message(locale, 'wizard.musicInputHint'))).not.toBeInTheDocument();
     });
 
+    it('音楽鑑賞から OBS へ選び直すと、出力は配信向けの仮想ケーブルになる', async () => {
+        inputs = [mic, device('CABLE Output', true)]; outputs = [cable, device('Headphones')];
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: message('ja', 'wizard.musicGoal') }));
+        fireEvent.click(await screen.findByRole('button', { name: /^戻る$/ }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        const next = () => within(screen.getByTestId('setup-actions')).getByRole('button', { name: '次へ' });
+        await waitFor(() => expect(next()).toBeEnabled());
+        fireEvent.click(next());
+        expect(screen.getByRole('radio', { name: message('ja', 'guide.copy.202') })).toBeChecked();
+        expect(screen.getByRole('combobox', { name: message('ja', 'guide.copy.208') })).toHaveValue('CABLE Input (VB-Audio)');
+    });
+
+    it('機器の読み込み中に音楽鑑賞を選んでも、読み込み後に既定の物理出力が入る', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [cable, device('Headphones')];
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const base = invokeBase();
+        vi.mocked(invoke).mockImplementation(async (command, args, options) => {
+            if (command === 'get_audio_devices') await gate;
+            return base(command, args, options);
+        });
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: message('ja', 'wizard.musicGoal') }));
+        await act(async () => { release(); });
+        const next = () => within(screen.getByTestId('setup-actions')).getByRole('button', { name: '次へ' });
+        await waitFor(() => expect(next()).toBeEnabled());
+        fireEvent.click(next());
+        expect(screen.getByRole('combobox', { name: message('ja', 'guide.copy.206') })).toHaveValue('Headphones');
+    });
+
     it.each(['ja', 'en'] as const)('音楽鑑賞以外の「Windows既定」は、何の名前かを示す（%s）', async locale => {
         inputs = [mic]; outputs = [device('Headphones')];
         const store = createLocaleStore(() => locale, () => true);

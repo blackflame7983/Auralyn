@@ -301,16 +301,17 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
                             </div>}
                             <div className="max-w-xl space-y-2" aria-label={t('guide.copy.204')}>
-                                    {config.outputMode === 'default' && config.output && (
+                                    {/* 音楽鑑賞は Windows の既定を CABLE Input へ替えるので、既定ではなく聴く機器を選ばせる。初期値は既定の物理出力で、選び直したら monitor にする。 */}
+                                    {config.outputMode === 'default' && config.goal !== 'music' && config.output && (
                                         <div className="mt-2 p-2 bg-background/50 rounded-control text-ui-support text-foreground">
                                             {t('wizard.currentDefault', { name: deviceDisplayName(config.output.name) })}
                                         </div>
                                     )}
-                                    {config.outputMode === 'default' && !config.output && (
+                                    {config.outputMode === 'default' && config.goal !== 'music' && !config.output && (
                                         <p role="status" className="mt-2 text-ui-support text-muted-foreground">
                                             {t('guide.copy.205')}</p>
                                     )}
-                                    {config.outputMode === 'monitor' && (<>
+                                    {(config.outputMode === 'monitor' || config.goal === 'music') && (<>
                                         <label htmlFor="wizard-output-206" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.206')}</label>
                                         <Field label={null} id="wizard-output-206"><Select
                                             id="wizard-output-206"
@@ -319,7 +320,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
                                                 const dev = availableOutputs.find(d => d.name === e.target.value);
-                                                setConfig(prev => ({ ...prev, output: dev || null }));
+                                                setConfig(prev => ({ ...prev, outputMode: 'monitor', output: dev || null }));
                                             }}
                                         >
                                             <option value="">{t('guide.copy.207')}</option>
