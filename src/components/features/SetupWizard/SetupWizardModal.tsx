@@ -191,14 +191,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     </div>
                                     {isAsioHost(config.host) && <p className="text-ui-support text-muted-foreground">{t('wizard.hostAsioHint')}</p>}
                                 </fieldset>}
-                                {(config.goal === 'listening' || config.goal === 'music') && <fieldset className="space-y-2">
-                                    <legend className="text-ui-support font-medium">{t('wizard.source')}</legend>
-                                    <div className="flex gap-4 text-ui-support">
-                                        <ChoiceCard    name="wizard-source" checked={config.goal === 'listening'} onChange={() => selectGoal('listening')} >{t('wizard.sourceMic')}</ChoiceCard>
-                                        <ChoiceCard    name="wizard-source" checked={config.goal === 'music'} onChange={() => selectGoal('music')} >{t('wizard.sourcePc')}</ChoiceCard>
-                                    </div>
-                                </fieldset>}
-                                {config.goal === 'music' && <p className="text-ui-support text-muted-foreground">{t('wizard.musicRoute')}</p>}
+                                {config.goal === 'music' && <p className="text-ui-support text-muted-foreground">{t('wizard.musicInputHint')}</p>}
                                 {isLoadingDevices ? (
                                     <div className="py-8 text-center text-muted-foreground animate-pulse">{t('guide.copy.186')}</div>
                                 ) : (
@@ -254,7 +247,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <h2 className="setup-heading">{t('wizard.destination')}</h2>
                                 <p className="text-ui-support text-muted-foreground">
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
-                                        : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
+                                        : config.goal === 'music' ? t('wizard.musicOutputHint') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
                                 {!config.input && <p className="text-ui-support text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-ui-support text-warning">{t('guide.copy.197')}</p>}
@@ -276,7 +269,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>}
 
                             {!isAsioHost(config.host) && <>
-                            <div role="radiogroup" aria-label={t('wizard.output')} className={`grid ${config.goal === 'music' ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
+                            {config.goal !== 'music' && <div role="radiogroup" aria-label={t('wizard.output')} className="grid grid-cols-3 gap-3">
                                 {/* Option 1: Default */}
                                 <SelectionCard name="wizard-output"
                                     onChange={() => selectOutputMode('default')}
@@ -298,19 +291,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
 
                                 {/* Option 3: Broadcast */}
-                                {config.goal !== 'music' && <SelectionCard name="wizard-output"
+                                <SelectionCard name="wizard-output"
                                     onChange={() => selectOutputMode('broadcast')}
                                     icon={<MdCast aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.202')}
                                     description={t('guide.copy.203')}
                                     active={config.outputMode === 'broadcast'}
                                     color="purple"
-                                />}
-                            </div>
+                                />
+                            </div>}
                             <div className="max-w-xl space-y-2" aria-label={t('guide.copy.204')}>
                                     {config.outputMode === 'default' && config.output && (
                                         <div className="mt-2 p-2 bg-background/50 rounded-control text-ui-support text-foreground">
-                                            {config.output.name}
+                                            {t('wizard.currentDefault', { name: deviceDisplayName(config.output.name) })}
                                         </div>
                                     )}
                                     {config.outputMode === 'default' && !config.output && (
