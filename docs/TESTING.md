@@ -398,6 +398,23 @@ cargo test --locked --lib audio::post_mix::life_tests
 - 自動の開始：起動の直後に、保存した設定で音声が自動で始まった。(a) と (c) は確かめる前に `stop_audio` で止めた。(b) は止めずに `quit_app` した（終了とともに止まった）。聴感の確認ではない。
 - 後始末：実行後に `AuralynHost`・`audio_engine` のプロセスはなく、改名したファイルは元の名前に戻した。容量は足りたので、キャッシュは消していない（空き約 16 GB）。
 
+### 落ちる・固まるVSTでの実機の確認（#462）
+
+試験用の VST3「Auralyn Crash Test」（`src-tauri/examples/crash_vst3.rs`。配布しない）は、指定した操作で `abort` する、または止まらずに回り続ける。指定は `%TEMP%\auralyn-crash-vst3.txt`（前後の空白は無視）に書く。
+
+- 操作名：`load`・`set_state`・`get_state`・`open_editor`・`processing_setup`・`process`。`hang:<操作名>` なら落ちずに固まる。ファイルがない・一致しないときは普通に動く。
+- 落とすのは、実行ファイル名が `audio_engine` で始まるプロセスの中だけ（スキャナーでは落とさない）。`process` は `setupProcessing`／`setActive` でファイルを読んで控えるので、音声スレッドではファイルを読まない。
+
+```powershell
+$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
+cargo build --manifest-path src-tauri/Cargo.toml --locked --example crash_vst3 --release
+$bundle = "$env:CARGO_TARGET_DIR\crash-vst3\Auralyn Crash Test.vst3\Contents\x86_64-win"
+New-Item -ItemType Directory -Force $bundle | Out-Null
+Copy-Item "$env:CARGO_TARGET_DIR\release\examples\crash_vst3.dll" "$bundle\Auralyn Crash Test.vst3" -Force
+```
+
+Auralyn の「VSTを追加」の「探すフォルダー」へ `...\src-tauri\target\crash-vst3` を足すと見つかる。`C:\Program Files` へは置かない。DLL は音声エンジンが読んでいる間は上書きできない（アプリを終了してから写す）。確認の結果は [ISSUE_462_ACCEPTANCE_2026-11-24.md](verification/ISSUE_462_ACCEPTANCE_2026-11-24.md)。
+
 ### 自発的に状態が変わるVSTの確認（#465）
 
 開発用CLI `vst_state_drift` は、操作なしで生成信号をVSTへ渡し、`getState`の内容を比較する。
