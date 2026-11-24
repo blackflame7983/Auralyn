@@ -88,7 +88,7 @@
     {
       "file": "src-tauri/src/commands/profiles.rs",
       "rule": "rust/suppression",
-      "hash": "411c3c64b38a57615d5e5cb6073b735040569d09b941351a2bc113be7cddf0c2",
+      "hash": "6d978fdbca56440637559cc94499d9e63d6e3123844e09e1439b573a1ac10231",
       "count": 1,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },
