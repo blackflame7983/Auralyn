@@ -45,9 +45,10 @@ struct ReachMeasurement {
 
 impl ReachTone for AudioState {
     async fn play(&self, duration_ms: u32) -> Result<ReachReceipt, String> {
-        let host = self.0.clone();
-        host.run_async(
+        crate::commands::call(
+            &self.0,
             Entry::new(EntryKind::Obs, "play"),
+            "音声状態を取得できません",
             move |host| -> Result<_, String> {
                 let witness = host
                     .begin_obs_reach_tone(duration_ms)
@@ -59,14 +60,14 @@ impl ReachTone for AudioState {
             },
         )
         .await
-        .map_err(|error| error.text("音声状態を取得できません"))?
     }
 
     async fn stop(&self, receipt: &ReachReceipt) -> Result<ReachReceipt, String> {
-        let host = self.0.clone();
         let witness = receipt.witness.clone();
-        host.run_async(
+        crate::commands::call(
+            &self.0,
             Entry::new(EntryKind::Obs, "stop"),
+            "音声状態を取得できません",
             move |host| -> Result<_, String> {
                 let witness = host
                     .finish_obs_reach_tone(&witness)
@@ -78,7 +79,6 @@ impl ReachTone for AudioState {
             },
         )
         .await
-        .map_err(|error| error.text("音声状態を取得できません"))?
     }
 }
 

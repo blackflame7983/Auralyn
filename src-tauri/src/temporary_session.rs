@@ -206,26 +206,23 @@ pub(crate) async fn acknowledge_session_review(
 ) -> Result<(), String> {
     let mode = mode.inner().clone();
     let host = state.0.clone();
-    async move {
-        let observation = host
-            .run_async(
-                crate::audio::Entry::new(
-                    crate::audio::EntryKind::TemporarySession,
-                    "acknowledge_session_review",
-                ),
-                |host| {
-                    host.auto_gain(crate::audio_engine::auto_gain::Request::Status)
-                        .map_err(|e| e.to_string())
-                },
-            )
-            .await
-            .map_err(|error| error.text("音声状態を取得できません"))??;
-        if !observation.running || observation.stream_failed {
-            return Err("明示開始後の音声処理を確認できません".into());
-        }
-        crate::commands::run_blocking(move || acknowledge(&mode)).await
+    let observation = crate::commands::call(
+        &host,
+        crate::audio::Entry::new(
+            crate::audio::EntryKind::TemporarySession,
+            "acknowledge_session_review",
+        ),
+        "音声状態を取得できません",
+        |host| {
+            host.auto_gain(crate::audio_engine::auto_gain::Request::Status)
+                .map_err(|e| e.to_string())
+        },
+    )
+    .await?;
+    if !observation.running || observation.stream_failed {
+        return Err("明示開始後の音声処理を確認できません".into());
     }
-    .await
+    crate::commands::run_blocking(move || acknowledge(&mode)).await
 }
 fn acknowledge(mode: &Mode) -> Result<(), String> {
     if mode.temporary {
@@ -286,76 +283,69 @@ pub(crate) async fn restart_temporary_session(
         None
     };
     let state = app.state::<crate::audio::AudioState>().0.clone();
-    crate::commands::detached(async move {
-        state
-            .run_async(
-                crate::audio::Entry::new(
-                    crate::audio::EntryKind::TemporarySession,
-                    "switch_session",
-                ),
-                move |audio| -> Result<(), String> {
-                    audio.preflight_live_changes().map_err(|e| e.to_string())?;
-                    if let Some(root) = snapshot_root {
-                        crate::commands::bundles::preserve_temporary_runtime(&root, audio)?;
-                    }
-                    // 旧エンジンを終了してから再起動する。再生・録音の継続は引き継がない。
-                    audio.prepare_update().map_err(|e| e.to_string())?;
-                    let started = (|| -> Result<(), String> {
-                        let mut cleanup_id = previous_directory
-                            .as_ref()
-                            .and_then(|root| root.file_name())
+    crate::commands::call(
+        &state,
+        crate::audio::Entry::new(crate::audio::EntryKind::TemporarySession, "switch_session"),
+        "音声状態を取得できません",
+        move |audio| -> Result<(), String> {
+            audio.preflight_live_changes().map_err(|e| e.to_string())?;
+            if let Some(root) = snapshot_root {
+                crate::commands::bundles::preserve_temporary_runtime(&root, audio)?;
+            }
+            // 旧エンジンを終了してから再起動する。再生・録音の継続は引き継がない。
+            audio.prepare_update().map_err(|e| e.to_string())?;
+            let started = (|| -> Result<(), String> {
+                let mut cleanup_id = previous_directory
+                    .as_ref()
+                    .and_then(|root| root.file_name())
+                    .and_then(|n| n.to_str())
+                    .and_then(|n| n.strip_prefix("Auralyn-temporary-"))
+                    .map(str::to_owned);
+                let mut command =
+                    std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+                if temporary {
+                    let id = format!(
+                        "{:032x}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_err(|_| "時刻を取得できません")?
+                            .as_nanos()
+                    );
+                    command.args(["--auralyn-temporary", &id]);
+                    cleanup_id = Some(id);
+                } else {
+                    command.arg("--auralyn-review");
+                    if let Some(root) = previous_directory {
+                        if let Some(id) = root
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .and_then(|n| n.strip_prefix("Auralyn-temporary-"))
-                            .map(str::to_owned);
-                        let mut command = std::process::Command::new(
-                            std::env::current_exe().map_err(|e| e.to_string())?,
-                        );
-                        if temporary {
-                            let id = format!(
-                                "{:032x}",
-                                std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map_err(|_| "時刻を取得できません")?
-                                    .as_nanos()
-                            );
-                            command.args(["--auralyn-temporary", &id]);
-                            cleanup_id = Some(id);
-                        } else {
-                            command.arg("--auralyn-review");
-                            if let Some(root) = previous_directory {
-                                if let Some(id) = root
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .and_then(|n| n.strip_prefix("Auralyn-temporary-"))
-                                {
-                                    command.args(["--auralyn-discard", id]);
-                                }
-                            }
+                        {
+                            command.args(["--auralyn-discard", id]);
                         }
-                        command.args(["--auralyn-wait-parent", &std::process::id().to_string()]);
-                        std::fs::write(
-                            marker(),
-                            cleanup_id.as_deref().unwrap_or("review-before-start-v1"),
-                        )
-                        .map_err(|_| "確認待ち情報を保存できません")?;
-                        command.spawn().map_err(|error| {
-                            format!("再起動できませんでした。音声は停止しています: {error}")
-                        })?;
-                        Ok(())
-                    })();
-                    if let Err(error) = started {
-                        audio.finish_update_attempt();
-                        return Err(error);
                     }
-                    Ok(())
-                },
-            )
-            .await
-            .map_err(|error| error.text("音声状態を取得できません"))??;
-        app.exit(0);
-        Ok(())
-    })
-    .await
+                }
+                command.args(["--auralyn-wait-parent", &std::process::id().to_string()]);
+                std::fs::write(
+                    marker(),
+                    cleanup_id.as_deref().unwrap_or("review-before-start-v1"),
+                )
+                .map_err(|_| "確認待ち情報を保存できません")?;
+                command.spawn().map_err(|error| {
+                    format!("再起動できませんでした。音声は停止しています: {error}")
+                })?;
+                Ok(())
+            })();
+            if let Err(error) = started {
+                audio.finish_update_attempt();
+                return Err(error);
+            }
+            Ok(())
+        },
+    )
+    .await?;
+    app.exit(0);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -518,11 +508,8 @@ mod tests {
     #[test]
     fn switch_session_exits_only_after_the_audio_closure_has_returned() {
         let source = include_str!("temporary_session.rs");
-        let start = source.find("\"switch_session\",").unwrap();
-        let closure_end = source[start..]
-            .find(".map_err(|error| error.text(\"音声状態を取得できません\"))??;")
-            .unwrap()
-            + start;
+        let start = source.find("\"switch_session\")").unwrap();
+        let closure_end = source[start..].find(".await?;").unwrap() + start;
         assert!(
             !source[start..closure_end].contains("app.exit"),
             "ホストを使う閉包の中で終了を要求しない"
