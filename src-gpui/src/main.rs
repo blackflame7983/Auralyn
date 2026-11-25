@@ -1,6 +1,7 @@
 //! Auralyn の GPUI 版。今は右の列（本番中の操作）と、ホームの音の流れの帯を持つ。決定と知見は docs/gpui/。
 //!
-//! 使い方：`auralyn-gpui [--lang en] [--config-dir <フォルダ>]`
+//! 使い方：`auralyn-gpui [--lang ja|en] [--config-dir <フォルダ>]`
+//! 言語を指定しなければ、保存した表示言語（Tauri 版と共通）で開く。
 //! 既定の設定のフォルダは、Tauri 版と同じ `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -11,6 +12,8 @@ mod desktop;
 mod engine;
 mod home;
 mod i18n;
+mod locale_file;
+mod settings;
 mod shell;
 mod sound;
 mod view;
@@ -23,19 +26,25 @@ use gpui_kit::*;
 use crate::i18n::Lang;
 
 struct Args {
-    lang: Lang,
+    /// 引数で指定した言語。
+    lang: Option<Lang>,
     config_dir: PathBuf,
 }
 
 fn parse_args() -> Args {
-    let mut lang = Lang::Ja;
+    let mut lang = None;
     let mut config_dir = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--lang" => {
-                if args.next().as_deref() == Some("en") {
-                    lang = Lang::En;
+                lang = match args.next().as_deref() {
+                    Some("ja") => Some(Lang::Ja),
+                    Some("en") => Some(Lang::En),
+                    other => {
+                        eprintln!("不明な言語: {other:?}");
+                        None
+                    }
                 }
             }
             "--config-dir" => config_dir = args.next().map(PathBuf::from),
@@ -55,8 +64,12 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = parse_args();
     log::info!("設定のフォルダ: {}", args.config_dir.display());
+    let lang = args
+        .lang
+        .or_else(|| locale_file::load(&args.config_dir))
+        .unwrap_or(Lang::Ja);
+    let config_dir = args.config_dir.clone();
     let engine = engine::Engine::start(args.config_dir);
-    let lang = args.lang;
     gpui_kit::application()
         .with_assets(assets::AppAssets)
         .run(move |cx| {
@@ -76,7 +89,7 @@ fn main() {
                 ..Default::default()
             };
             let (_, view) = gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| view::MainView::new(engine, lang, window, cx))
+                cx.new(|cx| view::MainView::new(engine, lang, config_dir, window, cx))
             })
             .expect("窓を開けません");
             cx.on_window_closed(move |cx, _| {

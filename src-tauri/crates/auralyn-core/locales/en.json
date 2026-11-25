@@ -3658,5 +3658,10 @@
   "gpuiShell.notLoaded": "Not loaded",
   "gpuiShell.singingNotYet": "Adjust the singing settings in the current Auralyn for now.",
   "gpuiShell.soundUnread": "The current audio processing settings could not be read. Reopen the Sound page.",
-  "gpuiShell.offUntilOn": "You can choose the type and amount while it stays off. The sound does not change until you turn it on."
+  "gpuiShell.offUntilOn": "You can choose the type and amount while it stays off. The sound does not change until you turn it on.",
+  "gpuiShell.desktop": "Windows integration",
+  "gpuiShell.tray": "Notification area icon",
+  "gpuiShell.hotkey": "Mute with Alt+M",
+  "gpuiShell.ready": "Ready",
+  "gpuiShell.unavailable": "Unavailable"
 }
