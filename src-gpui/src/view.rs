@@ -27,6 +27,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::vst::{Send, VstPage};
 use auralyn_ui_model::flow::Flow;
+use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::sound::Change;
@@ -215,12 +216,16 @@ impl MainView {
             changed = true;
         }
         // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
-        if self.page == Page::Sound
-            && self.sound.peak_pending()
-            && self.peak_polled.elapsed() >= PEAK_POLL
-        {
-            self.peak_polled = Instant::now();
-            self.engine.send(Command::ReadPeak);
+        if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
+            if self.sound.peak_pending() {
+                self.peak_polled = Instant::now();
+                self.engine.send(Command::ReadPeak);
+            }
+            if self.sound.shows_measurement() {
+                self.peak_polled = Instant::now();
+                self.engine
+                    .send(Command::Measure(measurement::Action::Read));
+            }
         }
         for action in self.desktop.poll() {
             match action {
@@ -292,6 +297,7 @@ impl MainView {
             Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
             Notice::Peak(peak) => self.sound.set_peak(peak, window, cx),
+            Notice::Measurement(reading) => self.sound.measure.set(reading),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -328,14 +334,19 @@ impl MainView {
         self.message = Some(format!("{} {detail}", core(self.lang, key)));
     }
 
-    /// ピーク保護は音声が動いているときだけ読めるので、開始・停止のあと、音づくりの画面を見ていれば読み直す。
+    /// ピーク保護と測定は音声が動いているときだけ読めるので、開始・停止のあと、音づくりの画面を見ていれば読み直す。
     fn reread_peak(&self) {
         if self.page == Page::Sound {
             self.engine.send(Command::ReadPeak);
+            self.engine
+                .send(Command::Measure(measurement::Action::Read));
         }
     }
 
     fn open(&mut self, page: Page) {
+        if self.page == Page::Sound && page != Page::Sound {
+            self.leave_sound();
+        }
         self.page = page;
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
         if page == Page::Connect {
@@ -344,9 +355,18 @@ impl MainView {
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
             self.engine.send(Command::ReadPeak);
+            self.engine
+                .send(Command::Measure(measurement::Action::Read));
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);
+        }
+    }
+
+    /// 音づくりの画面を離れるとき。この画面で始めた測定は中止する（見ていない間に測り終えて置き去りにしない）。
+    fn leave_sound(&mut self) {
+        if let Some(command) = self.sound.measure.leave() {
+            self.engine.send(command);
         }
     }
 

@@ -11,10 +11,12 @@ use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
+use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
+use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
@@ -69,6 +71,8 @@ pub enum Command {
     SetSound(Change),
     /// 大きな音を抑える（ピーク保護）の今の状態を読む。
     ReadPeak,
+    /// 周囲の音の測定を読む・始める・止める・採用する。結果は `Notice::Measurement`。
+    Measure(measurement::Action),
     /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
     SetPeak(bool),
     /// ピーク保護の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
@@ -94,6 +98,10 @@ impl Command {
         ) || matches!(
             (self, earlier),
             (Command::SetPeakLimits { .. }, Command::SetPeakLimits { .. })
+                | (
+                    Command::Measure(measurement::Action::Read),
+                    Command::Measure(measurement::Action::Read)
+                )
         )
     }
 }
@@ -115,6 +123,8 @@ pub enum Notice {
     Sound(Sound),
     /// ピーク保護の状態。`None` は読めない（音声が止まっているときも読めない）。
     Peak(Option<Peak>),
+    /// 周囲の音の測定。`None` は読めない（音声が止まっているときも読めない）。
+    Measurement(Option<Measurement>),
     /// 追加の候補。失敗したときは理由。
     Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
@@ -732,6 +742,41 @@ impl Control {
         let _ = self.notices.send(Notice::Peak(peak));
     }
 
+    /// 測定を頼み、そのあとの状態を読んで送る。読むだけの失敗は、止まっているときの普通のことなので帯に出さない。
+    fn measure(&mut self, action: &measurement::Action) {
+        use measurement::Action;
+        let request = match action.clone() {
+            Action::Read => None,
+            Action::Start(Take { epoch, generation }) => {
+                Some(MeasureRequest::Start { epoch, generation })
+            }
+            Action::Cancel(Take { epoch, generation }) => {
+                Some(MeasureRequest::Cancel { epoch, generation })
+            }
+            Action::Approve(Take { epoch, generation }) => Some(MeasureRequest::Approve {
+                epoch,
+                generation,
+                acknowledged_quiet: true,
+            }),
+        };
+        if let Some(request) = request {
+            if let Err(e) = self.host.noise_measurement(request) {
+                self.fail("noise_measurement", e);
+            } else if matches!(action, Action::Approve(_)) {
+                // 採用すると抑制の値が変わるので、音づくりも読み直す。
+                self.read_sound();
+            }
+        }
+        let reading = match self.host.noise_measurement(MeasureRequest::Snapshot) {
+            Ok(snapshot) => reading(snapshot),
+            Err(e) => {
+                log::info!("測定の状態を読めません: {e}");
+                None
+            }
+        };
+        let _ = self.notices.send(Notice::Measurement(reading));
+    }
+
     /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。
     fn set_peak(&mut self, change: impl FnOnce(PeakConfig) -> PeakConfig) {
         match self.host.peak_protection(None) {
@@ -875,6 +920,7 @@ impl Control {
             },
             Command::ReadSound => return self.read_sound(),
             Command::ReadPeak => return self.peak(None),
+            Command::Measure(ref action) => return self.measure(action),
             Command::SetPeak(enabled) => {
                 return self.set_peak(|config| PeakConfig { enabled, ..config })
             }
@@ -986,6 +1032,20 @@ fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
         }
         .normalized(),
     )
+}
+
+/// エンジンの測定の状態を画面の形にする。知らない状態は読めないものとする。
+fn reading(snapshot: Snapshot) -> Option<Measurement> {
+    Some(Measurement {
+        state: measurement::State::parse(&snapshot.state)?,
+        take: Take {
+            epoch: snapshot.epoch,
+            generation: snapshot.generation,
+        },
+        progress: snapshot.progress,
+        quality: snapshot.quality.iter().map(|q| Quality::parse(q)).collect(),
+        previous: snapshot.previous_available,
+    })
 }
 
 #[cfg(test)]
