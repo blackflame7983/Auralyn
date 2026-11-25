@@ -77,6 +77,7 @@ pub mod keys {
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
     pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const QUIT_HELP: &str = "band.quitHelp";
     pub const PEAK_TITLE: &str = "peak.title";
     pub const PEAK_LEAD: &str = "peak.lead";
     pub const PEAK_SCOPE: &str = "peak.scope";
@@ -127,7 +128,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 114] = [
+    pub const ALL: [&str; 115] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -195,6 +196,7 @@ pub mod keys {
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
         SINGING_NOT_YET,
+        QUIT_HELP,
         PEAK_TITLE,
         PEAK_LEAD,
         PEAK_SCOPE,

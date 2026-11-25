@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::connect::ConnectPage;
-use crate::desktop::{Action, Desktop};
+use crate::desktop::{self, Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
@@ -137,6 +137,13 @@ impl MainView {
         });
         let now = Instant::now();
         let desktop = Desktop::new(lang);
+        // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
+        if desktop.tray_error.is_none() {
+            window.on_window_should_close(cx, |window, _| {
+                desktop::set_shown(window, false);
+                false
+            });
+        }
         if let Some(error) = &desktop.tray_error {
             log::warn!("トレイを作れません: {error}");
         }
@@ -191,7 +198,10 @@ impl MainView {
         for action in self.desktop.poll() {
             match action {
                 Action::ToggleMute => self.toggle_mute(),
-                Action::Show => window.activate_window(),
+                Action::Show => {
+                    desktop::set_shown(window, true);
+                    window.activate_window()
+                }
                 Action::Quit => {
                     self.engine.save_before_quit();
                     cx.quit()

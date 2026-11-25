@@ -21,11 +21,14 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 | スライダー | `SliderState` を `cx.new` で持ち、`cx.subscribe` で `SliderEvent::Change` と `Release` を受ける | `view.rs` の `new` |
 | 読み上げ | 操作する要素に `.id(..)` と `.role(Role::..)` を付ける。ナレーターでの合格は AccessKit（UIA）による | `view.rs` |
 | トレイとホットキー | `tray-icon` と `global-hotkey` は GPUI の主スレッドで作り、周期の中で `poll` する。登録の失敗は画面とログに出す | `desktop.rs` |
+| 窓をトレイへ隠す | GPUI に窓を隠す手段が無い（`App::hide` は Windows では何もしない）。`window.on_window_should_close` で false を返して閉じるのを止め、`window.window_handle()`（`raw-window-handle`）の HWND に Win32 の `ShowWindow(SW_HIDE)`。出すときは `SW_SHOW` のあと `activate_window` | `desktop.rs` の `set_shown`、`view.rs` の `new` |
 | 自前の描画 | `canvas(prepaint, paint)` の paint で `PathBuilder::fill()`／`stroke(px(..))` に `add_polygon` で点を渡し、`window.paint_path`。はみ出しは `with_content_mask` で切る。塗りには `linear_gradient` の `Background` も渡せ、グラデーションはパスの外接矩形に掛かる（2色まで） | `home.rs` の `paint_wave` |
 | 動きを減らす設定 | `cx.reduce_motion()`（`App`）を渡し、時間の流れの描画を止めて今の値だけにする。ただし下の落とし穴のとおり、Windows の設定はまだ入らない | `view.rs` の `tick`、`auralyn-ui-model` の `flow` |
 | 日本語入力 | GPUI Kit の `Input` / `InputState` を使う。自前の文字入力は作らない | `view.rs` |
 
 ## 落とし穴
+
+- **閉じるときの「ウィンドウ ハンドルが無効です」（0.3.14、Windows）。** `WindowsWindow` の `Drop` は `ShowWindowAsync(SW_HIDE)` のあと、`RevokeDragDrop` と `DestroyWindow` を executor で後から呼ぶ。窓がもう壊れているとこれらが失敗し、`log_err` がモジュール名の無い ERROR（0x80070578・0x80040102 = `DRAGDROP_E_INVALIDHWND`）を出す。終了そのものは正常で、アプリ側で消す手段は無い。
 
 - **動きを減らす設定を OS から読まない（0.3.14）。** `App::reduce_motion()` はアプリが `set_reduce_motion` で入れた値を返すだけで、初期値は false。Windows の「アニメーションを表示する」（`SPI_GETCLIENTAREAANIMATION`）はどこからも読まれない。読み込むかどうかは未決（2026-11-25）。
 - **窓が見えているかを知る API がない（0.3.14）。** DESIGN.md 10.6 の「窓が隠れている間はメーターを止める」は、まだ満たせていない。

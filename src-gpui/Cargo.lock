@@ -670,9 +670,11 @@ dependencies = [
  "global-hotkey 0.7.0",
  "gpui-kit",
  "log",
+ "raw-window-handle",
  "serde_json",
  "tray-icon 0.21.3",
  "vst-host",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

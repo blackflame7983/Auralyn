@@ -53,6 +53,9 @@ pub fn render(
                 .flex_col()
                 .gap_2()
                 .child(status(lang, keys::TRAY, tray))
+                .when(tray.is_none(), |this| {
+                    this.child(note(core(lang, keys::QUIT_HELP)))
+                })
                 .child(status(lang, keys::HOTKEY, hotkey)),
         ))
         .child(note(format!(
