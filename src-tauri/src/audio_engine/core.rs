@@ -73,7 +73,7 @@ use std::time::{Duration, Instant};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
 
-use crate::ipc::{Command, EngineEvent, MeterLevels, OutputMessage, Response};
+use crate::ipc::{Command, EngineEvent, OutputMessage, Response};
 use crate::vst_host::instance::VstProcessor;
 
 // New Managers
@@ -294,7 +294,7 @@ pub enum UserEvent {
 
 type CmdProducer = <HeapRb<AudioThreadMessage> as Split>::Prod;
 type LoudnessConsumer = <HeapRb<LoudnessReading> as Split>::Cons;
-type LevelConsumer = <HeapRb<MeterLevels> as Split>::Cons;
+type LevelConsumer = <HeapRb<meter::MeterBlock> as Split>::Cons;
 type ChannelConsumer = <HeapRb<super::channel_scan::Snapshot> as Split>::Cons;
 type RetireConsumer = <HeapRb<DisposedProcessor> as Split>::Cons;
 
@@ -1346,8 +1346,8 @@ impl Engine {
     }
 
     /// 新しいストリームのメーターの受け口を作る。前の音声のピークと無音の省略を持ち越さない。
-    fn prepare_meter_channel(&mut self) -> <HeapRb<MeterLevels> as Split>::Prod {
-        let (producer, consumer) = HeapRb::<MeterLevels>::new(4096).split();
+    fn prepare_meter_channel(&mut self) -> <HeapRb<meter::MeterBlock> as Split>::Prod {
+        let (producer, consumer) = HeapRb::<meter::MeterBlock>::new(4096).split();
         self.level_rx = Some(consumer);
         self.meter.reset();
         producer
