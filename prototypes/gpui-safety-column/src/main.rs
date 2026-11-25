@@ -64,6 +64,7 @@ fn main() {
         .with_assets(gpui_kit::assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
