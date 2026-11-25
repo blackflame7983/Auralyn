@@ -13,13 +13,14 @@ use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
+use auralyn_ui_model::profile::Entry as ProfileEntry;
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::ipc::RestorePluginRequest;
-use vst_host_lib::vst_host::scanner;
+use vst_host_lib::vst_host::{presets, scanner};
 
 use crate::store;
 
@@ -73,6 +74,16 @@ pub enum Command {
     ReadPeak,
     /// 周囲の音の測定を読む・始める・止める・採用する。結果は `Notice::Measurement`。
     Measure(measurement::Action),
+    /// 保存した構成（Tauri 版と同じ `presets/`）の一覧を読む。結果は `Notice::Profiles`。
+    ListProfiles,
+    /// 今の VST の並び・ノイズ低減・声を整える設定を、構成として保存する（接続は含めない）。
+    SaveProfile(String),
+    /// 構成の VST の並び・ノイズ低減・声を整える設定を読む（接続は変えない）。
+    /// 読む前の状態は退避へ保存する。`restore` は退避から戻すとき（戻すときは退避し直さない）。
+    ApplyProfile {
+        name: String,
+        restore: bool,
+    },
     /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
     SetPeak(bool),
     /// ピーク保護の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
@@ -125,6 +136,8 @@ pub enum Notice {
     Peak(Option<Peak>),
     /// 周囲の音の測定。`None` は読めない（音声が止まっているときも読めない）。
     Measurement(Option<Measurement>),
+    /// 保存した構成の一覧。
+    Profiles(Vec<ProfileEntry>),
     /// 追加の候補。失敗したときは理由。
     Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
@@ -777,6 +790,135 @@ impl Control {
         let _ = self.notices.send(Notice::Measurement(reading));
     }
 
+    fn list_profiles(&mut self) {
+        match presets::list_profile_meta(&self.config_dir) {
+            Ok(list) => {
+                let entries = list
+                    .into_iter()
+                    .map(|meta| ProfileEntry {
+                        name: meta.name,
+                        has_plugins: meta.has_plugins,
+                        has_noise: meta.has_noise_control,
+                        has_effects: meta.has_builtin_fx,
+                        is_backup: meta.is_backup,
+                    })
+                    .collect();
+                let _ = self.notices.send(Notice::Profiles(entries));
+            }
+            Err(e) => self.fail("list_profiles", anyhow::anyhow!(e)),
+        }
+    }
+
+    /// 今の並び（中の設定を取り直す）と音づくりを、構成の形にする。接続は含めない
+    /// （GPUI 版は入出力の音量・チャンネルを Tauri 版の形で持たないので、違う値を保存しないため）。
+    fn capture_profile(&mut self, name: &str) -> anyhow::Result<presets::Preset> {
+        self.save(true);
+        let plugins = self
+            .rack
+            .iter()
+            .map(|slot| presets::PresetPlugin {
+                path: slot.path.clone(),
+                name: slot.name.clone(),
+                vendor: String::new(),
+                version: String::new(),
+                enabled: slot.enabled,
+                muted: slot.muted,
+                gain: slot.gain,
+                state: slot.state.clone(),
+                class_id: slot.class_id.clone(),
+            })
+            .collect();
+        let mut preset = vst_host_lib::profile::capture_current_profile(
+            &mut self.host,
+            name.to_owned(),
+            plugins,
+            None,
+        )
+        .map_err(anyhow::Error::msg)?;
+        preset.audio_config = None;
+        Ok(preset)
+    }
+
+    fn save_profile(&mut self, name: &str) {
+        let result = self.capture_profile(name).and_then(|preset| {
+            presets::save_preset(&self.config_dir, name, &preset).map_err(anyhow::Error::msg)
+        });
+        if let Err(e) = result {
+            self.fail("save_profile", e);
+        }
+        self.list_profiles();
+    }
+
+    /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
+    /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
+    fn apply_profile(&mut self, name: &str, restore: bool) {
+        let result = (|| -> anyhow::Result<()> {
+            let profile =
+                presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
+            if !restore {
+                let backup = self.capture_profile(presets::BACKUP_PROFILE_NAME)?;
+                presets::save_preset(&self.config_dir, presets::BACKUP_PROFILE_NAME, &backup)
+                    .map_err(anyhow::Error::msg)?;
+            }
+            if let Some(nc) = &profile.noise_control {
+                self.host.set_noise_control_config(
+                    nc.enabled,
+                    nc.mode.clone(),
+                    nc.strength,
+                    nc.voice_guard,
+                )?;
+            }
+            if let Some(fx) = &profile.builtin_fx {
+                self.host.set_built_in_effects_from_profile(
+                    fx.enabled,
+                    Some(fx.preset.clone()),
+                    fx.amount,
+                    fx.singing,
+                    Some(fx.reverb.unwrap_or_default()),
+                    fx.deesser,
+                )?;
+            }
+            if profile.includes_plugin_category() {
+                self.recover();
+                for id in self
+                    .rack
+                    .iter()
+                    .filter(|s| s.loaded)
+                    .map(|s| s.id.clone())
+                    .collect::<Vec<_>>()
+                {
+                    if let Err(e) = self.host.remove_plugin(&id) {
+                        log::warn!("構成を読む前に VST を外せません: {e}");
+                    }
+                }
+                self.rack.clear();
+                self.renamed.clear();
+                for plugin in profile.plugins {
+                    self.restore(RestorePluginRequest {
+                        path: plugin.path,
+                        state: plugin.state,
+                        bypassed: !plugin.enabled,
+                        muted: plugin.muted,
+                        gain: plugin.gain,
+                        class_id: plugin.class_id,
+                    });
+                }
+                self.changed();
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            self.fail("apply_profile", e);
+        }
+        // 音づくりは、エンジンが受け付けた値を読んで保存し直す（次の起動もこの構成で始まる）。
+        self.sound = None;
+        self.read_sound();
+        if let Some(sound) = self.sound {
+            self.save_sound(sound);
+        }
+        self.list_profiles();
+    }
+
     /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。
     fn set_peak(&mut self, change: impl FnOnce(PeakConfig) -> PeakConfig) {
         match self.host.peak_protection(None) {
@@ -921,6 +1063,11 @@ impl Control {
             Command::ReadSound => return self.read_sound(),
             Command::ReadPeak => return self.peak(None),
             Command::Measure(ref action) => return self.measure(action),
+            Command::ListProfiles => return self.list_profiles(),
+            Command::SaveProfile(ref name) => return self.save_profile(name),
+            Command::ApplyProfile { ref name, restore } => {
+                return self.apply_profile(name, restore)
+            }
             Command::SetPeak(enabled) => {
                 return self.set_peak(|config| PeakConfig { enabled, ..config })
             }

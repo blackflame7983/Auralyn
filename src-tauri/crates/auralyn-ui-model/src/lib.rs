@@ -6,6 +6,7 @@ pub mod flow;
 pub mod measurement;
 pub mod meter;
 pub mod peak;
+pub mod profile;
 pub mod rack;
 pub mod session;
 pub mod sound;

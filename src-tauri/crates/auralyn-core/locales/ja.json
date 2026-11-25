@@ -3669,5 +3669,6 @@
   "gpuiShell.trayQuit": "終了",
   "gpuiShell.hotkeyFailed": "Alt+M を登録できません（Auralyn が起動中かもしれません）",
   "gpuiShell.peakResets": "アプリを起動し直すと、OFF と既定の天井・復帰時間に戻ります。",
-  "gpuiShell.auto": "自動（機器に合わせる）"
+  "gpuiShell.auto": "自動（機器に合わせる）",
+  "gpuiShell.setupScope": "保存・適用するのは、VST の並び・ノイズ低減・声を整える設定です。接続（機器・周波数）は変えません。"
 }

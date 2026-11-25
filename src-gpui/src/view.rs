@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
+use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -23,6 +24,7 @@ use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::locale_file;
 use crate::settings;
+use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::vst::{Send, VstPage};
@@ -66,6 +68,7 @@ pub struct MainView {
     config_dir: PathBuf,
     connect: ConnectPage,
     vst: VstPage,
+    setups: SetupsPanel,
     sound: SoundPage,
     _ticker: Task<()>,
 }
@@ -106,6 +109,16 @@ impl MainView {
         .detach();
         let connect = ConnectPage::new(lang, window, cx);
         let vst = VstPage::new(window, cx);
+        let setups = SetupsPanel::new(window, cx);
+        cx.subscribe(&setups.name, |this, _, event: &InputEvent, cx| {
+            if let InputEvent::PressEnter { .. } = event {
+                if let Some(command) = this.setups.save(cx) {
+                    this.send(command);
+                }
+            }
+            cx.notify();
+        })
+        .detach();
         let sound = SoundPage::new(cx);
         cx.subscribe(&sound.amount, |this, _, event: &SliderEvent, _| {
             let SliderEvent::Release(value) = event else {
@@ -204,6 +217,7 @@ impl MainView {
             config_dir,
             connect,
             vst,
+            setups,
             sound,
             _ticker: ticker,
         }
@@ -299,6 +313,7 @@ impl MainView {
             Notice::Peak(peak) => self.sound.set_peak(peak, window, cx),
             Notice::Measurement(reading) => self.sound.measure.set(reading),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
+            Notice::Profiles(entries) => self.setups.set(entries, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
@@ -357,6 +372,9 @@ impl MainView {
             self.engine.send(Command::ReadPeak);
             self.engine
                 .send(Command::Measure(measurement::Action::Read));
+        }
+        if page == Page::Vst {
+            self.engine.send(Command::ListProfiles);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);
@@ -706,7 +724,9 @@ impl Render for MainView {
                                         }
                                     },
                                 )),
-                                Page::Vst => this.child(self.vst.render(lang, cx, send)),
+                                Page::Vst => this
+                                    .child(self.vst.render(lang, cx, send.clone()))
+                                    .child(self.setups.render(lang, cx, send)),
                                 Page::Sound => this.child(self.sound.render(lang, cx, send)),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,

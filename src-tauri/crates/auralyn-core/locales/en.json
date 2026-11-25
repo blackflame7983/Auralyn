@@ -3669,5 +3669,6 @@
   "gpuiShell.trayQuit": "Quit",
   "gpuiShell.hotkeyFailed": "Could not register Alt+M (Auralyn may be running)",
   "gpuiShell.peakResets": "When you restart the app, it turns off and the ceiling and release return to their defaults.",
-  "gpuiShell.auto": "Auto (match the device)"
+  "gpuiShell.auto": "Auto (match the device)",
+  "gpuiShell.setupScope": "Saving and applying cover the VST chain, noise reduction and the voice chain. Devices and sample rate stay as they are."
 }
