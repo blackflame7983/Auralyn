@@ -1,5 +1,6 @@
 //! トレイとグローバルホットキー。GPUI には無いので、Tauri が内部で使うのと同じ crate（tray-icon・global-hotkey）を
 //! GPUI の主スレッドで作る。Windows の主スレッドのメッセージループを GPUI と共有できるかを確かめる。
+//! 窓の × ではトレイへ隠す（Tauri 版と同じ。音は止めない）。GPUI に窓を隠す手段が無いので、Win32 の ShowWindow を使う。
 
 use crate::i18n::Lang;
 
@@ -15,10 +16,30 @@ mod imp {
     use crate::i18n::{core, keys};
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem};
     use tray_icon::{
         Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOW};
+
+    /// 窓を隠す（トレイへ）・出す。窓の取っ手が取れなければ何もしない。
+    pub fn set_shown(window: &gpui_kit::Window, shown: bool) {
+        let Ok(handle) = HasWindowHandle::window_handle(window) else {
+            return;
+        };
+        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: `handle` は GPUI がいま持っている生きた窓のもので、この呼び出しは GPUI と同じ主スレッドで行う。
+        // ShowWindow は窓の表示の状態を変えるだけで、メモリを渡さない。
+        unsafe {
+            ShowWindow(
+                handle.hwnd.get() as windows_sys::Win32::Foundation::HWND,
+                if shown { SW_SHOW } else { SW_HIDE },
+            );
+        }
+    }
 
     pub struct Desktop {
         _tray: Option<TrayIcon>,
@@ -160,6 +181,8 @@ mod imp {
             Vec::new()
         }
     }
+
+    pub fn set_shown(_window: &gpui_kit::Window, _shown: bool) {}
 }
 
-pub use imp::Desktop;
+pub use imp::{set_shown, Desktop};
