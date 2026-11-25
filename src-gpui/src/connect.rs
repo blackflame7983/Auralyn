@@ -12,7 +12,6 @@ use gpui_kit::*;
 
 use crate::color;
 
-const WASAPI: &str = "WASAPI";
 use crate::i18n::{core, keys, Lang};
 
 type Choices = SelectState<Vec<SharedString>>;
@@ -130,8 +129,7 @@ impl ConnectPage {
     /// 選んでいる周波数とバッファ。`None` は「自動」。
     pub fn values(&self, cx: &App) -> (Option<u32>, Option<u32>) {
         let value = |state: &Entity<Choices>, values: &[u32]| {
-            let row = state.read(cx).selected_index(cx)?.row;
-            values.get(row.checked_sub(1)?).copied()
+            connect::value_at(values, state.read(cx).selected_index(cx)?.row)
         };
         (
             value(&self.rate, &self.rates),
@@ -218,7 +216,7 @@ impl ConnectPage {
                 core(lang, keys::SAMPLE_RATE),
                 Select::new(&self.rate),
             ))
-            .when(host == WASAPI, |this| {
+            .when(connect::uses_system_rate(&host), |this| {
                 this.child(
                     div()
                         .text_sm()
@@ -280,9 +278,7 @@ fn set_values(
     let names = std::iter::once(SharedString::from(core(lang, keys::AUTO)))
         .chain(values.iter().map(|&v| SharedString::from(label(v))))
         .collect();
-    let row = value
-        .and_then(|value| values.iter().position(|&v| v == value))
-        .map_or(0, |row| row + 1);
+    let row = connect::row_of(values, value);
     set(state, names, Some(row), window, cx);
 }
 

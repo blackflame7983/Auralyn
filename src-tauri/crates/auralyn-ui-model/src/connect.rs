@@ -32,6 +32,11 @@ pub struct Saved {
 const ASIO: &str = "ASIO";
 const WASAPI: &str = "WASAPI";
 
+/// WASAPI の共有モードは、Windows のサウンド設定と同じ周波数でないと開始できない。
+pub fn uses_system_rate(host: &str) -> bool {
+    host == WASAPI
+}
+
 /// ASIO では、選んだドライバーが入出力の両方を受け持つ（出力は選ばせない）。
 pub fn shares_device(host: &str) -> bool {
     host == ASIO
@@ -152,6 +157,18 @@ pub fn saved_value(
     value: impl Fn(&Saved) -> Option<u32>,
 ) -> Option<u32> {
     saved.filter(|saved| saved.host == host).and_then(value)
+}
+
+/// 周波数やバッファの選択肢の行。0 行目は「自動」で、`values[n]` は n + 1 行目。候補に無い値は「自動」。
+pub fn row_of(values: &[u32], value: Option<u32>) -> usize {
+    value
+        .and_then(|value| values.iter().position(|&v| v == value))
+        .map_or(0, |row| row + 1)
+}
+
+/// `row_of` の逆。「自動」の行は `None`。
+pub fn value_at(values: &[u32], row: usize) -> Option<u32> {
+    values.get(row.checked_sub(1)?).copied()
 }
 
 /// ASIO で入力に選んだドライバーと同じ名前の出力。
@@ -314,5 +331,17 @@ mod tests {
         assert_eq!(saved_value(Some(&saved), "WASAPI", rate), Some(48_000));
         assert_eq!(saved_value(Some(&saved), "ASIO", rate), None);
         assert_eq!(saved_value(None, "WASAPI", rate), None);
+    }
+
+    #[test]
+    fn rows_put_auto_first() {
+        let values = [256, 512];
+        assert_eq!(row_of(&values, None), 0);
+        assert_eq!(row_of(&values, Some(512)), 2);
+        assert_eq!(row_of(&values, Some(480)), 0);
+        assert_eq!(value_at(&values, 0), None);
+        assert_eq!(value_at(&values, 2), Some(512));
+        assert_eq!(value_at(&values, 3), None);
+        assert!(uses_system_rate("WASAPI") && !uses_system_rate("ASIO"));
     }
 }
