@@ -336,11 +336,27 @@ impl MainView {
     }
 
     fn set_lang(&mut self, lang: Lang) {
+        if lang == self.lang {
+            return;
+        }
         self.lang = lang;
         self.desktop.set_lang(lang);
-        if let Err(e) = locale_file::save(&self.config_dir, lang) {
-            log::warn!("表示言語を保存できません: {e}");
-            self.message = Some(format!("{} {e}", core(lang, keys::LANGUAGE_SAVE_FAILED)));
+        let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
+        match locale_file::save(&self.config_dir, lang) {
+            Ok(()) => {
+                // 前に失敗した警告だけを消す（ほかの警告は残す）。
+                if self.message.as_deref().is_some_and(|m| {
+                    [Lang::Ja, Lang::En]
+                        .into_iter()
+                        .any(|l| m.starts_with(failed(l)))
+                }) {
+                    self.message = None;
+                }
+            }
+            Err(e) => {
+                log::warn!("表示言語を保存できません: {e}");
+                self.message = Some(format!("{} {e}", failed(lang)));
+            }
         }
     }
 
