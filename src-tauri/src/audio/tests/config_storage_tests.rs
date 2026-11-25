@@ -1258,6 +1258,7 @@ fn stream_payloads_keep_existing_fields_and_add_the_generation() {
         levels: crate::ipc::MeterLevels {
             input: [0.25, 0.5],
             output: [0.75, 1.0],
+            ..Default::default()
         },
         stream_generation: Some("1:2".into()),
     })

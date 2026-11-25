@@ -876,10 +876,40 @@ pub enum DeviceScanStatus {
     Cancelled,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MeterLevels {
     pub input: [f32; 2],
     pub output: [f32; 2],
+    /// 内蔵処理・VST・比較の後、出力音量・ピーク保護・ミュートを掛ける前のピーク。
+    /// マイクの音を流していないあいだ（テスト音・往復測定・ボイスチェックの再生）は無い。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processed: Option<[f32; 2]>,
+    #[serde(default, skip_serializing_if = "StageReductions::is_empty")]
+    pub reduction_db: StageReductions,
+    /// 周囲の音の学習の発声判定。声向けの処理を通していないあいだは無い。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech: Option<bool>,
+}
+
+/// 各段が送信周期のあいだに実際に掛けた量（dB、0 は下げていない）。段が働いていないときは無い。
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct StageReductions {
+    /// ノイズ低減の前後のエネルギー比。正の値は、段の後のほうが大きかったことを表す。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub noise: Option<f32>,
+    /// 声を整えるのコンプが掛けた最小ゲイン（メークアップを含まない）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<f32>,
+    /// 主経路（処理を分けたときは配信側）のピーク保護が掛けた最小ゲイン。
+    /// マイクの音を流していないあいだ（テスト音など）は無い。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak: Option<f32>,
+}
+
+impl StageReductions {
+    pub fn is_empty(&self) -> bool {
+        self.noise.is_none() && self.voice.is_none() && self.peak.is_none()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -956,6 +986,7 @@ mod stream_event_tests {
             levels: MeterLevels {
                 input: [0.25, 0.5],
                 output: [0.75, 1.0],
+                ..MeterLevels::default()
             },
             stream_generation: Some(3),
         };
@@ -971,6 +1002,47 @@ mod stream_event_tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn level_meter_adds_monitor_values_beside_input_and_output() {
+        let event = EngineEvent::LevelMeter {
+            levels: MeterLevels {
+                input: [0.25, 0.5],
+                output: [0.75, 1.0],
+                processed: Some([0.5, 0.5]),
+                reduction_db: super::StageReductions {
+                    noise: Some(-12.0),
+                    voice: None,
+                    peak: Some(0.0),
+                },
+                speech: Some(false),
+            },
+            stream_generation: None,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"type": "LevelMeter", "payload": {
+                "input": [0.25, 0.5], "output": [0.75, 1.0], "processed": [0.5, 0.5],
+                "reduction_db": {"noise": -12.0, "peak": 0.0}, "speech": false
+            }})
+        );
+    }
+
+    /// 値を足す前の子の通知も、そのまま読める。
+    #[test]
+    fn level_meter_from_an_older_engine_has_no_monitor_values() {
+        let event: EngineEvent = serde_json::from_value(serde_json::json!(
+            {"type": "LevelMeter", "payload": {"input": [0.25, 0.5], "output": [0.75, 1.0]}}
+        ))
+        .unwrap();
+        let EngineEvent::LevelMeter { levels, .. } = event else {
+            panic!("LevelMeter");
+        };
+        assert_eq!(levels.processed, None);
+        assert!(levels.reduction_db.is_empty());
+        assert_eq!(levels.speech, None);
     }
 }
 

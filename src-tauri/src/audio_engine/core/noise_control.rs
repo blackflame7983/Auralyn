@@ -2,6 +2,7 @@
 use super::dsp::{
     finite_audio_sample, noise_reduction_mix_from_mode, NoiseGeometry, RtNoiseReducer,
 };
+use super::meter::NoiseEnergy;
 use super::NoiseControlMode;
 
 #[derive(Clone, Copy)]
@@ -22,6 +23,8 @@ pub(super) struct Analysis {
 
 #[derive(Clone, Copy, Default)]
 struct MixFrame {
+    /// ゲート前の入力。段の前後を、同じ遅れでそろえて比べるために持つ。
+    input: [f32; 2],
     dry: [f32; 2],
     wet: f32,
     protect_voice: bool,
@@ -102,7 +105,8 @@ impl AlignedMix {
         self.initialized = false;
     }
 
-    fn process(&mut self, input: MixFrame, wet_audio: [f32; 2]) -> Option<[f32; 2]> {
+    /// 混ぜた音と、それに対応する遅らせたゲート前の入力を返す。
+    fn process(&mut self, input: MixFrame, wet_audio: [f32; 2]) -> Option<([f32; 2], [f32; 2])> {
         let delayed = self.history[self.position];
         self.history[self.position] = input;
         self.position = (self.position + 1) % self.history.len();
@@ -121,9 +125,10 @@ impl AlignedMix {
             wet = delayed.wet;
             self.wet.reset(wet);
         }
-        Some(std::array::from_fn(|ch| {
-            delayed.dry[ch] * (1.0 - wet) + wet_audio[ch] * wet
-        }))
+        Some((
+            std::array::from_fn(|ch| delayed.dry[ch] * (1.0 - wet) + wet_audio[ch] * wet),
+            delayed.input,
+        ))
     }
 }
 
@@ -136,6 +141,7 @@ pub(super) struct RtNoiseControl {
     path_enabled: bool,
     warming: bool,
     gain: Ramp,
+    measured: NoiseEnergy,
 }
 
 impl RtNoiseControl {
@@ -156,7 +162,15 @@ impl RtNoiseControl {
             path_enabled: settings.enabled,
             warming: settings.enabled,
             gain: Ramp::new(if settings.enabled { 0.0 } else { 1.0 }, ramp_samples),
+            measured: NoiseEnergy::default(),
         })
+    }
+
+    /// ブロックのあいだに測った段の前後のエネルギーを返して空にする。
+    /// 有効で、立ち上がりと切り替えのランプを終えたサンプルだけを数える。
+    pub(super) fn take_measurement(&mut self) -> Option<NoiseEnergy> {
+        let measured = std::mem::take(&mut self.measured);
+        (measured.frames > 0).then_some(measured)
     }
 
     pub(super) fn configure(&mut self, settings: Settings) {
@@ -195,6 +209,7 @@ impl RtNoiseControl {
         self.path_enabled = self.settings.enabled;
         self.warming = self.path_enabled;
         self.gain.reset(if self.path_enabled { 0.0 } else { 1.0 });
+        self.measured = NoiseEnergy::default();
     }
 
     pub(super) fn process_sample(&mut self, left: f32, right: f32) -> [f32; 2] {
@@ -206,16 +221,19 @@ impl RtNoiseControl {
                 self.gain.reset(0.0);
             }
         }
+        let mut aligned_input = None;
         let audio = if self.path_enabled {
             let mut frame = self.frame;
+            frame.input = input;
             let gated = self
                 .gate_threshold
                 .is_some_and(|threshold| input[0].abs().max(input[1].abs()) < threshold);
             frame.dry = input.map(|x| if gated { x * 0.72 } else { x });
             let wet = self.reducer.process_sample(frame.dry[0], frame.dry[1]);
             match self.aligned.process(frame, [wet.0, wet.1]) {
-                Some(audio) => {
+                Some((audio, delayed_input)) => {
                     self.warming = false;
+                    aligned_input = Some(delayed_input);
                     audio
                 }
                 None => [0.0; 2],
@@ -227,7 +245,13 @@ impl RtNoiseControl {
             self.gain.target(1.0);
         }
         let gain = self.gain.next();
-        audio.map(|x| x * gain)
+        let output = audio.map(|x| x * gain);
+        if let Some(before) = aligned_input.filter(|_| gain == 1.0 && self.settings.enabled) {
+            self.measured.before += before[0] * before[0] + before[1] * before[1];
+            self.measured.after += output[0] * output[0] + output[1] * output[1];
+            self.measured.frames = self.measured.frames.saturating_add(1);
+        }
+        output
     }
 }
 

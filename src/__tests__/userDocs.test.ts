@@ -11,8 +11,8 @@ const root = resolve(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 const locales = ['ja', 'en'] as const;
 const pages = ['index', 'setup', 'obs', 'discord', 'home', 'sound', 'troubleshooting', 'settings', 'shortcuts', 'glossary'];
-const catalogSource = read('src/i18n/messages.ts').split('const en:')[0];
-const keys = [...catalogSource.matchAll(/^\s*"([^"\n]+)":/gm)].map(match => match[1] as MessageKey);
+const catalog: unknown = JSON.parse(read('src-tauri/crates/auralyn-core/locales/ja.json'));
+const keys = Object.keys(catalog as Record<MessageKey, string>) as MessageKey[];
 const links: Record<string, string> = JSON.parse(read('user-docs/links.json'));
 
 // front matterはJSON文字列・数値・文字列配列に限定し、YAML依存を増やさない。
