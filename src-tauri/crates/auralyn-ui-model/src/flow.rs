@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn after_level_stays_while_output_is_muted() {
+    fn processed_level_flows_while_input_is_silent() {
         let now = Instant::now();
         let silent_input = meter(Some([0.0; 2]), now);
         let processed = meter(Some([0.3; 2]), now);

@@ -56,13 +56,20 @@ pub fn aurora_teal() -> Hsla {
 pub fn primary() -> Hsla {
     token("primary")
 }
-/// 音の表示の塗り（DESIGN.md 10.7）。緑から青緑。メーターの正常域と、音の流れの帯の加工後に使う。
-pub fn aurora_fill() -> Background {
+/// 音の表示の塗り（DESIGN.md 10.7）。緑から青緑へ横に。メーターの正常域（`opacity` 1）と、音の流れの帯の加工後（0.95）に使う。
+pub fn aurora_fill(opacity: f32) -> Background {
     linear_gradient(
         90.,
-        linear_color_stop(aurora_green().opacity(0.95), 0.),
-        linear_color_stop(aurora_teal().opacity(0.95), 1.),
+        linear_color_stop(aurora_green().opacity(opacity), 0.),
+        linear_color_stop(aurora_teal().opacity(opacity), 1.),
     )
+}
+
+/// 角丸（px）。値は `design/tokens.json` の `radius` から取る。
+pub fn radius(name: &str) -> f32 {
+    tokens()
+        .radius(name)
+        .unwrap_or_else(|| panic!("design/tokens.json に角丸 {name} がありません"))
 }
 
 #[cfg(test)]
@@ -88,5 +95,6 @@ mod tests {
         ] {
             assert!(color().a > 0.0);
         }
+        assert!(super::radius("card") > 0.0);
     }
 }

@@ -147,6 +147,7 @@ fn on_event(
             let output = pair("output").unwrap_or([f32::NAN; 2]);
             let processed = payload
                 .get("processed")
+                .filter(|value| !value.is_null())
                 .map(|_| pair("processed").unwrap_or([f32::NAN; 2]));
             let mut slot = levels.lock().unwrap_or_else(|e| e.into_inner());
             slot.seq += 1;

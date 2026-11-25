@@ -12,6 +12,8 @@ const WAVE_HEIGHT: f32 = 52.;
 /// 加工前の包絡線の太さと不透明度。凡例の線と揃える（#582）。
 const BEFORE_LINE_WIDTH: f32 = 1.5;
 const BEFORE_LINE_ALPHA: f32 = 0.7;
+/// 加工後の塗りの不透明度（`soundFlowDraw.ts` の 0.95）。
+const AFTER_ALPHA: f32 = 0.95;
 /// 波形の片側の高さの上限（段の半分に対する割合）。
 const WAVE_SPAN: f32 = 0.92;
 
@@ -33,7 +35,7 @@ pub fn sound_flow(flow: &Flow, lang: Lang) -> Option<impl IntoElement> {
             .gap_1()
             .px_4()
             .py_2()
-            .rounded(px(8.))
+            .rounded(px(color::radius("card")))
             .bg(color::card())
             .child(
                 div()
@@ -99,13 +101,14 @@ fn legend(lang: Lang) -> impl IntoElement {
                         .w(px(16.))
                         .h(px(8.))
                         .rounded_full()
-                        .bg(color::aurora_fill()),
+                        .bg(color::aurora_fill(AFTER_ALPHA)),
                 )
                 .child(core(lang, keys::FLOW_AFTER)),
         )
 }
 
 /// 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる（`soundFlowDraw.ts` の `drawFlowWave`）。
+/// 塗りは横の緑→青緑で、Tauri 版の縦の青緑→緑→青緑とは違う（GPUI の `linear_gradient` は2色まで。docs/gpui/decisions.md）。
 /// サンプルが1つのときは、加工後を長方形、加工前を横の直線2本にする。
 fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &mut Window) {
     let Some(first) = samples.first() else {
@@ -144,7 +147,7 @@ fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &m
         outline.extend(points(after, 1.).into_iter().rev());
         fill.add_polygon(&outline, true);
         if let Ok(path) = fill.build() {
-            window.paint_path(path, color::aurora_fill());
+            window.paint_path(path, color::aurora_fill(AFTER_ALPHA));
         }
         for sign in [-1., 1.] {
             let mut line = PathBuilder::stroke(px(BEFORE_LINE_WIDTH));

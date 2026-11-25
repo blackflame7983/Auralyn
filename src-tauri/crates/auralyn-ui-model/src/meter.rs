@@ -43,6 +43,8 @@ pub struct Meter {
     /// 左右それぞれ、ピークが最後に上がった時刻。
     peak_at: [Instant; 2],
     ticked_at: Instant,
+    /// 前の `tick` から状態が変わった。値が変わらなくても描き直すため。
+    state_changed: bool,
 }
 
 impl Meter {
@@ -55,11 +57,17 @@ impl Meter {
             received_at: None,
             peak_at: [now; 2],
             ticked_at: now,
+            state_changed: false,
         }
     }
 
-    fn clear(&mut self, state: State) {
+    fn set_state(&mut self, state: State) {
+        self.state_changed |= self.state != state;
         self.state = state;
+    }
+
+    fn clear(&mut self, state: State) {
+        self.set_state(state);
         self.target = [0.0; 2];
         self.levels = [0.0; 2];
         self.peak = [0.0; 2];
@@ -88,15 +96,20 @@ impl Meter {
         }
         self.target = value;
         self.received_at = Some(now);
-        self.state = if value.iter().all(|n| *n == 0.0) {
+        self.set_state(if value.iter().all(|n| *n == 0.0) {
             State::Silent
         } else {
             State::Live
-        };
+        });
     }
 
-    /// 描画の周期ごとに進める。表示が変わったら `true`。
+    /// 描画の周期ごとに進める。表示（値か状態）が変わったら `true`。
     pub fn tick(&mut self, now: Instant) -> bool {
+        let moved = self.advance(now);
+        std::mem::take(&mut self.state_changed) || moved
+    }
+
+    fn advance(&mut self, now: Instant) -> bool {
         if self.state == State::Live
             && self
                 .received_at
@@ -126,7 +139,10 @@ impl Meter {
             } else if now.saturating_duration_since(self.peak_at[i]) < PEAK_HOLD {
                 self.peak[i]
             } else {
-                release(self.peak[i], elapsed).max(target)
+                // 保持の時間内だった分は下げない（周期が止まって間隔が空いたとき）。
+                let held_until = self.peak_at[i] + PEAK_HOLD;
+                let falling = elapsed.min(now.saturating_duration_since(held_until).as_secs_f32());
+                release(self.peak[i], falling).max(target)
             };
         }
         before != (self.levels, self.peak)
@@ -315,6 +331,46 @@ mod tests {
         );
         assert_eq!(meter.peak(), 0.0);
         assert_eq!(format_peak(meter.peak()), "−∞");
+    }
+
+    #[test]
+    fn a_long_gap_between_ticks_releases_only_after_the_hold() {
+        let (mut meter, now) = live([1.0, 1.0]);
+        meter.tick(now);
+        let later = now + PEAK_HOLD + Duration::from_millis(500);
+        meter.receive([0.0, 0.0], later);
+        meter.tick(later);
+        let db = to_dbfs(meter.peak());
+        assert!(
+            (-11.0..=-9.0).contains(&db),
+            "保持のあとの0.5秒分だけ下がる: {db}"
+        );
+    }
+
+    #[test]
+    fn each_channel_holds_its_own_peak() {
+        let (mut meter, now) = live([1.0, 0.1]);
+        meter.tick(now);
+        let later = now + Duration::from_millis(1500);
+        meter.receive([0.0, 0.5], later);
+        meter.tick(later);
+        let after_left_hold = now + PEAK_HOLD + Duration::from_millis(100);
+        meter.receive([0.0, 0.0], after_left_hold);
+        meter.tick(after_left_hold);
+        assert!(meter.peak[0] < 1.0, "左は保持が切れて下がる");
+        assert_eq!(meter.peak[1], 0.5, "右は上がった時刻から保持する");
+    }
+
+    #[test]
+    fn state_change_alone_counts_as_a_change() {
+        let now = Instant::now();
+        let mut meter = Meter::stopped(now);
+        meter.start();
+        meter.tick(now);
+        meter.receive([0.0, 0.0], now);
+        assert!(meter.tick(now), "受信待ちから無音への変化は描き直す");
+        assert_eq!(meter.state(), State::Silent);
+        assert!(!meter.tick(now + Duration::from_millis(16)));
     }
 
     #[test]

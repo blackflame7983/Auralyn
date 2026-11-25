@@ -582,7 +582,7 @@ fn meter_bar(id: &'static str, reading: &Meter, lang: Lang) -> impl IntoElement 
                 .bottom_0()
                 .left_0()
                 .w(relative(normal))
-                .bg(color::aurora_fill()),
+                .bg(color::aurora_fill(1.)),
         )
         .when(hot > 0.0, |this| {
             this.child(
