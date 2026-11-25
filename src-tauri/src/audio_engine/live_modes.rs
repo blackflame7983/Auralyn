@@ -456,6 +456,12 @@ impl Voice {
         };
         self.deesser.process(voiced)
     }
+    /// 取り出すまでにコンプが掛けた最小ゲイン。声を整えるが働いていないときは無い。
+    fn take_min_gain(&mut self) -> Option<f32> {
+        let legacy = self.legacy.take_min_gain();
+        let singing = self.singing.take_min_gain();
+        (self.active || self.singing.active()).then_some(legacy.min(singing))
+    }
 }
 struct Transition {
     voice: Voice,
@@ -523,6 +529,18 @@ impl RtVoice {
             self.current = transition.voice;
         }
         output
+    }
+    /// 切り替えのあいだは新旧を混ぜて出すので、両方の最小を返す。
+    pub(crate) fn take_min_gain(&mut self) -> Option<f32> {
+        let current = self.current.take_min_gain();
+        let next = self
+            .transition
+            .as_mut()
+            .and_then(|transition| transition.voice.take_min_gain());
+        match (current, next) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
     pub(crate) fn take_completed(&mut self) -> Option<(u64, u64)> {
         self.done.take()

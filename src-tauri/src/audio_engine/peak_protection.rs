@@ -196,6 +196,11 @@ impl Rt {
         }
         samples.map(|s| s * gain)
     }
+    /// 前の `report` から掛けた最小ゲイン。保護が働いていないときは無い。
+    /// `report` が値を戻すので、その前に読む。
+    pub(crate) fn block_gain(&self) -> Option<f32> {
+        (self.prepared.enabled || self.mix > 0.0).then_some(self.minimum.clamp(0.0, 1.0))
+    }
     pub(crate) fn report(&mut self, shared: &Shared, path: u8) {
         shared
             .minimum_gain
@@ -261,6 +266,29 @@ mod tests {
             assert!((previous - new_ceiling).abs() < 1.0e-6);
             eprintln!("trim479 peak {rate} Hz: first_step={first_step:.9}, subsequent_max_step={worst:.9}");
         }
+    }
+
+    #[test]
+    fn block_gain_reports_the_reduction_until_report_and_nothing_while_off() {
+        let shared = Shared::default();
+        let mut off = Rt::new(Config::default(), 48_000);
+        off.process([4.0, 4.0]);
+        assert_eq!(off.block_gain(), None);
+
+        let mut rt = Rt::new(
+            Config {
+                enabled: true,
+                ..Config::default()
+            },
+            48_000,
+        );
+        rt.process([0.1, 0.1]);
+        assert_eq!(rt.block_gain(), Some(1.0));
+        rt.process([4.0, 4.0]);
+        let gain = rt.block_gain().expect("保護が働いている");
+        assert!(gain < 0.25, "{gain}");
+        rt.report(&shared, 0);
+        assert_eq!(rt.block_gain(), Some(1.0));
     }
 
     #[test]

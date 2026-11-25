@@ -145,6 +145,8 @@ pub(crate) struct SingingChain {
     envelope: f32,
     mix: f32,
     enabled: bool,
+    /// 取り出すまでにコンプが掛けた最小ゲイン。混ぜる割合を掛けた、出力に効いた値。
+    min_gain: f32,
 }
 impl SingingChain {
     pub(crate) fn new(coefficients: Coefficients, enabled: bool) -> Self {
@@ -156,7 +158,11 @@ impl SingingChain {
             envelope: 0.0,
             mix: if enabled { 1.0 } else { 0.0 },
             enabled,
+            min_gain: 1.0,
         }
+    }
+    pub(crate) fn take_min_gain(&mut self) -> f32 {
+        std::mem::replace(&mut self.min_gain, 1.0)
     }
     pub(crate) fn update(&mut self, coefficients: Coefficients, enabled: bool) {
         self.target = coefficients;
@@ -214,6 +220,7 @@ impl SingingChain {
         });
         let target = if self.enabled { 1.0 } else { 0.0 };
         self.mix += (target - self.mix).clamp(-self.current.mix_step, self.current.mix_step);
+        self.min_gain = self.min_gain.min(1.0 + (gain - 1.0) * self.mix);
         std::array::from_fn(|ch| {
             let result = base[ch] * (1.0 - self.mix) + wet[ch] * self.mix;
             if result.is_finite() {
@@ -246,6 +253,34 @@ mod tests {
             }
         }
         (sum / (rate / 4) as f64).sqrt() as f32
+    }
+    #[test]
+    fn take_min_gain_reports_compression_on_loud_singing_and_resets() {
+        let rate = 48_000;
+        let mut chain = SingingChain::new(
+            Coefficients::prepare(SingingParams::default(), rate).unwrap(),
+            true,
+        );
+        let tone = |amplitude: f32, i: u32| {
+            amplitude * (std::f32::consts::TAU * 440.0 * i as f32 / rate as f32).sin()
+        };
+        assert_eq!(
+            allocation_counts(|| {
+                for i in 0..rate / 2 {
+                    let x = tone(0.001, i);
+                    chain.process([x, x], [x, x]);
+                }
+            }),
+            (0, 0)
+        );
+        assert_eq!(chain.take_min_gain(), 1.0);
+        for i in 0..rate / 2 {
+            let x = tone(0.9, i);
+            chain.process([x, x], [x, x]);
+        }
+        let loud = chain.take_min_gain();
+        assert!(loud < 1.0, "{loud}");
+        assert_eq!(chain.take_min_gain(), 1.0);
     }
     #[test]
     fn singing_frequency_dc_finite_phase_linked_detector_and_no_rt_allocations() {

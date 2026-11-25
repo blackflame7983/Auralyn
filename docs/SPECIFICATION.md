@@ -138,6 +138,11 @@
         *   **リリース**: フロントエンドのアニメーションによるスムージング（視覚的な快適さのため約300msの減衰）。
     *   **イベント名**: 子（音声エンジン）の通知は `LevelMeter`。Tauriバックエンドがフロントエンドへ出すイベントは `audio-level`。
     *   **データパス**: リングバッファ (オーディオスレッド -> エンジンメインループ) -> 子の標準出力へ1行 `IPC:{ "kind": "Event", "data": { "type": "LevelMeter", "payload": { "input": [f32, f32], "output": [f32, f32], "stream_generation": u64 } } }`（`src-tauri/src/ipc.rs` の `OutputMessage::Event` と `EngineEvent::LevelMeter`。`stream_generation` は無いこともある） -> Tauriバックエンドが `audio-level` イベントを `{ "input": [f32, f32], "output": [f32, f32], "stream_generation": "親の世代:子の世代" }` で発行（`src-tauri/src/audio/reader.rs`。世代が分からないときは `stream_generation` を省く） -> Frontend。
+    *   **モニターの値（省略可能）**: `payload` と `audio-level` には、`input`・`output` と同じ階層に次の値が加わることがある。値が無いときは項目ごと省く。古い子の通知も、これらが無いまま読める。
+        *   `processed: [f32, f32]`: 内蔵処理・VST・比較の後、出力音量・ピーク保護・ミュートを掛ける前のピーク。テスト音・往復測定・ボイスチェックの再生中は無い。
+        *   `reduction_db: { "noise"?: f32, "voice"?: f32, "peak"?: f32 }`: 送信周期のあいだに各段が実際に下げた量（dB、0 は下げていない）。`noise` はノイズ低減の前（遅れをそろえたゲート前の入力）と後のエネルギー比で、段が無効・立ち上がり中・原音が約 -70 dBFS 未満のときは無い。`voice` は声を整えるのコンプの最小ゲイン（メークアップを含まない）、`peak` は本人用の経路のピーク保護の最小ゲインで、段が働いていないときは無い。
+        *   `speech: bool`: 周囲の音の学習の発声判定。音楽鑑賞と、マイクを流していないあいだは無い。
+        *   計測はコールバック内で足し算と比較だけを行い、確保・ロック・待ちを足さない。周期ごとのまとめ（ピークは最大、エネルギーは和、ゲインは最小）と dB への変換はエンジンメインループ（`core/meter.rs`）で行う。
     *   **更新レート**: 新しい値があれば最短 16ms 間隔（約60 FPS）。メーターの値が75msより長く届かず、直前に送った値がゼロでなければ、ゼロを1回だけ送る（`src-tauri/src/audio_engine/core.rs` の `meter_interval`、`core/meter.rs` の `idle`）。
 
 ### 3.4. 状態の永続化 (計画中)
