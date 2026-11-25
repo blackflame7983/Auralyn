@@ -234,11 +234,7 @@ impl MainView {
     /// 帯のボタン。押せるのは結果を待っていないときだけ（`Phase::busy`）。
     fn press_band(&mut self) {
         let (event, command) = match self.phase {
-            Phase::Unconfigured => {
-                self.page = Page::Connect;
-                return;
-            }
-            Phase::Stopped => (SessionEvent::StartRequested, Command::Start),
+            Phase::Unconfigured | Phase::Stopped => (SessionEvent::StartRequested, Command::Start),
             Phase::Running => (SessionEvent::StopRequested, Command::Stop),
             Phase::Starting | Phase::Stopping => return,
         };

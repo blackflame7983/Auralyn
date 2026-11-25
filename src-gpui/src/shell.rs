@@ -144,7 +144,7 @@ pub fn rail(
 }
 
 /// 中央の先頭の帯。状態の札、入出力の機器名（音が流れているときだけ渡す）、開始・停止のボタン。
-/// ボタンは今の状態で決まる（未設定なら接続の設定へ、停止中なら開始、実行中なら停止）。
+/// ボタンは今の状態で決まる（未設定・停止中なら開始、実行中なら停止）。
 pub fn band(
     phase: Phase,
     route: Option<SharedString>,
@@ -216,8 +216,7 @@ fn button_label(phase: Phase, lang: Lang) -> &'static str {
     core(
         lang,
         match phase {
-            Phase::Unconfigured => keys::CONFIGURE,
-            Phase::Stopped => keys::START,
+            Phase::Unconfigured | Phase::Stopped => keys::START,
             Phase::Starting => keys::STARTING,
             Phase::Running => keys::STOP,
             Phase::Stopping => keys::STOPPING,

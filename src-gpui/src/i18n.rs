@@ -140,7 +140,6 @@ pub mod keys {
     pub const STATUS_UNCONFIGURED: &str = "shell.unconfigured";
     pub const STATUS_STOPPED: &str = "shell.stopped";
     pub const STATUS_RUNNING: &str = "device.engine";
-    pub const CONFIGURE: &str = "shell.configure";
     pub const START: &str = "home.startAudio";
     pub const STARTING: &str = "home.starting";
     pub const START_FAILED: &str = "home.startFailed";
@@ -150,7 +149,7 @@ pub mod keys {
     pub const NOT_YET: &str = "gpuiShell.notYet";
 
     #[cfg(test)]
-    pub const ALL: [&str; 24] = [
+    pub const ALL: [&str; 23] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -167,7 +166,6 @@ pub mod keys {
         STATUS_UNCONFIGURED,
         STATUS_STOPPED,
         STATUS_RUNNING,
-        CONFIGURE,
         START,
         STARTING,
         START_FAILED,

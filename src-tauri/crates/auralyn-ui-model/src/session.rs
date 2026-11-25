@@ -6,7 +6,7 @@
 /// 音声の状態。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
-    /// 保存した入出力の設定がない。開始の代わりに接続の画面へ案内する。
+    /// 保存した入出力の設定がない。開始を押すと、保存した設定を読み直す（今までの版で設定した後に、起動し直さずに始められる）。
     Unconfigured,
     Stopped,
     /// 開始を送り、結果を待っている。
@@ -40,7 +40,7 @@ impl Phase {
     #[must_use]
     pub fn next(self, event: Event) -> Phase {
         match (self, event) {
-            (Phase::Stopped, Event::StartRequested) => Phase::Starting,
+            (Phase::Stopped | Phase::Unconfigured, Event::StartRequested) => Phase::Starting,
             (Phase::Running, Event::StopRequested) => Phase::Stopping,
             (_, Event::Started) => Phase::Running,
             (Phase::Unconfigured, Event::Stopped) => Phase::Unconfigured,
@@ -100,12 +100,14 @@ mod tests {
     }
 
     #[test]
-    fn missing_config_leads_to_setup_until_started() {
+    fn missing_config_can_be_retried() {
         let phase = Phase::LAUNCH.next(Event::NoSavedConfig);
         assert_eq!(phase, Phase::Unconfigured);
         assert_eq!(phase.next(Event::Stopped), Phase::Unconfigured);
-        assert_eq!(phase.next(Event::StartRequested), Phase::Unconfigured);
-        assert_eq!(phase.next(Event::Started), Phase::Running);
+        let retried = phase.next(Event::StartRequested);
+        assert_eq!(retried, Phase::Starting);
+        assert_eq!(retried.next(Event::NoSavedConfig), Phase::Unconfigured);
+        assert_eq!(retried.next(Event::Started), Phase::Running);
     }
 
     #[test]

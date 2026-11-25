@@ -5,6 +5,7 @@
 //! - メーターは届くたびに画面へ送らず、最新の値だけを置く。画面が描画の周期で読む。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -89,6 +90,8 @@ impl Engine {
         let levels = Arc::new(Mutex::new(LevelSlot::default()));
         let listener_levels = levels.clone();
         let listener_notices = notice_tx.clone();
+        let exited = Arc::new(AtomicBool::new(false));
+        let listener_exited = exited.clone();
         std::thread::Builder::new()
             .name("gpui-control".into())
             .spawn(move || {
@@ -96,13 +99,16 @@ impl Engine {
                 host.set_event_sink(Arc::new(Sink {
                     levels: listener_levels,
                     notices: listener_notices,
+                    exited: listener_exited,
                 }));
                 Control {
                     host,
                     notices: notice_tx,
                     plugin_id: None,
+                    plugin_path: options.plugin,
+                    exited,
                 }
-                .run(options.plugin, command_rx);
+                .run(command_rx);
             })
             .expect("制御のスレッドを起動できません");
         Self {
@@ -122,6 +128,8 @@ impl Engine {
 struct Sink {
     levels: Arc<Mutex<LevelSlot>>,
     notices: flume::Sender<Notice>,
+    /// 子が落ちた。次の開始は空の子で始まるので、VST を読み直す。
+    exited: Arc<AtomicBool>,
 }
 
 impl EventSink for Sink {
@@ -129,6 +137,9 @@ impl EventSink for Sink {
         let payload = event
             .payload::<serde_json::Value>()
             .map_err(EmitError::Serialize)?;
+        if event.name() == "audio-engine-exited" {
+            self.exited.store(true, Ordering::SeqCst);
+        }
         on_event(event.name(), payload, &self.levels, &self.notices);
         Ok(())
     }
@@ -182,14 +193,14 @@ struct Control {
     host: AudioHost,
     notices: flume::Sender<Notice>,
     plugin_id: Option<String>,
+    /// `--plugin` の VST3。開始するたびに、子に無ければ読む。
+    plugin_path: Option<String>,
+    exited: Arc<AtomicBool>,
 }
 
 impl Control {
-    fn run(mut self, plugin: Option<String>, commands: flume::Receiver<Command>) {
+    fn run(mut self, commands: flume::Receiver<Command>) {
         self.start_saved();
-        if let Some(path) = plugin {
-            self.load_plugin(&path);
-        }
         while let Ok(first) = commands.recv() {
             let mut pending = vec![first];
             pending.extend(commands.try_iter());
@@ -230,14 +241,22 @@ impl Control {
             config.output_id.clone(),
             config.routing,
         );
-        let notice = match result {
-            Ok(_) => Notice::Started {
-                input: config.input,
-                output: config.output,
-            },
-            Err(e) => Notice::NotStarted(vst_host_lib::audio::localize_audio_error(e.to_string())),
-        };
-        let _ = self.notices.send(notice);
+        if let Err(e) = result {
+            let _ = self.notices.send(Notice::NotStarted(
+                vst_host_lib::audio::localize_audio_error(e.to_string()),
+            ));
+            return;
+        }
+        let _ = self.notices.send(Notice::Started {
+            input: config.input,
+            output: config.output,
+        });
+        if self.exited.swap(false, Ordering::SeqCst) {
+            self.plugin_id = None;
+        }
+        if let (None, Some(path)) = (&self.plugin_id, self.plugin_path.clone()) {
+            self.load_plugin(&path);
+        }
     }
 
     /// `.vst3` のバンドル（フォルダ）を渡されたら、Tauri 版のスキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
