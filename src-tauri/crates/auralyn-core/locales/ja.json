@@ -3654,5 +3654,7 @@
   "troubleshoot.clearReceiver": "名前を消す",
   "session.retryDetails": "保存済みの並びを読み直す",
   "gpuiShell.notYet": "この画面は、新しい版の Auralyn にはまだありません。今は今までの Auralyn で設定してください。",
-  "gpuiShell.stopToChange": "機器を変えるときは、先に音を止めてください。"
+  "gpuiShell.stopToChange": "機器を変えるときは、先に音を止めてください。",
+  "gpuiShell.removeVst": "このVSTを並びから外します。VSTの中の設定も消え、元に戻せません。",
+  "gpuiShell.notLoaded": "読み込めません"
 }

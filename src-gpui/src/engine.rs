@@ -7,12 +7,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::rack::{self, Candidate};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
+use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
 
 #[derive(Debug, Clone)]
@@ -45,6 +46,9 @@ pub enum Command {
         enabled: bool,
     },
     OpenEditor(String),
+    /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
+    /// 終了の前は、保存し終えたことを返事で受ける。
+    SaveRack(Option<flume::Sender<()>>),
 }
 
 impl Command {
@@ -93,12 +97,33 @@ pub enum Notice {
 /// 並びの1つの VST。
 #[derive(Debug, Clone)]
 pub struct Slot {
+    /// 子が付けた ID。読めていない枠では、画面で見分けるためだけの仮の ID。
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    /// 保存にはあるが、子に読めていない（ファイルが無いなど）。画面では削除だけができる。
+    pub loaded: bool,
     path: String,
     class_id: Option<String>,
+    /// 最後に保存した VST の中の設定。子が落ちたあとの読み直しに使う。
+    state: Option<String>,
 }
+
+impl Slot {
+    fn request(&self) -> RestorePluginRequest {
+        RestorePluginRequest {
+            path: self.path.clone(),
+            state: self.state.clone(),
+            bypassed: !self.enabled,
+            muted: false,
+            gain: 1.0,
+            class_id: self.class_id.clone(),
+        }
+    }
+}
+
+/// 並びの保存先（設定のフォルダの中）。Tauri 版の保存（webview の localStorage）とは別。
+const RACK_FILE: &str = "gpui_rack.json";
 
 /// 最新のメーターの値。`seq` が進んだときだけ画面が読む。
 #[derive(Default, Clone, Copy)]
@@ -117,14 +142,10 @@ pub struct Engine {
     pub levels: Arc<Mutex<LevelSlot>>,
 }
 
-pub struct Options {
-    pub config_dir: PathBuf,
-    pub plugin: Option<String>,
-}
-
 impl Engine {
-    pub fn start(options: Options) -> Self {
+    pub fn start(config_dir: PathBuf) -> Self {
         let (commands, command_rx) = flume::unbounded();
+        let listener_commands = commands.downgrade();
         let (notice_tx, notices) = flume::unbounded();
         let levels = Arc::new(Mutex::new(LevelSlot::default()));
         let listener_levels = levels.clone();
@@ -134,18 +155,19 @@ impl Engine {
         std::thread::Builder::new()
             .name("gpui-control".into())
             .spawn(move || {
-                let mut host = AudioHost::new(options.config_dir.clone());
+                let mut host = AudioHost::new(config_dir.clone());
                 host.set_event_sink(Arc::new(Sink {
                     levels: listener_levels,
                     notices: listener_notices,
                     exited: listener_exited,
+                    commands: listener_commands,
                 }));
                 Control {
                     host,
                     notices: notice_tx,
-                    config_dir: options.config_dir,
+                    config_dir,
                     rack: Vec::new(),
-                    plugin_path: options.plugin,
+                    read_only: false,
                     exited,
                 }
                 .run(command_rx);
@@ -161,6 +183,13 @@ impl Engine {
     pub fn send(&self, command: Command) {
         let _ = self.commands.send(command);
     }
+
+    /// 終了の前に、並びと VST の中の設定を保存し終えるのを待つ。エンジンが応えなければ数秒で諦める。
+    pub fn save_before_quit(&self) {
+        let (done, saved) = flume::bounded(1);
+        self.send(Command::SaveRack(Some(done)));
+        let _ = saved.recv_timeout(Duration::from_secs(5));
+    }
 }
 
 /// 中核の出来事の受け口（`auralyn_core::event::EventSink`）。名前・本文・順序は Tauri の emit と同じ。
@@ -170,6 +199,8 @@ struct Sink {
     notices: flume::Sender<Notice>,
     /// 子が落ちた。次の開始は空の子で始まるので、VST を読み直す。
     exited: Arc<AtomicBool>,
+    /// VST の窓を閉じたら保存を頼む。弱い参照にして、画面が閉じたら命令のスレッドが終わるようにする。
+    commands: flume::WeakSender<Command>,
 }
 
 impl EventSink for Sink {
@@ -179,6 +210,11 @@ impl EventSink for Sink {
             .map_err(EmitError::Serialize)?;
         if event.name() == "audio-engine-exited" {
             self.exited.store(true, Ordering::SeqCst);
+        }
+        if event.name() == "plugin-editor-closed" {
+            if let Some(commands) = self.commands.upgrade() {
+                let _ = commands.send(Command::SaveRack(None));
+            }
         }
         on_event(event.name(), payload, &self.levels, &self.notices);
         Ok(())
@@ -234,13 +270,15 @@ struct Control {
     notices: flume::Sender<Notice>,
     config_dir: PathBuf,
     rack: Vec<Slot>,
-    /// `--plugin` の VST3。最初に開始したときに並びへ足す。
-    plugin_path: Option<String>,
+    /// 保存を読めず、脇へ移せもしなかった。上書きして消さないよう、この起動の間は保存しない。
+    read_only: bool,
     exited: Arc<AtomicBool>,
 }
 
 impl Control {
     fn run(mut self, commands: flume::Receiver<Command>) {
+        // 並びを先に読む。開始の前に VST を入れておけば、加工されない声が流れない。
+        self.restore_saved();
         self.start_saved();
         while let Ok(first) = commands.recv() {
             let mut pending = vec![first];
@@ -316,48 +354,133 @@ impl Control {
             output: config.output,
         });
         self.recover();
-        if let Some(path) = self.plugin_path.take() {
-            self.add(&path, None);
+    }
+
+    /// 保存した並びを、同じ順・同じ ON/OFF・同じ VST の中の設定で読む。保存が無ければ何もしない。
+    fn restore_saved(&mut self) {
+        let text = match std::fs::read_to_string(self.config_dir.join(RACK_FILE)) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => {
+                self.fail("read_rack", e.into());
+                return self.set_aside();
+            }
+        };
+        match serde_json::from_str::<Vec<RestorePluginRequest>>(&text) {
+            Ok(requests) => requests.into_iter().for_each(|r| self.restore(r)),
+            Err(e) => {
+                self.fail("read_rack", e.into());
+                self.set_aside();
+            }
+        }
+        self.send_rack();
+    }
+
+    /// 読めなかった保存を、次の保存で上書きしないよう `.bad` へ移す。移せなければ、この起動の間は保存しない。
+    fn set_aside(&mut self) {
+        let path = self.config_dir.join(RACK_FILE);
+        if let Err(e) = std::fs::rename(&path, path.with_extension("json.bad")) {
+            self.fail("read_rack", e.into());
+            self.read_only = true;
         }
     }
 
-    /// 子が落ちていたら、次の子（空で始まる）に並びを同じ順・同じ ON/OFF で読み直す。読めなかった VST は並びから外す。
+    /// 子が落ちていたら、次の子（空で始まる）に並びを、最後に保存した VST の中の設定で読み直す。
     /// 開始のあとと、VST を足す前に呼ぶ（足すと子が起き、落ちる前の並びが消えたままになる）。
     fn recover(&mut self) {
         if !self.exited.swap(false, Ordering::SeqCst) {
             return;
         }
         for slot in std::mem::take(&mut self.rack) {
-            let Some((id, _)) = self.load(&slot.path, slot.class_id.as_deref()) else {
-                continue;
-            };
-            if !slot.enabled {
-                if let Err(e) = self.host.set_bypass(&id, true) {
-                    self.fail("set_bypass", e);
-                }
-            }
-            self.rack.push(Slot { id, ..slot });
+            self.restore(slot.request());
         }
         self.send_rack();
+    }
+
+    /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
+    /// 並びを空から作り直すときだけ呼ぶので、仮の ID（位置）は重ならない。
+    fn restore(&mut self, request: RestorePluginRequest) {
+        let (id, name, loaded, class_id) = match self.host.restore_plugin(request.clone()) {
+            Ok(plugin) => (
+                plugin.id,
+                plugin.name,
+                true,
+                plugin.class_id.or(request.class_id),
+            ),
+            Err(e) => {
+                self.fail("restore_plugin", e);
+                let name = Path::new(&request.path).file_stem().map_or_else(
+                    || request.path.clone(),
+                    |s| s.to_string_lossy().into_owned(),
+                );
+                (
+                    format!("missing-{}", self.rack.len()),
+                    name,
+                    false,
+                    request.class_id,
+                )
+            }
+        };
+        self.rack.push(Slot {
+            id,
+            name,
+            enabled: !request.bypassed,
+            loaded,
+            path: request.path,
+            class_id,
+            state: request.state,
+        });
     }
 
     fn add(&mut self, path: &str, class_id: Option<&str>) {
         self.recover();
-        if let Some((id, name)) = self.load(path, class_id) {
+        if let Some((id, name, binary)) = self.load(path, class_id) {
             self.rack.push(Slot {
                 id,
                 name,
                 enabled: true,
-                path: path.to_owned(),
+                loaded: true,
+                path: binary,
                 class_id: class_id.map(str::to_owned),
+                state: None,
             });
         }
+        self.changed();
+    }
+
+    /// 並びを保存する。`fresh` なら各 VST の中の設定も取り直す（取れなかった VST は前の設定のまま）。
+    fn save(&mut self, fresh: bool) {
+        if self.read_only {
+            return;
+        }
+        for slot in self.rack.iter_mut().filter(|slot| fresh && slot.loaded) {
+            match self.host.get_plugin_state(&slot.id) {
+                Ok(state) => slot.state = Some(state),
+                Err(e) => log::warn!("{} の設定を取れません: {e}", slot.name),
+            }
+        }
+        let requests: Vec<RestorePluginRequest> = self.rack.iter().map(Slot::request).collect();
+        let path = self.config_dir.join(RACK_FILE);
+        let partial = path.with_extension("json.tmp");
+        let result = serde_json::to_vec(&requests)
+            .map_err(anyhow::Error::from)
+            .and_then(|bytes| Ok(std::fs::write(&partial, bytes)?))
+            .and_then(|()| Ok(std::fs::rename(&partial, &path)?));
+        if let Err(e) = result {
+            self.fail("save_rack", e);
+        }
+    }
+
+    /// 並びを変えようとしたあと（成功でも失敗でも）。画面へ並び全体を送ってから保存する。
+    /// 中の設定は取り直さない（変わるのは VST の窓の中だけで、窓を閉じたときと止めたときに取る）。
+    fn changed(&mut self) {
         self.send_rack();
+        self.save(false);
     }
 
     /// `.vst3` のバンドル（フォルダ）を渡されたら、Tauri 版のスキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
-    /// 読めたら、子が付けた ID と名前。
-    fn load(&mut self, path: &str, class_id: Option<&str>) -> Option<(String, String)> {
+    /// 読めたら、子が付けた ID と名前と、読んだ実体のパス。
+    fn load(&mut self, path: &str, class_id: Option<&str>) -> Option<(String, String, String)> {
         let binary = scanner::resolve_binary(Path::new(path));
         let Some(binary) = binary.as_deref().and_then(Path::to_str) else {
             let _ = self.notices.send(Notice::Failed {
@@ -368,7 +491,7 @@ impl Control {
         };
         log::info!("VST3 を読み込む: {binary}");
         match self.host.load_plugin(binary, class_id) {
-            Ok(plugin) => Some((plugin.id, plugin.name)),
+            Ok(plugin) => Some((plugin.id, plugin.name, binary.to_owned())),
             Err(e) => {
                 self.fail("load_plugin", e);
                 None
@@ -385,11 +508,21 @@ impl Control {
     }
 
     fn remove(&mut self, id: &str) {
-        match self.host.remove_plugin(id) {
-            Ok(()) => self.rack.retain(|slot| slot.id != id),
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        let result = if self.rack[index].loaded {
+            self.host.remove_plugin(id)
+        } else {
+            Ok(())
+        };
+        match result {
+            Ok(()) => {
+                self.rack.remove(index);
+            }
             Err(e) => self.fail("remove_plugin", e),
         }
-        self.send_rack();
+        self.changed();
     }
 
     fn shift(&mut self, id: &str, up: bool) {
@@ -399,13 +532,18 @@ impl Control {
         let Some(other) = rack::neighbour(self.rack.len(), index, up) else {
             return;
         };
-        let mut order: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
-        order.swap(index, other);
+        let mut swapped: Vec<&Slot> = self.rack.iter().collect();
+        swapped.swap(index, other);
+        let order = swapped
+            .into_iter()
+            .filter(|slot| slot.loaded)
+            .map(|slot| slot.id.clone())
+            .collect();
         match self.host.reorder_plugins(order) {
             Ok(()) => self.rack.swap(index, other),
             Err(e) => self.fail("reorder_plugins", e),
         }
-        self.send_rack();
+        self.changed();
     }
 
     fn set_enabled(&mut self, id: &str, enabled: bool) {
@@ -416,7 +554,7 @@ impl Control {
             Ok(()) => self.rack[index].enabled = enabled,
             Err(e) => self.fail("set_bypass", e),
         }
-        self.send_rack();
+        self.changed();
     }
 
     /// スキャンは VST ごとに別のプロセスで調べるので時間がかかる。命令のスレッドを塞がないよう、別のスレッドで行う。
@@ -471,6 +609,13 @@ impl Control {
             Command::MovePlugin { ref id, up } => return self.shift(id, up),
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
+            Command::SaveRack(ref done) => {
+                self.save(true);
+                if let Some(done) = done {
+                    let _ = done.send(());
+                }
+                return;
+            }
         };
         if let Err(e) = result {
             self.fail(name, e);
@@ -511,6 +656,8 @@ impl Control {
 
     /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。
     fn stop(&mut self) {
+        // VST の窓を開いたまま止めても、それまでの調整を残す。
+        self.save(true);
         let notice = match self.host.stop() {
             Ok(()) => Notice::Stopped,
             Err(e) => Notice::StopFailed(e.to_string()),

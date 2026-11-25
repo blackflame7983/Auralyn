@@ -3654,5 +3654,7 @@
   "troubleshoot.clearReceiver": "Clear the name",
   "session.retryDetails": "Reload the saved chain",
   "gpuiShell.notYet": "This page is not in the new Auralyn yet. For now, use the current Auralyn for these settings.",
-  "gpuiShell.stopToChange": "Stop the audio before changing devices."
+  "gpuiShell.stopToChange": "Stop the audio before changing devices.",
+  "gpuiShell.removeVst": "This removes the VST from the chain. Its settings are lost and cannot be restored.",
+  "gpuiShell.notLoaded": "Not loaded"
 }
