@@ -49,6 +49,22 @@ pub fn neighbour(len: usize, index: usize, up: bool) -> Option<usize> {
     }
 }
 
+/// `index` の項目を1つ上（または下）へ動かすときの、入れ替える相手の位置と、動かしたあとに子へ送る順。`items` は（ID, 子に読めているか）で、
+/// 読めていない項目は並びには残すが、子へ送る順には入れない。端なら動かさない。
+pub fn reordered<T: Clone>(items: &[(T, bool)], index: usize, up: bool) -> Option<(usize, Vec<T>)> {
+    let other = neighbour(items.len(), index, up)?;
+    let mut swapped: Vec<&(T, bool)> = items.iter().collect();
+    swapped.swap(index, other);
+    Some((
+        other,
+        swapped
+            .into_iter()
+            .filter(|(_, loaded)| *loaded)
+            .map(|(id, _)| id.clone())
+            .collect(),
+    ))
+}
+
 /// VST ごとの音量の上限（200%）。Tauri 版のスライダーと同じ。
 pub const MAX_GAIN: f32 = 2.0;
 
@@ -108,5 +124,17 @@ mod tests {
         assert_eq!(gain_from_percent(250.0), MAX_GAIN);
         assert_eq!(gain_percent(0.506), 51.0);
         assert_eq!(gain_percent(3.0), 200.0);
+    }
+
+    #[test]
+    fn reordered_skips_items_the_engine_does_not_have() {
+        let items = [("a", true), ("m", false), ("b", true)];
+        assert_eq!(reordered(&items, 2, true), Some((1, vec!["a", "b"])));
+        assert_eq!(reordered(&items, 0, false), Some((1, vec!["a", "b"])));
+        assert_eq!(
+            reordered(&[("a", true), ("b", true)], 1, true),
+            Some((0, vec!["b", "a"]))
+        );
+        assert_eq!(reordered(&items, 0, true), None);
     }
 }
