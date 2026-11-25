@@ -261,7 +261,7 @@ impl Control {
             output_id: output.id.clone(),
             buffer_size: same_host.and_then(|s| s.buffer_size),
             sample_rate: same_host.and_then(|s| s.sample_rate),
-            routing: same_devices.and_then(|s| s.routing.clone()),
+            routing: same_devices.and_then(|s| s.routing),
         });
     }
 
