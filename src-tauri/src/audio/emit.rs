@@ -76,6 +76,14 @@ impl AudioEmitter {
     }
 }
 
+impl super::AudioHost {
+    /// 通知の出口を、画面の層の `EventSink` にまるごと置き換える（`set_event_emitter` の代わり）。
+    /// sink は reader などのスレッドから同期で呼ばれるので、待たずに戻る実装にする。
+    pub fn set_event_sink(&mut self, sink: Arc<dyn EventSink>) {
+        self.emitter.set(AudioEmitter::sink(sink));
+    }
+}
+
 /// 通知の発行口を持つ。`AudioHost` と、その子の reader が共有する。
 ///
 /// - `emitter` のロックは `AudioEmitter` を複製する間だけ。`emit` はロックの外で行う。
