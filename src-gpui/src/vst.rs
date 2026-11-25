@@ -358,7 +358,7 @@ fn row(
         .border_color(color::border())
         .bg(color::card())
         .child(top)
-        .when_some(gain.filter(|_| loaded), |this, (gain, percent)| {
+        .when_some(gain, |this, (gain, percent)| {
             this.child(volume(slot, gain, percent, lang, send))
         })
 }

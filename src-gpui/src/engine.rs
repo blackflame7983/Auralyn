@@ -209,6 +209,7 @@ impl Engine {
                     notices: notice_tx,
                     config_dir,
                     rack: Vec::new(),
+                    renamed: Vec::new(),
                     sound: None,
                     read_only: false,
                     exited,
@@ -315,6 +316,8 @@ struct Control {
     notices: flume::Sender<Notice>,
     config_dir: PathBuf,
     rack: Vec<Slot>,
+    /// 最後に読み直す前の ID（位置の順）。画面がまだ古い ID で送ってきた命令を、同じ位置の枠に当てる。
+    renamed: Vec<String>,
     /// 最後にエンジンから読んだ音づくりの設定。まだ読んでいなければ `None`。
     sound: Option<Sound>,
     /// 保存を読めず、脇へ移せもしなかった。上書きして消さないよう、この起動の間は保存しない。
@@ -323,6 +326,22 @@ struct Control {
     /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
     input_gain: Option<f32>,
     output_gain: Option<f32>,
+}
+
+/// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
+/// （同じまとまりの音量の反映待ちに、緊急ミュートを待たせない）。
+// shortcut: すでに実行中の命令（出力音量の反映待ち・子が落ちたあとの読み直し）の後ろでは、ミュートも待つ。
+// 待ちが問題になったら、ミュートを命令のスレッドの外（子への直接の送信）で行う。
+fn order(pending: &[Command]) -> Vec<&Command> {
+    let kept = pending.iter().enumerate().filter(|(i, command)| {
+        !pending[i + 1..]
+            .iter()
+            .any(|later| later.supersedes(command))
+    });
+    let (mute, rest): (Vec<_>, Vec<_>) = kept
+        .map(|(_, command)| command)
+        .partition(|command| matches!(command, Command::SetMute(_)));
+    mute.into_iter().chain(rest).collect()
 }
 
 impl Control {
@@ -334,13 +353,7 @@ impl Control {
         while let Ok(first) = commands.recv() {
             let mut pending = vec![first];
             pending.extend(commands.try_iter());
-            for (i, command) in pending.iter().enumerate() {
-                if pending[i + 1..]
-                    .iter()
-                    .any(|later| later.supersedes(command))
-                {
-                    continue;
-                }
+            for command in order(&pending) {
                 self.execute(command);
             }
         }
@@ -454,7 +467,9 @@ impl Control {
         if !self.exited.swap(false, Ordering::SeqCst) {
             return;
         }
-        for slot in std::mem::take(&mut self.rack) {
+        let old = std::mem::take(&mut self.rack);
+        self.renamed = old.iter().map(|slot| slot.id.clone()).collect();
+        for slot in old {
             self.restore(slot.request());
         }
         // 新しい子の音づくりは既定値で始まるので、落ちる前の設定を送り直す。
@@ -575,14 +590,16 @@ impl Control {
     }
 
     fn position(&self, id: &str) -> Option<usize> {
-        self.rack.iter().position(|slot| slot.id == id)
+        let index = self.rack.iter().position(|slot| slot.id == id);
+        index.or_else(|| self.renamed.iter().position(|old| old == id))
     }
 
     fn remove(&mut self, id: &str) {
         let Some(index) = self.position(id) else {
             return;
         };
-        let result = if self.rack[index].loaded {
+        // 子が落ちていたら、子に聞かずに並びから外す（落ちる原因の VST を、音を出さずに外せるように）。
+        let result = if self.rack[index].loaded && !self.exited.load(Ordering::SeqCst) {
             self.host.remove_plugin(id)
         } else {
             Ok(())
@@ -590,38 +607,48 @@ impl Control {
         match result {
             Ok(()) => {
                 self.rack.remove(index);
+                // 位置がずれるので、古い ID では当てない。
+                self.renamed.clear();
             }
             Err(e) => self.fail("remove_plugin", e),
         }
         self.changed();
     }
 
+    /// 並びの1つへの命令の前に、子が落ちていたら読み直す。読み直すと ID が変わるので、同じ位置の今の ID を返す。
+    fn live(&mut self, id: &str) -> Option<(usize, String)> {
+        let index = self.position(id)?;
+        self.recover();
+        Some((index, self.rack.get(index)?.id.clone()))
+    }
+
     fn shift(&mut self, id: &str, up: bool) {
-        let Some(index) = self.position(id) else {
+        let Some((index, _)) = self.live(id) else {
             return;
         };
-        let Some(other) = rack::neighbour(self.rack.len(), index, up) else {
-            return;
-        };
-        let mut swapped: Vec<&Slot> = self.rack.iter().collect();
-        swapped.swap(index, other);
-        let order = swapped
-            .into_iter()
-            .filter(|slot| slot.loaded)
-            .map(|slot| slot.id.clone())
+        let items: Vec<(String, bool)> = self
+            .rack
+            .iter()
+            .map(|slot| (slot.id.clone(), slot.loaded))
             .collect();
+        let Some((other, order)) = rack::reordered(&items, index, up) else {
+            return;
+        };
         match self.host.reorder_plugins(order) {
-            Ok(()) => self.rack.swap(index, other),
+            Ok(()) => {
+                self.rack.swap(index, other);
+                self.renamed.clear();
+            }
             Err(e) => self.fail("reorder_plugins", e),
         }
         self.changed();
     }
 
     fn set_enabled(&mut self, id: &str, enabled: bool) {
-        let Some(index) = self.position(id) else {
+        let Some((index, id)) = self.live(id) else {
             return;
         };
-        match self.host.set_bypass(id, !enabled) {
+        match self.host.set_bypass(&id, !enabled) {
             Ok(()) => self.rack[index].enabled = enabled,
             Err(e) => self.fail("set_bypass", e),
         }
@@ -629,10 +656,10 @@ impl Control {
     }
 
     fn set_muted(&mut self, id: &str, muted: bool) {
-        let Some(index) = self.position(id) else {
+        let Some((index, id)) = self.live(id) else {
             return;
         };
-        match self.host.set_mute(id, muted) {
+        match self.host.set_mute(&id, muted) {
             Ok(()) => self.rack[index].muted = muted,
             Err(e) => self.fail("set_mute", e),
         }
@@ -640,10 +667,10 @@ impl Control {
     }
 
     fn set_gain(&mut self, id: &str, gain: f32) {
-        let Some(index) = self.position(id) else {
+        let Some((index, id)) = self.live(id) else {
             return;
         };
-        match self.host.set_gain(id, gain) {
+        match self.host.set_gain(&id, gain) {
             Ok(()) => self.rack[index].gain = gain,
             Err(e) => self.fail("set_gain", e),
         }
@@ -831,7 +858,10 @@ impl Control {
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
             Command::SetPluginMuted { ref id, muted } => return self.set_muted(id, muted),
             Command::SetPluginGain { ref id, gain } => return self.set_gain(id, gain),
-            Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
+            Command::OpenEditor(ref id) => match self.live(id) {
+                Some((_, id)) => ("open_editor", self.host.open_editor(&id)),
+                None => return,
+            },
             Command::ReadSound => return self.read_sound(),
             Command::ReadPeak => return self.peak(None),
             Command::SetPeak(enabled) => {
@@ -960,6 +990,21 @@ mod tests {
         };
         assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));
         assert_eq!(sound_from_json(&serde_json::json!({"noiseOn": true})), None);
+    }
+
+    #[test]
+    fn mute_runs_first_and_superseded_gains_are_skipped() {
+        let pending = [
+            Command::SetOutputGain(0.5),
+            Command::SetInputGain(0.8),
+            Command::SetOutputGain(0.2),
+            Command::SetMute(true),
+        ];
+        let order: Vec<String> = order(&pending).iter().map(|c| format!("{c:?}")).collect();
+        assert_eq!(
+            order,
+            ["SetMute(true)", "SetInputGain(0.8)", "SetOutputGain(0.2)"]
+        );
     }
 
     #[test]
