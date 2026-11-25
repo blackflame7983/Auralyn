@@ -6,3 +6,4 @@ pub mod flow;
 pub mod meter;
 pub mod rack;
 pub mod session;
+pub mod sound;

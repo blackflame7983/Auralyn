@@ -21,10 +21,12 @@ use crate::engine::{Command, Engine, Notice};
 use crate::home;
 use crate::i18n::{core, keys, t, Key, Lang};
 use crate::shell::{self, Page};
-use crate::vst::VstPage;
+use crate::sound::SoundPage;
+use crate::vst::{Send, VstPage};
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
+use auralyn_ui_model::sound::Sound;
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
@@ -53,6 +55,7 @@ pub struct MainView {
     ime: Entity<InputState>,
     connect: ConnectPage,
     vst: VstPage,
+    sound: SoundPage,
     _ticker: Task<()>,
 }
 
@@ -88,6 +91,19 @@ impl MainView {
             cx.new(|cx| InputState::new(window, cx).placeholder(t(lang, Key::ImePlaceholder)));
         let connect = ConnectPage::new(window, cx);
         let vst = VstPage::new(window, cx);
+        let sound = SoundPage::new(cx);
+        cx.subscribe(&sound.amount, |this, _, event: &SliderEvent, _| {
+            let SliderEvent::Release(value) = event else {
+                return;
+            };
+            if let Some(current) = this.sound.current() {
+                this.send(Command::SetSound(Sound {
+                    amount: value.end() / 100.0,
+                    ..current
+                }));
+            }
+        })
+        .detach();
         cx.subscribe_in(
             &connect.host,
             window,
@@ -152,6 +168,7 @@ impl MainView {
             ime,
             connect,
             vst,
+            sound,
             _ticker: ticker,
         }
     }
@@ -224,6 +241,7 @@ impl MainView {
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack),
+            Notice::Sound(sound) => self.sound.set(sound, window, cx),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -264,6 +282,9 @@ impl MainView {
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
         if page == Page::Connect {
             self.engine.send(Command::ListDevices);
+        }
+        if page == Page::Sound {
+            self.engine.send(Command::ReadSound);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);
@@ -569,6 +590,15 @@ impl Render for MainView {
                 })
             }
         });
+        let send: Send = {
+            let entity = entity.clone();
+            Rc::new(move |command, cx| {
+                entity.update(cx, |this, cx| {
+                    this.send(command);
+                    cx.notify();
+                })
+            })
+        };
         div()
             .size_full()
             .flex()
@@ -602,15 +632,8 @@ impl Render for MainView {
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
                                 Page::Settings => this.child(self.render_checks(cx)),
-                                Page::Vst => this.child(self.vst.render(lang, cx, {
-                                    let entity = entity.clone();
-                                    Rc::new(move |command, cx| {
-                                        entity.update(cx, |this, cx| {
-                                            this.send(command);
-                                            cx.notify();
-                                        })
-                                    })
-                                })),
+                                Page::Vst => this.child(self.vst.render(lang, cx, send)),
+                                Page::Sound => this.child(self.sound.render(lang, send)),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,
@@ -622,7 +645,6 @@ impl Render for MainView {
                                         })
                                     },
                                 )),
-                                page => this.justify_center().child(shell::not_yet(page, lang)),
                             }),
                     ),
             )

@@ -12,6 +12,7 @@ mod engine;
 mod home;
 mod i18n;
 mod shell;
+mod sound;
 mod view;
 mod vst;
 

@@ -143,7 +143,6 @@ pub mod keys {
     pub const STOP: &str = "band.stopAudio";
     pub const STOPPING: &str = "band.stopping";
     pub const STOP_FAILED: &str = "band.stopFailed";
-    pub const NOT_YET: &str = "gpuiShell.notYet";
     pub const STOP_TO_CHANGE: &str = "gpuiShell.stopToChange";
     pub const CONNECTION_METHOD: &str = "settings.AudioSettingsModal.035";
     pub const DEVICE: &str = "settings.AudioSettingsModal.037";
@@ -171,9 +170,27 @@ pub mod keys {
     pub const VST_CONFIRM_REMOVE: &str = "rack.card.confirmRemove";
     pub const CANCEL: &str = "rack.card.cancel";
     pub const VST_NOT_LOADED: &str = "gpuiShell.notLoaded";
+    pub const SOUND_UNREAD: &str = "gpuiShell.soundUnread";
+    pub const OFF_UNTIL_ON: &str = "settings.offUntilOn";
+    pub const NOISE: &str = "settings.AudioSettingsModal.105";
+    pub const NOISE_LEAD: &str = "settings.AudioSettingsModal.106";
+    pub const NOISE_LOW: &str = "master.nrLow";
+    pub const NOISE_HIGH: &str = "master.nrHigh";
+    pub const NOISE_MEASURED: &str = "master.nrLearn";
+    pub const NOISE_VENUE: &str = "master.nrVenue";
+    pub const NOISE_ADVANCED: &str = "settings.noiseAdvancedActive";
+    pub const NOISE_MIX: &str = "sound.noiseMix";
+    pub const EFFECTS: &str = "settings.AudioSettingsModal.095";
+    pub const EFFECTS_LEAD: &str = "settings.AudioSettingsModal.096";
+    pub const PRESET_BROADCAST: &str = "settings.AudioSettingsModal.098";
+    pub const PRESET_WARM: &str = "settings.AudioSettingsModal.099";
+    pub const PRESET_BRIGHT: &str = "settings.AudioSettingsModal.100";
+    pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
+    pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
+    pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
 
     #[cfg(test)]
-    pub const ALL: [&str; 50] = [
+    pub const ALL: [&str; 67] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -196,7 +213,6 @@ pub mod keys {
         STOP,
         STOPPING,
         STOP_FAILED,
-        NOT_YET,
         STOP_TO_CHANGE,
         CONNECTION_METHOD,
         DEVICE,
@@ -224,6 +240,24 @@ pub mod keys {
         VST_CONFIRM_REMOVE,
         CANCEL,
         VST_NOT_LOADED,
+        SOUND_UNREAD,
+        OFF_UNTIL_ON,
+        NOISE,
+        NOISE_LEAD,
+        NOISE_LOW,
+        NOISE_HIGH,
+        NOISE_MEASURED,
+        NOISE_VENUE,
+        NOISE_ADVANCED,
+        NOISE_MIX,
+        EFFECTS,
+        EFFECTS_LEAD,
+        PRESET_BROADCAST,
+        PRESET_WARM,
+        PRESET_BRIGHT,
+        EFFECTS_AMOUNT,
+        EFFECTS_AMOUNT_MEANS,
+        SINGING_NOT_YET,
     ];
 }
 

@@ -13,6 +13,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。確認用の欄（IME・VSTのエディタ・言語）は設定の画面に置く。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/shell.rs` | 窓の外枠。左のレール（行き先）、先頭の帯（音声の状態と開始・停止）、まだ無い画面の案内。開始・停止の状態は `auralyn-ui-model` の `session` |
 | `src/connect.rs` | 接続の画面。接続方式・マイク・出力先を選び、その機器で開始する（開始できると設定が保存される）。最初に選ぶ項目は `auralyn-ui-model` の `connect` |
+| `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強）と「声を整える」（ON/OFF・種類・整え具合）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine.rs` の `gpui_sound.json` |
 | `src/vst.rs` | VST の画面。並び（ON/OFF・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |

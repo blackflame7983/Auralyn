@@ -6,7 +6,6 @@ use std::rc::Rc;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::{Disableable as _, Icon, Selectable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -221,14 +220,5 @@ fn button_label(phase: Phase, lang: Lang) -> &'static str {
             Phase::Running => keys::STOP,
             Phase::Stopping => keys::STOPPING,
         },
-    )
-}
-
-/// まだ GPUI 版に無い画面。行き先の名前と、今までの版で設定するよう伝える。
-pub fn not_yet(page: Page, lang: Lang) -> impl IntoElement {
-    Empty::new().header(
-        EmptyHeader::new()
-            .title(EmptyTitle::new().child(page.name(lang)))
-            .description(EmptyDescription::new().child(core(lang, keys::NOT_YET))),
     )
 }
