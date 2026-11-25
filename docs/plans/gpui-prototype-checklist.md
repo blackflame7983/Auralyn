@@ -4,7 +4,7 @@
 
 - 試作：`prototypes/gpui-safety-column/`（GPUI Kit 0.11：`gpui-pre` 0.3.14 と `gpui-component` 0.11）
 - 範囲：右の列（緊急ミュート、入力メーターとマイク音量、出力のピーク・一言・出力音量、VSTを外して比較）と、実エンジンにつながるメーター。
-- 実エンジンとのつなぎ：本体の `AudioHost` をそのまま使う。通知の出口 `AudioEmitter` に、Tauri 以外の受け口（`AudioHost::set_event_listener`）を1つ足した。通知の順序と回数は変えない。Tauri 版の動きは変わらない。
+- 実エンジンとのつなぎ：本体の `AudioHost` をそのまま使う。通知は中核 API（PR #864）の `AudioHost::set_event_sink` に `EventSink` を渡して受ける。名前・本文・順序は Tauri と同じ。試作の当初は独自の `set_event_listener` を足していたが、#864 の取り込みで置き換えた。
 - 試作で行わないこと：プロファイルの復元、VST の列の復元、入力の元（アプリの音声）の復元、マイク音量・出力音量の保存。音量は 100% から始まる。
 
 ## 動かし方（Windows）

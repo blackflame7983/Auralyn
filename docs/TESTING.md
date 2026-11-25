@@ -138,7 +138,7 @@ Node.js 24・Python 3.12とlockfileを使い、設定指紋・ESLint・Ruff・�
 workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
 Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
 
-`npm run lint:terms` は、`src/i18n/messages.ts` の日本語と英語を `config/ui-terms.json` と照合する。使わないと決めた語、かぎかっこや空白だけを挟んだ同じ語句の重なり（英語は同じ単語の連続）、用語集の使う語から離れた定義を、人の評価より前に止める。CI の frontend 品質では `checks` がこの検査を実行する。
+`npm run lint:terms` は、`src-tauri/crates/auralyn-core/locales/{ja,en}.json` の日本語と英語を `config/ui-terms.json` と照合する。使わないと決めた語、かぎかっこや空白だけを挟んだ同じ語句の重なり（英語は同じ単語の連続）、用語集の使う語から離れた定義を、人の評価より前に止める。CI の frontend 品質では `checks` がこの検査を実行する。
 
 直すときは、失敗したキーの文言を `docs/DESIGN.md` 4章の使う語へ合わせる。その語が文脈上正しいときは、`config/ui-terms.json` の `allow` に `key`、`term`、`reason` を足す。用語を足したり変えたりしたときは、4章の表と `terms` の `use` を両方更新する。`use` が4章の使う語の列に無いと検査は失敗する。
 

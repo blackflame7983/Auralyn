@@ -1,13 +1,14 @@
 //! 実エンジンとのつなぎ。`AudioHost`（Tauri と同じ親の処理）を、画面とは別のスレッドで動かす。
 //!
 //! - 命令は1本のスレッドが受付順に実行する。`AudioHost` の命令は応答を待つので、画面のスレッドでは呼ばない。
-//! - 通知は `AudioHost::set_event_listener` で、Tauri と同じ順序のまま受ける。
+//! - 通知は `AudioHost::set_event_sink`（中核 API の `EventSink`）で、Tauri と同じ順序のまま受ける。
 //! - メーターは届くたびに画面へ送らず、最新の値だけを置く。画面が描画の周期で読む。
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use auralyn_core::event::{EmitError, Event, EventSink};
 use vst_host_lib::audio::AudioHost;
 use vst_host_lib::vst_host::scanner;
 
@@ -83,8 +84,9 @@ impl Engine {
             .name("gpui-proto-control".into())
             .spawn(move || {
                 let mut host = AudioHost::new(options.config_dir);
-                host.set_event_listener(Arc::new(move |event, payload| {
-                    on_event(event, payload, &listener_levels, &listener_notices)
+                host.set_event_sink(Arc::new(Sink {
+                    levels: listener_levels,
+                    notices: listener_notices,
                 }));
                 Control {
                     host,
@@ -106,7 +108,23 @@ impl Engine {
     }
 }
 
-/// reader のスレッドで呼ばれる。待たずに戻る。
+/// 中核の出来事の受け口（`auralyn_core::event::EventSink`）。名前・本文・順序は Tauri の emit と同じ。
+/// reader などのスレッドから同期で呼ばれるので、待たずに戻る。
+struct Sink {
+    levels: Arc<Mutex<LevelSlot>>,
+    notices: flume::Sender<Notice>,
+}
+
+impl EventSink for Sink {
+    fn send(&self, event: Event) -> Result<(), EmitError> {
+        let payload = event
+            .payload::<serde_json::Value>()
+            .map_err(EmitError::Serialize)?;
+        on_event(event.name(), payload, &self.levels, &self.notices);
+        Ok(())
+    }
+}
+
 fn on_event(
     event: &str,
     payload: serde_json::Value,

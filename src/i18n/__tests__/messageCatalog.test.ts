@@ -3,11 +3,17 @@ import { expect, it } from 'vitest';
 import { message, type MessageKey } from '../messages';
 
 it('日英のキーと差し込み引数が揃い、重複キーを持たない', () => {
-    const source = readFileSync('src/i18n/messages.ts', 'utf8');
-    const entries = (text: string) => [...text.matchAll(/\s*"([^"]+)":\s*("(?:[^"\\]|\\.)*")/gm)].map(([, key, value]) => [key, JSON.parse(value)] as const);
-    const split = source.indexOf('const en');
-    const ja = entries(source.slice(0, split));
-    const en = entries(source.slice(split));
+    const entries = (locale: 'ja' | 'en') => [...readFileSync(`src-tauri/crates/auralyn-core/locales/${locale}.json`, 'utf8').matchAll(/\s*"([^"]+)":\s*("(?:[^"\\]|\\.)*")/gm)].map(([, key, value]) => {
+        const text: unknown = JSON.parse(value);
+        if (typeof text !== 'string') throw new Error(`${locale} ${key} が文字列ではありません`);
+        return [key, text] as const;
+    });
+    const ja = entries('ja');
+    const en = entries('en');
+    for (const [locale, list] of [['ja', ja], ['en', en]] as const) {
+        const parsed: unknown = JSON.parse(readFileSync(`src-tauri/crates/auralyn-core/locales/${locale}.json`, 'utf8'));
+        expect(list.length, `${locale} の読み取りが JSON.parse と同じ件数になる`).toBe(Object.keys(parsed as object).length);
+    }
     expect(new Set(ja.map(([key]) => key)).size).toBe(ja.length);
     expect(new Set(en.map(([key]) => key)).size).toBe(en.length);
     expect(en.map(([key]) => key).sort()).toEqual(ja.map(([key]) => key).sort());

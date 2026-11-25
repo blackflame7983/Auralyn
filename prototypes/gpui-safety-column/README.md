@@ -9,8 +9,8 @@ Auralyn の右の列（本番中の操作）を GPUI Kit で作り、実エン�
 
 | ファイル | 役割 |
 | :--- | :--- |
-| `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `set_event_listener` で受け、メーターは最新の値だけを置く |
-| `src/view.rs` | 右の列の画面。16ms の周期を1つ共有し、窓が見えていない間はメーターを進めない |
+| `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
+| `src/view.rs` | 右の列の画面。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |
 | `src/i18n.rs` | 日英の文言（`src/i18n/messages.ts` から写した分だけ） |
 
