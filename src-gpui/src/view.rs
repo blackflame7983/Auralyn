@@ -19,7 +19,7 @@ use crate::connect::ConnectPage;
 use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::home;
-use crate::i18n::{core, keys, t, Key, Lang};
+use crate::i18n::{core, keys, Lang};
 use crate::locale_file;
 use crate::settings;
 use crate::shell::{self, Page};
@@ -139,23 +139,10 @@ impl MainView {
         if let Some(error) = &desktop.hotkey_error {
             log::warn!("Alt+M を登録できません: {error}");
         }
-        log::info!(
-            "トレイ: {} / Alt+M: {}",
-            if desktop.tray_error.is_none() {
-                "登録"
-            } else {
-                "失敗"
-            },
-            if desktop.hotkey_error.is_none() {
-                "登録"
-            } else {
-                "失敗"
-            }
-        );
         let message = desktop
             .hotkey_error
             .as_ref()
-            .map(|e| format!("{}: {e}", t(lang, Key::HotkeyFailed)));
+            .map(|e| format!("{}: {e}", core(lang, keys::HOTKEY_FAILED)));
         Self {
             engine,
             desktop,
@@ -373,9 +360,11 @@ impl MainView {
         div()
             .id("emergency-mute")
             .role(Role::Button)
-            .aria_label(t(lang, Key::Emergency))
+            .aria_label(core(lang, keys::EMERGENCY))
             .aria_toggled(if muted { Toggled::True } else { Toggled::False })
-            .when(muted, |this| this.aria_description(t(lang, Key::MuteOn)))
+            .when(muted, |this| {
+                this.aria_description(core(lang, keys::MUTE_ON))
+            })
             .focusable()
             .tab_stop(true)
             .flex()
@@ -407,13 +396,13 @@ impl MainView {
             })
             .focus_visible(|style| style.border_2().border_color(color::primary()))
             .on_click(cx.listener(|this, _, _, _| this.toggle_mute()))
-            .child(t(lang, Key::Emergency))
+            .child(core(lang, keys::EMERGENCY))
             .when(muted, |this| {
                 this.child(
                     div()
                         .text_xs()
                         .text_color(color::destructive_text())
-                        .child(t(lang, Key::MutedShort)),
+                        .child(core(lang, keys::MUTED_SHORT)),
                 )
             })
     }
@@ -421,14 +410,14 @@ impl MainView {
     fn render_input(&self) -> impl IntoElement {
         let lang = self.lang;
         section()
-            .child(heading(t(lang, Key::Mic)))
+            .child(heading(core(lang, keys::MIC)))
             .when_some(self.input_name.clone(), |this, name| {
                 this.child(device(name))
             })
             .child(meter_bar("input-meter", &self.input, lang))
             .child(slider_row(
                 "input-gain",
-                t(lang, Key::MicVolume),
+                core(lang, keys::MIC_VOLUME),
                 &self.input_gain,
             ))
     }
@@ -446,7 +435,7 @@ impl MainView {
                     .items_center()
                     .gap_x_2()
                     .min_h(px(22.))
-                    .child(heading(t(lang, Key::Output)))
+                    .child(heading(core(lang, keys::OUTPUT_HEADING)))
                     .map(|this| {
                         if self.muted || volume_zero {
                             this.child(
@@ -461,13 +450,13 @@ impl MainView {
                                     .text_xs()
                                     .font_weight(FontWeight::BOLD)
                                     .text_color(color::warning())
-                                    .child(t(lang, Key::Muted)),
+                                    .child(core(lang, keys::OUTPUT_MUTED)),
                             )
                         } else if let Some(verdict) = verdict {
                             let (text, dot) = match verdict {
-                                Verdict::High => (t(lang, Key::LevelHigh), color::warning()),
-                                Verdict::Low => (t(lang, Key::LevelLow), color::muted()),
-                                Verdict::Ok => (t(lang, Key::LevelOk), color::success()),
+                                Verdict::High => (core(lang, keys::LEVEL_HIGH), color::warning()),
+                                Verdict::Low => (core(lang, keys::LEVEL_LOW), color::muted()),
+                                Verdict::Ok => (core(lang, keys::LEVEL_OK), color::success()),
                             };
                             this.child(
                                 div()
@@ -493,11 +482,11 @@ impl MainView {
                     .id("output-peak")
                     .role(Role::Label)
                     .aria_label(if stopped {
-                        t(lang, Key::OutputPeakStopped).to_string()
+                        core(lang, keys::OUTPUT_PEAK_STOPPED).to_string()
                     } else {
                         format!(
                             "{} {} dBFS",
-                            t(lang, Key::OutputPeak),
+                            core(lang, keys::OUTPUT_PEAK),
                             meter::format_peak(self.output.peak())
                         )
                     })
@@ -507,7 +496,7 @@ impl MainView {
                     .gap_1p5()
                     .text_xs()
                     .text_color(color::muted())
-                    .child(t(lang, Key::Peak))
+                    .child(core(lang, keys::PEAK))
                     .child(div().font_family("Consolas").child(if stopped {
                         "—".to_string()
                     } else {
@@ -516,7 +505,7 @@ impl MainView {
             )
             .child(slider_row(
                 "output-gain",
-                t(lang, Key::OutputVolume),
+                core(lang, keys::OUTPUT_VOLUME),
                 &self.output_gain,
             ))
     }
@@ -530,7 +519,7 @@ impl MainView {
             .gap_1()
             .child(
                 Button::new("compare")
-                    .label(t(lang, Key::Compare))
+                    .label(core(lang, keys::COMPARE))
                     .outline()
                     .toggled(bypassed)
                     .w_full()
@@ -543,7 +532,7 @@ impl MainView {
                     div()
                         .text_xs()
                         .text_color(color::muted())
-                        .child(t(lang, Key::CompareOn)),
+                        .child(core(lang, keys::COMPARE_ON)),
                 )
             })
     }
@@ -656,7 +645,7 @@ impl MainView {
         div()
             .id("safety-column")
             .role(Role::Complementary)
-            .aria_label(t(lang, Key::SafetyColumn))
+            .aria_label(core(lang, keys::SAFETY_COLUMN))
             .w(px(SAFETY_COLUMN_WIDTH))
             .flex_none()
             .h_full()
@@ -699,10 +688,10 @@ fn device(name: String) -> impl IntoElement {
 
 fn state_text(state: MeterState, lang: Lang) -> &'static str {
     match state {
-        MeterState::Stopped => t(lang, Key::StateStopped),
-        MeterState::Waiting | MeterState::Stale => t(lang, Key::StateWaiting),
-        MeterState::Silent => t(lang, Key::StateSilent),
-        MeterState::Live => t(lang, Key::StateActive),
+        MeterState::Stopped => core(lang, keys::STATE_STOPPED),
+        MeterState::Waiting | MeterState::Stale => core(lang, keys::STATE_WAITING),
+        MeterState::Silent => core(lang, keys::STATE_SILENT),
+        MeterState::Live => core(lang, keys::STATE_ACTIVE),
     }
 }
 
@@ -717,7 +706,7 @@ fn meter_bar(id: &'static str, reading: &Meter, lang: Lang) -> impl IntoElement 
     div()
         .id(id)
         .role(Role::Meter)
-        .aria_label(t(lang, Key::InputLevel))
+        .aria_label(core(lang, keys::INPUT_LEVEL))
         .aria_value(state_text(state, lang))
         .aria_min_numeric_value(0.0)
         .aria_max_numeric_value(1.0)

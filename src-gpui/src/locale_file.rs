@@ -2,7 +2,6 @@
 //! 自分のファイルが無いときは、Tauri 版のトレイ用の写し（`display-locale.json`）を読み、Tauri 版で選んだ言語で始める。
 //! Tauri 版のファイルへは書かない（Tauri 版は起動のたびに自分の画面の言語で書き直し・削除するため、共有できない）。
 
-use std::io::Write as _;
 use std::path::Path;
 
 use crate::i18n::Lang;
@@ -20,23 +19,8 @@ pub fn load(config_dir: &Path) -> Option<Lang> {
 }
 
 pub fn save(config_dir: &Path, lang: Lang) -> std::io::Result<()> {
-    std::fs::create_dir_all(config_dir)?;
-    let path = config_dir.join(FILE);
-    let partial = path.with_extension("json.tmp");
-    let result = std::fs::File::create(&partial)
-        .and_then(|mut file| {
-            file.write_all(
-                serde_json::json!({ "locale": code(lang) })
-                    .to_string()
-                    .as_bytes(),
-            )?;
-            file.sync_all()
-        })
-        .and_then(|()| std::fs::rename(&partial, &path));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&partial);
-    }
-    result
+    let text = serde_json::json!({ "locale": code(lang) }).to_string();
+    crate::store::write_atomic(&config_dir.join(FILE), text.as_bytes())
 }
 
 fn code(lang: Lang) -> &'static str {

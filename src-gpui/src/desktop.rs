@@ -1,7 +1,7 @@
 //! トレイとグローバルホットキー。GPUI には無いので、Tauri が内部で使うのと同じ crate（tray-icon・global-hotkey）を
 //! GPUI の主スレッドで作る。Windows の主スレッドのメッセージループを GPUI と共有できるかを確かめる。
 
-use crate::i18n::{t, Key, Lang};
+use crate::i18n::Lang;
 
 pub enum Action {
     ToggleMute,
@@ -12,6 +12,7 @@ pub enum Action {
 #[cfg(windows)]
 mod imp {
     use super::*;
+    use crate::i18n::{core, keys};
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem};
@@ -32,9 +33,9 @@ mod imp {
 
     impl Desktop {
         pub fn new(lang: Lang) -> Self {
-            let show = MenuItem::new(t(lang, Key::TrayShow), true, None);
-            let mute = MenuItem::new(t(lang, Key::Emergency), true, None);
-            let quit = MenuItem::new(t(lang, Key::TrayQuit), true, None);
+            let show = MenuItem::new(core(lang, keys::TRAY_SHOW), true, None);
+            let mute = MenuItem::new(core(lang, keys::EMERGENCY), true, None);
+            let quit = MenuItem::new(core(lang, keys::TRAY_QUIT), true, None);
             let menu = Menu::new();
             let tray = menu
                 .append_items(&[&show, &mute, &quit])
@@ -72,9 +73,9 @@ mod imp {
         }
 
         pub fn set_lang(&self, lang: Lang) {
-            self.show.set_text(t(lang, Key::TrayShow));
-            self.mute.set_text(t(lang, Key::Emergency));
-            self.quit.set_text(t(lang, Key::TrayQuit));
+            self.show.set_text(core(lang, keys::TRAY_SHOW));
+            self.mute.set_text(core(lang, keys::EMERGENCY));
+            self.quit.set_text(core(lang, keys::TRAY_QUIT));
         }
 
         /// 描画の周期で呼ぶ。届いている操作を全部返す。
@@ -156,7 +157,6 @@ mod imp {
         pub fn set_lang(&self, _lang: Lang) {}
 
         pub fn poll(&self) -> Vec<Action> {
-            let _ = (t, Key::Emergency);
             Vec::new()
         }
     }

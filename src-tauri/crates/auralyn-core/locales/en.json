@@ -3664,5 +3664,8 @@
   "gpuiShell.hotkey": "Mute with Alt+M",
   "gpuiShell.ready": "Ready",
   "gpuiShell.unavailable": "Unavailable",
-  "gpuiShell.noiseModeFirst": "The noise reduction type is unknown. Choose Low or High to apply on/off, strength and voice protection."
+  "gpuiShell.noiseModeFirst": "The noise reduction type is unknown. Choose Low or High to apply on/off, strength and voice protection.",
+  "gpuiShell.trayShow": "Show Auralyn",
+  "gpuiShell.trayQuit": "Quit",
+  "gpuiShell.hotkeyFailed": "Could not register Alt+M (Auralyn may be running)"
 }

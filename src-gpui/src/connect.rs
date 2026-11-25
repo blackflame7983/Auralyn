@@ -78,10 +78,11 @@ impl ConnectPage {
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let host = self.host_name(cx);
         let pick = |state: &Entity<Choices>, is_input: bool| {
-            let name = state.read(cx).selected_value()?.clone();
+            // 名前で探すと、同じ名前の機器が2台あるとき1台目になる。選択肢と同じ並びの位置で取る。
+            let row = state.read(cx).selected_index(cx)?.row;
             connect::of_host(&self.devices, &host, is_input)
-                .into_iter()
-                .find(|d| d.name == name.as_ref())
+                .get(row)
+                .copied()
         };
         let input = pick(&self.input, true)?;
         let output = if connect::shares_device(&host) {

@@ -8,6 +8,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, keys, Lang};
+use crate::part::{card, note};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
@@ -25,6 +26,7 @@ pub fn render(
         .max_w(px(560.))
         .child(card(
             core(lang, keys::LANGUAGE),
+            div(),
             div()
                 .flex()
                 .flex_col()
@@ -45,6 +47,7 @@ pub fn render(
         ))
         .child(card(
             core(lang, keys::DESKTOP),
+            div(),
             div()
                 .flex()
                 .flex_col()
@@ -57,28 +60,6 @@ pub fn render(
             core(lang, keys::VERSION).trim(),
             env!("CARGO_PKG_VERSION")
         )))
-}
-
-/// 見出しと中身の区画。
-fn card(title: &'static str, body: impl IntoElement) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .p_4()
-        .rounded(px(8.))
-        .border_1()
-        .border_color(color::border())
-        .bg(color::card())
-        .child(
-            div()
-                .id(SharedString::new_static(title))
-                .role(Role::Heading)
-                .aria_level(2)
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(title),
-        )
-        .child(body)
 }
 
 /// 1行：名前と、使えるか（使えないなら理由）。
@@ -98,11 +79,4 @@ fn status(lang: Lang, name: &'static str, error: Option<&str>) -> impl IntoEleme
                     None => core(lang, keys::READY).to_owned(),
                 }),
         )
-}
-
-fn note(text: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .text_sm()
-        .text_color(color::muted())
-        .child(text.into())
 }

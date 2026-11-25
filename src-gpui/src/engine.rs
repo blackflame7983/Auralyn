@@ -17,6 +17,8 @@ use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
 
+use crate::store;
+
 #[derive(Debug, Clone)]
 pub enum Command {
     /// 保存した入出力の設定で開始する。
@@ -179,6 +181,8 @@ impl Engine {
                     sound: None,
                     read_only: false,
                     exited,
+                    input_gain: None,
+                    output_gain: None,
                 }
                 .run(command_rx);
             })
@@ -285,6 +289,9 @@ struct Control {
     /// 保存を読めず、脇へ移せもしなかった。上書きして消さないよう、この起動の間は保存しない。
     read_only: bool,
     exited: Arc<AtomicBool>,
+    /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
+    input_gain: Option<f32>,
+    output_gain: Option<f32>,
 }
 
 impl Control {
@@ -367,6 +374,17 @@ impl Control {
             output: config.output,
         });
         self.recover();
+        // 子が替わっていると音量は 100% に戻っているので、画面のスライダーの値を送り直す（同じ子なら同じ値を送るだけ）。
+        if let Some(value) = self.input_gain {
+            if let Err(e) = self.host.set_input_gain(value) {
+                self.fail("set_input_gain", e);
+            }
+        }
+        if let Some(value) = self.output_gain {
+            if let Err(e) = self.host.set_output_gain(value) {
+                self.fail("set_output_gain", e);
+            }
+        }
     }
 
     /// 保存した並びを、同じ順・同じ ON/OFF・同じ VST の中の設定で読む。保存が無ければ何もしない。
@@ -478,11 +496,9 @@ impl Control {
         }
         let requests: Vec<RestorePluginRequest> = self.rack.iter().map(Slot::request).collect();
         let path = self.config_dir.join(RACK_FILE);
-        let partial = path.with_extension("json.tmp");
         let result = serde_json::to_vec(&requests)
             .map_err(anyhow::Error::from)
-            .and_then(|bytes| Ok(std::fs::write(&partial, bytes)?))
-            .and_then(|()| Ok(std::fs::rename(&partial, &path)?));
+            .and_then(|bytes| Ok(store::write_atomic(&path, &bytes)?));
         if let Err(e) = result {
             self.fail("save_rack", e);
         }
@@ -656,7 +672,7 @@ impl Control {
 
     fn save_sound(&self, sound: Sound) {
         let path = self.config_dir.join(SOUND_FILE);
-        if let Err(e) = std::fs::write(&path, sound_to_json(sound).to_string()) {
+        if let Err(e) = store::write_atomic(&path, sound_to_json(sound).to_string().as_bytes()) {
             self.fail("save_sound", e.into());
         }
     }
@@ -703,8 +719,14 @@ impl Control {
             Command::SetBypass(active) => {
                 ("set_global_bypass", self.host.set_global_bypass(active))
             }
-            Command::SetInputGain(value) => ("set_input_gain", self.host.set_input_gain(value)),
-            Command::SetOutputGain(value) => ("set_output_gain", self.host.set_output_gain(value)),
+            Command::SetInputGain(value) => {
+                self.input_gain = Some(value);
+                ("set_input_gain", self.host.set_input_gain(value))
+            }
+            Command::SetOutputGain(value) => {
+                self.output_gain = Some(value);
+                ("set_output_gain", self.host.set_output_gain(value))
+            }
             Command::ScanPlugins => return self.scan(),
             Command::AddPlugin(ref candidate) => {
                 return self.add(&candidate.path, candidate.class_id.as_deref())
