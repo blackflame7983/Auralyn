@@ -290,7 +290,8 @@ impl MainView {
                 self.connect.set_devices(devices, saved, window, cx)
             }
             Notice::Failed { command, message } => {
-                // 楽観的に変えた表示を、通知で確定した状態へ戻す。ミュートと比較は通知で決まる。
+                // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
+                // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
                 self.message = Some(format!("{command}: {message}"));
             }
         }
