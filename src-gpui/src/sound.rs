@@ -1,6 +1,6 @@
-//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強）と「声を整える」（ON/OFF・種類・整え具合）。
+//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）。
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
-//! 抑制の強さ・声の保護・測定・歯擦音・ピーク保護・歌向け・本番モードは、まだこの画面に無い。
+//! 測定・歯擦音・ピーク保護・歌向け・本番モードは、まだこの画面に無い。
 
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
 use gpui_kit::component::button::{Button, ButtonGroup};
@@ -30,6 +30,8 @@ pub struct SoundPage {
     current: Option<Sound>,
     /// 整え具合（0〜100）。離したときに送る（`MainView` が購読する）。
     pub amount: Entity<SliderState>,
+    /// 抑制の強さ（25〜125）。離したときに送る。
+    pub strength: Entity<SliderState>,
 }
 
 impl SoundPage {
@@ -37,6 +39,7 @@ impl SoundPage {
         Self {
             current: None,
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
+            strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
         }
     }
 
@@ -44,6 +47,9 @@ impl SoundPage {
         self.current = Some(sound);
         self.amount.update(cx, |state, cx| {
             state.set_value(sound::percent(sound.amount), window, cx)
+        });
+        self.strength.update(cx, |state, cx| {
+            state.set_value(sound::strength_percent(sound.strength), window, cx)
         });
     }
 
@@ -73,6 +79,7 @@ impl SoundPage {
                 Switch::new("noise-on")
                     .checked(current.noise_on)
                     .accessibility_label(core(lang, keys::NOISE))
+                    .disabled(current.noise_mode.is_none())
                     .on_click({
                         let set = set.clone();
                         move |on, _, cx| set(Change::NoiseOn(*on), cx)
@@ -91,6 +98,9 @@ impl SoundPage {
                             move |mode, cx| set(Change::NoiseMode(mode), cx)
                         },
                     ))
+                    .when(current.noise_mode.is_none(), |this| {
+                        this.child(note(core(lang, keys::NOISE_MODE_FIRST)))
+                    })
                     .when_some(
                         current.noise_mode.and_then(|mode| match mode {
                             NoiseMode::Measured => Some(keys::NOISE_MEASURED),
@@ -105,7 +115,49 @@ impl SoundPage {
                             )))
                         },
                     )
-                    .child(note(core(lang, keys::NOISE_MIX))),
+                    .child(note(core(lang, keys::NOISE_MIX)))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .pt_3()
+                            .border_t_1()
+                            .border_color(color::border())
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(core(lang, keys::NOISE_DETAILS)),
+                            )
+                            .child(slider_row(
+                                lang,
+                                keys::STRENGTH,
+                                keys::STRENGTH_NAMED,
+                                &self.strength,
+                                sound::strength_percent(current.strength),
+                                current.noise_mode.is_none(),
+                            ))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_3()
+                                    .child(div().text_sm().child(core(lang, keys::VOICE_GUARD)))
+                                    .child(
+                                        Switch::new("voice-guard")
+                                            .checked(current.voice_guard)
+                                            .accessibility_label(core(lang, keys::VOICE_GUARD))
+                                            .disabled(current.noise_mode.is_none())
+                                            .on_click({
+                                                let set = set.clone();
+                                                move |on, _, cx| set(Change::VoiceGuard(*on), cx)
+                                            }),
+                                    ),
+                            )
+                            .child(note(core(lang, keys::VOICE_GUARD_MEANS))),
+                    ),
             ))
             .child(section(
                 lang,
@@ -131,32 +183,14 @@ impl SoundPage {
                             current.preset,
                             move |preset, cx| set(Change::Preset(preset), cx),
                         ))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_3()
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_sm()
-                                        .child(core(lang, keys::EFFECTS_AMOUNT)),
-                                )
-                                .child(
-                                    div().flex_1().child(
-                                        Slider::new(&self.amount)
-                                            .horizontal()
-                                            .accessibility_label(core(lang, keys::EFFECTS_AMOUNT)),
-                                    ),
-                                )
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .w(px(40.))
-                                        .text_sm()
-                                        .child(format!("{}%", sound::percent(current.amount))),
-                                ),
-                        )
+                        .child(slider_row(
+                            lang,
+                            keys::EFFECTS_AMOUNT,
+                            keys::EFFECTS_AMOUNT,
+                            &self.amount,
+                            sound::percent(current.amount),
+                            false,
+                        ))
                         .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
                 } else {
                     div().child(note(core(lang, keys::SINGING_NOT_YET)))
@@ -200,6 +234,37 @@ fn section(
         )
         .child(note(core(lang, lead)))
         .child(body)
+}
+
+/// 名前・スライダー・百分率の1行。`named` は読み上げの名前。
+fn slider_row(
+    lang: Lang,
+    label: &'static str,
+    named: &'static str,
+    state: &Entity<SliderState>,
+    percent: f32,
+    disabled: bool,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(div().flex_none().text_sm().child(core(lang, label)))
+        .child(
+            div().flex_1().child(
+                Slider::new(state)
+                    .horizontal()
+                    .disabled(disabled)
+                    .accessibility_label(core(lang, named)),
+            ),
+        )
+        .child(
+            div()
+                .flex_none()
+                .w(px(48.))
+                .text_sm()
+                .child(format!("{percent}%")),
+        )
 }
 
 /// どれか1つを選ぶボタンの組。今の値が無い（分からない）ときは、どれも選ばない。

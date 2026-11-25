@@ -611,13 +611,16 @@ impl Control {
         }
     }
 
-    /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。歌向けなど、この画面で変えない種類は送らない。
+    /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。歌向け・分からない種類など、この画面で変えない種類は送らない。
     fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
-        if before.is_none_or(|before| next.noise_differs(&before)) {
-            let mode = next.noise_mode.unwrap_or(NoiseMode::Low).key().to_owned();
+        // 種類が分からない（エンジンが知らない名前を返した）ときは送らない。種類を「弱」に書き換えないため。
+        if let Some(mode) = next
+            .noise_mode
+            .filter(|_| before.is_none_or(|before| next.noise_differs(&before)))
+        {
             if let Err(e) = self.host.set_noise_control_config(
                 next.noise_on,
-                mode,
+                mode.key().to_owned(),
                 next.strength,
                 next.voice_guard,
             ) {
