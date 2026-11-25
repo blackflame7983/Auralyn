@@ -103,7 +103,7 @@ impl MainView {
                 .send(Command::SetOutputGain(value.end() / 100.0));
         })
         .detach();
-        let connect = ConnectPage::new(window, cx);
+        let connect = ConnectPage::new(lang, window, cx);
         let vst = VstPage::new(window, cx);
         let sound = SoundPage::new(cx);
         cx.subscribe(&sound.amount, |this, _, event: &SliderEvent, _| {
@@ -138,6 +138,17 @@ impl MainView {
             },
         )
         .detach();
+        for state in [&connect.input, &connect.output] {
+            cx.subscribe_in(
+                state,
+                window,
+                |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
+                    this.connect.devices_changed(window, cx);
+                    cx.notify();
+                },
+            )
+            .detach();
+        }
         let ticker = cx.spawn_in(window, async move |this, cx| loop {
             cx.background_executor().timer(FRAME).await;
             if this
@@ -286,11 +297,12 @@ impl MainView {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
             }
-            Notice::Devices { devices, saved } => {
-                self.connect.set_devices(devices, saved, window, cx)
-            }
+            Notice::Devices { devices, saved } => self
+                .connect
+                .set_devices(devices, saved, self.lang, window, cx),
             Notice::Failed { command, message } => {
-                // 楽観的に変えた表示を、通知で確定した状態へ戻す。ミュートと比較は通知で決まる。
+                // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
+                // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
                 self.message = Some(format!("{command}: {message}"));
             }
         }
@@ -351,12 +363,18 @@ impl MainView {
         let Some((input, output)) = self.connect.chosen(cx) else {
             return;
         };
+        let (sample_rate, buffer_size) = self.connect.values(cx);
         if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
             return;
         }
         self.advance(SessionEvent::StartRequested);
         self.message = None;
-        self.engine.send(Command::StartWith { input, output });
+        self.engine.send(Command::StartWith {
+            input,
+            output,
+            sample_rate,
+            buffer_size,
+        });
     }
 
     /// 帯のボタン。押せるのは結果を待っていないときだけ（`Phase::busy`）。

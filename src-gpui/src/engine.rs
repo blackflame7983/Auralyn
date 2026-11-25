@@ -26,9 +26,12 @@ pub enum Command {
     /// 保存した入出力の設定で開始する。
     Start,
     /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
+    /// 周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
     StartWith {
         input: Device,
         output: Device,
+        sample_rate: Option<u32>,
+        buffer_size: Option<u32>,
     },
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
@@ -377,12 +380,18 @@ impl Control {
         self.start(config);
     }
 
-    /// 選んだ機器で開始する。周波数とバッファの大きさは、同じ接続方式なら保存した値を使う。
-    /// チャンネルの割り当ては、同じ機器のときだけ引き継ぐ。
-    fn start_with(&mut self, input: &Device, output: &Device) {
+    /// 選んだ機器・周波数・バッファで開始する。チャンネルの割り当ては、同じ機器のときだけ引き継ぐ。
+    fn start_with(
+        &mut self,
+        input: &Device,
+        output: &Device,
+        sample_rate: Option<u32>,
+        buffer_size: Option<u32>,
+    ) {
         let saved = self.host.read_saved_audio_config().ok().flatten();
-        let same_host = saved.as_ref().filter(|s| s.host == input.host);
-        let same_devices = same_host.filter(|s| s.input_id == input.id && s.output_id == output.id);
+        let same_devices = saved
+            .as_ref()
+            .filter(|s| s.host == input.host && s.input_id == input.id && s.output_id == output.id);
         self.start(ActiveAudioConfig {
             input_source: None,
             host: input.host.clone(),
@@ -390,8 +399,8 @@ impl Control {
             output: Some(output.name.clone()),
             input_id: input.id.clone(),
             output_id: output.id.clone(),
-            buffer_size: same_host.and_then(|s| s.buffer_size),
-            sample_rate: same_host.and_then(|s| s.sample_rate),
+            buffer_size,
+            sample_rate,
             routing: same_devices.and_then(|s| s.routing),
         });
     }
@@ -834,7 +843,9 @@ impl Control {
             Command::StartWith {
                 ref input,
                 ref output,
-            } => return self.start_with(input, output),
+                sample_rate,
+                buffer_size,
+            } => return self.start_with(input, output, sample_rate, buffer_size),
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
@@ -904,6 +915,8 @@ impl Control {
                     id: d.id,
                     is_input: d.is_input,
                     is_default: d.is_default,
+                    rates: d.sample_rate_ranges,
+                    buffers: d.buffer_size_range,
                 })
                 .collect(),
             Err(e) => return self.fail("enumerate_devices", e),
@@ -919,6 +932,8 @@ impl Control {
                 input_id: c.input_id,
                 output: c.output,
                 output_id: c.output_id,
+                sample_rate: c.sample_rate,
+                buffer_size: c.buffer_size,
             });
         let _ = self.notices.send(Notice::Devices { devices, saved });
     }
