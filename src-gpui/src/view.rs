@@ -27,7 +27,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::vst::{Send, VstPage};
 use auralyn_ui_model::flow::Flow;
-use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
+use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::sound::Change;
 
@@ -476,8 +476,8 @@ impl MainView {
     fn render_output(&self, cx: &App) -> impl IntoElement {
         let lang = self.lang;
         let stopped = self.output.state() == MeterState::Stopped;
-        let verdict = (!self.muted).then(|| self.output.verdict()).flatten();
         let volume_zero = self.output_gain.read(cx).value().end() == 0.0;
+        let tag = meter::output_tag(self.muted, volume_zero, &self.output);
         section()
             .child(
                 div()
@@ -487,23 +487,22 @@ impl MainView {
                     .gap_x_2()
                     .min_h(px(22.))
                     .child(heading(core(lang, keys::OUTPUT_HEADING)))
-                    .map(|this| {
-                        if self.muted || volume_zero {
-                            this.child(
-                                div()
-                                    .ml_auto()
-                                    .px_1p5()
-                                    .py_0p5()
-                                    .rounded_full()
-                                    .border_1()
-                                    .border_color(color::warning().opacity(0.5))
-                                    .bg(color::warning().opacity(0.1))
-                                    .text_xs()
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(color::warning())
-                                    .child(core(lang, keys::OUTPUT_MUTED)),
-                            )
-                        } else if let Some(verdict) = verdict {
+                    .map(|this| match tag {
+                        Some(OutputTag::Muted) => this.child(
+                            div()
+                                .ml_auto()
+                                .px_1p5()
+                                .py_0p5()
+                                .rounded_full()
+                                .border_1()
+                                .border_color(color::warning().opacity(0.5))
+                                .bg(color::warning().opacity(0.1))
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(color::warning())
+                                .child(core(lang, keys::OUTPUT_MUTED)),
+                        ),
+                        Some(OutputTag::Verdict(verdict)) => {
                             let (text, dot) = match verdict {
                                 Verdict::High => (core(lang, keys::LEVEL_HIGH), color::warning()),
                                 Verdict::Low => (core(lang, keys::LEVEL_LOW), color::muted()),
@@ -520,9 +519,8 @@ impl MainView {
                                     .child(div().w(px(16.)).h(px(8.)).rounded_full().bg(dot))
                                     .child(text),
                             )
-                        } else {
-                            this
                         }
+                        None => this,
                     }),
             )
             .when_some(self.output_name.clone(), |this, name| {
