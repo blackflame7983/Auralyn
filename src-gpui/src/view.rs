@@ -3,6 +3,7 @@
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
 //! VSTを外して比較。
 
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -56,6 +57,8 @@ pub struct MainView {
     level_seq: u64,
     /// ピーク保護の反映待ちを最後に読み直した時刻。
     peak_polled: Instant,
+    /// 窓をトレイへ隠している。隠れている間はメーターを計算しない（DESIGN.md 10.6）。
+    hidden: Rc<Cell<bool>>,
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
     /// 表示言語を保存するフォルダ。
@@ -138,9 +141,12 @@ impl MainView {
         let now = Instant::now();
         let desktop = Desktop::new(lang);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
+        let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
-            window.on_window_should_close(cx, |window, _| {
+            let hidden = hidden.clone();
+            window.on_window_should_close(cx, move |window, _| {
                 desktop::set_shown(window, false);
+                hidden.set(true);
                 false
             });
         }
@@ -171,6 +177,7 @@ impl MainView {
             flow: Flow::default(),
             level_seq: 0,
             peak_polled: now,
+            hidden,
             input_gain,
             output_gain,
             config_dir,
@@ -200,14 +207,15 @@ impl MainView {
                 Action::ToggleMute => self.toggle_mute(),
                 Action::Show => {
                     desktop::set_shown(window, true);
+                    self.hidden.set(false);
                     window.activate_window()
                 }
                 Action::Quit => cx.quit(),
             }
             changed = true;
         }
-        // 10.6 は「窓が隠れている間は止める」。GPUI 0.3.14 には窓が見えているかを知る API がないので、まだ止めない。
-        {
+        // 隠れている間は読まない。出し直したら、最新の値と経った時間から続ける。
+        if !self.hidden.get() {
             let slot = *self.engine.levels.lock().unwrap_or_else(|e| e.into_inner());
             if slot.seq != self.level_seq {
                 self.level_seq = slot.seq;
