@@ -202,10 +202,7 @@ impl MainView {
                     desktop::set_shown(window, true);
                     window.activate_window()
                 }
-                Action::Quit => {
-                    self.engine.save_before_quit();
-                    cx.quit()
-                }
+                Action::Quit => cx.quit(),
             }
             changed = true;
         }

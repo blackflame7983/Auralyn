@@ -94,10 +94,12 @@ fn main() {
                 cx.new(|cx| view::MainView::new(engine, lang, config_dir, window, cx))
             })
             .expect("窓を開けません");
-            cx.on_window_closed(move |cx, _| {
+            // 保存は終わり方（トレイの「終了」・窓を閉じる・Windows のサインアウトやシャットダウン）によらず、終了の直前に1回だけ行う。
+            cx.on_app_quit(move |cx| {
                 view.read(cx).save_before_quit();
-                cx.quit()
+                async {}
             })
             .detach();
+            cx.on_window_closed(|cx, _| cx.quit()).detach();
         });
 }
