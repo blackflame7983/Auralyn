@@ -9,15 +9,6 @@ pub enum Lang {
     En,
 }
 
-impl Lang {
-    pub fn toggled(self) -> Self {
-        match self {
-            Lang::Ja => Lang::En,
-            Lang::En => Lang::Ja,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum Key {
     SafetyColumn,
@@ -42,10 +33,6 @@ pub enum Key {
     StateWaiting,
     StateSilent,
     StateActive,
-    Checks,
-    ImeField,
-    ImePlaceholder,
-    Language,
     TrayShow,
     TrayQuit,
     HotkeyFailed,
@@ -102,14 +89,6 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, StateSilent) => "Silent",
         (Lang::Ja, StateActive) => "受信中",
         (Lang::En, StateActive) => "Receiving",
-        (Lang::Ja, Checks) => "確認用",
-        (Lang::En, Checks) => "Checks",
-        (Lang::Ja, ImeField) => "日本語入力の確認",
-        (Lang::En, ImeField) => "IME check",
-        (Lang::Ja, ImePlaceholder) => "ここに日本語を入力",
-        (Lang::En, ImePlaceholder) => "Type Japanese here",
-        (Lang::Ja, Language) => "English",
-        (Lang::En, Language) => "日本語",
         (Lang::Ja, TrayShow) => "Auralyn を表示",
         (Lang::En, TrayShow) => "Show Auralyn",
         (Lang::Ja, TrayQuit) => "終了",
@@ -188,9 +167,18 @@ pub mod keys {
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
     pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const LANGUAGE: &str = "language.label";
+    pub const LANGUAGE_PARTIAL: &str = "language.partial";
+    pub const LANGUAGE_SAVE_FAILED: &str = "language.saveFailed";
+    pub const DESKTOP: &str = "gpuiShell.desktop";
+    pub const TRAY: &str = "gpuiShell.tray";
+    pub const HOTKEY: &str = "gpuiShell.hotkey";
+    pub const READY: &str = "gpuiShell.ready";
+    pub const UNAVAILABLE: &str = "gpuiShell.unavailable";
+    pub const VERSION: &str = "settings.AudioSettingsModal.138";
 
     #[cfg(test)]
-    pub const ALL: [&str; 67] = [
+    pub const ALL: [&str; 76] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -258,6 +246,15 @@ pub mod keys {
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
         SINGING_NOT_YET,
+        LANGUAGE,
+        LANGUAGE_PARTIAL,
+        LANGUAGE_SAVE_FAILED,
+        DESKTOP,
+        TRAY,
+        HOTKEY,
+        READY,
+        UNAVAILABLE,
+        VERSION,
     ];
 }
 

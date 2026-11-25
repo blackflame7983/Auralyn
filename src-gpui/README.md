@@ -10,9 +10,11 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | ファイル | 役割 |
 | :--- | :--- |
 | `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
-| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。確認用の欄（IME・VSTのエディタ・言語）は設定の画面に置く。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/shell.rs` | 窓の外枠。左のレール（行き先）、先頭の帯（音声の状態と開始・停止）。開始・停止の状態は `auralyn-ui-model` の `session` |
 | `src/connect.rs` | 接続の画面。接続方式・マイク・出力先を選び、その機器で開始する（開始できると設定が保存される）。最初に選ぶ項目は `auralyn-ui-model` の `connect` |
+| `src/settings.rs` | 設定の画面。表示言語（日本語・English）と、Windows との連携（トレイ・Alt+M）が使えるかと、版 |
+| `src/locale_file.rs` | 表示言語の保存（`gpui_locale.json`）。無ければ Tauri 版の `display-locale.json` を読むだけ |
 | `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強）と「声を整える」（ON/OFF・種類・整え具合）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine.rs` の `gpui_sound.json` |
 | `src/vst.rs` | VST の画面。並び（ON/OFF・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
@@ -35,7 +37,7 @@ cargo test
 cargo run
 ```
 
-引数：`--lang en`、`--config-dir <フォルダ>`（既定は `%APPDATA%\com.kuro7983.auralynhost`）。
+引数：`--lang ja|en`（指定しなければ保存した表示言語）、`--config-dir <フォルダ>`（既定は `%APPDATA%\com.kuro7983.auralynhost`）。
 
 Tauri 版の Auralyn は閉じてから起動する。
 

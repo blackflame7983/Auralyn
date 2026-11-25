@@ -1,14 +1,14 @@
 //! 窓の中身。左にレール（行き先）、中央に先頭の帯と行き先の画面、右に本番中の操作の列（DESIGN.md 10.3）。
 //! 右の列は DESIGN.md 10.3・10.6 の並びと規則に合わせる。
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
-//! VSTを外して比較。確認用の欄（IME・言語・トレイとホットキーの状態）は、設定の画面に置く。
+//! VSTを外して比較。
 
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -20,6 +20,8 @@ use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::home;
 use crate::i18n::{core, keys, t, Key, Lang};
+use crate::locale_file;
+use crate::settings;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::vst::{Send, VstPage};
@@ -52,7 +54,8 @@ pub struct MainView {
     level_seq: u64,
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
-    ime: Entity<InputState>,
+    /// 表示言語を保存するフォルダ。
+    config_dir: PathBuf,
     connect: ConnectPage,
     vst: VstPage,
     sound: SoundPage,
@@ -60,7 +63,13 @@ pub struct MainView {
 }
 
 impl MainView {
-    pub fn new(engine: Engine, lang: Lang, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        engine: Engine,
+        lang: Lang,
+        config_dir: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let input_gain = cx.new(|_| {
             SliderState::new()
                 .min(0.0)
@@ -87,8 +96,6 @@ impl MainView {
                 .send(Command::SetOutputGain(value.end() / 100.0));
         })
         .detach();
-        let ime =
-            cx.new(|cx| InputState::new(window, cx).placeholder(t(lang, Key::ImePlaceholder)));
         let connect = ConnectPage::new(window, cx);
         let vst = VstPage::new(window, cx);
         let sound = SoundPage::new(cx);
@@ -160,7 +167,7 @@ impl MainView {
             level_seq: 0,
             input_gain,
             output_gain,
-            ime,
+            config_dir,
             connect,
             vst,
             sound,
@@ -328,13 +335,29 @@ impl MainView {
         self.engine.send(Command::SetMute(!self.muted));
     }
 
-    fn set_lang(&mut self, lang: Lang, window: &mut Window, cx: &mut Context<Self>) {
+    fn set_lang(&mut self, lang: Lang) {
+        if lang == self.lang {
+            return;
+        }
         self.lang = lang;
         self.desktop.set_lang(lang);
-        self.ime.update(cx, |state, cx| {
-            state.set_placeholder(t(lang, Key::ImePlaceholder), window, cx)
-        });
-        cx.notify();
+        let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
+        match locale_file::save(&self.config_dir, lang) {
+            Ok(()) => {
+                // 前に失敗した警告だけを消す（ほかの警告は残す）。
+                if self.message.as_deref().is_some_and(|m| {
+                    [Lang::Ja, Lang::En]
+                        .into_iter()
+                        .any(|l| m.starts_with(failed(l)))
+                }) {
+                    self.message = None;
+                }
+            }
+            Err(e) => {
+                log::warn!("表示言語を保存できません: {e}");
+                self.message = Some(format!("{} {e}", failed(lang)));
+            }
+        }
     }
 
     fn render_mute(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -517,46 +540,6 @@ impl MainView {
                 )
             })
     }
-
-    fn render_checks(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let lang = self.lang;
-        let status = format!(
-            "tray: {} / Alt+M: {}",
-            self.desktop.tray_error.as_deref().unwrap_or("OK"),
-            self.desktop.hotkey_error.as_deref().unwrap_or("OK"),
-        );
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .pt_3()
-            .border_t_1()
-            .border_color(color::border())
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(color::muted())
-                    .child(t(lang, Key::Checks)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_xs().child(t(lang, Key::ImeField)))
-                    .child(Input::new(&self.ime).aria_label(t(lang, Key::ImeField))),
-            )
-            .child(
-                Button::new("language")
-                    .label(t(lang, Key::Language))
-                    .outline()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let lang = this.lang.toggled();
-                        this.set_lang(lang, window, cx);
-                    })),
-            )
-            .child(div().text_xs().text_color(color::muted()).child(status))
-    }
 }
 
 impl Render for MainView {
@@ -626,7 +609,20 @@ impl Render for MainView {
                             .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
-                                Page::Settings => this.child(self.render_checks(cx)),
+                                Page::Settings => this.child(settings::render(
+                                    lang,
+                                    self.desktop.tray_error.as_deref(),
+                                    self.desktop.hotkey_error.as_deref(),
+                                    {
+                                        let entity = entity.clone();
+                                        move |lang, _, cx| {
+                                            entity.update(cx, |this, cx| {
+                                                this.set_lang(lang);
+                                                cx.notify();
+                                            })
+                                        }
+                                    },
+                                )),
                                 Page::Vst => this.child(self.vst.render(lang, cx, send)),
                                 Page::Sound => this.child(self.sound.render(lang, send)),
                                 Page::Connect => this.child(self.connect.render(
