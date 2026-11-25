@@ -48,6 +48,10 @@ pub mod keys {
     pub const VST_EMPTY_SCOPE: &str = "rack.empty.scope";
     pub const VST_OFF: &str = "vst.off";
     pub const VST_ENABLE: &str = "rack.card.enable";
+    pub const VST_MUTE: &str = "rack.card.mute";
+    pub const VST_MUTE_NAMED: &str = "rack.card.muteAccessible";
+    pub const VST_MUTED: &str = "rack.card.muted";
+    pub const VST_GAIN_NAMED: &str = "rack.card.gainAccessible";
     pub const VST_EDIT: &str = "rack.card.edit";
     pub const VST_EDIT_NAMED: &str = "rack.card.editAccessible";
     pub const VST_REMOVE: &str = "rack.card.remove";
@@ -128,7 +132,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 115] = [
+    pub const ALL: [&str; 119] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -167,6 +171,10 @@ pub mod keys {
         VST_EMPTY_SCOPE,
         VST_OFF,
         VST_ENABLE,
+        VST_MUTE,
+        VST_MUTE_NAMED,
+        VST_MUTED,
+        VST_GAIN_NAMED,
         VST_EDIT,
         VST_EDIT_NAMED,
         VST_REMOVE,

@@ -1,15 +1,17 @@
 //! VST の画面：並び（上から音が通る順）と、追加。
-//! 1つずつ ON/OFF・上下の入れ替え・編集（VST の窓）・削除ができる。候補の検索は `auralyn-ui-model` の `rack`。
-//! 並びと VST の中の設定は、エンジンが変わるたびに保存する（`engine.rs`）。音量・ミュート・プロファイル・テンプレートは、まだこの画面に無い。
+//! 1つずつ ON/OFF・音量・ミュート・上下の入れ替え・編集（VST の窓）・削除ができる。候補の検索と音量の範囲は `auralyn-ui-model` の `rack`。
+//! 並びと VST の中の設定は、エンジンが変わるたびに保存する（`engine.rs`）。プロファイル・テンプレートは、まだこの画面に無い。
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
-use auralyn_ui_model::rack::Candidate;
+use auralyn_ui_model::rack::{self, Candidate};
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::select::{SearchableVec, Select, SelectItem, SelectState};
+use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _};
+use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -44,6 +46,8 @@ pub type Send = Rc<dyn Fn(Command, &mut App)>;
 
 pub struct VstPage {
     rack: Vec<Slot>,
+    /// 読めている VST ごとの音量のスライダー（ID で引く）。離したときに音量を送る。
+    gains: HashMap<String, (Entity<SliderState>, Subscription)>,
     catalog: Entity<Choices>,
     /// 候補を探している。`None` はまだ一度も探していない。
     scanning: Option<bool>,
@@ -53,6 +57,7 @@ impl VstPage {
     pub fn new<V: 'static>(window: &mut Window, cx: &mut Context<V>) -> Self {
         Self {
             rack: Vec::new(),
+            gains: HashMap::new(),
             catalog: cx.new(|cx| {
                 SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
             }),
@@ -69,7 +74,38 @@ impl VstPage {
         self.scanning = Some(true);
     }
 
-    pub fn set_rack(&mut self, rack: Vec<Slot>) {
+    /// 並びを替え、音量のスライダーをエンジンの値に合わせる。`send` はスライダーを離したときの送り先。
+    pub fn set_rack<V: 'static>(
+        &mut self,
+        rack: Vec<Slot>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        send: fn(&mut V, Command),
+    ) {
+        let mut old = std::mem::take(&mut self.gains);
+        for slot in rack.iter().filter(|slot| slot.loaded) {
+            let (state, subscription) = old.remove(&slot.id).unwrap_or_else(|| {
+                let state = cx.new(|_| SliderState::new().min(0.).max(200.).step(1.));
+                let id = slot.id.clone();
+                let subscription = cx.subscribe(&state, move |this, _, event: &SliderEvent, _| {
+                    let SliderEvent::Release(value) = event else {
+                        return;
+                    };
+                    let gain = rack::gain_from_percent(value.end());
+                    send(
+                        this,
+                        Command::SetPluginGain {
+                            id: id.clone(),
+                            gain,
+                        },
+                    );
+                });
+                (state, subscription)
+            });
+            let percent = rack::gain_percent(slot.gain);
+            state.update(cx, |state, cx| state.set_value(percent, window, cx));
+            self.gains.insert(slot.id.clone(), (state, subscription));
+        }
         self.rack = rack;
     }
 
@@ -161,7 +197,12 @@ impl VstPage {
                             .flex_col()
                             .gap_2()
                             .children(self.rack.iter().enumerate().map(|(index, slot)| {
-                                row(slot, index, index == last, lang, send.clone())
+                                // 百分率はスライダーの値（動かしている間もついてくる）。
+                                let gain = self
+                                    .gains
+                                    .get(&slot.id)
+                                    .map(|(state, _)| (state, state.read(cx).value().end()));
+                                row(slot, gain, index, index == last, lang, send.clone())
                             })),
                     )
                 }
@@ -169,8 +210,15 @@ impl VstPage {
     }
 }
 
-/// 並びの1行。番号・名前（OFF の札）・ON/OFF・上へ・下へ・編集・削除。
-fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl IntoElement {
+/// 並びの1枠。上の行は番号・名前（OFF・ミュートの札）・ON/OFF・上へ・下へ・編集・削除、下の行は音量とミュート。
+fn row(
+    slot: &Slot,
+    gain: Option<(&Entity<SliderState>, f32)>,
+    index: usize,
+    last: bool,
+    lang: Lang,
+    send: Send,
+) -> impl IntoElement {
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
     let button = |suffix: &str, label: &'static str, command: Command| {
@@ -189,22 +237,15 @@ fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl In
         Some(keys::VST_NOT_LOADED)
     } else if !enabled {
         Some(keys::VST_OFF)
+    } else if slot.muted {
+        Some(keys::VST_MUTED)
     } else {
         None
     };
-    div()
-        .id(SharedString::from(format!("vst-slot-{}", slot.id)))
-        .role(Role::ListItem)
-        .aria_label(name.to_owned())
+    let top = div()
         .flex()
         .items_center()
         .gap_2()
-        .px_3()
-        .py_2()
-        .rounded(px(6.))
-        .border_1()
-        .border_color(color::border())
-        .bg(color::card())
         .child(
             div()
                 .flex_none()
@@ -299,8 +340,71 @@ fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl In
                 .on_click({
                     let title = named(keys::VST_REMOVE_TITLE);
                     let id = slot.id.clone();
+                    let send = send.clone();
                     move |_, window, cx| confirm_remove(&title, &id, lang, send.clone(), window, cx)
                 }),
+        );
+    div()
+        .id(SharedString::from(format!("vst-slot-{}", slot.id)))
+        .role(Role::ListItem)
+        .aria_label(name.to_owned())
+        .flex()
+        .flex_col()
+        .gap_2()
+        .px_3()
+        .py_2()
+        .rounded(px(6.))
+        .border_1()
+        .border_color(color::border())
+        .bg(color::card())
+        .child(top)
+        .when_some(gain.filter(|_| loaded), |this, (gain, percent)| {
+            this.child(volume(slot, gain, percent, lang, send))
+        })
+}
+
+/// 下の行：音量（0〜200%）と、ミュート。番号の幅だけ字下げして名前にそろえる。
+fn volume(
+    slot: &Slot,
+    gain: &Entity<SliderState>,
+    percent: f32,
+    lang: Lang,
+    send: Send,
+) -> impl IntoElement {
+    let name = slot.name.as_str();
+    let named = |key| core_with(lang, key, &[("arg0", &name)]);
+    let command = Command::SetPluginMuted {
+        id: slot.id.clone(),
+        muted: !slot.muted,
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .pl(px(28.))
+        .child(
+            div().flex_1().child(
+                Slider::new(gain)
+                    .horizontal()
+                    .accessibility_label(named(keys::VST_GAIN_NAMED)),
+            ),
+        )
+        .child(
+            div()
+                .flex_none()
+                .w(px(48.))
+                .text_sm()
+                .text_color(color::muted())
+                .child(format!("{percent}%")),
+        )
+        .child(
+            Button::new(SharedString::from(format!("vst-mute-{}", slot.id)))
+                .label(core(lang, keys::VST_MUTE))
+                .outline()
+                .small()
+                .selected(slot.muted)
+                .accessibility_label(named(keys::VST_MUTE_NAMED))
+                .on_click(move |_, _, cx| send(command.clone(), cx)),
         )
 }
 
