@@ -5446,13 +5446,6 @@
       "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
     },
     {
-      "file": "src/i18n/__tests__/messageCatalog.test.ts",
-      "rule": "@typescript-eslint/no-unsafe-argument",
-      "hash": "3e628a30dc9038c858d747bf4e4cf07e2a446ee466fde40b35ab502018ff903e",
-      "count": 1,
-      "reason": "導入前の型・非同期・テーマ・Hooks契約を固定する。対象宣言の編集時に型検証・所有者の分離・意味別トークンで解消する。"
-    },
-    {
       "file": "src/lib/__tests__/appVisibility.test.tsx",
       "rule": "@typescript-eslint/no-explicit-any",
       "hash": "1e3ab33aea5701c6e140af2992021df5410b411c7cd95db6f4ef9c20ca0f65b1",

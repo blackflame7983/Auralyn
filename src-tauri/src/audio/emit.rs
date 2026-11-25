@@ -1,10 +1,11 @@
-//! 旧の通知（`audio-started` など）の発行口。発行の順序・回数・内容は`AppHandle::emit`と同じ。
+//! 旧の通知（`audio-started` など）の発行口。中核の `EventSink` を通して出し、発行の順序・回数・内容は`AppHandle::emit`と同じ。
 //!
 //! 環境変数`AURALYN_EMIT_TRACE=1`のときだけ、`emit`を呼んだ順序を通し番号つきでログへ残す。
 //! WebView に届いた順序は別に記録し、Rust が呼んだ順序と突き合わせる（W5。手順は docs/TESTING.md）。
+use auralyn_core::event::{EmitError, Event, EventSink};
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Emitter};
 
 static TRACE_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -30,9 +31,21 @@ pub(crate) fn trace_mark(kind: &str, name: &str) {
     );
 }
 
+/// WebView へ渡す口。本文は `AppHandle::emit` が作るものと同じ文字列（どちらも `serde_json::to_string`）。
+struct TauriSink(AppHandle);
+
+impl EventSink for TauriSink {
+    fn send(&self, event: Event) -> Result<(), EmitError> {
+        let (name, json) = event.into_parts();
+        self.0
+            .emit_str(&name, json)
+            .map_err(|error| EmitError::Sink(Box::new(error)))
+    }
+}
+
 #[derive(Clone)]
 enum Sink {
-    App(AppHandle),
+    Core(Arc<dyn EventSink>),
     #[cfg(test)]
     Recorder(std::sync::Arc<Recorder>),
 }
@@ -42,16 +55,32 @@ pub(crate) struct AudioEmitter(Sink);
 
 impl AudioEmitter {
     pub(crate) fn app(handle: AppHandle) -> Self {
-        Self(Sink::App(handle))
+        Self::sink(Arc::new(TauriSink(handle)))
     }
 
-    pub(crate) fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
+    pub(crate) fn sink(sink: Arc<dyn EventSink>) -> Self {
+        Self(Sink::Core(sink))
+    }
+
+    pub(crate) fn emit<S: Serialize + Clone>(
+        &self,
+        event: &str,
+        payload: S,
+    ) -> Result<(), EmitError> {
         trace_mark("emit", event);
         match &self.0 {
-            Sink::App(handle) => handle.emit(event, payload),
+            Sink::Core(sink) => sink.send(Event::new(event, &payload)?),
             #[cfg(test)]
             Sink::Recorder(recorder) => recorder.push(event, &payload),
         }
+    }
+}
+
+impl super::AudioHost {
+    /// 通知の出口を、画面の層の `EventSink` にまるごと置き換える（`set_event_emitter` の代わり）。
+    /// sink は reader などのスレッドから同期で呼ばれるので、待たずに戻る実装にする。
+    pub fn set_event_sink(&mut self, sink: Arc<dyn EventSink>) {
+        self.emitter.set(AudioEmitter::sink(sink));
     }
 }
 
@@ -74,7 +103,11 @@ pub(crate) struct Notifier {
 pub(crate) struct Chain<'a>(&'a Notifier);
 
 impl Chain<'_> {
-    pub(crate) fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
+    pub(crate) fn emit<S: Serialize + Clone>(
+        &self,
+        event: &str,
+        payload: S,
+    ) -> Result<(), EmitError> {
         match self.0.current() {
             Some(emitter) => emitter.emit(event, payload),
             None => Ok(()),
@@ -159,8 +192,8 @@ impl Recorder {
         AudioEmitter(Sink::Recorder(self.clone()))
     }
 
-    fn push<S: Serialize>(&self, event: &str, payload: &S) -> tauri::Result<()> {
-        let value = serde_json::to_value(payload).map_err(tauri::Error::from)?;
+    fn push<S: Serialize>(&self, event: &str, payload: &S) -> Result<(), EmitError> {
+        let value = serde_json::to_value(payload).map_err(EmitError::Serialize)?;
         {
             let mut held = self.gate.held.lock().unwrap();
             if held.0 {
@@ -246,6 +279,35 @@ mod tests {
         let names: Vec<&str> = events.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, ["a", "b", "c"]);
         assert_eq!(events[2].1, serde_json::json!(3));
+    }
+
+    // 画面の層の口へは、Tauri の emit と同じ名前・本文（serde_json::to_string）・順で届く。
+    #[test]
+    fn a_core_sink_receives_the_same_names_bodies_and_order() {
+        #[derive(Serialize, Clone)]
+        struct Level {
+            input: [f32; 2],
+        }
+        let notifier = Notifier::default();
+        let (sink, receiver) = auralyn_core::event::channel();
+        notifier.set(AudioEmitter::sink(Arc::new(sink)));
+        notifier.emit("audio-started", ());
+        notifier.chain(|chain| {
+            let _ = chain.emit("audio-level", Level { input: [0.1, 0.5] });
+            let _ = chain.emit("audio-stopped", "user");
+        });
+        let received: Vec<(String, String)> = receiver.try_iter().map(Event::into_parts).collect();
+        let expected = [
+            ("audio-started", serde_json::to_string(&()).unwrap()),
+            (
+                "audio-level",
+                serde_json::to_string(&Level { input: [0.1, 0.5] }).unwrap(),
+            ),
+            ("audio-stopped", serde_json::to_string("user").unwrap()),
+        ]
+        .map(|(name, json)| (name.to_owned(), json));
+        assert_eq!(received, expected);
+        assert_eq!(received[1].1, r#"{"input":[0.1,0.5]}"#);
     }
 
     #[test]
