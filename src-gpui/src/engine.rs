@@ -631,8 +631,9 @@ impl Control {
                 pending: snapshot.pending,
             }),
             Err(e) if config.is_some() => {
+                // 断られても状態は読めることがある（読めないなら、読み直しが `None` を送る）。
                 self.fail("peak_protection", e);
-                None
+                return self.peak(None);
             }
             Err(e) => {
                 log::info!("ピーク保護の状態を読めません: {e}");
@@ -651,7 +652,7 @@ impl Control {
             })),
             Err(e) => {
                 self.fail("peak_protection", e);
-                let _ = self.notices.send(Notice::Peak(None));
+                self.peak(None);
             }
         }
     }

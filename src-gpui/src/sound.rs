@@ -36,6 +36,8 @@ pub struct SoundPage {
     pub strength: Entity<SliderState>,
     /// 大きな音を抑える（ピーク保護）。`None` は読めていない。
     peak: Option<Peak>,
+    /// 最後に読めた ON/OFF。止まっていて読めない間も、スイッチはこれを示す（次の開始で付け直される）。
+    peak_enabled: bool,
 }
 
 impl SoundPage {
@@ -45,6 +47,7 @@ impl SoundPage {
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
             strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
             peak: None,
+            peak_enabled: false,
         }
     }
 
@@ -59,7 +62,14 @@ impl SoundPage {
     }
 
     pub fn set_peak(&mut self, peak: Option<Peak>) {
+        if let Some(peak) = peak {
+            self.peak_enabled = peak.enabled;
+        }
         self.peak = peak;
+    }
+
+    pub fn peak_pending(&self) -> bool {
+        self.peak.is_some_and(|peak| peak.pending)
     }
 
     pub fn render(&self, lang: Lang, send: Send) -> impl IntoElement {
@@ -229,7 +239,7 @@ impl SoundPage {
         card(
             core(lang, keys::PEAK_TITLE),
             Switch::new("peak-on")
-                .checked(self.peak.is_some_and(|peak| peak.enabled))
+                .checked(self.peak_enabled)
                 .disabled(self.peak.is_none())
                 .accessibility_label(core(lang, keys::PEAK_TITLE))
                 .on_click(move |on, _, cx| send(Command::SetPeak(*on), cx)),

@@ -32,6 +32,8 @@ use auralyn_ui_model::sound::Change;
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
+/// ピーク保護の反映待ちを読み直す間隔（Tauri 版の `usePeakProtectionSync` と同じ）。
+const PEAK_POLL: Duration = Duration::from_millis(500);
 /// 右の列の幅（`src/index.css` の `--safety-column-width`）。
 const SAFETY_COLUMN_WIDTH: f32 = 212.;
 
@@ -52,6 +54,8 @@ pub struct MainView {
     processed: Meter,
     flow: Flow,
     level_seq: u64,
+    /// ピーク保護の反映待ちを最後に読み直した時刻。
+    peak_polled: Instant,
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
     /// 表示言語を保存するフォルダ。
@@ -159,6 +163,7 @@ impl MainView {
             processed: Meter::stopped(now),
             flow: Flow::default(),
             level_seq: 0,
+            peak_polled: now,
             input_gain,
             output_gain,
             config_dir,
@@ -174,6 +179,14 @@ impl MainView {
         for notice in self.engine.notices.try_iter().collect::<Vec<_>>() {
             self.apply(notice, window, cx);
             changed = true;
+        }
+        // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
+        if self.page == Page::Sound
+            && self.sound.peak_pending()
+            && self.peak_polled.elapsed() >= PEAK_POLL
+        {
+            self.peak_polled = Instant::now();
+            self.engine.send(Command::ReadPeak);
         }
         for action in self.desktop.poll() {
             match action {
@@ -229,6 +242,7 @@ impl MainView {
             }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
+                self.reread_peak();
                 self.message = Some(message);
             }
             Notice::NotStarted(message) => {
