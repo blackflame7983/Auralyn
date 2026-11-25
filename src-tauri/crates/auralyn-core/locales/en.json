@@ -3653,8 +3653,10 @@
   "troubleshoot.receiverOptional": "You can leave it blank.",
   "troubleshoot.clearReceiver": "Clear the name",
   "session.retryDetails": "Reload the saved chain",
-  "gpuiShell.notYet": "This page is not in the new Auralyn yet. For now, use the current Auralyn for these settings.",
   "gpuiShell.stopToChange": "Stop the audio before changing devices.",
   "gpuiShell.removeVst": "This removes the VST from the chain. Its settings are lost and cannot be restored.",
-  "gpuiShell.notLoaded": "Not loaded"
+  "gpuiShell.notLoaded": "Not loaded",
+  "gpuiShell.singingNotYet": "Adjust the singing settings in the current Auralyn for now.",
+  "gpuiShell.soundUnread": "The current audio processing settings could not be read. Reopen the Sound page.",
+  "gpuiShell.offUntilOn": "You can choose the type and amount while it stays off. The sound does not change until you turn it on."
 }

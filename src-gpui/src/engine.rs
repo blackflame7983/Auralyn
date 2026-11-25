@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::rack::{self, Candidate};
+use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
@@ -46,6 +47,10 @@ pub enum Command {
         enabled: bool,
     },
     OpenEditor(String),
+    /// 音づくりの今の設定を読む。
+    ReadSound,
+    /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
+    SetSound(Change),
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
@@ -75,6 +80,8 @@ pub enum Notice {
     Bypassed(bool),
     /// VST の並び（上から音が通る順）。変わるたびに全体を送る。
     Rack(Vec<Slot>),
+    /// 音づくりの今の設定（エンジンが受け付けた結果）。
+    Sound(Sound),
     /// 追加の候補。失敗したときは理由。
     Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
@@ -124,6 +131,8 @@ impl Slot {
 
 /// 並びの保存先（設定のフォルダの中）。Tauri 版の保存（webview の localStorage）とは別。
 const RACK_FILE: &str = "gpui_rack.json";
+/// 音づくりの保存先。
+const SOUND_FILE: &str = "gpui_sound.json";
 
 /// 最新のメーターの値。`seq` が進んだときだけ画面が読む。
 #[derive(Default, Clone, Copy)]
@@ -167,6 +176,7 @@ impl Engine {
                     notices: notice_tx,
                     config_dir,
                     rack: Vec::new(),
+                    sound: None,
                     read_only: false,
                     exited,
                 }
@@ -270,6 +280,8 @@ struct Control {
     notices: flume::Sender<Notice>,
     config_dir: PathBuf,
     rack: Vec<Slot>,
+    /// 最後にエンジンから読んだ音づくりの設定。まだ読んでいなければ `None`。
+    sound: Option<Sound>,
     /// 保存を読めず、脇へ移せもしなかった。上書きして消さないよう、この起動の間は保存しない。
     read_only: bool,
     exited: Arc<AtomicBool>,
@@ -279,6 +291,7 @@ impl Control {
     fn run(mut self, commands: flume::Receiver<Command>) {
         // 並びを先に読む。開始の前に VST を入れておけば、加工されない声が流れない。
         self.restore_saved();
+        self.restore_sound();
         self.start_saved();
         while let Ok(first) = commands.recv() {
             let mut pending = vec![first];
@@ -393,6 +406,10 @@ impl Control {
         }
         for slot in std::mem::take(&mut self.rack) {
             self.restore(slot.request());
+        }
+        // 新しい子の音づくりは既定値で始まるので、落ちる前の設定を送り直す。
+        if let Some(sound) = self.sound {
+            self.apply_sound(sound, None);
         }
         self.send_rack();
     }
@@ -557,6 +574,90 @@ impl Control {
         self.changed();
     }
 
+    /// エンジンの統計から音づくりの設定を読み、画面へ送る。子が落ちていたら、先に読み直す（落ちた子の既定値を読まない）。
+    fn read_sound(&mut self) {
+        self.recover();
+        match self.host.get_engine_runtime_stats() {
+            Ok(stats) => {
+                let sound = Sound {
+                    noise_on: stats.noise_reduction_enabled,
+                    noise_mode: NoiseMode::parse(&stats.noise_reduction_mode),
+                    strength: stats.noise_control_strength,
+                    voice_guard: stats.noise_voice_guard,
+                    effects_on: stats.built_in_effects_enabled,
+                    preset: Preset::parse(&stats.built_in_effects_preset),
+                    amount: stats.built_in_effects_amount,
+                }
+                .normalized();
+                self.sound = Some(sound);
+                let _ = self.notices.send(Notice::Sound(sound));
+            }
+            Err(e) => self.fail("get_engine_runtime_stats", e),
+        }
+    }
+
+    /// 変わった区画だけを送る。終わったら、エンジンが受け付けた結果を読み直して画面へ送り、保存する。
+    fn set_sound(&mut self, change: Change) {
+        if self.sound.is_none() {
+            self.read_sound();
+        }
+        let Some(before) = self.sound else {
+            return;
+        };
+        self.apply_sound(before.with(change), Some(before));
+        self.read_sound();
+        if let Some(sound) = self.sound {
+            self.save_sound(sound);
+        }
+    }
+
+    /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。歌向けなど、この画面で変えない種類は送らない。
+    fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
+        if before.is_none_or(|before| next.noise_differs(&before)) {
+            let mode = next.noise_mode.unwrap_or(NoiseMode::Low).key().to_owned();
+            if let Err(e) = self.host.set_noise_control_config(
+                next.noise_on,
+                mode,
+                next.strength,
+                next.voice_guard,
+            ) {
+                self.fail("set_noise_control_config", e);
+            }
+        }
+        if next.effects_editable() && before.is_none_or(|before| next.effects_differ(&before)) {
+            let preset = next.preset.map(|p| p.key().to_owned());
+            if let Err(e) = self
+                .host
+                .set_built_in_effects(next.effects_on, preset, next.amount)
+            {
+                self.fail("set_built_in_effects", e);
+            }
+        }
+    }
+
+    /// 起動したら、音を始める前に、保存した音づくりをエンジンへ送る。
+    fn restore_sound(&mut self) {
+        let text = match std::fs::read_to_string(self.config_dir.join(SOUND_FILE)) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => return self.fail("read_sound", e.into()),
+        };
+        match serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|value| sound_from_json(&value))
+        {
+            Some(sound) => self.apply_sound(sound, None),
+            None => self.fail("read_sound", anyhow::anyhow!("{SOUND_FILE} を読めません")),
+        }
+    }
+
+    fn save_sound(&self, sound: Sound) {
+        let path = self.config_dir.join(SOUND_FILE);
+        if let Err(e) = std::fs::write(&path, sound_to_json(sound).to_string()) {
+            self.fail("save_sound", e.into());
+        }
+    }
+
     /// スキャンは VST ごとに別のプロセスで調べるので時間がかかる。命令のスレッドを塞がないよう、別のスレッドで行う。
     fn scan(&self) {
         let config_dir = self.config_dir.clone();
@@ -609,6 +710,8 @@ impl Control {
             Command::MovePlugin { ref id, up } => return self.shift(id, up),
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
+            Command::ReadSound => return self.read_sound(),
+            Command::SetSound(change) => return self.set_sound(change),
             Command::SaveRack(ref done) => {
                 self.save(true);
                 if let Some(done) = done {
@@ -673,9 +776,55 @@ impl Control {
     }
 }
 
+fn sound_to_json(sound: Sound) -> serde_json::Value {
+    serde_json::json!({
+        "noiseOn": sound.noise_on,
+        "noiseMode": sound.noise_mode.map(NoiseMode::key),
+        "strength": sound.strength,
+        "voiceGuard": sound.voice_guard,
+        "effectsOn": sound.effects_on,
+        "preset": sound.preset.map(Preset::key),
+        "amount": sound.amount,
+    })
+}
+
+/// 形の違う保存は `None`（読めないと知らせ、上書きは次に変えたときだけ）。
+fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
+    let text = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
+    let flag = |key: &str| value.get(key).and_then(serde_json::Value::as_bool);
+    let number = |key: &str| value.get(key).and_then(serde_json::Value::as_f64);
+    Some(
+        Sound {
+            noise_on: flag("noiseOn")?,
+            noise_mode: text("noiseMode").and_then(NoiseMode::parse),
+            strength: number("strength")? as f32,
+            voice_guard: flag("voiceGuard")?,
+            effects_on: flag("effectsOn")?,
+            preset: text("preset").and_then(Preset::parse),
+            amount: number("amount")? as f32,
+        }
+        .normalized(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sound_survives_the_save_file() {
+        let sound = Sound {
+            noise_on: true,
+            noise_mode: Some(NoiseMode::High),
+            strength: 0.8,
+            voice_guard: false,
+            effects_on: true,
+            preset: Some(Preset::Warm),
+            amount: 0.5,
+        };
+        assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));
+        assert_eq!(sound_from_json(&serde_json::json!({"noiseOn": true})), None);
+    }
 
     #[test]
     fn later_gain_supersedes_earlier_gain_of_same_kind_only() {
