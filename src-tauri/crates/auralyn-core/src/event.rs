@@ -81,7 +81,7 @@ impl EventSink for ChannelSink {
     fn send(&self, event: Event) -> Result<(), EmitError> {
         self.0
             .send(event)
-            .map_err(|error| EmitError::Sink(Box::new(error)))
+            .map_err(|error| EmitError::Sink(error.into()))
     }
 }
 

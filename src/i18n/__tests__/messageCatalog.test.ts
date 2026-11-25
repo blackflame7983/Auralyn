@@ -10,6 +10,10 @@ it('日英のキーと差し込み引数が揃い、重複キーを持たない'
     });
     const ja = entries('ja');
     const en = entries('en');
+    for (const [locale, list] of [['ja', ja], ['en', en]] as const) {
+        const parsed: unknown = JSON.parse(readFileSync(`src-tauri/crates/auralyn-core/locales/${locale}.json`, 'utf8'));
+        expect(list.length, `${locale} の読み取りが JSON.parse と同じ件数になる`).toBe(Object.keys(parsed as object).length);
+    }
     expect(new Set(ja.map(([key]) => key)).size).toBe(ja.length);
     expect(new Set(en.map(([key]) => key)).size).toBe(en.length);
     expect(en.map(([key]) => key).sort()).toEqual(ja.map(([key]) => key).sort());

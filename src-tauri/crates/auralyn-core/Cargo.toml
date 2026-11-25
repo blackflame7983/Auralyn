@@ -12,8 +12,5 @@ rust-version = "1.100"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# アプリと同じ設定。禁止API（clippy.toml）は RT 処理のモジュールだけが deny で有効にする。
 [lints.clippy]
 await_holding_lock = "deny"
-disallowed_methods = "allow"
-disallowed_types = "allow"
