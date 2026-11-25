@@ -1056,26 +1056,35 @@ impl AudioHost {
 
     fn execute_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         self.guard_mode_vst()?;
-        if conditions::command_changes(&cmd) {
-            self.frontend_bootstrap.cancel();
-            match &cmd {
-                IpcCommand::SetInputGain { value } => {
-                    self.frontend_bootstrap.input_gain = Some(*value)
-                }
-                IpcCommand::SetOutputGain { value } => {
-                    self.frontend_bootstrap.output_gain = Some(*value)
-                }
-                _ => {}
-            }
-        }
+        self.note_command(&cmd);
         // 診断の明示読出しでengineを起動・本番設定を同期しない。
         if matches!(&cmd, IpcCommand::GetFrameTimingTrace { .. }) {
             return self.execute_running_command_inner(cmd);
         }
+        if self.bundle_change_generation.is_none() {
+            self.ensure_engine_running()?;
+        }
+        self.send_live_command(cmd)
+    }
+
+    fn note_command(&mut self, cmd: &IpcCommand) {
+        if !conditions::command_changes(cmd) {
+            return;
+        }
+        self.frontend_bootstrap.cancel();
+        match cmd {
+            IpcCommand::SetInputGain { value } => self.frontend_bootstrap.input_gain = Some(*value),
+            IpcCommand::SetOutputGain { value } => {
+                self.frontend_bootstrap.output_gain = Some(*value)
+            }
+            _ => {}
+        }
+    }
+
+    /// engine を用意した後の、どの送信の経路にも共通の確認と送信。
+    fn send_live_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         if self.bundle_change_generation.is_some() {
             self.validate_bundle_connection()?;
-        } else {
-            self.ensure_engine_running()?;
         }
         self.sync_live_modes()?;
         self.guard_live_command(&cmd)?;

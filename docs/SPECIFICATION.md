@@ -137,8 +137,8 @@
         *   **アタック**: 即時（バッファの真のピークをキャプチャ）。
         *   **リリース**: フロントエンドのアニメーションによるスムージング（視覚的な快適さのため約300msの減衰）。
     *   **IPCイベント名**: `audio-level` (固定、エンジンとフロントエンド双方で使用)。
-    *   **データパス**: リングバッファ (オーディオスレッド -> エンジンメインループ) -> IPCイベント `{ "method": "audio-level", "params": { "left": f32, "right": f32 } }` -> Tauriバックエンドが `audio-level` イベントを発行 -> Frontend。
-    *   **更新レート**: ~20 FPS (50ms間隔)。
+    *   **データパス**: リングバッファ (オーディオスレッド -> エンジンメインループ) -> 子の標準出力へ `{ "type": "LevelMeter", "payload": { "input": [f32, f32], "output": [f32, f32], "stream_generation": u64 } }`（`src-tauri/src/ipc.rs` の `EngineEvent::LevelMeter`。`stream_generation` は無いこともある） -> Tauriバックエンドが `audio-level` イベントを `{ "input": [f32, f32], "output": [f32, f32], "stream_generation": "親の世代:子の世代" }` で発行（`src-tauri/src/audio/reader.rs`。世代が分からないときは `stream_generation` を省く） -> Frontend。
+    *   **更新レート**: 新しい値があれば最短 16ms 間隔（約60 FPS）。入力が75msより長く途絶えると、無音の値を送る（`src-tauri/src/audio_engine/core.rs` の `meter_interval`）。
 
 ### 3.4. 状態の永続化 (計画中)
 **目標**: ラックの状態全体を保存/ロードする。
