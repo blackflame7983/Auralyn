@@ -3668,5 +3668,5 @@
   "gpuiShell.trayShow": "Show Auralyn",
   "gpuiShell.trayQuit": "Quit",
   "gpuiShell.hotkeyFailed": "Could not register Alt+M (Auralyn may be running)",
-  "gpuiShell.peakResets": "It turns off again when you restart the app."
+  "gpuiShell.peakResets": "When you restart the app, it turns off and the ceiling and release return to their defaults."
 }

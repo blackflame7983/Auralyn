@@ -1,6 +1,6 @@
 //! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）。
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
-//! 測定・歯擦音・ピーク保護・歌向け・本番モードは、まだこの画面に無い。
+//! 「大きな音を抑える」（ピーク保護）は ON/OFF・天井・復帰時間。測定・歯擦音・歌向け・本番モードは、まだこの画面に無い。
 
 use auralyn_ui_model::peak::{self, Peak};
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
@@ -34,6 +34,9 @@ pub struct SoundPage {
     pub amount: Entity<SliderState>,
     /// 抑制の強さ（25〜125）。離したときに送る。
     pub strength: Entity<SliderState>,
+    /// ピーク保護の天井（dBFS）と復帰時間（ms）。離したときに送る。
+    pub ceiling: Entity<SliderState>,
+    pub release: Entity<SliderState>,
     /// 大きな音を抑える（ピーク保護）。`None` は読めていない。
     peak: Option<Peak>,
     /// 最後に読めた ON/OFF。止まっていて読めない間も、スイッチはこれを示す（次の開始で付け直される）。
@@ -46,6 +49,8 @@ impl SoundPage {
             current: None,
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
             strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
+            ceiling: range(cx, peak::CEILING_DB),
+            release: range(cx, peak::RELEASE_MS),
             peak: None,
             peak_enabled: false,
         }
@@ -61,18 +66,37 @@ impl SoundPage {
         });
     }
 
-    pub fn set_peak(&mut self, peak: Option<Peak>) {
+    pub fn set_peak(&mut self, peak: Option<Peak>, window: &mut Window, cx: &mut App) {
+        let before = self.peak.map(|peak| (peak.ceiling_db, peak.release_ms));
+        // 反映待ちの間の読み直し（500ms ごと）では、値が変わったときだけ動かす（動かしている途中のつまみを戻さない）。
+        // それ以外の返事（断られたときを含む）では、エンジンの値に合わせる。
+        if let Some(peak) =
+            peak.filter(|peak| !peak.pending || before != Some((peak.ceiling_db, peak.release_ms)))
+        {
+            self.ceiling
+                .update(cx, |state, cx| state.set_value(peak.ceiling_db, window, cx));
+            self.release
+                .update(cx, |state, cx| state.set_value(peak.release_ms, window, cx));
+        }
         if let Some(peak) = peak {
             self.peak_enabled = peak.enabled;
         }
         self.peak = peak;
     }
 
+    /// 送る天井と復帰時間（スライダーの値を刻みにそろえる）。
+    pub fn peak_limits(&self, cx: &App) -> Command {
+        Command::SetPeakLimits {
+            ceiling_db: peak::snap(peak::CEILING_DB, self.ceiling.read(cx).value().end()),
+            release_ms: peak::snap(peak::RELEASE_MS, self.release.read(cx).value().end()),
+        }
+    }
+
     pub fn peak_pending(&self) -> bool {
         self.peak.is_some_and(|peak| peak.pending)
     }
 
-    pub fn render(&self, lang: Lang, send: Send) -> impl IntoElement {
+    pub fn render(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
         let Some(current) = self.current else {
             return div()
                 .text_sm()
@@ -157,8 +181,9 @@ impl SoundPage {
                                 keys::STRENGTH,
                                 keys::STRENGTH_NAMED,
                                 &self.strength,
-                                sound::strength_percent(current.strength),
+                                percent,
                                 current.noise_mode.is_none(),
+                                cx,
                             ))
                             .child(
                                 div()
@@ -210,19 +235,21 @@ impl SoundPage {
                             keys::EFFECTS_AMOUNT,
                             keys::EFFECTS_AMOUNT,
                             &self.amount,
-                            sound::percent(current.amount),
+                            percent,
                             false,
+                            cx,
                         ))
                         .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
                 } else {
                     div().child(note(core(lang, keys::SINGING_NOT_YET)))
                 },
             ))
-            .child(self.render_peak(lang, send))
+            .child(self.render_peak(lang, cx, send))
     }
 
-    /// 大きな音を抑える。ON/OFF だけを変える（天井と復帰時間は今の値のまま）。
-    fn render_peak(&self, lang: Lang, send: Send) -> impl IntoElement {
+    /// 大きな音を抑える。ON/OFF と、詳しい設定（天井・復帰時間）。読めない（止まっている）間は操作させない。
+    fn render_peak(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
+        let unread = self.peak.is_none();
         let notes: Vec<&str> = peak::notes(self.peak)
             .into_iter()
             .map(|note| {
@@ -240,7 +267,7 @@ impl SoundPage {
             core(lang, keys::PEAK_TITLE),
             Switch::new("peak-on")
                 .checked(self.peak_enabled)
-                .disabled(self.peak.is_none())
+                .disabled(unread)
                 .accessibility_label(core(lang, keys::PEAK_TITLE))
                 .on_click(move |on, _, cx| send(Command::SetPeak(*on), cx)),
             div()
@@ -252,7 +279,40 @@ impl SoundPage {
                 .child(note(core(lang, keys::PEAK_RESETS)))
                 .when(!notes.is_empty(), |this| {
                     this.child(div().text_sm().child(notes.join(" · ")))
-                }),
+                })
+                .child(
+                    div()
+                        .pt_2()
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(core(lang, keys::PEAK_DETAILS)),
+                )
+                .child(slider_row(
+                    lang,
+                    keys::PEAK_CEILING,
+                    keys::PEAK_CEILING,
+                    &self.ceiling,
+                    if unread {
+                        unknown
+                    } else {
+                        |v| format!("{v:.1}")
+                    },
+                    unread,
+                    cx,
+                ))
+                .child(slider_row(
+                    lang,
+                    keys::PEAK_RELEASE,
+                    keys::PEAK_RELEASE,
+                    &self.release,
+                    if unread {
+                        unknown
+                    } else {
+                        |v| format!("{v:.0}")
+                    },
+                    unread,
+                    cx,
+                )),
         )
     }
 }
@@ -277,15 +337,34 @@ fn section(
     )
 }
 
-/// 名前・スライダー・百分率の1行。`named` は読み上げの名前。
+/// 範囲と刻み（`peak` の定数の形）のスライダー。
+fn range<V: 'static>(
+    cx: &mut Context<V>,
+    (min, max, step): (f32, f32, f32),
+) -> Entity<SliderState> {
+    cx.new(|_| SliderState::new().min(min).max(max).step(step))
+}
+
+/// まだ読めていない値（スライダーは既定の 0 のままで、範囲の外）。
+fn unknown(_: f32) -> String {
+    "—".into()
+}
+
+fn percent(value: f32) -> String {
+    format!("{value:.0}%")
+}
+
+/// 名前・スライダー・値の1行。値はスライダーのもので、動かしている間もついてくる。`named` は読み上げの名前。
 fn slider_row(
     lang: Lang,
     label: &'static str,
     named: &'static str,
     state: &Entity<SliderState>,
-    percent: f32,
+    show: fn(f32) -> String,
     disabled: bool,
+    cx: &App,
 ) -> impl IntoElement {
+    let value = show(state.read(cx).value().end());
     div()
         .flex()
         .items_center()
@@ -299,13 +378,7 @@ fn slider_row(
                     .accessibility_label(core(lang, named)),
             ),
         )
-        .child(
-            div()
-                .flex_none()
-                .w(px(48.))
-                .text_sm()
-                .child(format!("{percent}%")),
-        )
+        .child(div().flex_none().w(px(48.)).text_sm().child(value))
 }
 
 /// どれか1つを選ぶボタンの組。今の値が無い（分からない）ときは、どれも選ばない。
