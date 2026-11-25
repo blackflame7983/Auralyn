@@ -166,9 +166,14 @@ pub mod keys {
     pub const VST_REMOVE_NAMED: &str = "rack.card.removeAccessible";
     pub const VST_UP: &str = "postMix.up";
     pub const VST_DOWN: &str = "postMix.down";
+    pub const VST_REMOVE_TITLE: &str = "rack.card.removeTitle";
+    pub const VST_REMOVE_WARNING: &str = "gpuiShell.removeVst";
+    pub const VST_CONFIRM_REMOVE: &str = "rack.card.confirmRemove";
+    pub const CANCEL: &str = "rack.card.cancel";
+    pub const VST_NOT_LOADED: &str = "gpuiShell.notLoaded";
 
     #[cfg(test)]
-    pub const ALL: [&str; 45] = [
+    pub const ALL: [&str; 50] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -214,6 +219,11 @@ pub mod keys {
         VST_REMOVE_NAMED,
         VST_UP,
         VST_DOWN,
+        VST_REMOVE_TITLE,
+        VST_REMOVE_WARNING,
+        VST_CONFIRM_REMOVE,
+        CANCEL,
+        VST_NOT_LOADED,
     ];
 }
 

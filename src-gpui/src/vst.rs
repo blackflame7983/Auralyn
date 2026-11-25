@@ -1,15 +1,15 @@
 //! VST の画面：並び（上から音が通る順）と、追加。
 //! 1つずつ ON/OFF・上下の入れ替え・編集（VST の窓）・削除ができる。候補の検索は `auralyn-ui-model` の `rack`。
-//! 並びはまだ保存しない（次に起動すると空に戻る）。音量・ミュート・プロファイル・テンプレートは、まだこの画面に無い。
+//! 並びと VST の中の設定は、エンジンが変わるたびに保存する（`engine.rs`）。音量・ミュート・プロファイル・テンプレートは、まだこの画面に無い。
 
 use std::rc::Rc;
 
 use auralyn_ui_model::rack::Candidate;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::select::{SearchableVec, Select, SelectItem, SelectState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable as _, Sizable as _};
+use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -183,6 +183,15 @@ fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl In
     };
     let id = slot.id.clone();
     let enabled = slot.enabled;
+    let loaded = slot.loaded;
+    // 読めていない VST は、削除だけを出す（ほかの操作は子に届かない）。
+    let tag = if !loaded {
+        Some(keys::VST_NOT_LOADED)
+    } else if !enabled {
+        Some(keys::VST_OFF)
+    } else {
+        None
+    };
     div()
         .id(SharedString::from(format!("vst-slot-{}", slot.id)))
         .role(Role::ListItem)
@@ -216,10 +225,10 @@ fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl In
                         .truncate()
                         .text_sm()
                         .font_weight(FontWeight::MEDIUM)
-                        .when(!enabled, |this| this.text_color(color::muted()))
+                        .when(tag.is_some(), |this| this.text_color(color::muted()))
                         .child(name.to_owned()),
                 )
-                .when(!enabled, |this| {
+                .when_some(tag, |this, tag| {
                     this.child(
                         div()
                             .flex_none()
@@ -228,63 +237,97 @@ fn row(slot: &Slot, index: usize, last: bool, lang: Lang, send: Send) -> impl In
                             .border_1()
                             .border_color(color::border())
                             .text_xs()
-                            .child(core(lang, keys::VST_OFF)),
+                            .child(core(lang, tag)),
                     )
                 }),
         )
-        .child({
-            let send = send.clone();
-            Switch::new(SharedString::from(format!("vst-enable-{}", slot.id)))
-                .checked(enabled)
-                .accessibility_label(named(keys::VST_ENABLE))
-                .on_click(move |checked, _, cx| {
-                    send(
-                        Command::SetPluginEnabled {
-                            id: id.clone(),
-                            enabled: *checked,
-                        },
-                        cx,
-                    )
-                })
+        .when(loaded, |this| {
+            this.child({
+                let send = send.clone();
+                Switch::new(SharedString::from(format!("vst-enable-{}", slot.id)))
+                    .checked(enabled)
+                    .accessibility_label(named(keys::VST_ENABLE))
+                    .on_click(move |checked, _, cx| {
+                        send(
+                            Command::SetPluginEnabled {
+                                id: id.clone(),
+                                enabled: *checked,
+                            },
+                            cx,
+                        )
+                    })
+            })
+            .child(
+                button(
+                    "up",
+                    core(lang, keys::VST_UP),
+                    Command::MovePlugin {
+                        id: slot.id.clone(),
+                        up: true,
+                    },
+                )
+                .accessibility_label(format!("{name} {}", core(lang, keys::VST_UP)))
+                .disabled(index == 0),
+            )
+            .child(
+                button(
+                    "down",
+                    core(lang, keys::VST_DOWN),
+                    Command::MovePlugin {
+                        id: slot.id.clone(),
+                        up: false,
+                    },
+                )
+                .accessibility_label(format!("{name} {}", core(lang, keys::VST_DOWN)))
+                .disabled(last),
+            )
+            .child(
+                button(
+                    "edit",
+                    core(lang, keys::VST_EDIT),
+                    Command::OpenEditor(slot.id.clone()),
+                )
+                .accessibility_label(named(keys::VST_EDIT_NAMED)),
+            )
         })
         .child(
-            button(
-                "up",
-                core(lang, keys::VST_UP),
-                Command::MovePlugin {
-                    id: slot.id.clone(),
-                    up: true,
-                },
-            )
-            .accessibility_label(format!("{name} {}", core(lang, keys::VST_UP)))
-            .disabled(index == 0),
+            Button::new(SharedString::from(format!("vst-remove-{}", slot.id)))
+                .label(core(lang, keys::VST_REMOVE))
+                .ghost()
+                .small()
+                .accessibility_label(named(keys::VST_REMOVE_NAMED))
+                .on_click({
+                    let title = named(keys::VST_REMOVE_TITLE);
+                    let id = slot.id.clone();
+                    move |_, window, cx| confirm_remove(&title, &id, lang, send.clone(), window, cx)
+                }),
         )
-        .child(
-            button(
-                "down",
-                core(lang, keys::VST_DOWN),
-                Command::MovePlugin {
-                    id: slot.id.clone(),
-                    up: false,
-                },
-            )
-            .accessibility_label(format!("{name} {}", core(lang, keys::VST_DOWN)))
-            .disabled(last),
-        )
-        .child(
-            button(
-                "edit",
-                core(lang, keys::VST_EDIT),
-                Command::OpenEditor(slot.id.clone()),
-            )
-            .accessibility_label(named(keys::VST_EDIT_NAMED)),
-        )
-        .child(
-            button(
-                "remove",
-                core(lang, keys::VST_REMOVE),
-                Command::RemovePlugin(slot.id.clone()),
-            )
-            .accessibility_label(named(keys::VST_REMOVE_NAMED)),
-        )
+}
+
+/// 削除の前に確かめる。VST の中の設定は戻せないので、押し間違いで消さない。
+fn confirm_remove(
+    title: &str,
+    id: &str,
+    lang: Lang,
+    send: Send,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let title = SharedString::from(title.to_owned());
+    let id = id.to_owned();
+    window.open_alert_dialog(cx, move |alert, _, _| {
+        let send = send.clone();
+        let id = id.clone();
+        alert
+            .title(title.clone())
+            .description(core(lang, keys::VST_REMOVE_WARNING))
+            .ok_text(core(lang, keys::VST_CONFIRM_REMOVE))
+            .ok_variant(ButtonVariant::Danger)
+            .cancel_text(core(lang, keys::CANCEL))
+            .show_cancel(true)
+            .on_ok(move |_, _, cx| {
+                send(Command::RemovePlugin(id.clone()), cx);
+                true
+            })
+    });
 }

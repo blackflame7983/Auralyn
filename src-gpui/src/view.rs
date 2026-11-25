@@ -166,7 +166,10 @@ impl MainView {
             match action {
                 Action::ToggleMute => self.toggle_mute(),
                 Action::Show => window.activate_window(),
-                Action::Quit => cx.quit(),
+                Action::Quit => {
+                    self.engine.save_before_quit();
+                    cx.quit()
+                }
             }
             changed = true;
         }
@@ -298,6 +301,11 @@ impl MainView {
         self.advance(event);
         self.message = None;
         self.engine.send(command);
+    }
+
+    /// 窓を閉じて終了する前に呼ぶ。
+    pub fn save_before_quit(&self) {
+        self.engine.save_before_quit();
     }
 
     fn toggle_mute(&mut self) {
