@@ -167,6 +167,7 @@ pub mod keys {
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
     pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const NOISE_MODE_FIRST: &str = "gpuiShell.noiseModeFirst";
     pub const NOISE_DETAILS: &str = "settings.noiseDetails";
     pub const STRENGTH: &str = "settings.AudioSettingsModal.119";
     pub const STRENGTH_NAMED: &str = "settings.AudioSettingsModal.120";
@@ -183,7 +184,7 @@ pub mod keys {
     pub const VERSION: &str = "settings.AudioSettingsModal.138";
 
     #[cfg(test)]
-    pub const ALL: [&str; 81] = [
+    pub const ALL: [&str; 82] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -251,6 +252,7 @@ pub mod keys {
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
         SINGING_NOT_YET,
+        NOISE_MODE_FIRST,
         NOISE_DETAILS,
         STRENGTH,
         STRENGTH_NAMED,

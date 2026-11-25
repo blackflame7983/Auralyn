@@ -79,6 +79,7 @@ impl SoundPage {
                 Switch::new("noise-on")
                     .checked(current.noise_on)
                     .accessibility_label(core(lang, keys::NOISE))
+                    .disabled(current.noise_mode.is_none())
                     .on_click({
                         let set = set.clone();
                         move |on, _, cx| set(Change::NoiseOn(*on), cx)
@@ -97,6 +98,9 @@ impl SoundPage {
                             move |mode, cx| set(Change::NoiseMode(mode), cx)
                         },
                     ))
+                    .when(current.noise_mode.is_none(), |this| {
+                        this.child(note(core(lang, keys::NOISE_MODE_FIRST)))
+                    })
                     .when_some(
                         current.noise_mode.and_then(|mode| match mode {
                             NoiseMode::Measured => Some(keys::NOISE_MEASURED),
@@ -132,6 +136,7 @@ impl SoundPage {
                                 keys::STRENGTH_NAMED,
                                 &self.strength,
                                 sound::strength_percent(current.strength),
+                                current.noise_mode.is_none(),
                             ))
                             .child(
                                 div()
@@ -144,6 +149,7 @@ impl SoundPage {
                                         Switch::new("voice-guard")
                                             .checked(current.voice_guard)
                                             .accessibility_label(core(lang, keys::VOICE_GUARD))
+                                            .disabled(current.noise_mode.is_none())
                                             .on_click({
                                                 let set = set.clone();
                                                 move |on, _, cx| set(Change::VoiceGuard(*on), cx)
@@ -183,6 +189,7 @@ impl SoundPage {
                             keys::EFFECTS_AMOUNT,
                             &self.amount,
                             sound::percent(current.amount),
+                            false,
                         ))
                         .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
                 } else {
@@ -236,6 +243,7 @@ fn slider_row(
     named: &'static str,
     state: &Entity<SliderState>,
     percent: f32,
+    disabled: bool,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -246,6 +254,7 @@ fn slider_row(
             div().flex_1().child(
                 Slider::new(state)
                     .horizontal()
+                    .disabled(disabled)
                     .accessibility_label(core(lang, named)),
             ),
         )

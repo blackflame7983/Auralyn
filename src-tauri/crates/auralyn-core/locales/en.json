@@ -3663,5 +3663,6 @@
   "gpuiShell.tray": "Notification area icon",
   "gpuiShell.hotkey": "Mute with Alt+M",
   "gpuiShell.ready": "Ready",
-  "gpuiShell.unavailable": "Unavailable"
+  "gpuiShell.unavailable": "Unavailable",
+  "gpuiShell.noiseModeFirst": "The noise reduction type is unknown. Choose Low or High to apply on/off, strength and voice protection."
 }
