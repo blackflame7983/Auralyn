@@ -167,6 +167,11 @@ pub mod keys {
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
     pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const NOISE_DETAILS: &str = "settings.noiseDetails";
+    pub const STRENGTH: &str = "settings.AudioSettingsModal.119";
+    pub const STRENGTH_NAMED: &str = "settings.AudioSettingsModal.120";
+    pub const VOICE_GUARD: &str = "settings.AudioSettingsModal.127";
+    pub const VOICE_GUARD_MEANS: &str = "settings.AudioSettingsModal.128";
     pub const LANGUAGE: &str = "language.label";
     pub const LANGUAGE_PARTIAL: &str = "language.partial";
     pub const LANGUAGE_SAVE_FAILED: &str = "language.saveFailed";
@@ -178,7 +183,7 @@ pub mod keys {
     pub const VERSION: &str = "settings.AudioSettingsModal.138";
 
     #[cfg(test)]
-    pub const ALL: [&str; 76] = [
+    pub const ALL: [&str; 81] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -246,6 +251,11 @@ pub mod keys {
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
         SINGING_NOT_YET,
+        NOISE_DETAILS,
+        STRENGTH,
+        STRENGTH_NAMED,
+        VOICE_GUARD,
+        VOICE_GUARD_MEANS,
         LANGUAGE,
         LANGUAGE_PARTIAL,
         LANGUAGE_SAVE_FAILED,

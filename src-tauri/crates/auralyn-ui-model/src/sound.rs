@@ -68,6 +68,9 @@ impl Preset {
 pub enum Change {
     NoiseOn(bool),
     NoiseMode(NoiseMode),
+    /// 抑制の強さ（0.25〜1.25）。
+    Strength(f32),
+    VoiceGuard(bool),
     EffectsOn(bool),
     Preset(Preset),
     /// 整え具合（0〜1）。
@@ -83,7 +86,7 @@ pub struct Sound {
     pub noise_on: bool,
     /// 分からない種類は `None`。画面ではどれも選ばない。
     pub noise_mode: Option<NoiseMode>,
-    /// 抑制の強さ（0.25〜1.25）。画面ではまだ変えず、そのまま渡す。
+    /// 抑制の強さ（0.25〜1.25）。
     pub strength: f32,
     pub voice_guard: bool,
     pub effects_on: bool,
@@ -127,6 +130,11 @@ impl Sound {
                 noise_mode: Some(mode),
                 ..self
             },
+            Change::Strength(strength) => Self { strength, ..self }.normalized(),
+            Change::VoiceGuard(on) => Self {
+                voice_guard: on,
+                ..self
+            },
             Change::EffectsOn(on) => Self {
                 effects_on: on,
                 ..self
@@ -164,6 +172,11 @@ impl Sound {
 /// 整え具合を、画面のスライダーの百分率（整数）にする。
 pub fn percent(amount: f32) -> f32 {
     (amount.clamp(0.0, 1.0) * 100.0).round()
+}
+
+/// 抑制の強さを、画面のスライダーの百分率（整数）にする。
+pub fn strength_percent(strength: f32) -> f32 {
+    (strength.clamp(0.25, 1.25) * 100.0).round()
 }
 
 #[cfg(test)]
@@ -269,5 +282,10 @@ mod tests {
         assert!(warm.noise_on);
         assert_eq!(warm.preset, Some(Preset::Warm));
         assert_eq!(sound().with(Change::Amount(3.0)).amount, 1.0);
+        let strong = sound().with(Change::Strength(2.0));
+        assert_eq!(strong.strength, 1.25);
+        assert!(strong.noise_differs(&sound()));
+        assert!(!sound().with(Change::VoiceGuard(false)).voice_guard);
+        assert_eq!(strength_percent(0.8), 80.0);
     }
 }

@@ -106,6 +106,13 @@ impl MainView {
             this.send(Command::SetSound(Change::Amount(value.end() / 100.0)));
         })
         .detach();
+        cx.subscribe(&sound.strength, |this, _, event: &SliderEvent, _| {
+            let SliderEvent::Release(value) = event else {
+                return;
+            };
+            this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
+        })
+        .detach();
         cx.subscribe_in(
             &connect.host,
             window,
