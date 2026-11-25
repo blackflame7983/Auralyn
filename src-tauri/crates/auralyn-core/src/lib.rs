@@ -3,4 +3,5 @@
 //! Tauri や GPUI などの画面の層は、このクレートの命令・出来事・文言・デザイントークンだけを使う。
 //! このクレートは画面の層のクレートに依存しない。
 pub mod design;
+pub mod event;
 pub mod i18n;
