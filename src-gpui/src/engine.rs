@@ -375,14 +375,15 @@ impl Control {
         });
         self.recover();
         // 子が替わっていると音量は 100% に戻っているので、画面のスライダーの値を送り直す（同じ子なら同じ値を送るだけ）。
+        // 出力音量は反映を待つので、始めた直後は確かめきれずに失敗を返すことがある。音は始まっているので、帯の警告にせずログに残す。
         if let Some(value) = self.input_gain {
             if let Err(e) = self.host.set_input_gain(value) {
-                self.fail("set_input_gain", e);
+                log::warn!("開始のあとに入力音量を送り直せません: {e}");
             }
         }
         if let Some(value) = self.output_gain {
             if let Err(e) = self.host.set_output_gain(value) {
-                self.fail("set_output_gain", e);
+                log::warn!("開始のあとに出力音量を送り直せません: {e}");
             }
         }
     }
