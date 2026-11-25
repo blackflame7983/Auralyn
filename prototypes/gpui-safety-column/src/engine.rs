@@ -4,11 +4,12 @@
 //! - 通知は `AudioHost::set_event_listener` で、Tauri と同じ順序のまま受ける。
 //! - メーターは届くたびに画面へ送らず、最新の値だけを置く。画面が描画の周期で読む。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use vst_host_lib::audio::AudioHost;
+use vst_host_lib::vst_host::scanner;
 
 #[derive(Debug)]
 pub enum Command {
@@ -209,8 +210,18 @@ impl Control {
         let _ = self.notices.send(notice);
     }
 
+    /// `.vst3` のバンドル（フォルダ）を渡されたら、Tauri 版のスキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
     fn load_plugin(&mut self, path: &str) {
-        match self.host.load_plugin(path, None) {
+        let binary = scanner::resolve_binary(Path::new(path));
+        let Some(binary) = binary.as_deref().and_then(Path::to_str) else {
+            let _ = self.notices.send(Notice::Failed {
+                command: "load_plugin",
+                message: format!("VST3 の実体が見つかりません: {path}"),
+            });
+            return;
+        };
+        log::info!("VST3 を読み込む: {binary}");
+        match self.host.load_plugin(binary, None) {
             Ok(plugin) => {
                 self.plugin_id = Some(plugin.id);
                 let _ = self.notices.send(Notice::PluginLoaded(plugin.name));

@@ -138,8 +138,16 @@ impl SafetyColumn {
         }
         log::info!(
             "トレイ: {} / Alt+M: {}",
-            if desktop.tray_error.is_none() { "登録" } else { "失敗" },
-            if desktop.hotkey_error.is_none() { "登録" } else { "失敗" }
+            if desktop.tray_error.is_none() {
+                "登録"
+            } else {
+                "失敗"
+            },
+            if desktop.hotkey_error.is_none() {
+                "登録"
+            } else {
+                "失敗"
+            }
         );
         let message = desktop
             .hotkey_error
@@ -290,7 +298,7 @@ impl SafetyColumn {
                     div()
                         .text_xs()
                         .text_color(color::destructive_text())
-                        .child(t(lang, Key::MuteOn)),
+                        .child(t(lang, Key::MutedShort)),
                 )
             })
     }
@@ -449,6 +457,9 @@ impl SafetyColumn {
                     .text_color(color::muted())
                     .child(t(lang, Key::Checks)),
             )
+            .when_some(self.message.clone(), |this, message| {
+                this.child(div().text_xs().text_color(color::warning()).child(message))
+            })
             .child(
                 div()
                     .flex()
@@ -477,9 +488,6 @@ impl SafetyColumn {
                     })),
             )
             .child(div().text_xs().text_color(color::muted()).child(status))
-            .when_some(self.message.clone(), |this, message| {
-                this.child(div().text_xs().text_color(color::warning()).child(message))
-            })
     }
 }
 
@@ -502,8 +510,15 @@ impl Render for SafetyColumn {
             .child(self.render_input())
             .child(self.render_output(cx))
             .child(self.render_compare(cx))
-            .child(div().flex_1())
-            .child(self.render_checks(cx))
+            // 本番中の操作は動かさず、試作の確認用の欄だけを、残りの高さの中でスクロールさせる。
+            .child(
+                div()
+                    .id("prototype-checks")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(self.render_checks(cx)),
+            )
     }
 }
 
