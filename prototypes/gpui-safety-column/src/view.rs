@@ -507,7 +507,7 @@ impl SafetyColumn {
                 this.child(
                     Button::new("open-editor")
                         .label(t(lang, Key::OpenEditor))
-                        .ghost()
+                        .outline()
                         .on_click(
                             cx.listener(|this, _, _, _| this.engine.send(Command::OpenEditor)),
                         ),
@@ -516,7 +516,7 @@ impl SafetyColumn {
             .child(
                 Button::new("language")
                     .label(t(lang, Key::Language))
-                    .ghost()
+                    .outline()
                     .on_click(cx.listener(|this, _, window, cx| {
                         let lang = this.lang.toggled();
                         this.set_lang(lang, window, cx);

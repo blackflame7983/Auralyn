@@ -32,3 +32,4 @@ GPUI で画面を書くときに、試作（`prototypes/gpui-safety-column/`）�
 - **ビルド領域が大きい。** GPUI 一式（debug と release）で `src-tauri/target` が約 20 GB 増えた（2026-11-25）。新しい領域を作らず、`.cargo/config.toml` で `src-tauri/target` を共有する。
 - **狭い窓では、状態が変わって文が増えると下が切れる。** 長い説明は読み上げの説明へ回し、見える文は短くする。
 - **`gpui-component` の部品の既定はライト（`ThemeMode::Light`）。** 画面の地を暗く塗っても、ボタン・入力欄はライトの色のまま描かれる。`ghost` のボタンは暗い地に暗い文字になり、マウスを当てるまで見えなかった（2026-11-25）。`gpui_kit::init` の直後に `Theme::change(ThemeMode::Dark, None, cx)` を呼ぶ。地の色とテーマのモードは同じものから決める。
+- **`ghost` のボタンは枠も地もなく、暗い地では文字だけに見える。** マウスを当てるまでボタンと分からなかった（2026-11-25）。押せることを見せたい操作は `outline` 以上にする。
