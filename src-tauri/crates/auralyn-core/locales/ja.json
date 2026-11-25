@@ -3664,5 +3664,8 @@
   "gpuiShell.hotkey": "Alt+M でミュート",
   "gpuiShell.ready": "使えます",
   "gpuiShell.unavailable": "使えません",
-  "gpuiShell.noiseModeFirst": "ノイズ低減の種類が分かりません。弱か強を選ぶと、ON/OFF・強さ・声を守るを送れます。"
+  "gpuiShell.noiseModeFirst": "ノイズ低減の種類が分かりません。弱か強を選ぶと、ON/OFF・強さ・声を守るを送れます。",
+  "gpuiShell.trayShow": "Auralyn を表示",
+  "gpuiShell.trayQuit": "終了",
+  "gpuiShell.hotkeyFailed": "Alt+M を登録できません（Auralyn が起動中かもしれません）"
 }

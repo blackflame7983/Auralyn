@@ -58,9 +58,9 @@ impl ConnectPage {
         for (state, is_input) in [(&self.input, true), (&self.output, false)] {
             let choices = connect::of_host(&self.devices, &host, is_input);
             let selected = connect::initial_device(&choices, self.saved.as_ref(), is_input);
-            let names = choices
-                .iter()
-                .map(|d| SharedString::from(d.name.clone()))
+            let names = connect::labels(&choices)
+                .into_iter()
+                .map(SharedString::from)
                 .collect();
             set(state, names, selected, window, cx);
         }
@@ -78,10 +78,12 @@ impl ConnectPage {
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let host = self.host_name(cx);
         let pick = |state: &Entity<Choices>, is_input: bool| {
-            let name = state.read(cx).selected_value()?.clone();
-            connect::of_host(&self.devices, &host, is_input)
-                .into_iter()
-                .find(|d| d.name == name.as_ref())
+            let label = state.read(cx).selected_value()?.clone();
+            let choices = connect::of_host(&self.devices, &host, is_input);
+            let row = connect::labels(&choices)
+                .iter()
+                .position(|l| l.as_str() == label.as_ref())?;
+            choices.get(row).copied()
         };
         let input = pick(&self.input, true)?;
         let output = if connect::shares_device(&host) {

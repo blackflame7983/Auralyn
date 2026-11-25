@@ -20,8 +20,10 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |
 | `src/color.rs` | 色。`design/tokens.json` から名前で取る |
+| `src/part.rs` | 画面どうしで同じ形の部品（見出しつきの区画・補足の文） |
+| `src/store.rs` | 設定のファイルを、一時ファイルに書いてから置き換える |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |
-| `src/i18n.rs` | 日英の文言（正本は `src-tauri/crates/auralyn-core/locales/` の JSON。試作のときに写した分を、そこから読む形へ順に置き換える） |
+| `src/i18n.rs` | 日英の文言（正本は `src-tauri/crates/auralyn-core/locales/` の JSON。キーは `keys` の定数で渡す） |
 | `src/main.rs` | 引数を読み、エンジンと窓を起動する |
 
 メーターの読み（平滑化・2秒のピーク保持と毎秒 20 dB の下降・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）と音の流れの帯の規則（`flow`）は、GPUI に依存しない [`src-tauri/crates/auralyn-ui-model`](../src-tauri/crates/auralyn-ui-model) に置く。`useMeterLevels.ts`・`outputVerdict.ts`・`SoundFlow.tsx` の写しで、ピークの下がり方だけ変えた（[decisions.md](../docs/gpui/decisions.md)）。

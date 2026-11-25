@@ -1,5 +1,4 @@
-//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。新しい文言は [`core`] でそこから取る。
-//! [`t`] の表は試作のときに写した分で、順に [`core`] へ置き換える。
+//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。[`core`] でそこから取る。
 
 use auralyn_core::i18n::{catalog, Locale};
 
@@ -7,95 +6,6 @@ use auralyn_core::i18n::{catalog, Locale};
 pub enum Lang {
     Ja,
     En,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Key {
-    SafetyColumn,
-    Emergency,
-    MuteOn,
-    MutedShort,
-    Mic,
-    InputLevel,
-    MicVolume,
-    Output,
-    OutputVolume,
-    Peak,
-    OutputPeak,
-    OutputPeakStopped,
-    LevelHigh,
-    LevelLow,
-    LevelOk,
-    Muted,
-    Compare,
-    CompareOn,
-    StateStopped,
-    StateWaiting,
-    StateSilent,
-    StateActive,
-    TrayShow,
-    TrayQuit,
-    HotkeyFailed,
-}
-
-pub fn t(lang: Lang, key: Key) -> &'static str {
-    use Key::*;
-    match (lang, key) {
-        (Lang::Ja, SafetyColumn) => "本番中の操作",
-        (Lang::En, SafetyColumn) => "Live controls",
-        (Lang::Ja, Emergency) => "緊急ミュート",
-        (Lang::En, Emergency) => "Emergency mute",
-        (Lang::Ja, MuteOn) => "緊急ミュート中です。Auralyn の出力は無音です。",
-        (Lang::En, MuteOn) => "Emergency mute is on. Auralyn output is silent.",
-        (Lang::Ja, MutedShort) => "ミュート中",
-        (Lang::En, MutedShort) => "Muted",
-        (Lang::Ja, Mic) => "マイク",
-        (Lang::En, Mic) => "Microphone",
-        (Lang::Ja, InputLevel) => "マイクの入力レベル",
-        (Lang::En, InputLevel) => "Microphone input level",
-        (Lang::Ja, MicVolume) => "マイク音量",
-        (Lang::En, MicVolume) => "Mic volume",
-        (Lang::Ja, Output) => "出力",
-        (Lang::En, Output) => "Output",
-        (Lang::Ja, OutputVolume) => "出力音量",
-        (Lang::En, OutputVolume) => "Output volume",
-        (Lang::Ja, Peak) => "ピーク",
-        (Lang::En, Peak) => "Peak",
-        (Lang::Ja, OutputPeak) => "出力のピーク",
-        (Lang::En, OutputPeak) => "Output peak",
-        (Lang::Ja, OutputPeakStopped) => "出力のピーク（音声停止中）",
-        (Lang::En, OutputPeakStopped) => "Output peak (audio stopped)",
-        (Lang::Ja, LevelHigh) => "大きすぎ",
-        (Lang::En, LevelHigh) => "Too loud",
-        (Lang::Ja, LevelLow) => "小さめ",
-        (Lang::En, LevelLow) => "A bit low",
-        (Lang::Ja, LevelOk) => "適正",
-        (Lang::En, LevelOk) => "In range",
-        (Lang::Ja, Muted) => "出力ミュート・音量ゼロ",
-        (Lang::En, Muted) => "Muted / 0%",
-        (Lang::Ja, Compare) => "VSTを外して比較",
-        (Lang::En, Compare) => "Bypass VST",
-        (Lang::Ja, CompareOn) => {
-            "VSTを外して比較中です（VSTオフ。ノイズ低減・声を整える機能は継続）"
-        }
-        (Lang::En, CompareOn) => {
-            "Bypass VST is on (VST off; noise reduction and voice shaping continue)"
-        }
-        (Lang::Ja, StateStopped) => "音声停止中",
-        (Lang::En, StateStopped) => "Audio stopped",
-        (Lang::Ja, StateWaiting) => "レベル未受信",
-        (Lang::En, StateWaiting) => "Waiting for level updates",
-        (Lang::Ja, StateSilent) => "無音",
-        (Lang::En, StateSilent) => "Silent",
-        (Lang::Ja, StateActive) => "受信中",
-        (Lang::En, StateActive) => "Receiving",
-        (Lang::Ja, TrayShow) => "Auralyn を表示",
-        (Lang::En, TrayShow) => "Show Auralyn",
-        (Lang::Ja, TrayQuit) => "終了",
-        (Lang::En, TrayQuit) => "Quit",
-        (Lang::Ja, HotkeyFailed) => "Alt+M を登録できません（Auralyn が起動中かもしれません）",
-        (Lang::En, HotkeyFailed) => "Could not register Alt+M (Auralyn may be running)",
-    }
 }
 
 /// `auralyn-core` の文言のキー。
@@ -183,8 +93,34 @@ pub mod keys {
     pub const UNAVAILABLE: &str = "gpuiShell.unavailable";
     pub const VERSION: &str = "settings.AudioSettingsModal.138";
 
+    pub const SAFETY_COLUMN: &str = "shell.safetyColumn";
+    pub const EMERGENCY: &str = "header.emergency";
+    pub const MUTE_ON: &str = "header.muteOn";
+    pub const MUTED_SHORT: &str = "header.muted";
+    pub const MIC: &str = "wizard.input";
+    pub const INPUT_LEVEL: &str = "home.inputLevel";
+    pub const MIC_VOLUME: &str = "header.inputGain";
+    pub const OUTPUT_HEADING: &str = "meter.output";
+    pub const OUTPUT_VOLUME: &str = "master.outputGain";
+    pub const PEAK: &str = "home.peakLabel";
+    pub const OUTPUT_PEAK: &str = "home.outputPeak";
+    pub const OUTPUT_PEAK_STOPPED: &str = "home.outputPeakStopped";
+    pub const LEVEL_HIGH: &str = "home.levelHigh";
+    pub const LEVEL_LOW: &str = "home.levelLow";
+    pub const LEVEL_OK: &str = "home.levelOk";
+    pub const OUTPUT_MUTED: &str = "prep.muted";
+    pub const COMPARE: &str = "header.compare";
+    pub const COMPARE_ON: &str = "shell.compareOn";
+    pub const STATE_STOPPED: &str = "meter.state.stopped";
+    pub const STATE_WAITING: &str = "meter.state.waiting";
+    pub const STATE_SILENT: &str = "meter.state.silent";
+    pub const STATE_ACTIVE: &str = "meter.state.active";
+    pub const TRAY_SHOW: &str = "gpuiShell.trayShow";
+    pub const TRAY_QUIT: &str = "gpuiShell.trayQuit";
+    pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
+
     #[cfg(test)]
-    pub const ALL: [&str; 82] = [
+    pub const ALL: [&str; 107] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -267,6 +203,31 @@ pub mod keys {
         READY,
         UNAVAILABLE,
         VERSION,
+        SAFETY_COLUMN,
+        EMERGENCY,
+        MUTE_ON,
+        MUTED_SHORT,
+        MIC,
+        INPUT_LEVEL,
+        MIC_VOLUME,
+        OUTPUT_HEADING,
+        OUTPUT_VOLUME,
+        PEAK,
+        OUTPUT_PEAK,
+        OUTPUT_PEAK_STOPPED,
+        LEVEL_HIGH,
+        LEVEL_LOW,
+        LEVEL_OK,
+        OUTPUT_MUTED,
+        COMPARE,
+        COMPARE_ON,
+        STATE_STOPPED,
+        STATE_WAITING,
+        STATE_SILENT,
+        STATE_ACTIVE,
+        TRAY_SHOW,
+        TRAY_QUIT,
+        HOTKEY_FAILED,
     ];
 }
 

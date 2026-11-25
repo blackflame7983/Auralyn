@@ -74,6 +74,22 @@ pub fn initial_device(choices: &[&Device], saved: Option<&Saved>, is_input: bool
         .or(if choices.is_empty() { None } else { Some(0) })
 }
 
+/// 選択肢に出す名前。同じ名前の機器が2台以上あれば、2台目から「名前 (2)」のように番号を付けて見分ける。
+/// 選択肢は名前で選んだ行を覚えるので、名前が重なると選んだ機器と違う機器で始まってしまう。
+pub fn labels(choices: &[&Device]) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    for device in choices {
+        let mut label = device.name.clone();
+        let mut number = 1;
+        while labels.contains(&label) {
+            number += 1;
+            label = format!("{} ({number})", device.name);
+        }
+        labels.push(label);
+    }
+    labels
+}
+
 /// ASIO で入力に選んだドライバーと同じ名前の出力。
 pub fn shared_output<'a>(outputs: &[&'a Device], input: &Device) -> Option<&'a Device> {
     outputs
@@ -153,6 +169,18 @@ mod tests {
             ..Saved::default()
         };
         assert_eq!(initial_device(&outputs, Some(&saved), false), Some(0));
+    }
+
+    #[test]
+    fn same_names_get_numbers_so_each_choice_is_unique() {
+        let a = device("WASAPI", "USB Mic", true, false);
+        let b = device("WASAPI", "USB Mic", true, false);
+        let c = device("WASAPI", "USB Mic (2)", true, false);
+        let d = device("WASAPI", "Line", true, true);
+        assert_eq!(
+            labels(&[&a, &b, &c, &d]),
+            ["USB Mic", "USB Mic (2)", "USB Mic (2) (2)", "Line"]
+        );
     }
 
     #[test]

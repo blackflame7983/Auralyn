@@ -13,9 +13,11 @@ mod engine;
 mod home;
 mod i18n;
 mod locale_file;
+mod part;
 mod settings;
 mod shell;
 mod sound;
+mod store;
 mod view;
 mod vst;
 
