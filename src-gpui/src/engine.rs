@@ -59,6 +59,8 @@ pub struct LevelSlot {
     pub seq: u64,
     pub input: [f32; 2],
     pub output: [f32; 2],
+    /// 出力音量・ピーク保護・ミュートの前の値。テスト音などで子が送らないときは無い。
+    pub processed: Option<[f32; 2]>,
     pub received_at: Option<Instant>,
 }
 
@@ -143,10 +145,15 @@ fn on_event(
             // 形が違う値は NaN にして、画面で「更新が止まった」として扱わせる。
             let input = pair("input").unwrap_or([f32::NAN; 2]);
             let output = pair("output").unwrap_or([f32::NAN; 2]);
+            let processed = payload
+                .get("processed")
+                .filter(|value| !value.is_null())
+                .map(|_| pair("processed").unwrap_or([f32::NAN; 2]));
             let mut slot = levels.lock().unwrap_or_else(|e| e.into_inner());
             slot.seq += 1;
             slot.input = input;
             slot.output = output;
+            slot.processed = processed;
             slot.received_at = Some(Instant::now());
             return;
         }
@@ -299,7 +306,30 @@ mod tests {
         assert_eq!(slot.seq, 1);
         assert_eq!(slot.input, [0.25, 0.5]);
         assert_eq!(slot.output, [0.75, 1.0]);
+        assert_eq!(slot.processed, None);
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn level_event_reads_processed_beside_input_and_output() {
+        let levels = Mutex::new(LevelSlot::default());
+        let (tx, _rx) = flume::unbounded();
+        on_event(
+            "audio-level",
+            serde_json::json!({"input": [0.25, 0.5], "output": [0.0, 0.0], "processed": [0.5, 0.4],
+                "reduction_db": {"noise": -12.0}, "speech": true}),
+            &levels,
+            &tx,
+        );
+        assert_eq!(levels.lock().unwrap().processed, Some([0.5, 0.4]));
+
+        on_event(
+            "audio-level",
+            serde_json::json!({"input": [0.1, 0.1], "output": [0.1, 0.1], "processed": "x"}),
+            &levels,
+            &tx,
+        );
+        assert!(levels.lock().unwrap().processed.unwrap()[0].is_nan());
     }
 
     #[test]

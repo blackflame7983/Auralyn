@@ -1,11 +1,13 @@
-//! Auralyn の GPUI 版。今は右の列（本番中の操作）だけを持つ。決定と知見は docs/gpui/。
+//! Auralyn の GPUI 版。今は右の列（本番中の操作）と、ホームの音の流れの帯を持つ。決定と知見は docs/gpui/。
 //!
 //! 使い方：`auralyn-gpui [--plugin <VST3のパス>] [--lang en] [--config-dir <フォルダ>]`
 //! 既定の設定のフォルダは、Tauri 版と同じ `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod color;
 mod desktop;
 mod engine;
+mod home;
 mod i18n;
 mod view;
 
@@ -68,10 +70,10 @@ fn main() {
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
-                    size(px(320.), px(640.)),
+                    size(px(1024.), px(768.)),
                     cx,
                 ))),
-                window_min_size: Some(size(px(280.), px(560.))),
+                window_min_size: Some(size(px(900.), px(600.))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Auralyn (GPUI)".into()),
                     ..Default::default()
@@ -79,7 +81,7 @@ fn main() {
                 ..Default::default()
             };
             gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| view::SafetyColumn::new(engine, lang, window, cx))
+                cx.new(|cx| view::MainView::new(engine, lang, window, cx))
             })
             .expect("窓を開けません");
             cx.on_window_closed(|cx, _| cx.quit()).detach();
