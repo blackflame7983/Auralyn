@@ -15,7 +15,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/connect.rs` | 接続の画面。接続方式・マイク・出力先を選び、その機器で開始する（開始できると設定が保存される）。最初に選ぶ項目は `auralyn-ui-model` の `connect` |
 | `src/settings.rs` | 設定の画面。表示言語（日本語・English）と、Windows との連携（トレイ・Alt+M）が使えるかと、版 |
 | `src/locale_file.rs` | 表示言語の保存（`gpui_locale.json`）。無ければ Tauri 版の `display-locale.json` を読むだけ |
-| `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine.rs` の `gpui_sound.json` |
+| `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）と、大きな音を抑える（ON/OFF。アプリの中だけで持つ）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine.rs` の `gpui_sound.json` |
 | `src/vst.rs` | VST の画面。並び（ON/OFF・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |

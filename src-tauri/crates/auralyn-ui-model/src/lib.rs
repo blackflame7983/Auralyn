@@ -4,6 +4,7 @@
 pub mod connect;
 pub mod flow;
 pub mod meter;
+pub mod peak;
 pub mod rack;
 pub mod session;
 pub mod sound;

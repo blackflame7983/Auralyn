@@ -32,6 +32,8 @@ use auralyn_ui_model::sound::Change;
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
+/// ピーク保護の反映待ちを読み直す間隔（Tauri 版の `usePeakProtectionSync` と同じ）。
+const PEAK_POLL: Duration = Duration::from_millis(500);
 /// 右の列の幅（`src/index.css` の `--safety-column-width`）。
 const SAFETY_COLUMN_WIDTH: f32 = 212.;
 
@@ -52,6 +54,8 @@ pub struct MainView {
     processed: Meter,
     flow: Flow,
     level_seq: u64,
+    /// ピーク保護の反映待ちを最後に読み直した時刻。
+    peak_polled: Instant,
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
     /// 表示言語を保存するフォルダ。
@@ -159,6 +163,7 @@ impl MainView {
             processed: Meter::stopped(now),
             flow: Flow::default(),
             level_seq: 0,
+            peak_polled: now,
             input_gain,
             output_gain,
             config_dir,
@@ -174,6 +179,14 @@ impl MainView {
         for notice in self.engine.notices.try_iter().collect::<Vec<_>>() {
             self.apply(notice, window, cx);
             changed = true;
+        }
+        // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
+        if self.page == Page::Sound
+            && self.sound.peak_pending()
+            && self.peak_polled.elapsed() >= PEAK_POLL
+        {
+            self.peak_polled = Instant::now();
+            self.engine.send(Command::ReadPeak);
         }
         for action in self.desktop.poll() {
             match action {
@@ -221,10 +234,15 @@ impl MainView {
                 self.input_name = input;
                 self.output_name = output;
                 self.advance(SessionEvent::Started);
+                self.reread_peak();
             }
-            Notice::Stopped => self.advance(SessionEvent::Stopped),
+            Notice::Stopped => {
+                self.advance(SessionEvent::Stopped);
+                self.reread_peak();
+            }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
+                self.reread_peak();
                 self.message = Some(message);
             }
             Notice::NotStarted(message) => {
@@ -238,6 +256,7 @@ impl MainView {
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
+            Notice::Peak(peak) => self.sound.set_peak(peak),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -273,6 +292,13 @@ impl MainView {
         self.message = Some(format!("{} {detail}", core(self.lang, key)));
     }
 
+    /// ピーク保護は音声が動いているときだけ読めるので、開始・停止のあと、音づくりの画面を見ていれば読み直す。
+    fn reread_peak(&self) {
+        if self.page == Page::Sound {
+            self.engine.send(Command::ReadPeak);
+        }
+    }
+
     fn open(&mut self, page: Page) {
         self.page = page;
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
@@ -281,6 +307,7 @@ impl MainView {
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
+            self.engine.send(Command::ReadPeak);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);

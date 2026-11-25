@@ -11,9 +11,11 @@ use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
+use auralyn_ui_model::peak::Peak;
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
+use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
 
@@ -53,6 +55,10 @@ pub enum Command {
     ReadSound,
     /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
     SetSound(Change),
+    /// 大きな音を抑える（ピーク保護）の今の状態を読む。
+    ReadPeak,
+    /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
+    SetPeak(bool),
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
@@ -84,6 +90,8 @@ pub enum Notice {
     Rack(Vec<Slot>),
     /// 音づくりの今の設定（エンジンが受け付けた結果）。
     Sound(Sound),
+    /// ピーク保護の状態。`None` は読めない（音声が止まっているときも読めない）。
+    Peak(Option<Peak>),
     /// 追加の候補。失敗したときは理由。
     Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
@@ -613,6 +621,42 @@ impl Control {
         }
     }
 
+    /// ピーク保護を読む（`config` があれば変えてから読む）。読めなければ `None` を送る。
+    /// 止まっているときは読めないのが普通なので、読むだけの失敗は帯に出さない。
+    fn peak(&mut self, config: Option<PeakConfig>) {
+        let peak = match self.host.peak_protection(config) {
+            Ok(snapshot) => Some(Peak {
+                enabled: snapshot.config.enabled,
+                running: snapshot.running,
+                pending: snapshot.pending,
+            }),
+            Err(e) if config.is_some() => {
+                // 断られても状態は読めることがある（読めないなら、読み直しが `None` を送る）。
+                self.fail("peak_protection", e);
+                return self.peak(None);
+            }
+            Err(e) => {
+                log::info!("ピーク保護の状態を読めません: {e}");
+                None
+            }
+        };
+        let _ = self.notices.send(Notice::Peak(peak));
+    }
+
+    /// 今の天井と復帰時間のまま ON/OFF だけを変える。
+    fn set_peak(&mut self, on: bool) {
+        match self.host.peak_protection(None) {
+            Ok(snapshot) => self.peak(Some(PeakConfig {
+                enabled: on,
+                ..snapshot.config
+            })),
+            Err(e) => {
+                self.fail("peak_protection", e);
+                self.peak(None);
+            }
+        }
+    }
+
     /// 変わった区画だけを送る。終わったら、エンジンが受け付けた結果を読み直して画面へ送り、保存する。
     fn set_sound(&mut self, change: Change) {
         if self.sound.is_none() {
@@ -737,6 +781,8 @@ impl Control {
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
             Command::ReadSound => return self.read_sound(),
+            Command::ReadPeak => return self.peak(None),
+            Command::SetPeak(on) => return self.set_peak(on),
             Command::SetSound(change) => return self.set_sound(change),
             Command::SaveRack(ref done) => {
                 self.save(true);
