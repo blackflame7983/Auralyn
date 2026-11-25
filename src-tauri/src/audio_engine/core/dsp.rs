@@ -254,6 +254,8 @@ pub(crate) struct RtBuiltInVoiceChain {
     hp_last_out: [f32; 2],
     comp_env: f32,
     hp_alpha: [f32; 3],
+    /// 取り出すまでにコンプが掛けた最小ゲイン（メークアップを含まない）。
+    min_gain: f32,
 }
 
 impl RtBuiltInVoiceChain {
@@ -262,12 +264,17 @@ impl RtBuiltInVoiceChain {
             hp_last_in: [0.0; 2],
             hp_last_out: [0.0; 2],
             comp_env: 0.0,
+            min_gain: 1.0,
             hp_alpha: [70.0_f32, 105.0, 85.0].map(|cutoff| {
                 let rc = 1.0 / (std::f32::consts::TAU * cutoff.max(20.0));
                 let dt = 1.0 / sample_rate_hz.max(8_000) as f32;
                 rc / (rc + dt)
             }),
         }
+    }
+
+    pub(crate) fn take_min_gain(&mut self) -> f32 {
+        std::mem::replace(&mut self.min_gain, 1.0)
     }
 
     fn high_pass(&mut self, ch: usize, sample: f32, alpha: f32) -> f32 {
@@ -314,6 +321,7 @@ impl RtBuiltInVoiceChain {
         } else {
             1.0
         };
+        self.min_gain = self.min_gain.min(gain);
         let makeup = 1.0 + amount * 0.22;
         l *= gain * makeup;
         r *= gain * makeup;
@@ -347,6 +355,30 @@ mod tests {
         assert_eq!(sent_sample_levels(&[-0.3, 0.7], [1, 1]), [0.7, 0.0]);
         assert_eq!(sent_sample_levels(&[-0.3, 0.7], [8, 1]), [0.0, 0.7]);
         assert_eq!(sent_sample_levels(&[0.0, 0.0], [0, 1]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn voice_chain_reports_the_compressor_gain_and_resets_on_take() {
+        let mut chain = RtBuiltInVoiceChain::new(48_000);
+        assert_eq!(
+            allocation_counts(|| {
+                for n in 0..4_800 {
+                    let x = (n as f32 * 0.05).sin() * 0.02;
+                    chain.process_sample(x, x, BuiltInEffectsPreset::Broadcast, 1.0);
+                }
+            }),
+            (0, 0)
+        );
+        // 閾値より小さい声では下げない。
+        assert_eq!(chain.take_min_gain(), 1.0);
+        for n in 0..4_800 {
+            let x = (n as f32 * 0.05).sin() * 0.9;
+            chain.process_sample(x, x, BuiltInEffectsPreset::Broadcast, 1.0);
+        }
+        let loud = chain.take_min_gain();
+        // 通常のコンプは 0.35（約 -9.1 dB）より下げない。
+        assert!((0.35..1.0).contains(&loud), "{loud}");
+        assert_eq!(chain.take_min_gain(), 1.0);
     }
 
     #[test]

@@ -44,6 +44,7 @@ fn known_delay_impulses_have_one_aligned_peak_at_every_supported_rate() {
                 };
                 let actual = mix.process(
                     MixFrame {
+                        input: dry,
                         dry,
                         wet,
                         protect_voice: false,
@@ -53,9 +54,12 @@ fn known_delay_impulses_have_one_aligned_peak_at_every_supported_rate() {
                 if n < delay {
                     assert!(actual.is_none());
                 } else {
-                    for (a, b) in actual.unwrap().into_iter().zip(processed) {
+                    let (mixed, delayed_input) = actual.unwrap();
+                    for (a, b) in mixed.into_iter().zip(processed) {
                         assert!((a - b).abs() < 1e-7, "rate={rate}, wet={wet}, sample={n}");
                     }
+                    // 計測の原音は、混ぜた音と同じ遅れの入力である。
+                    assert_eq!(delayed_input, input[n - delay]);
                 }
             }
         }
@@ -69,6 +73,7 @@ fn mix_and_voice_guard_follow_the_input_frame_instead_of_current_time() {
         let wet = if n < 12 { 0.6 } else { 0.82 };
         let actual = mix.process(
             MixFrame {
+                input: [1.0; 2],
                 dry: [1.0; 2],
                 wet,
                 protect_voice: n >= 12,
@@ -77,7 +82,7 @@ fn mix_and_voice_guard_follow_the_input_frame_instead_of_current_time() {
         );
         if n >= 7 {
             let expected = if n - 7 < 12 { 0.4 } else { 0.18 };
-            assert!((actual.unwrap()[0] - expected).abs() < 1e-6);
+            assert!((actual.unwrap().0[0] - expected).abs() < 1e-6);
         }
     }
 }
@@ -133,22 +138,26 @@ fn original_modes_strength_and_voice_guard_targets_are_preserved() {
 fn wet_changes_ramp_but_never_exceed_the_delayed_voice_guard_cap() {
     let mut mix = AlignedMix::new(1, 10);
     let frame = |wet, protect_voice| MixFrame {
+        input: [1.0; 2],
         dry: [1.0; 2],
         wet,
         protect_voice,
     };
     mix.process(frame(0.0, false), [0.0; 2]);
-    assert_eq!(mix.process(frame(1.0, false), [0.0; 2]), Some([1.0; 2]));
+    assert_eq!(
+        mix.process(frame(1.0, false), [0.0; 2]),
+        Some(([1.0; 2], [1.0; 2]))
+    );
     for step in 1..=10 {
-        let y = mix.process(frame(1.0, false), [0.0; 2]).unwrap()[0];
+        let y = mix.process(frame(1.0, false), [0.0; 2]).unwrap().0[0];
         assert!((y - (1.0 - step as f32 / 10.0)).abs() < 1e-6);
     }
     mix.process(frame(0.82, true), [0.0; 2]);
-    let protected = mix.process(frame(0.82, true), [0.0; 2]).unwrap()[0];
+    let protected = mix.process(frame(0.82, true), [0.0; 2]).unwrap().0[0];
     assert!((protected - 0.18).abs() < 1e-6);
     mix.process(frame(1.0, false), [0.0; 2]);
     for step in 1..=10 {
-        let y = mix.process(frame(1.0, false), [0.0; 2]).unwrap()[0];
+        let y = mix.process(frame(1.0, false), [0.0; 2]).unwrap().0[0];
         assert!((y - 0.18 * (1.0 - step as f32 / 10.0)).abs() < 1e-6);
     }
 }
@@ -303,6 +312,9 @@ fn reset_discards_old_audio_and_controls_and_all_rt_paths_allocate_nothing() {
                     }
                     let y = control.process_sample(0.2, -0.1);
                     assert!(y.iter().all(|v| v.is_finite() && v.abs() <= 1.0));
+                    if n % 256 == 0 {
+                        let _ = control.take_measurement();
+                    }
                 }
                 control.configure(settings(true));
                 control.reset_state();
@@ -414,4 +426,57 @@ fn invalid_environment_does_not_strengthen_or_discard_an_explicitly_accepted_mix
         assert_eq!(control.frame.wet, before);
         assert!(control.gate_threshold.is_none());
     }
+}
+
+fn noise_samples(count: usize) -> impl Iterator<Item = [f32; 2]> {
+    let mut state = 0x1234_5678u32;
+    (0..count).map(move |_| {
+        let mut next = || {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+        };
+        [next() * 0.05, next() * 0.05]
+    })
+}
+
+#[test]
+fn measurement_reports_lower_energy_after_noise_reduction_on_steady_noise() {
+    let mut control = RtNoiseControl::prepare(48_000, settings(true)).unwrap();
+    control.begin_block(analysis(false));
+    for [l, r] in noise_samples(48_000) {
+        control.process_sample(l, r);
+    }
+    let measured = control
+        .take_measurement()
+        .expect("有効で立ち上がりを終えた");
+    assert!(measured.frames > 40_000, "{measured:?}");
+    assert!(
+        measured.after < measured.before * 0.5,
+        "定常の雑音は下がる: {measured:?}"
+    );
+    // 取り出したら空になる。
+    assert_eq!(control.take_measurement(), None);
+}
+
+#[test]
+fn measurement_is_absent_while_disabled_warming_or_after_reset() {
+    let mut control = RtNoiseControl::prepare(48_000, settings(false)).unwrap();
+    for [l, r] in noise_samples(4_000) {
+        control.process_sample(l, r);
+    }
+    assert_eq!(control.take_measurement(), None);
+
+    let mut control = RtNoiseControl::prepare(48_000, settings(true)).unwrap();
+    control.begin_block(analysis(false));
+    // 遅れを埋めているあいだは数えない。
+    let delay = control.aligned.history.len();
+    for [l, r] in noise_samples(delay) {
+        control.process_sample(l, r);
+    }
+    assert_eq!(control.take_measurement(), None);
+    for [l, r] in noise_samples(4_000) {
+        control.process_sample(l, r);
+    }
+    control.reset_state();
+    assert_eq!(control.take_measurement(), None);
 }

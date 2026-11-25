@@ -1,5 +1,6 @@
 //! 出力callbackの処理。開始・入力callbackの所有と分ける。
 use super::lifecycle::CallbackOwner;
+use super::meter::MeterBlock;
 use super::startup::{
     apply_commands, flush_pending_retire, measure_output_loudness, route_and_meter_input,
     write_device_silence, write_faded_output_frame, CommandContext, PluginBlock, PluginControls,
@@ -83,7 +84,7 @@ pub(super) struct OutputCallback {
     pub(super) post_renderer: Option<CallbackOwner<crate::audio_engine::post_mix::ClientRenderer>>,
     pub(super) post_epoch: u64,
     pub(super) post_previous: Option<(u64, u64, u64)>,
-    pub(super) level_prod: <HeapRb<MeterLevels> as Split>::Prod,
+    pub(super) level_prod: <HeapRb<MeterBlock> as Split>::Prod,
     pub(super) rt_output_routing: crate::ipc::OutputRouting,
     pub(super) is_asio: bool,
     pub(super) monitor_trim: crate::audio_engine::gain_ramp::GainRamp,
@@ -422,6 +423,13 @@ impl OutputCallback {
             &mut self.rt_voice_check,
         );
 
+        // テスト音・往復測定・ボイスチェックの再生中は、マイクの音を後段へ流さない。
+        // そのあいだの段の計測は、配信者の声の加工を表さないので送らない。
+        let mic_flowing = !(self.rt_test_tone.is_active()
+            || measure_hold
+            || measure_action == super::super::latency_measure::OutputAction::Replace
+            || self.rt_voice_check.is_playback_active());
+        let mut stage = MeterBlock::default();
         if self.rt_voice_check.is_playback_active() {
             // 再生中はマイク入力をミュート（処理チェーンは無音で継続）
             for channel in &mut self.planar_buf_a[..channels.min(2)] {
@@ -486,7 +494,14 @@ impl OutputCallback {
                         *sample = control.process_sample(*sample, *sample)[0];
                     }
                 }
+                stage.noise = control.take_measurement().filter(|_| mic_flowing);
             }
+            stage.speech = mic_flowing.then(|| {
+                self.rt_noise_learning
+                    .shared
+                    .speech_detected
+                    .load(Ordering::Relaxed)
+            });
 
             if channels >= 2 {
                 let (left, right) = self.planar_buf_a.split_at_mut(1);
@@ -500,6 +515,7 @@ impl OutputCallback {
                     *sample = self.rt_voice.process([*sample; 2])[0];
                 }
             }
+            stage.voice_gain = self.rt_voice.take_min_gain().filter(|_| mic_flowing);
             if let Some((revision, builtin_revision)) = self.rt_voice.take_completed() {
                 self.live_shared
                     .completed
@@ -550,6 +566,9 @@ impl OutputCallback {
             &mut self.planar_buf_b
         };
         self.rt_comparison.apply(final_buf, channels, frames);
+        if mic_flowing {
+            stage.processed = Some(planar_peak(final_buf, channels, frames));
+        }
 
         if self.rt_capture.is_active() {
             let invalid = self.rt_global_mute
@@ -658,7 +677,7 @@ impl OutputCallback {
                 channels,
             )
         };
-        if self.rt_global_mute {
+        let (input, output) = if self.rt_global_mute {
             // ミュート中もゲインの反映を完了させる。出力は無音のまま。
             for _ in 0..frames {
                 self.rt_output_gain.next();
@@ -666,10 +685,7 @@ impl OutputCallback {
             }
             write_device_silence(data);
             // Zero metering too implies output is silence
-            let _ = self.level_prod.try_push(MeterLevels {
-                input: [in_max_l, in_max_r],
-                output: [0.0, 0.0],
-            });
+            ([in_max_l, in_max_r], [0.0, 0.0])
         } else if measure_action == super::super::latency_measure::OutputAction::Replace {
             // テスト音と同じく gain とピーク保護だけを通し、配信へは送らない。
             data.fill(0.0);
@@ -688,10 +704,7 @@ impl OutputCallback {
                 out_max_l = out_max_l.max(sent[0]);
                 out_max_r = out_max_r.max(sent[1]);
             }
-            let _ = self.level_prod.try_push(MeterLevels {
-                input: [0.0, 0.0],
-                output: [out_max_l, out_max_r],
-            });
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else if self.rt_test_tone.is_active() {
             data.fill(0.0);
             let mut out_max_l = 0.0f32;
@@ -714,10 +727,7 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            let _ = self.level_prod.try_push(MeterLevels {
-                input: [0.0, 0.0],
-                output: [out_max_l, out_max_r],
-            });
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else if self.rt_voice_check.is_playback_active() {
             data.fill(0.0);
             let mut out_max_l = 0.0f32;
@@ -740,10 +750,7 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            let _ = self.level_prod.try_push(MeterLevels {
-                input: [0.0, 0.0],
-                output: [out_max_l, out_max_r],
-            });
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else {
             // Initialize output with silence
             data.fill(0.0);
@@ -797,11 +804,15 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            let _ = self.level_prod.try_push(MeterLevels {
-                input: [in_max_l, in_max_r],
-                output: [out_max_l, out_max_r],
-            });
-        }
+            ([in_max_l, in_max_r], [out_max_l, out_max_r])
+        };
+        // 段の計測は読むだけで、出力のサンプルを変えない。満杯なら捨て、待たない。
+        let _ = self.level_prod.try_push(MeterBlock {
+            input,
+            output,
+            peak_gain: self.rt_peak.block_gain().filter(|_| mic_flowing),
+            ..stage
+        });
         self.rt_peak.report(&self.peak_shared, 0);
         measure_output_loudness(
             data,
@@ -852,6 +863,20 @@ impl OutputCallback {
     }
 }
 
+/// 出力音量を掛ける前の加工後のピーク。モノラルは左の値を右にも入れる。
+fn planar_peak(buffers: &[Vec<f32>], channels: usize, frames: usize) -> [f32; 2] {
+    let peak = |ch: usize| {
+        buffers.get(ch).map_or(0.0, |buffer| {
+            buffer
+                .iter()
+                .take(frames)
+                .fold(0.0f32, |peak, sample| peak.max(sample.abs()))
+        })
+    };
+    let left = peak(0);
+    [left, if channels >= 2 { peak(1) } else { left }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -875,7 +900,7 @@ mod tests {
         });
         let (_, consumer) = HeapRb::<AudioThreadMessage>::new(32).split();
         let (retire_prod, _) = HeapRb::<DisposedProcessor>::new(32).split();
-        let (level_prod, _) = HeapRb::<MeterLevels>::new(32).split();
+        let (level_prod, _) = HeapRb::<MeterBlock>::new(32).split();
         let (loudness_prod, _) = HeapRb::<LoudnessReading>::new(64).split();
         let (capture_tx, _) = auto_gain::capture_queue();
         let diagnostics = QueueDiagnostics::new_input_queue("t".into(), RATE, RATE, 2, 2, 4096);

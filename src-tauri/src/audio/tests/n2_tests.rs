@@ -82,6 +82,7 @@ fn all_events() -> Vec<EngineEvent> {
             levels: crate::ipc::MeterLevels {
                 input: [0.0; 2],
                 output: [0.0; 2],
+                ..Default::default()
             },
             stream_generation: Some(1),
         },

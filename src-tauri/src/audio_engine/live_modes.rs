@@ -456,6 +456,12 @@ impl Voice {
         };
         self.deesser.process(voiced)
     }
+    /// 取り出すまでにコンプが掛けた最小ゲイン。声を整えるが働いていないときは無い。
+    fn take_min_gain(&mut self) -> Option<f32> {
+        let legacy = self.legacy.take_min_gain();
+        let singing = self.singing.take_min_gain();
+        (self.active || self.singing.active()).then_some(legacy.min(singing))
+    }
 }
 struct Transition {
     voice: Voice,
@@ -468,6 +474,14 @@ pub(crate) struct RtVoice {
     current: Voice,
     transition: Option<Transition>,
     done: Option<(u64, u64)>,
+    /// 切り替えで手放した側が、取り出す前に掛けていた最小ゲイン。
+    retired_min_gain: Option<f32>,
+}
+fn min_gain(a: Option<f32>, b: Option<f32>) -> Option<f32> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
 }
 impl RtVoice {
     pub(crate) fn new(current: Voice) -> Self {
@@ -475,6 +489,7 @@ impl RtVoice {
             current,
             transition: None,
             done: None,
+            retired_min_gain: None,
         }
     }
     pub(crate) fn update_normal(
@@ -485,7 +500,10 @@ impl RtVoice {
         coefficients: singing::Coefficients,
         deesser: super::deesser::Coefficients,
     ) {
-        self.transition = None;
+        if let Some(mut transition) = self.transition.take() {
+            self.retired_min_gain =
+                min_gain(self.retired_min_gain, transition.voice.take_min_gain());
+        }
         self.done = None;
         self.current
             .update(active, preset, amount, coefficients, deesser);
@@ -520,9 +538,19 @@ impl RtVoice {
         if transition.frame == transition.frames {
             let transition = self.transition.take().expect("実行中の遷移");
             self.done = Some((transition.revision, transition.builtin_revision));
-            self.current = transition.voice;
+            let mut replaced = std::mem::replace(&mut self.current, transition.voice);
+            self.retired_min_gain = min_gain(self.retired_min_gain, replaced.take_min_gain());
         }
         output
+    }
+    /// 切り替えのあいだは新旧を混ぜて出すので、両方の最小を返す。
+    pub(crate) fn take_min_gain(&mut self) -> Option<f32> {
+        let current = self.current.take_min_gain();
+        let next = self
+            .transition
+            .as_mut()
+            .and_then(|transition| transition.voice.take_min_gain());
+        min_gain(min_gain(current, next), self.retired_min_gain.take())
     }
     pub(crate) fn take_completed(&mut self) -> Option<(u64, u64)> {
         self.done.take()
@@ -619,6 +647,29 @@ pub(crate) fn guard(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn min_gain_of_a_voice_replaced_mid_period_is_kept_until_taken() {
+        let loud = Config {
+            active: true,
+            amount: 1.0,
+            ..Default::default()
+        };
+        let mut voice = RtVoice::new(Voice::prepare(&loud, 48_000).unwrap());
+        // 閾値を超える声で、今の側のコンプが下げる。
+        for i in 0..2_400 {
+            let x = (i as f32 * 0.05).sin() * 0.9;
+            voice.process([x, x]);
+        }
+        voice.start(Voice::prepare(&Config::default(), 48_000).unwrap(), 1, 1, 4);
+        for _ in 0..8 {
+            voice.process([0.0; 2]);
+        }
+        assert!(voice.take_completed().is_some(), "切り替えを終えた");
+        // 手放した側の値は、取り出すまで残る。新しい側は OFF なので、そのあとは無い。
+        let gain = voice.take_min_gain().expect("手放した側が下げていた");
+        assert!(gain < 1.0, "{gain}");
+        assert_eq!(voice.take_min_gain(), None);
+    }
     #[test]
     fn tail482_deesser_normal_disable_enable_discards_old_state() {
         use crate::audio_engine::deesser::{Coefficients, DeEsserParams};
