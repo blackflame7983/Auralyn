@@ -28,6 +28,11 @@ modifications for ASIO stream-build failure cleanup. Its original license and
 upstream provenance are retained in `third_party/cpal-0.17.3`; the local changes
 are described in that directory's `PATCHES.md`.
 
+The agent skills in `.claude/skills/gpui-kit` and `.claude/skills/gpui-kit-design-guides`
+are copied unmodified from GPUI Kit v0.11.0 under Apache-2.0. Its license is
+retained in `.claude/skills/LICENSE-GPUI-KIT-APACHE`; provenance is recorded in
+`.claude/skills/PROVENANCE.md`.
+
 ## Trademark notices
 
 ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
