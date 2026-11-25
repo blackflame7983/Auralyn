@@ -2,6 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 const host = process.env.TAURI_DEV_HOST;
+const locales = path.resolve(__dirname, "src-tauri/crates/auralyn-core/locales");
+const isWithin = (parent: string, child: string) => child === parent || child.startsWith(parent + path.sep);
+// src-tauri は見ない。画面の文言（auralyn-core の locales）と、そこへ至るフォルダーだけは見る。
+const ignoredByWatcher = (file: string) => {
+  const target = path.resolve(file);
+  if (!isWithin(path.resolve(__dirname, "src-tauri"), target)) return false;
+  return !isWithin(target, locales) && !isWithin(locales, target);
+};
 
 // https://vite.dev/config/
 export default defineConfig(async () => {
@@ -58,8 +66,7 @@ export default defineConfig(async () => {
         }
         : undefined,
       watch: {
-        // 3. tell Vite to ignore watching `src-tauri`
-        ignored: ["**/src-tauri/**"],
+        ignored: ignoredByWatcher,
       },
     },
   }

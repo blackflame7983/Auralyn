@@ -10,41 +10,27 @@ function isJaSeparator(char) {
   return JA_BRACKETS.has(char) || /\s/u.test(char);
 }
 
-function parseMessages(source) {
-  const lines = source.split(/\r?\n/);
+function readMessages(texts) {
   const messages = { ja: {}, en: {} };
   const errors = [];
-  const jaStart = lines.findIndex(line => /^const ja = \{\s*$/.test(line));
-  const enStart = lines.findIndex(line => /^const en\b.*\{\s*$/.test(line));
-  if (jaStart < 0) errors.push('読めない行: ja のオブジェクトがありません');
-  if (enStart < 0) errors.push('読めない行: en のオブジェクトがありません');
-  if (jaStart >= 0) errors.push(...readLocale(lines, jaStart + 1, 'ja', messages.ja).errors);
-  if (enStart >= 0) errors.push(...readLocale(lines, enStart + 1, 'en', messages.en).errors);
-  return { messages, errors };
-}
-
-function readLocale(lines, start, locale, messages) {
-  const errors = [];
-  for (let index = start; index < lines.length; index += 1) {
-    const line = lines[index];
-    const lineNo = index + 1;
-    if (/^\s*\}\s*(?:as const)?;?\s*$/.test(line)) return { errors };
-    if (/^\s*$/.test(line) || /^\s*,\s*$/.test(line)) continue;
-    const matched = line.match(/^\s*"((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"\s*,?\s*$/);
-    if (!matched) {
-      errors.push(`読めない行: ${locale} ${lineNo}: ${line.trim()}`);
+  for (const locale of ['ja', 'en']) {
+    let parsed;
+    try {
+      parsed = JSON.parse(texts[locale]);
+    } catch (error) {
+      errors.push(`読めない文言: ${locale}: ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
-    try {
-      const key = JSON.parse(`"${matched[1]}"`);
-      const value = JSON.parse(`"${matched[2]}"`);
-      messages[key] = value;
-    } catch {
-      errors.push(`読めない行: ${locale} ${lineNo}: ${line.trim()}`);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      errors.push(`読めない文言: ${locale} がキーと文字列の表ではありません`);
+      continue;
+    }
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string') messages[locale][key] = value;
+      else errors.push(`読めない文言: ${locale} ${key} が文字列ではありません`);
     }
   }
-  errors.push(`読めない行: ${locale} のオブジェクトが閉じていません`);
-  return { errors };
+  return { messages, errors };
 }
 
 function glossaryUseNames(design) {
@@ -233,8 +219,8 @@ function findUseMismatches(terms, uses) {
   return errors;
 }
 
-function checkUiTerms({ messagesSource, designSource, termsConfig }) {
-  const parsed = parseMessages(messagesSource);
+function checkUiTerms({ messagesJson, designSource, termsConfig }) {
+  const parsed = readMessages(messagesJson);
   const glossary = glossaryUseNames(designSource);
   const configErrors = validateTermsConfig(termsConfig);
   const errors = [...parsed.errors, ...glossary.errors, ...configErrors];
@@ -248,6 +234,15 @@ function checkUiTerms({ messagesSource, designSource, termsConfig }) {
   return errors;
 }
 
+const LOCALES_DIR = path.join(ROOT, 'src-tauri', 'crates', 'auralyn-core', 'locales');
+
+function readMessageFiles() {
+  return {
+    ja: fs.readFileSync(path.join(LOCALES_DIR, 'ja.json'), 'utf8'),
+    en: fs.readFileSync(path.join(LOCALES_DIR, 'en.json'), 'utf8'),
+  };
+}
+
 function runUiTermsCheck() {
   let termsConfig;
   try {
@@ -256,9 +251,9 @@ function runUiTermsCheck() {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`用語定義を読めません: ${message}`);
   }
-  const messagesSource = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'messages.ts'), 'utf8');
+  const messagesJson = readMessageFiles();
   const designSource = fs.readFileSync(path.join(ROOT, 'docs', 'DESIGN.md'), 'utf8');
-  const errors = checkUiTerms({ messagesSource, designSource, termsConfig });
+  const errors = checkUiTerms({ messagesJson, designSource, termsConfig });
   if (errors.length > 0) {
     const failure = new Error(`UI用語の検査に失敗しました (${errors.length}件)`);
     failure.errors = errors;
@@ -281,7 +276,8 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseMessages,
+  readMessages,
+  readMessageFiles,
   glossaryUseNames,
   validateTermsConfig,
   findAvoidViolations,

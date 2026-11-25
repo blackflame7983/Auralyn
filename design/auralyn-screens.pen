@@ -62869,7 +62869,7 @@
           "fill": "$muted-foreground",
           "textGrowth": "fixed-width",
           "width": "fill_container",
-          "content": "1. ①の画面をここへ複製し「#Issue番号 対象 案A」と名付ける（①は取り込み直しで上書きされるため直接編集しない）。\n2. 変える部分は ② Components のインスタンスに置き換えるか、変数（$primary など）で色を変える。テーマは frame の theme（dark / light / gaming）で切り替えて確認する。\n3. 案A / 案B を並べて決めたら、コード（index.css・コンポーネント）に実装し、?mock= で①を取り込み直して見比べる。\n4. 文言の正本は src/i18n/messages.ts。ここでの文字の変更は検討用で、コードへ反映して初めて確定する。",
+          "content": "1. ①の画面をここへ複製し「#Issue番号 対象 案A」と名付ける（①は取り込み直しで上書きされるため直接編集しない）。\n2. 変える部分は ② Components のインスタンスに置き換えるか、変数（$primary など）で色を変える。テーマは frame の theme（dark / light / gaming）で切り替えて確認する。\n3. 案A / 案B を並べて決めたら、コード（index.css・コンポーネント）に実装し、?mock= で①を取り込み直して見比べる。\n4. 文言の正本は src-tauri/crates/auralyn-core/locales/{ja,en}.json。ここでの文字の変更は検討用で、コードへ反映して初めて確定する。",
           "lineHeight": 1.6,
           "fontFamily": "Inter",
           "fontSize": 14,

@@ -651,10 +651,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "auralyn-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "auralyn-gpui-proto"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "auralyn-core",
  "env_logger",
  "flume 0.11.1",
  "global-hotkey 0.7.0",
@@ -10229,6 +10238,7 @@ name = "vst-host"
 version = "1.1.0"
 dependencies = [
  "anyhow",
+ "auralyn-core",
  "base64 0.21.7",
  "cpal",
  "env_logger",
