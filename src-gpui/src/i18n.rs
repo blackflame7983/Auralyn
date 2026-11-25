@@ -1,4 +1,4 @@
-//! 試作の文言。正本は `src/i18n/messages.ts`。試作で使う分だけを写す。
+//! 画面の文言。正本は `src/i18n/messages.ts`。使う分だけを写す（`auralyn-core` の文言への切り替えは別の段階）。
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
@@ -101,8 +101,8 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, StateSilent) => "Silent",
         (Lang::Ja, StateActive) => "受信中",
         (Lang::En, StateActive) => "Receiving",
-        (Lang::Ja, Checks) => "試作の確認用",
-        (Lang::En, Checks) => "Prototype checks",
+        (Lang::Ja, Checks) => "確認用",
+        (Lang::En, Checks) => "Checks",
         (Lang::Ja, ImeField) => "日本語入力の確認",
         (Lang::En, ImeField) => "IME check",
         (Lang::Ja, ImePlaceholder) => "ここに日本語を入力",
@@ -113,8 +113,8 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, Language) => "日本語",
         (Lang::Ja, NotStarted) => "音声を開始できません",
         (Lang::En, NotStarted) => "Could not start audio",
-        (Lang::Ja, TrayShow) => "Auralyn 試作を表示",
-        (Lang::En, TrayShow) => "Show Auralyn prototype",
+        (Lang::Ja, TrayShow) => "Auralyn を表示",
+        (Lang::En, TrayShow) => "Show Auralyn",
         (Lang::Ja, TrayQuit) => "終了",
         (Lang::En, TrayQuit) => "Quit",
         (Lang::Ja, HotkeyFailed) => "Alt+M を登録できません（Auralyn が起動中かもしれません）",

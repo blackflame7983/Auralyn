@@ -1,8 +1,8 @@
 # GPUI の試作：右の列の合否判定
 
-`audio-session-controller.md` 13.2（J-11）の分岐点のための試作。main は Tauri の構成のまま保ち、この試作は別のブランチだけに置く。
+`audio-session-controller.md` 13.2（J-11）の分岐点のための試作の記録。判定のあと、試作は `src-gpui/`（GPUI 版の本実装の土台）として main に入れた（2026-11-25、[decisions.md](../gpui/decisions.md)）。下の動かし方と判定は試作の時点のもの。
 
-- 試作：`prototypes/gpui-safety-column/`（GPUI Kit 0.11：`gpui-pre` 0.3.14 と `gpui-component` 0.11）
+- 試作：当時の `prototypes/gpui-safety-column/`（今の `src-gpui/`）（GPUI Kit 0.11：`gpui-pre` 0.3.14 と `gpui-component` 0.11）
 - 範囲：右の列（緊急ミュート、入力メーターとマイク音量、出力のピーク・一言・出力音量、VSTを外して比較）と、実エンジンにつながるメーター。
 - 実エンジンとのつなぎ：本体の `AudioHost` をそのまま使う。通知は中核 API（PR #864）の `AudioHost::set_event_sink` に `EventSink` を渡して受ける。名前・本文・順序は Tauri と同じ。試作の当初は独自の `set_event_listener` を足していたが、#864 の取り込みで置き換えた。
 - 試作で行わないこと：プロファイルの復元、VST の列の復元、入力の元（アプリの音声）の復元、マイク音量・出力音量の保存。音量は 100% から始まる。
@@ -12,7 +12,7 @@
 ```powershell
 cd src-tauri
 cargo build --bin audio_engine
-cd ..\prototypes\gpui-safety-column
+cd ..\src-gpui
 cargo run -- --plugin "C:\Program Files\Common Files\VST3\<確認に使うVST>.vst3"
 ```
 

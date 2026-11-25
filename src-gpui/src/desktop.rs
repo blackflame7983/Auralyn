@@ -115,7 +115,7 @@ mod imp {
         }
     }
 
-    /// オーロラの緑から青緑の丸。試作なので画像ファイルを持たない。
+    /// オーロラの緑から青緑の丸。アイコンの画像ファイルは、配布の形を決めるときに用意する。
     fn icon_rgba() -> Vec<u8> {
         let mut rgba = Vec::with_capacity(32 * 32 * 4);
         for y in 0..32 {
@@ -139,7 +139,7 @@ mod imp {
 mod imp {
     use super::*;
 
-    /// Windows 以外では作らない（試作の対象は Windows だけ）。
+    /// Windows 以外では作らない（対象は Windows だけ）。
     pub struct Desktop {
         pub hotkey_error: Option<String>,
         pub tray_error: Option<String>,

@@ -16,7 +16,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [".", "crates/auralyn-core"]
+members = [".", "crates/auralyn-core", "crates/auralyn-ui-model"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary

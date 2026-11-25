@@ -14,9 +14,9 @@
 
 - 基準：GPUI Kit 0.11.0（`gpui-pre` 0.3.14、`gpui-component` 0.11.0）、Windows 10/11。ほかの版や Zed 本体の `gpui` の API を書かない。API は記憶や例ではなく、この版の依存クレートのソースで確かめる。
 - 分からないことは推測で実装しない。未決の問いとして挙げる。
-- 書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。試作で分かったことはここへ足す。
-- 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `prototypes/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
-- 試作は main に入れない。合否は [gpui-prototype-checklist](docs/plans/gpui-prototype-checklist.md) に証拠つきで書き、クラウドでの型検査の成功を実機の合格にしない。
+- 画面は `src-gpui/`（`src-tauri` とは別のワークスペース）。書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。作って分かったことはここへ足す。
+- 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `src-tauri/crates/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
+- GPUI 版の確認は Windows の実機で行う。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は GPUI 版が置き換えるまで main で動くまま保つ。
 
 ## 作業の進め方
 

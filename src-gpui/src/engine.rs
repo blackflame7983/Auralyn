@@ -81,7 +81,7 @@ impl Engine {
         let listener_levels = levels.clone();
         let listener_notices = notice_tx.clone();
         std::thread::Builder::new()
-            .name("gpui-proto-control".into())
+            .name("gpui-control".into())
             .spawn(move || {
                 let mut host = AudioHost::new(options.config_dir);
                 host.set_event_sink(Arc::new(Sink {
@@ -206,7 +206,7 @@ impl Control {
             }
         };
         if config.input_source.is_some() {
-            log::warn!("試作は入力の元（アプリの音声など）を復元しない。機器の入力で開始する");
+            log::warn!("入力の元（アプリの音声など）はまだ復元しない。機器の入力で開始する");
         }
         let result = self.host.start_with_device_ids(
             Some(config.host.clone()),

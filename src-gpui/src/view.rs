@@ -1,6 +1,6 @@
 //! 右の列（本番中の操作）。DESIGN.md 10.3・10.6 の並びと規則に合わせる。
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
-//! VSTを外して比較。その下に、試作の合否判定のための欄（IME・VSTのエディタ・トレイとホットキーの状態）を置く。
+//! VSTを外して比較。その下に、確認用の欄（IME・VSTのエディタ・言語・トレイとホットキーの状態）を置く。この欄は画面の外枠を作る段階で設定などへ移す。
 
 use std::time::{Duration, Instant};
 
@@ -223,7 +223,7 @@ impl SafetyColumn {
             }
             changed = true;
         }
-        // 10.6 は「窓が隠れている間は止める」。GPUI 0.3.14 には窓が見えているかを知る API がないので、試作では止めない。
+        // 10.6 は「窓が隠れている間は止める」。GPUI 0.3.14 には窓が見えているかを知る API がないので、まだ止めない。
         {
             let slot = *self.engine.levels.lock().unwrap_or_else(|e| e.into_inner());
             if slot.seq != self.level_seq {
@@ -545,10 +545,10 @@ impl Render for SafetyColumn {
             .child(self.render_input())
             .child(self.render_output(cx))
             .child(self.render_compare(cx))
-            // 本番中の操作は動かさず、試作の確認用の欄だけを、残りの高さの中でスクロールさせる。
+            // 本番中の操作は動かさず、確認用の欄だけを、残りの高さの中でスクロールさせる。
             .child(
                 div()
-                    .id("prototype-checks")
+                    .id("checks")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()

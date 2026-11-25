@@ -1,6 +1,6 @@
-//! Auralyn の右の列（本番中の操作）を GPUI で試作する。docs/plans/audio-session-controller.md 13.2（J-11）。
+//! Auralyn の GPUI 版。今は右の列（本番中の操作）だけを持つ。決定と知見は docs/gpui/。
 //!
-//! 使い方：`auralyn-gpui-proto [--plugin <VST3のパス>] [--lang en] [--config-dir <フォルダ>]`
+//! 使い方：`auralyn-gpui [--plugin <VST3のパス>] [--lang en] [--config-dir <フォルダ>]`
 //! 既定の設定のフォルダは、Tauri 版と同じ `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -73,7 +73,7 @@ fn main() {
                 ))),
                 window_min_size: Some(size(px(280.), px(560.))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Auralyn GPUI 試作".into()),
+                    title: Some("Auralyn".into()),
                     ..Default::default()
                 }),
                 ..Default::default()

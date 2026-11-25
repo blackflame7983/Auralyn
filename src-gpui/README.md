@@ -1,9 +1,9 @@
-# GPUI の試作：右の列
+# Auralyn の GPUI 版
 
-Auralyn の右の列（本番中の操作）を GPUI Kit で作り、実エンジンのメーターにつなげた試作。main へは入れない。
+Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の操作）だけで、実エンジンのメーターにつながる。右の列の試作から始めた。
 
-- 目的と判定の表：[docs/plans/gpui-prototype-checklist.md](../../docs/plans/gpui-prototype-checklist.md)
-- 方針：[docs/plans/audio-session-controller.md](../../docs/plans/audio-session-controller.md) 13.2（J-11）
+- 決定と知見：[docs/gpui/decisions.md](../docs/gpui/decisions.md)、[docs/gpui/knowledge.md](../docs/gpui/knowledge.md)
+- 試作の判定の記録：[docs/plans/gpui-prototype-checklist.md](../docs/plans/gpui-prototype-checklist.md)
 
 ## 構成
 
@@ -13,16 +13,17 @@ Auralyn の右の列（本番中の操作）を GPUI Kit で作り、実エン�
 | `src/view.rs` | 右の列の画面。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |
 | `src/i18n.rs` | 日英の文言（`src/i18n/messages.ts` から写した分だけ） |
+| `src/main.rs` | 引数を読み、エンジンと窓を起動する |
 
-メーターの読み（平滑化・2秒のピーク保持・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）は、GPUI に依存しない [`../auralyn-ui-model`](../auralyn-ui-model) に置く。`useMeterLevels.ts` と `outputVerdict.ts` の写し。
+メーターの読み（平滑化・2秒のピーク保持・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）は、GPUI に依存しない [`src-tauri/crates/auralyn-ui-model`](../src-tauri/crates/auralyn-ui-model) に置く。`useMeterLevels.ts` と `outputVerdict.ts` の写し。
 
 ## 動かし方（Windows）
 
 ```powershell
 cd src-tauri
 cargo build --bin audio_engine
-cd ..\prototypes\gpui-safety-column
-cargo test --manifest-path ..\auralyn-ui-model\Cargo.toml
+cargo test -p auralyn-ui-model
+cd ..\src-gpui
 cargo test
 cargo run -- --plugin "<確認に使うVST>.vst3"
 ```
