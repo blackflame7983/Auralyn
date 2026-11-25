@@ -9,7 +9,7 @@ export function rustSuppressions(source) {
     return [...source.matchAll(/#\s*!?\[[\s\S]*?\]/g)].filter(match => /\b(?:allow|expect)\s*\(/.test(match[0]));
 }
 export function rustFindings() {
-    const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'src-tauri/src'], { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.rs'));
+    const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'src-tauri/src', 'src-tauri/crates'], { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.rs'));
     const result = [];
     for (const file of [...new Set(files)]) {
         if (!fs.existsSync(path.join(root, file))) continue;
