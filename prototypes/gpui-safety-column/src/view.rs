@@ -130,6 +130,17 @@ impl SafetyColumn {
         });
         let now = Instant::now();
         let desktop = Desktop::new(lang);
+        if let Some(error) = &desktop.tray_error {
+            log::warn!("トレイを作れません: {error}");
+        }
+        if let Some(error) = &desktop.hotkey_error {
+            log::warn!("Alt+M を登録できません: {error}");
+        }
+        log::info!(
+            "トレイ: {} / Alt+M: {}",
+            if desktop.tray_error.is_none() { "登録" } else { "失敗" },
+            if desktop.hotkey_error.is_none() { "登録" } else { "失敗" }
+        );
         let message = desktop
             .hotkey_error
             .as_ref()

@@ -18,6 +18,8 @@ cargo run -- --plugin "C:\Program Files\Common Files\VST3\<確認に使うVST>.v
 
 - ビルドは `src-tauri/target` を共有する（`.cargo/config.toml`）。`audio_engine.exe` と同じ場所に試作の実行ファイルができるので、親が子を見つけられる。
 - Tauri 版の Auralyn は閉じてから起動する（同じ機器と Alt+M を取り合うため）。
+- `git worktree` で別の作業ツリーを作ったときは、ignored の `src-tauri\bin` に sidecar（`audio_engine-x86_64-pc-windows-msvc.exe` など）が無く、Tauri の build script が止まる。元の作業ツリーからコピーする。
+- ビルド領域は大きい。GPUI 一式（debug と release）で `src-tauri/target` が約 20 GB 増えた（2026-11-25 の実測）。
 - 設定は Tauri 版と同じフォルダの `last_audio_config.json` を読む。試作の開始で、このファイルが同じ内容で書き直される。
 
 ## 判定の表
@@ -26,7 +28,7 @@ cargo run -- --plugin "C:\Program Files\Common Files\VST3\<確認に使うVST>.v
 
 | # | 項目 | 確かめ方 | 合格の条件 | 判定 | 証拠・メモ |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | 実エンジンのメーター | 保存した設定で起動し、マイクに声を入れる。停止・無音・受信待ちを作る | 入力のバーが声に追従する。出力のピークが2秒保持で下がる。止めると「音声停止中」、更新が止まると「レベル未受信」 | 未判定 | |
+| 1 | 実エンジンのメーター | 保存した設定で起動し、マイクに声を入れる。停止・無音・受信待ちを作る | 入力のバーが声に追従する。出力のピークが2秒保持で下がる。止めると「音声停止中」、更新が止まると「レベル未受信」 | 未判定 | 2026-11-25：debug 版で `last_audio_config.json`（WASAPI、48000Hz、512）から子を起動し「Audio Engine Started」まで成功。15秒でパニックなし、終了で子も終わった。画面のメーターは未確認 |
 | 2 | 緊急ミュート | ボタン、Alt+M、トレイのメニューの3通りで切り替える | 3通りとも即座に無音になり、表示と札がそろう | 未判定 | |
 | 3 | VSTを外して比較 | `--plugin` で VST を1つ読んで切り替える | 聴感で VST の効果が消え、戻すと戻る | 未判定 | |
 | 4 | 出力音量・マイク音量 | スライダーをドラッグ、キーボードの矢印で動かす | 音量が追従する。ドラッグ中に詰まらない | 未判定 | |
@@ -37,8 +39,8 @@ cargo run -- --plugin "C:\Program Files\Common Files\VST3\<確認に使うVST>.v
 | 9 | トレイとホットキー | トレイのアイコン・メニュー、Alt+M。Tauri 版の起動中も試す | アイコンとメニューが出て動く。登録の失敗が画面に出る | 未判定 | tray-icon と global-hotkey を GPUI の主スレッドで使う |
 | 10 | 日英の切り替え | 言語のボタンで切り替える | 画面とトレイのメニューが即座に切り替わる。英語で切れない | 未判定 | |
 | 11 | 狭い窓 | 280×560 まで縮める | 右の列の全操作が見える | 未判定 | |
-| 12 | 配布 | release でビルドし、別のフォルダに `audio_engine.exe` と並べて起動する。実行ファイルの大きさを測る | WebView2 なしで起動する。インストーラーの作り方の見込みが立つ | 未判定 | release は HLSL の変換に `fxc.exe`（Windows SDK）が要る |
-| 13 | 試験の手段 | 単体試験（`cargo test`）、GPUI の試験の仕組みの確認 | 今のブラウザ試験の代わりになる手段の見込みが立つ | 未判定 | |
+| 12 | 配布 | release でビルドし、別のフォルダに `audio_engine.exe` と並べて起動する。実行ファイルの大きさを測る | WebView2 なしで起動する。インストーラーの作り方の見込みが立つ | 未判定 | 2026-11-25：release のビルドは成功（4分）。`fxc.exe` は PATH になくても Windows SDK 10.0.26100.0 から見つかった。`auralyn-gpui-proto.exe` は release 30.2 MB、debug 61.5 MB。別フォルダでの起動とインストーラーは未確認 |
+| 13 | 試験の手段 | 単体試験（`cargo test`）、GPUI の試験の仕組みの確認 | 今のブラウザ試験の代わりになる手段の見込みが立つ | 未判定 | 2026-11-25：試作の `cargo test` 12件（meter 7・engine 5）と、本体の `audio::emit` 3件が Windows で通った。画面の試験（GPUI の `test-support`）は未着手 |
 
 ## 結論
 
