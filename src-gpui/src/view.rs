@@ -8,11 +8,13 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
+use crate::connect::ConnectPage;
 use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::home;
@@ -48,6 +50,7 @@ pub struct MainView {
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
     ime: Entity<InputState>,
+    connect: ConnectPage,
     _ticker: Task<()>,
 }
 
@@ -81,6 +84,16 @@ impl MainView {
         .detach();
         let ime =
             cx.new(|cx| InputState::new(window, cx).placeholder(t(lang, Key::ImePlaceholder)));
+        let connect = ConnectPage::new(window, cx);
+        cx.subscribe_in(
+            &connect.host,
+            window,
+            |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
+                this.connect.fill(window, cx);
+                cx.notify();
+            },
+        )
+        .detach();
         let ticker = cx.spawn_in(window, async move |this, cx| loop {
             cx.background_executor().timer(FRAME).await;
             if this
@@ -135,6 +148,7 @@ impl MainView {
             input_gain,
             output_gain,
             ime,
+            connect,
             _ticker: ticker,
         }
     }
@@ -142,7 +156,7 @@ impl MainView {
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut changed = false;
         for notice in self.engine.notices.try_iter().collect::<Vec<_>>() {
-            self.apply(notice);
+            self.apply(notice, window, cx);
             changed = true;
         }
         for action in self.desktop.poll() {
@@ -182,7 +196,7 @@ impl MainView {
         }
     }
 
-    fn apply(&mut self, notice: Notice) {
+    fn apply(&mut self, notice: Notice, window: &mut Window, cx: &mut App) {
         match notice {
             Notice::Started { input, output } => {
                 self.input_name = input;
@@ -204,6 +218,9 @@ impl MainView {
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::PluginLoaded(name) => self.plugin = Some(name),
+            Notice::Devices { devices, saved } => {
+                self.connect.set_devices(devices, saved, window, cx)
+            }
             Notice::Failed { command, message } => {
                 // 楽観的に変えた表示を、通知で確定した状態へ戻す。ミュートと比較は通知で決まる。
                 self.message = Some(format!("{command}: {message}"));
@@ -229,6 +246,27 @@ impl MainView {
     fn fail(&mut self, event: SessionEvent, key: &'static str, detail: String) {
         self.advance(event);
         self.message = Some(format!("{} {detail}", core(self.lang, key)));
+    }
+
+    fn open(&mut self, page: Page) {
+        self.page = page;
+        if page == Page::Connect && !self.connect.requested {
+            self.connect.requested = true;
+            self.engine.send(Command::ListDevices);
+        }
+    }
+
+    /// 接続の画面で選んだ機器で開始する。押せるのは止まっているときだけ。
+    fn start_chosen(&mut self, cx: &App) {
+        let Some((input, output)) = self.connect.chosen(cx) else {
+            return;
+        };
+        if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
+            return;
+        }
+        self.advance(SessionEvent::StartRequested);
+        self.message = None;
+        self.engine.send(Command::StartWith { input, output });
     }
 
     /// 帯のボタン。押せるのは結果を待っていないときだけ（`Phase::busy`）。
@@ -500,7 +538,7 @@ impl Render for MainView {
             let entity = entity.clone();
             move |page, _, cx| {
                 entity.update(cx, |this, cx| {
-                    this.page = page;
+                    this.open(page);
                     cx.notify();
                 })
             }
@@ -509,11 +547,14 @@ impl Render for MainView {
             (true, Some(input), Some(output)) => Some(format!("{input} → {output}").into()),
             _ => None,
         };
-        let band = shell::band(self.phase, route, lang, move |_, cx| {
-            entity.update(cx, |this, cx| {
-                this.press_band();
-                cx.notify();
-            })
+        let band = shell::band(self.phase, route, lang, {
+            let entity = entity.clone();
+            move |_, cx| {
+                entity.update(cx, |this, cx| {
+                    this.press_band();
+                    cx.notify();
+                })
+            }
         });
         div()
             .size_full()
@@ -548,6 +589,17 @@ impl Render for MainView {
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
                                 Page::Settings => this.child(self.render_checks(cx)),
+                                Page::Connect => this.child(self.connect.render(
+                                    self.phase,
+                                    lang,
+                                    cx,
+                                    move |_, cx| {
+                                        entity.update(cx, |this, cx| {
+                                            this.start_chosen(cx);
+                                            cx.notify();
+                                        })
+                                    },
+                                )),
                                 page => this.justify_center().child(shell::not_yet(page, lang)),
                             }),
                     ),

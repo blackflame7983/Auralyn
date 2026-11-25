@@ -10,13 +10,21 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use auralyn_core::event::{EmitError, Event, EventSink};
-use vst_host_lib::audio::AudioHost;
+use auralyn_ui_model::connect::{Device, Saved};
+use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::vst_host::scanner;
 
 #[derive(Debug)]
 pub enum Command {
     /// 保存した入出力の設定で開始する。
     Start,
+    /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
+    StartWith {
+        input: Device,
+        output: Device,
+    },
+    /// 機器の一覧と保存した設定を読む。
+    ListDevices,
     Stop,
     SetMute(bool),
     SetBypass(bool),
@@ -59,6 +67,10 @@ pub enum Notice {
     Unconfigured,
     /// 停止に失敗した。音声は流れたまま。
     StopFailed(String),
+    Devices {
+        devices: Vec<Device>,
+        saved: Option<Saved>,
+    },
 }
 
 /// 最新のメーターの値。`seq` が進んだときだけ画面が読む。
@@ -231,6 +243,29 @@ impl Control {
         if config.input_source.is_some() {
             log::warn!("入力の元（アプリの音声など）はまだ復元しない。機器の入力で開始する");
         }
+        self.start(config);
+    }
+
+    /// 選んだ機器で開始する。周波数とバッファの大きさは、同じ接続方式なら保存した値を使う。
+    /// チャンネルの割り当ては、同じ機器のときだけ引き継ぐ。
+    fn start_with(&mut self, input: &Device, output: &Device) {
+        let saved = self.host.read_saved_audio_config().ok().flatten();
+        let same_host = saved.as_ref().filter(|s| s.host == input.host);
+        let same_devices = same_host.filter(|s| s.input_id == input.id && s.output_id == output.id);
+        self.start(ActiveAudioConfig {
+            input_source: None,
+            host: input.host.clone(),
+            input: Some(input.name.clone()),
+            output: Some(output.name.clone()),
+            input_id: input.id.clone(),
+            output_id: output.id.clone(),
+            buffer_size: same_host.and_then(|s| s.buffer_size),
+            sample_rate: same_host.and_then(|s| s.sample_rate),
+            routing: same_devices.and_then(|s| s.routing.clone()),
+        });
+    }
+
+    fn start(&mut self, config: ActiveAudioConfig) {
         let result = self.host.start_with_device_ids(
             Some(config.host.clone()),
             config.input.clone(),
@@ -282,6 +317,11 @@ impl Control {
     fn execute(&mut self, command: &Command) {
         let (name, result) = match *command {
             Command::Start => return self.start_saved(),
+            Command::StartWith {
+                ref input,
+                ref output,
+            } => return self.start_with(input, output),
+            Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
             Command::SetBypass(active) => {
@@ -297,6 +337,38 @@ impl Control {
         if let Err(e) = result {
             self.fail(name, e);
         }
+    }
+
+    // shortcut: 一覧の取得（初回は子への GetDevices）を命令のスレッドで待つので、その間は緊急ミュートも待たされる。数秒を超えるなら Tauri 版の begin/poll の走査を pub にして使う。
+    fn list_devices(&mut self) {
+        let devices = match self.host.enumerate_devices(false) {
+            Ok(list) => list
+                .inputs
+                .into_iter()
+                .chain(list.outputs)
+                .map(|d| Device {
+                    host: d.host,
+                    name: d.name,
+                    id: d.id,
+                    is_input: d.is_input,
+                    is_default: d.is_default,
+                })
+                .collect(),
+            Err(e) => return self.fail("enumerate_devices", e),
+        };
+        let saved = self
+            .host
+            .read_saved_audio_config()
+            .ok()
+            .flatten()
+            .map(|c| Saved {
+                host: c.host,
+                input: c.input,
+                input_id: c.input_id,
+                output: c.output,
+                output_id: c.output_id,
+            });
+        let _ = self.notices.send(Notice::Devices { devices, saved });
     }
 
     /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。

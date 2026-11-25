@@ -147,9 +147,17 @@ pub mod keys {
     pub const STOPPING: &str = "band.stopping";
     pub const STOP_FAILED: &str = "band.stopFailed";
     pub const NOT_YET: &str = "gpuiShell.notYet";
+    pub const STOP_TO_CHANGE: &str = "gpuiShell.stopToChange";
+    pub const CONNECTION_METHOD: &str = "settings.AudioSettingsModal.035";
+    pub const DEVICE: &str = "settings.AudioSettingsModal.037";
+    pub const MICROPHONE: &str = "settings.AudioSettingsModal.038";
+    pub const OUTPUT: &str = "settings.AudioSettingsModal.041";
+    pub const NO_DEVICES: &str = "settings.AudioSettingsModal.040";
+    pub const ASIO_SHARED: &str = "settings.AudioSettingsModal.044";
+    pub const FIRST_START_HINT: &str = "settings.connection.firstStartHint";
 
     #[cfg(test)]
-    pub const ALL: [&str; 23] = [
+    pub const ALL: [&str; 31] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -173,6 +181,14 @@ pub mod keys {
         STOPPING,
         STOP_FAILED,
         NOT_YET,
+        STOP_TO_CHANGE,
+        CONNECTION_METHOD,
+        DEVICE,
+        MICROPHONE,
+        OUTPUT,
+        NO_DEVICES,
+        ASIO_SHARED,
+        FIRST_START_HINT,
     ];
 }
 

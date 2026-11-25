@@ -3653,5 +3653,6 @@
   "troubleshoot.receiverOptional": "You can leave it blank.",
   "troubleshoot.clearReceiver": "Clear the name",
   "session.retryDetails": "Reload the saved chain",
-  "gpuiShell.notYet": "This page is not in the new Auralyn yet. For now, use the current Auralyn for these settings."
+  "gpuiShell.notYet": "This page is not in the new Auralyn yet. For now, use the current Auralyn for these settings.",
+  "gpuiShell.stopToChange": "Stop the audio before changing devices."
 }

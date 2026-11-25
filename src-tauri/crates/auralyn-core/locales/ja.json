@@ -3653,5 +3653,6 @@
   "troubleshoot.receiverOptional": "空でもかまいません。",
   "troubleshoot.clearReceiver": "名前を消す",
   "session.retryDetails": "保存済みの並びを読み直す",
-  "gpuiShell.notYet": "この画面は、新しい版の Auralyn にはまだありません。今は今までの Auralyn で設定してください。"
+  "gpuiShell.notYet": "この画面は、新しい版の Auralyn にはまだありません。今は今までの Auralyn で設定してください。",
+  "gpuiShell.stopToChange": "機器を変えるときは、先に音を止めてください。"
 }
