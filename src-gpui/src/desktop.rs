@@ -16,7 +16,7 @@ mod imp {
     use crate::i18n::{core, keys};
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-    use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem};
     use tray_icon::{
         Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
@@ -25,7 +25,7 @@ mod imp {
 
     /// 窓を隠す（トレイへ）・出す。窓の取っ手が取れなければ何もしない。
     pub fn set_shown(window: &gpui_kit::Window, shown: bool) {
-        let Ok(handle) = window.window_handle() else {
+        let Ok(handle) = HasWindowHandle::window_handle(window) else {
             return;
         };
         let RawWindowHandle::Win32(handle) = handle.as_raw() else {
