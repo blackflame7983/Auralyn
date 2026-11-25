@@ -31,7 +31,7 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 - **閉じるときの「ウィンドウ ハンドルが無効です」（0.3.14、Windows）。** `WindowsWindow` の `Drop` は `ShowWindowAsync(SW_HIDE)` のあと、`RevokeDragDrop` と `DestroyWindow` を executor で後から呼ぶ。窓がもう壊れているとこれらが失敗し、`log_err` がモジュール名の無い ERROR（0x80070578・0x80040102 = `DRAGDROP_E_INVALIDHWND`）を出す。終了そのものは正常で、アプリ側で消す手段は無い。
 
 - **動きを減らす設定を OS から読まない（0.3.14）。** `App::reduce_motion()` はアプリが `set_reduce_motion` で入れた値を返すだけで、初期値は false。Windows の「アニメーションを表示する」（`SPI_GETCLIENTAREAANIMATION`）はどこからも読まれない。読み込むかどうかは未決（2026-11-25）。
-- **窓が見えているかを知る API がない（0.3.14）。** DESIGN.md 10.6 の「窓が隠れている間はメーターを止める」は、まだ満たせていない。
+- **窓が見えているかを知る API がない（0.3.14）。** トレイへ隠すのはアプリ自身（`set_shown`）なので、その印でメーターを止めている（DESIGN.md 10.6）。最小化と、ほかの窓に覆われたときは分からず、計算を続ける。
 - **`[patch.crates-io]` は依存先では効かない。** `src-tauri` の差し替え（`cpal`）は、別のワークスペースから `vst-host` を読むときには効かないので、`src-gpui/Cargo.toml` にも同じ差し替えを置く。
 - **フォルダ型の `.vst3` はそのまま渡せない。** Tauri 版はスキャナーの `resolve_binary` で中の実体を探している。GPUI 側でも同じ関数を通す。
 - **別の作業ツリーでは sidecar がない。** ignored の `src-tauri\bin` に `audio_engine-*.exe` が無いと Tauri の build script が止まる。元の作業ツリーからコピーする。
