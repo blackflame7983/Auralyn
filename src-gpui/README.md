@@ -36,13 +36,6 @@ Tauri 版の Auralyn は閉じてから起動する。
 
 ## 確かめ方
 
-`npm run verify -- --rust` は `src-tauri` のワークスペースだけを見る。`src-gpui` は別のワークスペースなので、次を手で回す（Windows）。実機での合否は、確かめた日・手順・結果を PR に書く。
-
-```powershell
-cd src-gpui
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-```
+`npm run verify -- --static --rust`（Windows）が、`src-tauri` に続けて `src-gpui` の fmt・Clippy・試験も回す。CI は Linux で `auralyn-ui-model` の Clippy・試験と `src-gpui` の書式だけを見る（`src-gpui` は Windows 専用の `vst-host` に依存するため）。実機での合否は、確かめた日・手順・結果を PR に書く。
 
 ビルド領域は `src-tauri/target` を共有する。2つの `Cargo.lock` で版の違う依存（`vst-host` を含む）は2回ずつビルドされ、`cargo clean` はどちらで打っても両方の成果物を消す。

@@ -44,7 +44,7 @@
 ## 実装後の確認
 
 - 未コミット変更は`npm run verify -- --changed`。コミット済みの機能は`--feature <名前>`、全フロント検証は`--full`。静的検査だけなら`--static`。
-- UI変更は[feature-map](docs/feature-map.md)に対応する`--feature <名前> --browser`または該当Playwright試験で確認する。実行時例外・未定義IPC・フォーカス・狭い窓・日英を確認する。
+- Tauri 版の画面の変更は[feature-map](docs/feature-map.md)に対応する`--feature <名前> --browser`または該当Playwright試験で確認する（CIでは回らない）。GPUI 版は`--rust`と実機で確かめる。どちらも実行時例外・フォーカス・狭い窓・日英を確認する。
 - Rust変更はビルド領域を確認して`npm run verify -- --static --rust`。RT変更は既存の無割当・解放・状態遷移試験も確認する。検査の成功を実音声・聴感・長時間運転の合格にしない。
 - 複雑なUI・非同期フローを変えたら、ユーザー視点のMermaid状態遷移図を差分説明に示す。イベント・失敗・取消・再試行を明示し、図だけを動作の証拠にしない。
 - 関連する必須検査の成功後は、新しい差分・失敗・未解決の懸念がなければ同じ検査を繰り返さない。

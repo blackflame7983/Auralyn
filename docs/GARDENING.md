@@ -19,11 +19,11 @@ npm run verify -- --changed
 | `npm run verify -- --feature connection` | staticと機能のVitest。`home`、`vst`、`voice-check`、`restore`も指定可能 |
 | `npm run verify -- --feature home --browser` | 上記と、その機能のPlaywright。ローカルChromiumの準備が必要 |
 | `npm run verify -- --full` | static、全Vitest、Vite、配布スクリプト、リリース方針 |
-| `npm run verify -- --static --rust` | staticと、容量・他ビルド確認、Rust fmt、Clippy全target（workspace 全体）、auralyn-core の試験、gain ramp・比較・native変換の既存試験 |
+| `npm run verify -- --static --rust` | staticと、容量・他ビルド確認、Rust fmt、Clippy全target（workspace 全体）、auralyn-core・auralyn-ui-model の試験、gain ramp・比較・native変換の既存試験、`src-gpui` の fmt・Clippy・試験（Windows） |
 
 `--changed`はHEADからの未コミット差分を使う。コミット済み変更には`--feature`か`--full`を使う。
 機能の対応は`config/verification-features.json`にあり、未知の機能名は失敗する。テスト0件を合格にしない。文書のみ・差分なしでは理由を表示してテストを省く。
-共有hook・API・イベントの影響はimportだけでは決まらないため、未知の変更は広い検証へ戻す。機能選択は開発中の短い確認用であり、CIは常に全Vitestと既存の全ブラウザ試験を実行する。
+共有hook・API・イベントの影響はimportだけでは決まらないため、未知の変更は広い検証へ戻す。機能選択は開発中の短い確認用であり、CIは常に全Vitestを実行する。Tauri 版の画面だけを見るブラウザ試験（Playwright）は、GPUI 版へ移るため 2026-11-25 に CI から外した（利用者の判断）。手元では `--browser` で引き続き回せる。CI は代わりに、Linux で `auralyn-core`・`auralyn-ui-model` の Clippy と試験、`src-tauri`・`src-gpui` の書式を見る。RustSec の監査は `src-tauri/Cargo.lock` と `src-gpui/Cargo.lock` の両方を見る。
 
 成功時は検査名と所要時間、失敗時は末尾の診断・再実行コマンド・詳細ログを表示する。
 実行ごとに`test-results/gardening/<時刻>/summary.json`と各ログを残す。ignore済みの検証証跡であり、コミットしない。

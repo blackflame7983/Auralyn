@@ -6,7 +6,7 @@ const root = path.resolve(import.meta.dirname, '../..');
 export const policyHash = value => digest(value.replaceAll('\r\n', '\n'));
 export function policyContent(file) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
-    if (file === 'src-tauri/Cargo.toml' || file === 'src-tauri/crates/auralyn-core/Cargo.toml') {
+    if (file.endsWith('Cargo.toml')) {
         let lintSection = false;
         return source.split(/\r?\n/).filter(line => {
             if (/^\[/.test(line)) lintSection = /^\[lints(?:\.|\])/.test(line);
@@ -28,9 +28,9 @@ export function policyFiles() {
     return [
         'package.json', 'eslint.config.mjs', 'tsconfig.json', 'tsconfig.node.json', 'tsconfig.e2e.json', 'vitest.config.ts',
         'playwright.config.ts', 'playwright.native.config.ts', 'ruff.toml', 'requirements-dev.txt',
-        'src-tauri/Cargo.toml', 'src-tauri/crates/auralyn-core/Cargo.toml', 'src-tauri/clippy.toml', 'config/gardening-baseline.json', 'config/gardening-python-baseline.json',
+        'src-tauri/Cargo.toml', 'src-tauri/crates/auralyn-core/Cargo.toml', 'src-tauri/crates/auralyn-ui-model/Cargo.toml', 'src-gpui/Cargo.toml', 'src-tauri/clippy.toml', 'config/gardening-baseline.json', 'config/gardening-python-baseline.json',
         'config/gardening-rust-baseline.json', 'config/verification-features.json',
-        '.github/workflows/frontend-quality.yml', '.github/CODEOWNERS',
+        '.github/workflows/frontend-quality.yml', '.github/workflows/rustsec-audit.yml', '.github/CODEOWNERS',
         'scripts/verify.mjs', ...fs.readdirSync(path.join(root, 'scripts/gardening')).filter(file => /\.(?:mjs|py)$/.test(file)).map(file => `scripts/gardening/${file}`),
     ];
 }

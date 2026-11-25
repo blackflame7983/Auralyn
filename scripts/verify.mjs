@@ -21,7 +21,7 @@ if (['--full', '--changed', '--static', '--feature'].filter(mode => args.include
 if (args.includes('--browser') && !featureName) { console.error('--browserは--featureと一緒に指定してください。'); process.exit(1); }
 const changed = () => [...new Set([
     ...execFileSync('git', ['diff', 'HEAD', '--name-only', '--no-renames', '-z'], { encoding: 'utf8' }).split('\0'),
-    ...execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z', 'src', 'src-tauri/src', 'src-tauri/crates', 'e2e', 'scripts', 'config', 'docs', 'AGENTS.md', 'CLAUDE.md', 'eslint.config.mjs', 'ruff.toml', 'requirements-dev.txt'], { encoding: 'utf8' }).split('\0'),
+    ...execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z', 'src', 'src-tauri/src', 'src-tauri/crates', 'src-gpui', 'e2e', 'scripts', 'config', 'docs', 'AGENTS.md', 'CLAUDE.md', 'eslint.config.mjs', 'ruff.toml', 'requirements-dev.txt'], { encoding: 'utf8' }).split('\0'),
 ])].filter(Boolean);
 const files = changed();
 const selection = featureName ? { full: false, tests: features[featureName].tests } : args.includes('--full') ? { full: true, tests: [] } : selectTests(files, features);
@@ -78,8 +78,11 @@ try {
         run('rust-capacity', 'powershell', ['-NoProfile', '-Command', '$d = Get-PSDrive -Name $env:AURALYN_BUILD_DRIVE; if ($d.Free -lt 12GB) { throw "Rust検証には保存先に12 GiB以上の空きが必要です" }; Get-Process cargo,rustc -ErrorAction SilentlyContinue | ForEach-Object { throw "別のRustビルドが実行中です" }; exit 0'], { env: { ...process.env, AURALYN_BUILD_DRIVE: drive } });
         run('rust-fmt', 'cargo', ['fmt', '--manifest-path', 'src-tauri/Cargo.toml', '--all', '--', '--check']);
         run('rust-clippy', 'cargo', ['clippy', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']);
-        run('rust-core', 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '-p', 'auralyn-core']);
+        run('rust-core', 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '-p', 'auralyn-core', '-p', 'auralyn-ui-model']);
         for (const filter of ['gain_ramp::', 'comparison::', 'native_stream::']) run(`rust-${filter.replaceAll(':', '')}`, 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', filter]);
+        run('gpui-fmt', 'cargo', ['fmt', '--manifest-path', 'src-gpui/Cargo.toml', '--all', '--', '--check']);
+        run('gpui-clippy', 'cargo', ['clippy', '--manifest-path', 'src-gpui/Cargo.toml', '--locked', '--all-targets', '--', '-D', 'warnings']);
+        run('gpui-test', 'cargo', ['test', '--manifest-path', 'src-gpui/Cargo.toml', '--locked']);
     }
 } catch (error) {
     console.error(error instanceof Error ? error.message : error);
