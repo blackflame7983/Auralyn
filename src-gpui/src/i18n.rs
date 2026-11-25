@@ -77,6 +77,32 @@ pub mod keys {
     pub const NOISE_MEASURED: &str = "master.nrLearn";
     pub const NOISE_VENUE: &str = "master.nrVenue";
     pub const NOISE_ADVANCED: &str = "settings.noiseAdvancedActive";
+    pub const NOISE_ADAPTIVE: &str = "structure.noise.adaptive";
+    pub const NOISE_MEASURED_MEANS: &str = "settings.AudioSettingsModal.115";
+    pub const NOISE_VENUE_MEANS: &str = "settings.AudioSettingsModal.116";
+    pub const MEASURE_TITLE: &str = "measurement.title";
+    pub const MEASURE_SCOPE: &str = "measurement.scope";
+    pub const MEASURE_START: &str = "settings.AudioSettingsModal.121";
+    pub const MEASURE_CANCEL: &str = "settings.AudioSettingsModal.122";
+    pub const MEASURE_REFRESH: &str = "prep.refresh";
+    pub const MEASURE_CHECKING: &str = "prep.checking";
+    pub const MEASURE_ERROR: &str = "measurement.error";
+    pub const MEASURE_IDLE: &str = "measurement.idle";
+    pub const MEASURE_CAPTURING: &str = "measurement.capturing";
+    pub const MEASURE_REVIEW: &str = "measurement.review";
+    pub const MEASURE_APPROVED: &str = "measurement.approved";
+    pub const MEASURE_INVALID: &str = "measurement.invalid";
+    pub const MEASURE_STALE: &str = "measurement.stale";
+    pub const MEASURE_NON_FINITE: &str = "measurement.nonFinite";
+    pub const MEASURE_SILENT: &str = "measurement.silent";
+    pub const MEASURE_CLIPPED: &str = "measurement.clipped";
+    pub const MEASURE_SHORT: &str = "measurement.short";
+    pub const MEASURE_VARIABLE: &str = "measurement.variable";
+    pub const MEASURE_UNCERTAIN: &str = "measurement.uncertain";
+    pub const MEASURE_QUIET: &str = "measurement.quiet";
+    pub const MEASURE_USE: &str = "measurement.use";
+    pub const MEASURE_PREVIOUS: &str = "measurement.previous";
+    pub const MEASURE_LIMITS: &str = "measurement.limits";
     pub const NOISE_MIX: &str = "sound.noiseMix";
     pub const EFFECTS: &str = "settings.AudioSettingsModal.095";
     pub const EFFECTS_LEAD: &str = "settings.AudioSettingsModal.096";
@@ -140,7 +166,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 127] = [
+    pub const ALL: [&str; 153] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -208,6 +234,32 @@ pub mod keys {
         NOISE_MEASURED,
         NOISE_VENUE,
         NOISE_ADVANCED,
+        NOISE_ADAPTIVE,
+        NOISE_MEASURED_MEANS,
+        NOISE_VENUE_MEANS,
+        MEASURE_TITLE,
+        MEASURE_SCOPE,
+        MEASURE_START,
+        MEASURE_CANCEL,
+        MEASURE_REFRESH,
+        MEASURE_CHECKING,
+        MEASURE_ERROR,
+        MEASURE_IDLE,
+        MEASURE_CAPTURING,
+        MEASURE_REVIEW,
+        MEASURE_APPROVED,
+        MEASURE_INVALID,
+        MEASURE_STALE,
+        MEASURE_NON_FINITE,
+        MEASURE_SILENT,
+        MEASURE_CLIPPED,
+        MEASURE_SHORT,
+        MEASURE_VARIABLE,
+        MEASURE_UNCERTAIN,
+        MEASURE_QUIET,
+        MEASURE_USE,
+        MEASURE_PREVIOUS,
+        MEASURE_LIMITS,
         NOISE_MIX,
         EFFECTS,
         EFFECTS_LEAD,

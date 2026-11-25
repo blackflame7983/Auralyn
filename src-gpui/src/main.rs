@@ -13,6 +13,7 @@ mod engine;
 mod home;
 mod i18n;
 mod locale_file;
+mod measure;
 mod part;
 mod settings;
 mod shell;

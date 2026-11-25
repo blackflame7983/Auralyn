@@ -1,6 +1,6 @@
 //! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）。
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
-//! 「大きな音を抑える」（ピーク保護）は ON/OFF・天井・復帰時間。測定・歯擦音・歌向け・本番モードは、まだこの画面に無い。
+//! 「大きな音を抑える」（ピーク保護）は ON/OFF・天井・復帰時間。周囲の音の測定は `measure`。歯擦音・歌向け・本番モードは、まだこの画面に無い。
 
 use auralyn_ui_model::peak::{self, Peak};
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
@@ -14,12 +14,17 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
+use crate::measure::MeasurePanel;
 use crate::part::{card, note};
 use crate::vst::Send;
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
     (NoiseMode::High, keys::NOISE_HIGH),
+];
+const ADAPTIVE_MODES: [(NoiseMode, &str); 2] = [
+    (NoiseMode::Measured, keys::NOISE_MEASURED),
+    (NoiseMode::Venue, keys::NOISE_VENUE),
 ];
 const PRESETS: [(Preset, &str); 3] = [
     (Preset::Broadcast, keys::PRESET_BROADCAST),
@@ -41,6 +46,8 @@ pub struct SoundPage {
     peak: Option<Peak>,
     /// 最後に読めた ON/OFF。止まっていて読めない間も、スイッチはこれを示す（次の開始で付け直される）。
     peak_enabled: bool,
+    /// 周囲の音の測定。
+    pub measure: MeasurePanel,
 }
 
 impl SoundPage {
@@ -53,6 +60,7 @@ impl SoundPage {
             release: range(cx, peak::RELEASE_MS),
             peak: None,
             peak_enabled: false,
+            measure: MeasurePanel::default(),
         }
     }
 
@@ -175,6 +183,28 @@ impl SoundPage {
                                     .text_sm()
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(core(lang, keys::NOISE_DETAILS)),
+                            )
+                            .child(div().text_sm().child(core(lang, keys::NOISE_ADAPTIVE)))
+                            .child(choices(
+                                "noise-adaptive",
+                                lang,
+                                &ADAPTIVE_MODES,
+                                current.noise_mode,
+                                {
+                                    let set = set.clone();
+                                    move |mode, cx| set(Change::NoiseMode(mode), cx)
+                                },
+                            ))
+                            .when_some(
+                                current.noise_mode.and_then(|mode| match mode {
+                                    NoiseMode::Measured => Some(keys::NOISE_MEASURED_MEANS),
+                                    NoiseMode::Venue => Some(keys::NOISE_VENUE_MEANS),
+                                    NoiseMode::Low | NoiseMode::High => None,
+                                }),
+                                |this, means| {
+                                    this.child(note(core(lang, means)))
+                                        .child(self.measure.render(lang, send.clone()))
+                                },
                             )
                             .child(slider_row(
                                 lang,
