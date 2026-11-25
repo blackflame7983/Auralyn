@@ -13,7 +13,7 @@ use gpui_kit::*;
 use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::i18n::{t, Key, Lang};
-use crate::meter::{self, Meter, State as MeterState, Verdict};
+use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);

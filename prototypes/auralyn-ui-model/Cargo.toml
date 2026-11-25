@@ -1,0 +1,12 @@
+[package]
+name = "auralyn-ui-model"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-only"
+description = "画面の振る舞い（メーターの読み・一言の判定など）。GPUI にも Tauri にも依存しない"
+
+# 試作と同じく src-tauri とは別のワークスペースにする。GPUI の判定が通ったら src-tauri/crates/ へ移す。
+[workspace]
+
+[dependencies]

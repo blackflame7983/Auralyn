@@ -1,0 +1,3 @@
+# 既存のビルド領域（src-tauri/target）を使い回す。
+[build]
+target-dir = "../../src-tauri/target"

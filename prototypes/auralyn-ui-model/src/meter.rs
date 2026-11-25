@@ -1,4 +1,4 @@
-//! 右の列のメーターの読み。`src/hooks/useMeterLevels.ts` と `src/lib/outputVerdict.ts` の規則を写したもの。
+//! 右の列のメーターの読み。`src/hooks/useMeterLevels.ts` と `src/lib/outputVerdict.ts` の規則を写したもの（GPUI の試作から切り出した）。
 //! 描画から独立させ、時刻を引数で受けて試験できるようにする。
 
 use std::time::{Duration, Instant};

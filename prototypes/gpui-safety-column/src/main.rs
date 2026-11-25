@@ -7,7 +7,6 @@
 mod desktop;
 mod engine;
 mod i18n;
-mod meter;
 mod view;
 
 use std::path::PathBuf;

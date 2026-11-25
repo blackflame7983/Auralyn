@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 vst-host = { path = "../../src-tauri" }
+auralyn-ui-model = { path = "../auralyn-ui-model" }
 gpui-kit = "0.11.0"
 serde_json = "1"
 anyhow = "1"
