@@ -250,8 +250,8 @@ impl MainView {
 
     fn open(&mut self, page: Page) {
         self.page = page;
-        if page == Page::Connect && !self.connect.requested {
-            self.connect.requested = true;
+        // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
+        if page == Page::Connect {
             self.engine.send(Command::ListDevices);
         }
     }

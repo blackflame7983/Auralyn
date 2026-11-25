@@ -17,8 +17,6 @@ type Choices = SelectState<Vec<SharedString>>;
 pub struct ConnectPage {
     devices: Vec<Device>,
     saved: Option<Saved>,
-    /// 一覧を頼んだ（画面を初めて開いたときに1回）。
-    pub requested: bool,
     /// 接続方式。選び直したら `fill` で機器を選び直す（`MainView` が購読する）。
     pub host: Entity<Choices>,
     input: Entity<Choices>,
@@ -32,7 +30,6 @@ impl ConnectPage {
         Self {
             devices: Vec::new(),
             saved: None,
-            requested: false,
             host: choices(cx),
             input: choices(cx),
             output: choices(cx),
