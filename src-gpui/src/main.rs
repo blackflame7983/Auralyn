@@ -6,6 +6,7 @@
 
 mod assets;
 mod color;
+mod connect;
 mod desktop;
 mod engine;
 mod home;
