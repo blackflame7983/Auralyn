@@ -49,6 +49,19 @@ pub fn neighbour(len: usize, index: usize, up: bool) -> Option<usize> {
     }
 }
 
+/// VST ごとの音量の上限（200%）。Tauri 版のスライダーと同じ。
+pub const MAX_GAIN: f32 = 2.0;
+
+/// 音量の百分率（スライダーの値）を、エンジンへ送る倍率にする。0〜200% に収める。
+pub fn gain_from_percent(percent: f32) -> f32 {
+    (percent / 100.0).clamp(0.0, MAX_GAIN)
+}
+
+/// 倍率を、画面に出す整数の百分率にする。
+pub fn gain_percent(gain: f32) -> f32 {
+    (gain.clamp(0.0, MAX_GAIN) * 100.0).round()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,5 +99,14 @@ mod tests {
         assert_eq!(neighbour(3, 1, false), Some(2));
         assert_eq!(neighbour(3, 2, false), None);
         assert_eq!(neighbour(3, 3, true), None);
+    }
+
+    #[test]
+    fn gain_stays_between_silence_and_double() {
+        assert_eq!(gain_from_percent(100.0), 1.0);
+        assert_eq!(gain_from_percent(-5.0), 0.0);
+        assert_eq!(gain_from_percent(250.0), MAX_GAIN);
+        assert_eq!(gain_percent(0.506), 51.0);
+        assert_eq!(gain_percent(3.0), 200.0);
     }
 }

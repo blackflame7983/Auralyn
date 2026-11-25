@@ -50,6 +50,15 @@ pub enum Command {
         id: String,
         enabled: bool,
     },
+    SetPluginMuted {
+        id: String,
+        muted: bool,
+    },
+    /// VST ごとの音量（倍率、0〜2）。スライダーを離したとき（キーでは1歩ごと）に送る。
+    SetPluginGain {
+        id: String,
+        gain: f32,
+    },
     OpenEditor(String),
     /// 音づくりの今の設定を読む。
     ReadSound,
@@ -71,6 +80,9 @@ impl Command {
             (self, earlier),
             (Command::SetInputGain(_), Command::SetInputGain(_))
                 | (Command::SetOutputGain(_), Command::SetOutputGain(_))
+        ) || matches!(
+            (self, earlier),
+            (Command::SetPluginGain { id, .. }, Command::SetPluginGain { id: other, .. }) if id == other
         )
     }
 }
@@ -118,6 +130,9 @@ pub struct Slot {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    pub muted: bool,
+    /// 音量の倍率（0〜2）。
+    pub gain: f32,
     /// 保存にはあるが、子に読めていない（ファイルが無いなど）。画面では削除だけができる。
     pub loaded: bool,
     path: String,
@@ -132,8 +147,8 @@ impl Slot {
             path: self.path.clone(),
             state: self.state.clone(),
             bypassed: !self.enabled,
-            muted: false,
-            gain: 1.0,
+            muted: self.muted,
+            gain: self.gain,
             class_id: self.class_id.clone(),
         }
     }
@@ -443,7 +458,9 @@ impl Control {
 
     /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
     /// 並びを空から作り直すときだけ呼ぶので、仮の ID（位置）は重ならない。
-    fn restore(&mut self, request: RestorePluginRequest) {
+    fn restore(&mut self, mut request: RestorePluginRequest) {
+        // 手で書き換えた保存でも、画面に出せる範囲（0〜200%）で鳴らす。
+        request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
         let (id, name, loaded, class_id) = match self.host.restore_plugin(request.clone()) {
             Ok(plugin) => (
                 plugin.id,
@@ -469,6 +486,8 @@ impl Control {
             id,
             name,
             enabled: !request.bypassed,
+            muted: request.muted,
+            gain: request.gain,
             loaded,
             path: request.path,
             class_id,
@@ -483,6 +502,8 @@ impl Control {
                 id,
                 name,
                 enabled: true,
+                muted: false,
+                gain: 1.0,
                 loaded: true,
                 path: binary,
                 class_id: class_id.map(str::to_owned),
@@ -595,6 +616,28 @@ impl Control {
         match self.host.set_bypass(id, !enabled) {
             Ok(()) => self.rack[index].enabled = enabled,
             Err(e) => self.fail("set_bypass", e),
+        }
+        self.changed();
+    }
+
+    fn set_muted(&mut self, id: &str, muted: bool) {
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        match self.host.set_mute(id, muted) {
+            Ok(()) => self.rack[index].muted = muted,
+            Err(e) => self.fail("set_mute", e),
+        }
+        self.changed();
+    }
+
+    fn set_gain(&mut self, id: &str, gain: f32) {
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        match self.host.set_gain(id, gain) {
+            Ok(()) => self.rack[index].gain = gain,
+            Err(e) => self.fail("set_gain", e),
         }
         self.changed();
     }
@@ -779,6 +822,8 @@ impl Control {
             Command::RemovePlugin(ref id) => return self.remove(id),
             Command::MovePlugin { ref id, up } => return self.shift(id, up),
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
+            Command::SetPluginMuted { ref id, muted } => return self.set_muted(id, muted),
+            Command::SetPluginGain { ref id, gain } => return self.set_gain(id, gain),
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
             Command::ReadSound => return self.read_sound(),
             Command::ReadPeak => return self.peak(None),
@@ -903,6 +948,30 @@ mod tests {
         assert!(Command::SetInputGain(0.5).supersedes(&Command::SetInputGain(0.2)));
         assert!(!Command::SetOutputGain(0.5).supersedes(&Command::SetInputGain(0.2)));
         assert!(!Command::SetMute(true).supersedes(&Command::SetMute(false)));
+        let gain = |id: &str| Command::SetPluginGain {
+            id: id.into(),
+            gain: 1.0,
+        };
+        assert!(gain("a").supersedes(&gain("a")));
+        assert!(!gain("a").supersedes(&gain("b")));
+    }
+
+    #[test]
+    fn saved_request_keeps_mute_and_gain() {
+        let slot = Slot {
+            id: "a".into(),
+            name: "Comp".into(),
+            enabled: true,
+            muted: true,
+            gain: 0.5,
+            loaded: true,
+            path: "C:/VST3/Comp.vst3".into(),
+            class_id: None,
+            state: None,
+        };
+        let request = slot.request();
+        assert!(request.muted);
+        assert_eq!(request.gain, 0.5);
     }
 
     #[test]

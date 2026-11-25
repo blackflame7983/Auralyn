@@ -235,7 +235,7 @@ impl MainView {
         }
     }
 
-    fn apply(&mut self, notice: Notice, window: &mut Window, cx: &mut App) {
+    fn apply(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
         match notice {
             Notice::Started { input, output } => {
                 self.input_name = input;
@@ -261,7 +261,7 @@ impl MainView {
             Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
-            Notice::Rack(rack) => self.vst.set_rack(rack),
+            Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
             Notice::Peak(peak) => self.sound.set_peak(peak),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
