@@ -894,13 +894,14 @@ pub struct MeterLevels {
 /// 各段が送信周期のあいだに実際に掛けた量（dB、0 は下げていない）。段が働いていないときは無い。
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
 pub struct StageReductions {
-    /// ノイズ低減の前後のエネルギー比。
+    /// ノイズ低減の前後のエネルギー比。正の値は、段の後のほうが大きかったことを表す。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noise: Option<f32>,
     /// 声を整えるのコンプが掛けた最小ゲイン（メークアップを含まない）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice: Option<f32>,
-    /// 本人用の経路のピーク保護が掛けた最小ゲイン。
+    /// 主経路（処理を分けたときは配信側）のピーク保護が掛けた最小ゲイン。
+    /// マイクの音を流していないあいだ（テスト音など）は無い。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peak: Option<f32>,
 }

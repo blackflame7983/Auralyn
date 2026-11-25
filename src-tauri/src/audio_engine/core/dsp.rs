@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn voice_chain_reports_the_compressor_gain_without_makeup_and_resets_on_take() {
+    fn voice_chain_reports_the_compressor_gain_and_resets_on_take() {
         let mut chain = RtBuiltInVoiceChain::new(48_000);
         assert_eq!(
             allocation_counts(|| {
@@ -369,7 +369,7 @@ mod tests {
             }),
             (0, 0)
         );
-        // 閾値より小さい声では下げない。メークアップで上がった分は数えない。
+        // 閾値より小さい声では下げない。
         assert_eq!(chain.take_min_gain(), 1.0);
         for n in 0..4_800 {
             let x = (n as f32 * 0.05).sin() * 0.9;

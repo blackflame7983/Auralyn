@@ -810,7 +810,7 @@ impl OutputCallback {
         let _ = self.level_prod.try_push(MeterBlock {
             input,
             output,
-            peak_gain: self.rt_peak.block_gain(),
+            peak_gain: self.rt_peak.block_gain().filter(|_| mic_flowing),
             ..stage
         });
         self.rt_peak.report(&self.peak_shared, 0);

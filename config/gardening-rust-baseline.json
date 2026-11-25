@@ -95,7 +95,7 @@
     {
       "file": "src-tauri/src/ipc.rs",
       "rule": "rust/suppression",
-      "hash": "9b06f0b0204b80dfc73f6efaa2437fd1c21500632b144f343752b4012b84d19b",
+      "hash": "132e04c36355e618853d7e9e4cc0ab88340c3f9f7ed32df9d77b3023b1252f6e",
       "count": 1,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },
