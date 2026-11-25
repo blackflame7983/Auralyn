@@ -1,7 +1,7 @@
 # デザイン管理（pen.dev）
 
 `auralyn-screens.pen` は、実装した画面を見渡し、変更案を比べるための作業台です。
-**正本はコードです。** 色は `src/index.css`、部品は `src/components/`、文言は `src/i18n/messages.ts` を正とします。
+**正本はコードです。** 色は `src/index.css`、部品は `src/components/`、文言は `src-tauri/crates/auralyn-core/locales/{ja,en}.json` を正とします。
 デザインの原則・判断基準は [docs/DESIGN.md](../docs/DESIGN.md) にあり、ここでは繰り返しません。
 
 ## 区画

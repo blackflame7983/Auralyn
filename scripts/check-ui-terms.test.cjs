@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const {
-  parseMessages,
+  readMessages,
+  readMessageFiles,
   glossaryUseNames,
   findAvoidViolations,
   findJaRepeats,
@@ -30,15 +31,9 @@ const DESIGN = [
   '',
 ].join('\n');
 
-function messagesSource(jaLines, enLines) {
-  return [
-    'const ja = {',
-    ...jaLines,
-    '} as const;',
-    'const en: Record<MessageKey, string> = {',
-    ...enLines,
-    '};',
-  ].join('\n');
+function messagesJson(jaLines, enLines) {
+  const table = lines => `{\n${lines.map(line => line.replace(/,\s*$/, '')).join(',\n')}\n}`;
+  return { ja: table(jaLines), en: table(enLines) };
 }
 
 const TERMS = {
@@ -52,7 +47,7 @@ const TERMS = {
 };
 
 test('使わない語を見つけ、似た別の語と例外は見つけない', () => {
-  const parsed = parseMessages(messagesSource(
+  const parsed = readMessages(messagesJson(
     [
       '    "status.running": "いまは処理稼働中です",',
       '    "status.similar": "いまは処理中です",',
@@ -92,7 +87,7 @@ test('英語は、同じ単語が空白を挟んで続くのを見つける', ()
 });
 
 test('語句の重なりは例外に入れたキーだけを除く', () => {
-  const parsed = parseMessages(messagesSource(
+  const parsed = readMessages(messagesJson(
     ['    "copy.repeat": "保存した「保存したVSTの構成」",', '    "copy.other": "削除した 削除した",'],
     ['    "copy.repeat": "the the",', '    "copy.other": "Keep the theme",'],
   ));
@@ -120,28 +115,22 @@ test('使う語が用語集の使う語の列に無いと失敗する', () => {
   ]);
 });
 
-test('読めない行は飛ばさず失敗する', () => {
-  const parsed = parseMessages(messagesSource(
-    ['    "bad": `template`,', '    "ok": "読める",'],
-    ['    "ok": "readable",'],
-  ));
-  assert.equal(parsed.errors.length, 1);
-  assert.match(parsed.errors[0], /^読めない行: ja \d+:/);
-  assert.equal(parsed.messages.ja.ok, '読める');
-});
+test('JSONとして読めない文言と、文字列でない値は失敗する', () => {
+  const broken = readMessages({ ja: '{ "ok": "読める", }', en: '{ "ok": "readable" }' });
+  assert.equal(broken.errors.length, 1);
+  assert.match(broken.errors[0], /^読めない文言: ja: /);
+  assert.equal(broken.messages.en.ok, 'readable');
 
-test('値の次の行にある読点だけは、現行の書き方として読める', () => {
-  const parsed = parseMessages(messagesSource(
-    ['    "voice.candidateValues": "候補"', ',', '    "autoGain.title": "音量",'],
-    ['    "voice.candidateValues": "Candidate",', '    "autoGain.title": "Level",'],
-  ));
-  assert.deepEqual(parsed.errors, []);
-  assert.equal(parsed.messages.ja['voice.candidateValues'], '候補');
-  assert.equal(parsed.messages.en['autoGain.title'], 'Level');
+  const typed = readMessages({ ja: '{ "count": 3, "ok": "読める" }', en: '[]' });
+  assert.deepEqual(typed.errors, [
+    '読めない文言: ja count が文字列ではありません',
+    '読めない文言: en がキーと文字列の表ではありません',
+  ]);
+  assert.equal(typed.messages.ja.ok, '読める');
 });
 
 test('区画とカードの英語は、your を除いても同じ名前なら見つける', () => {
-  const parsed = parseMessages(messagesSource(
+  const parsed = readMessages(messagesJson(
     ['    "shell.sound": "音調整",', '    "settings.AudioSettingsModal.095": "声を整える",'],
     ['    "shell.sound": "Shape your voice",', '    "settings.AudioSettingsModal.095": "Shape voice",'],
   ));
@@ -152,20 +141,19 @@ test('区画とカードの英語は、your を除いても同じ名前なら見
 });
 
 test('3つの検査をまとめて、問題が無い定義は通す', () => {
-  const source = messagesSource(
+  const source = messagesJson(
     ['    "status.running": "実行中",'],
     ['    "compare.label": "Bypass VST",'],
   );
   assert.deepEqual(checkUiTerms({
-    messagesSource: source,
+    messagesJson: source,
     designSource: DESIGN,
     termsConfig: TERMS,
   }), []);
 });
 
-test('現行の文言ファイルを行の形から読め、定義した使う語は用語集にある', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'messages.ts'), 'utf8');
-  const parsed = parseMessages(source);
+test('現行の文言ファイルを読め、定義した使う語は用語集にある', () => {
+  const parsed = readMessages(readMessageFiles());
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.messages.ja['help.title'], '使い方');
   assert.equal(

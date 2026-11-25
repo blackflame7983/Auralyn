@@ -18,7 +18,7 @@ AuralynはURLルーターではなく`src/hooks/useUIState.ts`の`AppPage`で画
 | 保存・一時利用・復元 | モーダル／`presets` | `Presets/`、`Recovery/`、`src/lib/restorePluginSession.ts`、Rustの`profile/`・`bundle/` | `--feature restore`、`temporary-runtime.spec.ts`、`output-configuration.spec.ts` |
 | OBS・外観・ショートカット・システム | `settings`／`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system` | `AudioSettings/`、`src/hooks/useUIState.ts` | `--feature connection`、settings系spec |
 | 使い方・診断 | モーダル／`help`、`troubleshoot`、`obs-guide`、`discord-guide` | `Guide/`、`Troubleshoot/`、`user-docs/` | `how-to-use.spec.ts`、`npm run test:user-docs` |
-| 日英・テーマ・窓幅・状態横断 | 全画面 | `src/i18n/`、`src/index.css`、レイアウト部品 | `screen-matrix.spec.ts`、`forced-colors-focus.spec.ts` |
+| 日英・テーマ・窓幅・状態横断 | 全画面 | `src/i18n/`（文言の正本は`src-tauri/crates/auralyn-core/locales/`）、`src/index.css`、レイアウト部品 | `screen-matrix.spec.ts`、`forced-colors-focus.spec.ts` |
 
 表のfeature名は`npm run verify -- --feature <名前>`に渡す。ブラウザも確認するときは`--browser`を付ける。specの場所は`e2e/browser/`、機能フォルダーは特記しない限り`src/components/features/`である。
 CLIが選択する試験の正本は`config/verification-features.json`。共有API・Context・設定の変更、複数機能に及ぶ変更は`--full`を使う。
