@@ -68,6 +68,11 @@ pub enum Command {
     ReadPeak,
     /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
     SetPeak(bool),
+    /// ピーク保護の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
+    SetPeakLimits {
+        ceiling_db: f32,
+        release_ms: f32,
+    },
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
@@ -83,6 +88,9 @@ impl Command {
         ) || matches!(
             (self, earlier),
             (Command::SetPluginGain { id, .. }, Command::SetPluginGain { id: other, .. }) if id == other
+        ) || matches!(
+            (self, earlier),
+            (Command::SetPeakLimits { .. }, Command::SetPeakLimits { .. })
         )
     }
 }
@@ -670,6 +678,8 @@ impl Control {
         let peak = match self.host.peak_protection(config) {
             Ok(snapshot) => Some(Peak {
                 enabled: snapshot.config.enabled,
+                ceiling_db: snapshot.config.ceiling_db,
+                release_ms: snapshot.config.release_ms,
                 running: snapshot.running,
                 pending: snapshot.pending,
             }),
@@ -686,13 +696,10 @@ impl Control {
         let _ = self.notices.send(Notice::Peak(peak));
     }
 
-    /// 今の天井と復帰時間のまま ON/OFF だけを変える。
-    fn set_peak(&mut self, on: bool) {
+    /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。
+    fn set_peak(&mut self, change: impl FnOnce(PeakConfig) -> PeakConfig) {
         match self.host.peak_protection(None) {
-            Ok(snapshot) => self.peak(Some(PeakConfig {
-                enabled: on,
-                ..snapshot.config
-            })),
+            Ok(snapshot) => self.peak(Some(change(snapshot.config))),
             Err(e) => {
                 self.fail("peak_protection", e);
                 self.peak(None);
@@ -827,7 +834,19 @@ impl Control {
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
             Command::ReadSound => return self.read_sound(),
             Command::ReadPeak => return self.peak(None),
-            Command::SetPeak(on) => return self.set_peak(on),
+            Command::SetPeak(enabled) => {
+                return self.set_peak(|config| PeakConfig { enabled, ..config })
+            }
+            Command::SetPeakLimits {
+                ceiling_db,
+                release_ms,
+            } => {
+                return self.set_peak(|config| PeakConfig {
+                    ceiling_db,
+                    release_ms,
+                    ..config
+                })
+            }
             Command::SetSound(change) => return self.set_sound(change),
             Command::SaveRack(ref done) => {
                 self.save(true);
@@ -954,6 +973,11 @@ mod tests {
         };
         assert!(gain("a").supersedes(&gain("a")));
         assert!(!gain("a").supersedes(&gain("b")));
+        let limits = |ceiling_db| Command::SetPeakLimits {
+            ceiling_db,
+            release_ms: 100.0,
+        };
+        assert!(limits(-1.0).supersedes(&limits(-2.0)));
     }
 
     #[test]

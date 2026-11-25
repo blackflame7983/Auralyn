@@ -120,6 +120,15 @@ impl MainView {
             this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
         })
         .detach();
+        for limit in [&sound.ceiling, &sound.release] {
+            cx.subscribe(limit, |this, _, event: &SliderEvent, cx| {
+                if let SliderEvent::Release(_) = event {
+                    let command = this.sound.peak_limits(cx);
+                    this.send(command);
+                }
+            })
+            .detach();
+        }
         cx.subscribe_in(
             &connect.host,
             window,
@@ -271,7 +280,7 @@ impl MainView {
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
-            Notice::Peak(peak) => self.sound.set_peak(peak),
+            Notice::Peak(peak) => self.sound.set_peak(peak, window, cx),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -662,7 +671,7 @@ impl Render for MainView {
                                     },
                                 )),
                                 Page::Vst => this.child(self.vst.render(lang, cx, send)),
-                                Page::Sound => this.child(self.sound.render(lang, send)),
+                                Page::Sound => this.child(self.sound.render(lang, cx, send)),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,

@@ -86,6 +86,9 @@ pub mod keys {
     pub const PEAK_LEAD: &str = "peak.lead";
     pub const PEAK_SCOPE: &str = "peak.scope";
     pub const PEAK_RESETS: &str = "gpuiShell.peakResets";
+    pub const PEAK_DETAILS: &str = "peak.details";
+    pub const PEAK_CEILING: &str = "peak.ceiling";
+    pub const PEAK_RELEASE: &str = "peak.release";
     pub const PEAK_UNKNOWN: &str = "peak.unknown";
     pub const PEAK_PENDING: &str = "peak.pending";
     pub const PEAK_STOPPED: &str = "peak.stopped";
@@ -132,7 +135,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 119] = [
+    pub const ALL: [&str; 122] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -209,6 +212,9 @@ pub mod keys {
         PEAK_LEAD,
         PEAK_SCOPE,
         PEAK_RESETS,
+        PEAK_DETAILS,
+        PEAK_CEILING,
+        PEAK_RELEASE,
         PEAK_UNKNOWN,
         PEAK_PENDING,
         PEAK_STOPPED,
