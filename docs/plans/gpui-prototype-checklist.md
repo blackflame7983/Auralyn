@@ -1,6 +1,6 @@
 # GPUI の試作：右の列の合否判定
 
-`audio-session-controller.md` 13.2（J-11）の分岐点のための試作の記録。判定のあと、試作は `src-gpui/`（GPUI 版の本実装の土台）として main に入れた（2026-11-25、[decisions.md](../gpui/decisions.md)）。下の動かし方と判定は試作の時点のもの。
+`audio-session-controller.md` 13.2（J-11）の分岐点のための試作の記録。判定のあと、試作は `src-gpui/`（GPUI 版の本実装の土台）として main に入れた（2026-11-25、[decisions.md](../gpui/decisions.md)）。下の動かし方と判定は試作の時点のもの（今の動かし方は [src-gpui/README.md](../../src-gpui/README.md)）。
 
 - 試作：当時の `prototypes/gpui-safety-column/`（今の `src-gpui/`）（GPUI Kit 0.11：`gpui-pre` 0.3.14 と `gpui-component` 0.11）
 - 範囲：右の列（緊急ミュート、入力メーターとマイク音量、出力のピーク・一言・出力音量、VSTを外して比較）と、実エンジンにつながるメーター。

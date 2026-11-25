@@ -73,7 +73,7 @@ fn main() {
                 ))),
                 window_min_size: Some(size(px(280.), px(560.))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Auralyn".into()),
+                    title: Some("Auralyn (GPUI)".into()),
                     ..Default::default()
                 }),
                 ..Default::default()

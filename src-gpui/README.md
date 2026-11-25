@@ -12,7 +12,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の�
 | `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
 | `src/view.rs` | 右の列の画面。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |
-| `src/i18n.rs` | 日英の文言（`src/i18n/messages.ts` から写した分だけ） |
+| `src/i18n.rs` | 日英の文言（正本は `src-tauri/crates/auralyn-core/locales/` の JSON。試作のときに写した分を、そこから読む形へ順に置き換える） |
 | `src/main.rs` | 引数を読み、エンジンと窓を起動する |
 
 メーターの読み（平滑化・2秒のピーク保持・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）は、GPUI に依存しない [`src-tauri/crates/auralyn-ui-model`](../src-tauri/crates/auralyn-ui-model) に置く。`useMeterLevels.ts` と `outputVerdict.ts` の写し。
@@ -31,3 +31,16 @@ cargo run -- --plugin "<確認に使うVST>.vst3"
 引数：`--plugin <VST3>`、`--lang en`、`--config-dir <フォルダ>`（既定は `%APPDATA%\com.kuro7983.auralynhost`）。
 
 Tauri 版の Auralyn は閉じてから起動する。
+
+## 確かめ方
+
+`npm run verify -- --rust` は `src-tauri` のワークスペースだけを見る。`src-gpui` は別のワークスペースなので、次を手で回す（Windows）。実機での合否は、確かめた日・手順・結果を PR に書く。
+
+```powershell
+cd src-gpui
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+ビルド領域は `src-tauri/target` を共有する。2つの `Cargo.lock` で版の違う依存（`vst-host` を含む）は2回ずつビルドされ、`cargo clean` はどちらで打っても両方の成果物を消す。

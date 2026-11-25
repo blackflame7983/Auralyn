@@ -16,7 +16,7 @@
 - 分からないことは推測で実装しない。未決の問いとして挙げる。
 - 画面は `src-gpui/`（`src-tauri` とは別のワークスペース）。書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。作って分かったことはここへ足す。
 - 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `src-tauri/crates/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
-- GPUI 版の確認は Windows の実機で行う。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は GPUI 版が置き換えるまで main で動くまま保つ。
+- GPUI 版の確認は Windows の実機で行い、確かめ方は [src-gpui/README.md](src-gpui/README.md)。実機の合否は、確かめた日・手順・結果を PR に書く。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は GPUI 版が置き換えるまで main で動くまま保つ。
 
 ## 作業の進め方
 

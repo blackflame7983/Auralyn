@@ -1,4 +1,4 @@
-//! 画面の文言。正本は `src/i18n/messages.ts`。使う分だけを写す（`auralyn-core` の文言への切り替えは別の段階）。
+//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。この表は試作のときに写した分で、`auralyn-core` から読む形へ順に置き換える。
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
