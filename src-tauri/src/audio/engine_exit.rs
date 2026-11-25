@@ -264,26 +264,8 @@ impl super::AudioHost {
 
     fn execute_command_if_running(&mut self, cmd: Command) -> anyhow::Result<Response> {
         self.require_live_engine()?;
-        if super::conditions::command_changes(&cmd) {
-            self.frontend_bootstrap.cancel();
-        }
-        if self.bundle_change_generation.is_some() {
-            self.validate_bundle_connection()?;
-        }
-        self.sync_live_modes()?;
-        self.guard_live_command(&cmd)?;
-        let replaces_builtin = matches!(
-            &cmd,
-            Command::SetBuiltInEffects { .. }
-                | Command::BuiltinEffects {
-                    request: crate::audio_engine::builtin::Request::Apply { .. }
-                }
-        );
-        let response = self.execute_running_command(cmd)?;
-        if replaces_builtin && !matches!(response, Response::Error(_)) {
-            self.live_modes.target = None;
-        }
-        Ok(response)
+        self.note_command(&cmd);
+        self.send_live_command(cmd)
     }
 
     /// `require_running` が偽のときは従来どおり（居なければ起動する）、真のときは起動せず失敗にする。

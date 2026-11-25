@@ -136,9 +136,9 @@
     *   **バリスティクス**:
         *   **アタック**: 即時（バッファの真のピークをキャプチャ）。
         *   **リリース**: フロントエンドのアニメーションによるスムージング（視覚的な快適さのため約300msの減衰）。
-    *   **IPCイベント名**: `audio-level` (固定、エンジンとフロントエンド双方で使用)。
-    *   **データパス**: リングバッファ (オーディオスレッド -> エンジンメインループ) -> IPCイベント `{ "method": "audio-level", "params": { "left": f32, "right": f32 } }` -> Tauriバックエンドが `audio-level` イベントを発行 -> Frontend。
-    *   **更新レート**: ~20 FPS (50ms間隔)。
+    *   **イベント名**: 子（音声エンジン）の通知は `LevelMeter`。Tauriバックエンドがフロントエンドへ出すイベントは `audio-level`。
+    *   **データパス**: リングバッファ (オーディオスレッド -> エンジンメインループ) -> 子の標準出力へ1行 `IPC:{ "kind": "Event", "data": { "type": "LevelMeter", "payload": { "input": [f32, f32], "output": [f32, f32], "stream_generation": u64 } } }`（`src-tauri/src/ipc.rs` の `OutputMessage::Event` と `EngineEvent::LevelMeter`。`stream_generation` は無いこともある） -> Tauriバックエンドが `audio-level` イベントを `{ "input": [f32, f32], "output": [f32, f32], "stream_generation": "親の世代:子の世代" }` で発行（`src-tauri/src/audio/reader.rs`。世代が分からないときは `stream_generation` を省く） -> Frontend。
+    *   **更新レート**: 新しい値があれば最短 16ms 間隔（約60 FPS）。メーターの値が75msより長く届かず、直前に送った値がゼロでなければ、ゼロを1回だけ送る（`src-tauri/src/audio_engine/core.rs` の `meter_interval`、`core/meter.rs` の `idle`）。
 
 ### 3.4. 状態の永続化 (計画中)
 **目標**: ラックの状態全体を保存/ロードする。
