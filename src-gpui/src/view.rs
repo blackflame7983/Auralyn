@@ -221,8 +221,12 @@ impl MainView {
                 self.input_name = input;
                 self.output_name = output;
                 self.advance(SessionEvent::Started);
+                self.reread_peak();
             }
-            Notice::Stopped => self.advance(SessionEvent::Stopped),
+            Notice::Stopped => {
+                self.advance(SessionEvent::Stopped);
+                self.reread_peak();
+            }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
                 self.message = Some(message);
@@ -238,6 +242,7 @@ impl MainView {
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
+            Notice::Peak(peak) => self.sound.set_peak(peak),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -273,6 +278,13 @@ impl MainView {
         self.message = Some(format!("{} {detail}", core(self.lang, key)));
     }
 
+    /// ピーク保護は音声が動いているときだけ読めるので、開始・停止のあと、音づくりの画面を見ていれば読み直す。
+    fn reread_peak(&self) {
+        if self.page == Page::Sound {
+            self.engine.send(Command::ReadPeak);
+        }
+    }
+
     fn open(&mut self, page: Page) {
         self.page = page;
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
@@ -281,6 +293,7 @@ impl MainView {
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
+            self.engine.send(Command::ReadPeak);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);

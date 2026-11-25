@@ -3667,5 +3667,6 @@
   "gpuiShell.noiseModeFirst": "ノイズ低減の種類が分かりません。弱か強を選ぶと、ON/OFF・強さ・声を守るを送れます。",
   "gpuiShell.trayShow": "Auralyn を表示",
   "gpuiShell.trayQuit": "終了",
-  "gpuiShell.hotkeyFailed": "Alt+M を登録できません（Auralyn が起動中かもしれません）"
+  "gpuiShell.hotkeyFailed": "Alt+M を登録できません（Auralyn が起動中かもしれません）",
+  "gpuiShell.peakResets": "アプリを起動し直すと OFF に戻ります。"
 }

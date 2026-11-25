@@ -2,6 +2,7 @@
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
 //! 測定・歯擦音・ピーク保護・歌向け・本番モードは、まだこの画面に無い。
 
+use auralyn_ui_model::peak::{self, Peak};
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
 use gpui_kit::component::button::{Button, ButtonGroup};
 use gpui_kit::component::slider::{Slider, SliderState};
@@ -33,6 +34,8 @@ pub struct SoundPage {
     pub amount: Entity<SliderState>,
     /// 抑制の強さ（25〜125）。離したときに送る。
     pub strength: Entity<SliderState>,
+    /// 大きな音を抑える（ピーク保護）。`None` は読めていない。
+    peak: Option<Peak>,
 }
 
 impl SoundPage {
@@ -41,6 +44,7 @@ impl SoundPage {
             current: None,
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
             strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
+            peak: None,
         }
     }
 
@@ -54,6 +58,10 @@ impl SoundPage {
         });
     }
 
+    pub fn set_peak(&mut self, peak: Option<Peak>) {
+        self.peak = peak;
+    }
+
     pub fn render(&self, lang: Lang, send: Send) -> impl IntoElement {
         let Some(current) = self.current else {
             return div()
@@ -61,7 +69,10 @@ impl SoundPage {
                 .text_color(color::muted())
                 .child(core(lang, keys::SOUND_UNREAD));
         };
-        let set = move |change: Change, cx: &mut App| send(Command::SetSound(change), cx);
+        let set = {
+            let send = send.clone();
+            move |change: Change, cx: &mut App| send(Command::SetSound(change), cx)
+        };
         div()
             .flex()
             .flex_col()
@@ -197,6 +208,42 @@ impl SoundPage {
                     div().child(note(core(lang, keys::SINGING_NOT_YET)))
                 },
             ))
+            .child(self.render_peak(lang, send))
+    }
+
+    /// 大きな音を抑える。ON/OFF だけを変える（天井と復帰時間は今の値のまま）。
+    fn render_peak(&self, lang: Lang, send: Send) -> impl IntoElement {
+        let notes: Vec<&str> = peak::notes(self.peak)
+            .into_iter()
+            .map(|note| {
+                core(
+                    lang,
+                    match note {
+                        peak::Note::Unknown => keys::PEAK_UNKNOWN,
+                        peak::Note::Pending => keys::PEAK_PENDING,
+                        peak::Note::Stopped => keys::PEAK_STOPPED,
+                    },
+                )
+            })
+            .collect();
+        card(
+            core(lang, keys::PEAK_TITLE),
+            Switch::new("peak-on")
+                .checked(self.peak.is_some_and(|peak| peak.enabled))
+                .disabled(self.peak.is_none())
+                .accessibility_label(core(lang, keys::PEAK_TITLE))
+                .on_click(move |on, _, cx| send(Command::SetPeak(*on), cx)),
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(note(core(lang, keys::PEAK_LEAD)))
+                .child(note(core(lang, keys::PEAK_SCOPE)))
+                .child(note(core(lang, keys::PEAK_RESETS)))
+                .when(!notes.is_empty(), |this| {
+                    this.child(div().text_sm().child(notes.join(" · ")))
+                }),
+        )
     }
 }
 

@@ -77,6 +77,13 @@ pub mod keys {
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
     pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const PEAK_TITLE: &str = "peak.title";
+    pub const PEAK_LEAD: &str = "peak.lead";
+    pub const PEAK_SCOPE: &str = "peak.scope";
+    pub const PEAK_RESETS: &str = "gpuiShell.peakResets";
+    pub const PEAK_UNKNOWN: &str = "peak.unknown";
+    pub const PEAK_PENDING: &str = "peak.pending";
+    pub const PEAK_STOPPED: &str = "peak.stopped";
     pub const NOISE_MODE_FIRST: &str = "gpuiShell.noiseModeFirst";
     pub const NOISE_DETAILS: &str = "settings.noiseDetails";
     pub const STRENGTH: &str = "settings.AudioSettingsModal.119";
@@ -120,7 +127,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 107] = [
+    pub const ALL: [&str; 114] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -188,6 +195,13 @@ pub mod keys {
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
         SINGING_NOT_YET,
+        PEAK_TITLE,
+        PEAK_LEAD,
+        PEAK_SCOPE,
+        PEAK_RESETS,
+        PEAK_UNKNOWN,
+        PEAK_PENDING,
+        PEAK_STOPPED,
         NOISE_MODE_FIRST,
         NOISE_DETAILS,
         STRENGTH,
