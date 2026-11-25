@@ -2,7 +2,7 @@
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
 //! 抑制の強さ・声の保護・測定・歯擦音・ピーク保護・歌向け・本番モードは、まだこの画面に無い。
 
-use auralyn_ui_model::sound::{self, NoiseMode, Preset, Sound};
+use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
 use gpui_kit::component::button::{Button, ButtonGroup};
 use gpui_kit::component::slider::{Slider, SliderState};
 use gpui_kit::component::switch::Switch;
@@ -40,10 +40,6 @@ impl SoundPage {
         }
     }
 
-    pub fn current(&self) -> Option<Sound> {
-        self.current
-    }
-
     pub fn set(&mut self, sound: Sound, window: &mut Window, cx: &mut App) {
         self.current = Some(sound);
         self.amount.update(cx, |state, cx| {
@@ -58,10 +54,7 @@ impl SoundPage {
                 .text_color(color::muted())
                 .child(core(lang, keys::SOUND_UNREAD));
         };
-        let set = move |next: Sound| {
-            let send = send.clone();
-            move |cx: &mut App| send(Command::SetSound(next), cx)
-        };
+        let set = move |change: Change, cx: &mut App| send(Command::SetSound(change), cx);
         div()
             .flex()
             .flex_col()
@@ -82,12 +75,7 @@ impl SoundPage {
                     .accessibility_label(core(lang, keys::NOISE))
                     .on_click({
                         let set = set.clone();
-                        move |on, _, cx| {
-                            set(Sound {
-                                noise_on: *on,
-                                ..current
-                            })(cx)
-                        }
+                        move |on, _, cx| set(Change::NoiseOn(*on), cx)
                     }),
                 div()
                     .flex()
@@ -100,12 +88,7 @@ impl SoundPage {
                         current.noise_mode,
                         {
                             let set = set.clone();
-                            move |mode, cx| {
-                                set(Sound {
-                                    noise_mode: Some(mode),
-                                    ..current
-                                })(cx)
-                            }
+                            move |mode, cx| set(Change::NoiseMode(mode), cx)
                         },
                     ))
                     .when_some(
@@ -134,12 +117,7 @@ impl SoundPage {
                     .disabled(!current.effects_editable())
                     .on_click({
                         let set = set.clone();
-                        move |on, _, cx| {
-                            set(Sound {
-                                effects_on: *on,
-                                ..current
-                            })(cx)
-                        }
+                        move |on, _, cx| set(Change::EffectsOn(*on), cx)
                     }),
                 if current.effects_editable() {
                     div()
@@ -151,12 +129,7 @@ impl SoundPage {
                             lang,
                             &PRESETS,
                             current.preset,
-                            move |preset, cx| {
-                                set(Sound {
-                                    preset: Some(preset),
-                                    ..current
-                                })(cx)
-                            },
+                            move |preset, cx| set(Change::Preset(preset), cx),
                         ))
                         .child(
                             div()

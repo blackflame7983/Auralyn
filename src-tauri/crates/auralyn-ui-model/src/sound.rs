@@ -63,6 +63,17 @@ impl Preset {
     }
 }
 
+/// 音づくりの画面の1つの操作。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Change {
+    NoiseOn(bool),
+    NoiseMode(NoiseMode),
+    EffectsOn(bool),
+    Preset(Preset),
+    /// 整え具合（0〜1）。
+    Amount(f32),
+}
+
 /// 抑制の強さの既定（Tauri 版と同じ 80%）。統計が 0 以下（まだ設定していない）のときに使う。
 const DEFAULT_STRENGTH: f32 = 0.8;
 
@@ -99,12 +110,33 @@ impl Sound {
         }
     }
 
-    /// 画面で「声を整える」を変えられるか。歌向けと分からない種類は、今までの版で調整する。
+    /// 画面で「声を整える」を変えられるか。歌向けは、今までの版で調整する。
+    /// 種類が分からない（音声をまだ始めていない）ときは変えられる。種類を選べば送れる。
     pub fn effects_editable(&self) -> bool {
-        matches!(
-            self.preset,
-            Some(Preset::Broadcast | Preset::Warm | Preset::Bright)
-        )
+        self.preset != Some(Preset::Singing)
+    }
+
+    /// 画面の1つの操作を重ねる。画面が持つ古い値で、ほかの区画を上書きしないため。
+    pub fn with(self, change: Change) -> Self {
+        match change {
+            Change::NoiseOn(on) => Self {
+                noise_on: on,
+                ..self
+            },
+            Change::NoiseMode(mode) => Self {
+                noise_mode: Some(mode),
+                ..self
+            },
+            Change::EffectsOn(on) => Self {
+                effects_on: on,
+                ..self
+            },
+            Change::Preset(preset) => Self {
+                preset: Some(preset),
+                ..self
+            },
+            Change::Amount(amount) => Self { amount, ..self }.normalized(),
+        }
     }
 
     /// ノイズ低減の設定が `other` と違う（エンジンへ送り直す）。
@@ -193,14 +225,14 @@ mod tests {
     }
 
     #[test]
-    fn singing_and_unknown_presets_are_not_editable_here() {
+    fn only_singing_is_not_editable_here() {
         let mut sound = Sound {
             preset: Some(Preset::Singing),
             ..sound()
         };
         assert!(!sound.effects_editable());
         sound.preset = None;
-        assert!(!sound.effects_editable());
+        assert!(sound.effects_editable());
         sound.preset = Some(Preset::Bright);
         assert!(sound.effects_editable());
     }
@@ -221,5 +253,21 @@ mod tests {
         assert!(noisy.noise_differs(&base));
         assert!(!noisy.effects_differ(&base));
         assert_eq!(percent(0.704), 70.0);
+    }
+
+    #[test]
+    fn a_change_touches_only_its_own_field() {
+        let noisy = sound().with(Change::NoiseOn(true));
+        assert_eq!(
+            noisy,
+            Sound {
+                noise_on: true,
+                ..sound()
+            }
+        );
+        let warm = noisy.with(Change::Preset(Preset::Warm));
+        assert!(warm.noise_on);
+        assert_eq!(warm.preset, Some(Preset::Warm));
+        assert_eq!(sound().with(Change::Amount(3.0)).amount, 1.0);
     }
 }

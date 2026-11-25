@@ -26,7 +26,7 @@ use crate::vst::{Send, VstPage};
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
-use auralyn_ui_model::sound::Sound;
+use auralyn_ui_model::sound::Change;
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
@@ -96,12 +96,7 @@ impl MainView {
             let SliderEvent::Release(value) = event else {
                 return;
             };
-            if let Some(current) = this.sound.current() {
-                this.send(Command::SetSound(Sound {
-                    amount: value.end() / 100.0,
-                    ..current
-                }));
-            }
+            this.send(Command::SetSound(Change::Amount(value.end() / 100.0)));
         })
         .detach();
         cx.subscribe_in(

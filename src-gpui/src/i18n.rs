@@ -171,7 +171,7 @@ pub mod keys {
     pub const CANCEL: &str = "rack.card.cancel";
     pub const VST_NOT_LOADED: &str = "gpuiShell.notLoaded";
     pub const SOUND_UNREAD: &str = "gpuiShell.soundUnread";
-    pub const OFF_UNTIL_ON: &str = "settings.offUntilOn";
+    pub const OFF_UNTIL_ON: &str = "gpuiShell.offUntilOn";
     pub const NOISE: &str = "settings.AudioSettingsModal.105";
     pub const NOISE_LEAD: &str = "settings.AudioSettingsModal.106";
     pub const NOISE_LOW: &str = "master.nrLow";

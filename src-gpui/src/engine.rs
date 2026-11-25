@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::rack::{self, Candidate};
-use auralyn_ui_model::sound::{NoiseMode, Preset, Sound};
+use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::ipc::RestorePluginRequest;
 use vst_host_lib::vst_host::scanner;
@@ -49,8 +49,8 @@ pub enum Command {
     OpenEditor(String),
     /// 音づくりの今の設定を読む。
     ReadSound,
-    /// 音づくりを変える。変わった区画（ノイズ低減・声を整える）だけをエンジンへ送り、保存する。
-    SetSound(Sound),
+    /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
+    SetSound(Change),
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
@@ -407,6 +407,10 @@ impl Control {
         for slot in std::mem::take(&mut self.rack) {
             self.restore(slot.request());
         }
+        // 新しい子の音づくりは既定値で始まるので、落ちる前の設定を送り直す。
+        if let Some(sound) = self.sound {
+            self.apply_sound(sound, None);
+        }
         self.send_rack();
     }
 
@@ -570,8 +574,9 @@ impl Control {
         self.changed();
     }
 
-    /// エンジンの統計から音づくりの設定を読み、画面へ送る。
+    /// エンジンの統計から音づくりの設定を読み、画面へ送る。子が落ちていたら、先に読み直す（落ちた子の既定値を読まない）。
     fn read_sound(&mut self) {
+        self.recover();
         match self.host.get_engine_runtime_stats() {
             Ok(stats) => {
                 let sound = Sound {
@@ -592,9 +597,14 @@ impl Control {
     }
 
     /// 変わった区画だけを送る。終わったら、エンジンが受け付けた結果を読み直して画面へ送り、保存する。
-    fn set_sound(&mut self, next: Sound) {
-        let before = self.sound;
-        self.apply_sound(next, before);
+    fn set_sound(&mut self, change: Change) {
+        if self.sound.is_none() {
+            self.read_sound();
+        }
+        let Some(before) = self.sound else {
+            return;
+        };
+        self.apply_sound(before.with(change), Some(before));
         self.read_sound();
         if let Some(sound) = self.sound {
             self.save_sound(sound);
@@ -701,7 +711,7 @@ impl Control {
             Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
             Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
             Command::ReadSound => return self.read_sound(),
-            Command::SetSound(next) => return self.set_sound(next),
+            Command::SetSound(change) => return self.set_sound(change),
             Command::SaveRack(ref done) => {
                 self.save(true);
                 if let Some(done) = done {
