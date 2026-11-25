@@ -1,6 +1,6 @@
 # Auralyn の GPUI 版
 
-Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の操作）だけで、実エンジンのメーターにつながる。右の列の試作から始めた。
+Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の操作）と、ホームの音の流れの帯だけで、実エンジンのメーターにつながる。右の列の試作から始めた。
 
 - 決定と知見：[docs/gpui/decisions.md](../docs/gpui/decisions.md)、[docs/gpui/knowledge.md](../docs/gpui/knowledge.md)
 - 試作の判定の記録：[docs/plans/gpui-prototype-checklist.md](../docs/plans/gpui-prototype-checklist.md)
@@ -10,12 +10,14 @@ Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の�
 | ファイル | 役割 |
 | :--- | :--- |
 | `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
-| `src/view.rs` | 右の列の画面。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/view.rs` | 窓の中身（中央のホームと右の列）。右の列の画面。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り） |
+| `src/color.rs` | 色。`design/tokens.json` から名前で取る |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |
 | `src/i18n.rs` | 日英の文言（正本は `src-tauri/crates/auralyn-core/locales/` の JSON。試作のときに写した分を、そこから読む形へ順に置き換える） |
 | `src/main.rs` | 引数を読み、エンジンと窓を起動する |
 
-メーターの読み（平滑化・2秒のピーク保持・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）は、GPUI に依存しない [`src-tauri/crates/auralyn-ui-model`](../src-tauri/crates/auralyn-ui-model) に置く。`useMeterLevels.ts` と `outputVerdict.ts` の写し。
+メーターの読み（平滑化・2秒のピーク保持と毎秒 20 dB の下降・1秒での更新停止・一言の判定・−60〜0 dBFS の目盛り）と音の流れの帯の規則（`flow`）は、GPUI に依存しない [`src-tauri/crates/auralyn-ui-model`](../src-tauri/crates/auralyn-ui-model) に置く。`useMeterLevels.ts`・`outputVerdict.ts`・`SoundFlow.tsx` の写しで、ピークの下がり方だけ変えた（[decisions.md](../docs/gpui/decisions.md)）。
 
 ## 動かし方（Windows）
 

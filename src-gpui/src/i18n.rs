@@ -1,4 +1,7 @@
-//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。この表は試作のときに写した分で、`auralyn-core` から読む形へ順に置き換える。
+//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。新しい文言は [`core`] でそこから取る。
+//! [`t`] の表は試作のときに写した分で、順に [`core`] へ置き換える。
+
+use auralyn_core::i18n::{catalog, Locale};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
@@ -119,5 +122,49 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, TrayQuit) => "Quit",
         (Lang::Ja, HotkeyFailed) => "Alt+M を登録できません（Auralyn が起動中かもしれません）",
         (Lang::En, HotkeyFailed) => "Could not register Alt+M (Auralyn may be running)",
+    }
+}
+
+/// `auralyn-core` の文言のキー。
+pub mod keys {
+    pub const FLOW_VOICE: &str = "home.flowVoice";
+    pub const FLOW_COMPARE: &str = "home.flowCompare";
+    pub const FLOW_BEFORE: &str = "home.flowBefore";
+    pub const FLOW_AFTER: &str = "home.flowAfter";
+    pub const FLOW_GRAPH: &str = "home.flowGraph";
+
+    #[cfg(test)]
+    pub const ALL: [&str; 5] = [
+        FLOW_VOICE,
+        FLOW_COMPARE,
+        FLOW_BEFORE,
+        FLOW_AFTER,
+        FLOW_GRAPH,
+    ];
+}
+
+/// `auralyn-core` の文言。`key` は [`keys`] の定数で渡す。あることは試験 `every_core_key_exists_in_both_languages` で確かめる。
+pub fn core(lang: Lang, key: &'static str) -> &'static str {
+    let locale = match lang {
+        Lang::Ja => Locale::Ja,
+        Lang::En => Locale::En,
+    };
+    catalog()
+        .messages(locale)
+        .get(key)
+        .unwrap_or_else(|| panic!("文言 {key} がありません"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_core_key_exists_in_both_languages() {
+        for key in keys::ALL {
+            for lang in [Lang::Ja, Lang::En] {
+                assert!(!core(lang, key).is_empty());
+            }
+        }
     }
 }

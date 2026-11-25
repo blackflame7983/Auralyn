@@ -21,6 +21,8 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 | スライダー | `SliderState` を `cx.new` で持ち、`cx.subscribe` で `SliderEvent::Change` と `Release` を受ける | `view.rs` の `new` |
 | 読み上げ | 操作する要素に `.id(..)` と `.role(Role::..)` を付ける。ナレーターでの合格は AccessKit（UIA）による | `view.rs` |
 | トレイとホットキー | `tray-icon` と `global-hotkey` は GPUI の主スレッドで作り、周期の中で `poll` する。登録の失敗は画面とログに出す | `desktop.rs` |
+| 自前の描画 | `canvas(prepaint, paint)` の paint で `PathBuilder::fill()`／`stroke(px(..))` に `add_polygon` で点を渡し、`window.paint_path`。はみ出しは `with_content_mask` で切る。塗りには `linear_gradient` の `Background` も渡せる | `home.rs` の `paint_wave` |
+| 動きを減らす設定 | `cx.reduce_motion()`（`App`）で読む。時間の流れの描画を止め、今の値だけにする | `view.rs` の `tick`、`auralyn-ui-model` の `flow` |
 | 日本語入力 | GPUI Kit の `Input` / `InputState` を使う。自前の文字入力は作らない | `view.rs` |
 
 ## 落とし穴

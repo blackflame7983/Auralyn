@@ -1,4 +1,5 @@
-//! 右の列（本番中の操作）。DESIGN.md 10.3・10.6 の並びと規則に合わせる。
+//! 窓の中身。中央にホーム（今は音の流れの帯だけ）、右に本番中の操作の列（DESIGN.md 10.3）。
+//! 右の列は DESIGN.md 10.3・10.6 の並びと規則に合わせる。
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
 //! VSTを外して比較。その下に、確認用の欄（IME・VSTのエディタ・言語・トレイとホットキーの状態）を置く。この欄は画面の外枠を作る段階で設定などへ移す。
 
@@ -10,101 +11,20 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::color;
 use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
+use crate::home;
 use crate::i18n::{t, Key, Lang};
+use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
+/// 右の列の幅（`src/index.css` の `--safety-column-width`）。
+const SAFETY_COLUMN_WIDTH: f32 = 212.;
 
-/// 色は `design/tokens.json`（`auralyn-core` が埋め込んで読む）のダークテーマ「オーロラ（標準）」から取る。値をここで書かない。
-mod color {
-    use auralyn_core::design::{tokens, Theme};
-    use gpui_kit::{rgb, Hsla};
-
-    fn token(name: &str) -> Hsla {
-        let color = tokens()
-            .color(name, Theme::Dark)
-            .unwrap_or_else(|| panic!("design/tokens.json に色 {name} がありません"));
-        rgb(u32::from_be_bytes([0, color.r, color.g, color.b])).into()
-    }
-
-    pub fn background() -> Hsla {
-        token("background")
-    }
-    pub fn card() -> Hsla {
-        token("card")
-    }
-    pub fn foreground() -> Hsla {
-        token("foreground")
-    }
-    pub fn muted() -> Hsla {
-        token("muted-foreground")
-    }
-    pub fn border() -> Hsla {
-        token("border")
-    }
-    pub fn track() -> Hsla {
-        token("muted")
-    }
-    pub fn destructive_text() -> Hsla {
-        token("destructive-text")
-    }
-    /// 緊急ミュート中の塗り。`destructive` は塗り専用（DESIGN.md 5.1）。
-    pub fn destructive_soft() -> Hsla {
-        token("destructive").alpha(0.35)
-    }
-    pub fn warning() -> Hsla {
-        token("warning")
-    }
-    pub fn meter_warning() -> Hsla {
-        token("meter-warning")
-    }
-    pub fn meter_danger() -> Hsla {
-        token("meter-danger")
-    }
-    pub fn success() -> Hsla {
-        token("success")
-    }
-    pub fn aurora_green() -> Hsla {
-        token("aurora-green")
-    }
-    pub fn aurora_teal() -> Hsla {
-        token("aurora-teal")
-    }
-    pub fn primary() -> Hsla {
-        token("primary")
-    }
-
-    #[cfg(test)]
-    mod tests {
-        #[test]
-        fn every_color_is_in_the_tokens() {
-            for color in [
-                super::background,
-                super::card,
-                super::foreground,
-                super::muted,
-                super::border,
-                super::track,
-                super::destructive_text,
-                super::destructive_soft,
-                super::warning,
-                super::meter_warning,
-                super::meter_danger,
-                super::success,
-                super::aurora_green,
-                super::aurora_teal,
-                super::primary,
-            ] {
-                assert!(color().a > 0.0);
-            }
-        }
-    }
-}
-
-pub struct SafetyColumn {
+pub struct MainView {
     engine: Engine,
     desktop: Desktop,
     lang: Lang,
@@ -117,6 +37,9 @@ pub struct SafetyColumn {
     message: Option<String>,
     input: Meter,
     output: Meter,
+    /// 加工後（出力音量・ピーク保護・ミュートの前）。音の流れの帯だけが使う。
+    processed: Meter,
+    flow: Flow,
     level_seq: u64,
     input_gain: Entity<SliderState>,
     output_gain: Entity<SliderState>,
@@ -124,7 +47,7 @@ pub struct SafetyColumn {
     _ticker: Task<()>,
 }
 
-impl SafetyColumn {
+impl MainView {
     pub fn new(engine: Engine, lang: Lang, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_gain = cx.new(|_| {
             SliderState::new()
@@ -201,6 +124,8 @@ impl SafetyColumn {
             message,
             input: Meter::stopped(now),
             output: Meter::stopped(now),
+            processed: Meter::stopped(now),
+            flow: Flow::default(),
             level_seq: 0,
             input_gain,
             output_gain,
@@ -231,12 +156,22 @@ impl SafetyColumn {
                 let at = slot.received_at.unwrap_or_else(Instant::now);
                 self.input.receive(slot.input, at);
                 self.output.receive(slot.output, at);
+                // テスト音などで子が加工後を送らないあいだは、出力で代える。
+                self.processed
+                    .receive(slot.processed.unwrap_or(slot.output), at);
             }
             let now = Instant::now();
             changed |= self.input.tick(now);
             changed |= self.output.tick(now);
+            changed |= self.processed.tick(now);
         }
         if changed {
+            self.flow.update(
+                self.running,
+                &self.input,
+                &self.processed,
+                cx.reduce_motion(),
+            );
             cx.notify();
         }
     }
@@ -249,6 +184,7 @@ impl SafetyColumn {
                 self.output_name = output;
                 self.input.start();
                 self.output.start();
+                self.processed.start();
             }
             Notice::Stopped => self.stop(None),
             Notice::StreamError(message) => self.stop(Some(message)),
@@ -269,6 +205,7 @@ impl SafetyColumn {
         self.running = false;
         self.input.stop();
         self.output.stop();
+        self.processed.stop();
         if message.is_some() {
             self.message = message;
         }
@@ -526,21 +463,48 @@ impl SafetyColumn {
     }
 }
 
-impl Render for SafetyColumn {
+impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .flex()
+            .bg(color::background())
+            .text_color(color::foreground())
+            .font_family("Yu Gothic UI")
+            .child(
+                div()
+                    .id("home")
+                    .role(Role::Main)
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .p_4()
+                    .overflow_y_scroll()
+                    .children(home::sound_flow(&self.flow, self.lang)),
+            )
+            .child(self.render_safety_column(cx))
+    }
+}
+
+impl MainView {
+    fn render_safety_column(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         div()
             .id("safety-column")
             .role(Role::Complementary)
             .aria_label(t(lang, Key::SafetyColumn))
-            .size_full()
+            .w(px(SAFETY_COLUMN_WIDTH))
+            .flex_none()
+            .h_full()
             .flex()
             .flex_col()
             .gap_3()
             .p_3()
+            .border_l_1()
+            .border_color(color::border())
             .bg(color::card())
-            .text_color(color::foreground())
-            .font_family("Yu Gothic UI")
             .child(self.render_mute(cx))
             .child(self.render_input())
             .child(self.render_output(cx))
@@ -618,11 +582,7 @@ fn meter_bar(id: &'static str, reading: &Meter, lang: Lang) -> impl IntoElement 
                 .bottom_0()
                 .left_0()
                 .w(relative(normal))
-                .bg(linear_gradient(
-                    90.,
-                    linear_color_stop(color::aurora_green(), 0.),
-                    linear_color_stop(color::aurora_teal(), 1.),
-                )),
+                .bg(color::aurora_fill()),
         )
         .when(hot > 0.0, |this| {
             this.child(
