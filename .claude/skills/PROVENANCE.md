@@ -5,4 +5,4 @@
 ライセンスは Apache-2.0（`LICENSE-GPUI-KIT-APACHE`）。
 
 - GPUI Kit の版を上げるときは、同じタグのスキルに差し替える。
-- Auralyn の見た目の決定は `docs/DESIGN.md`、GPUI の知見と決定は `docs/gpui/` を優先する。
+- Auralyn の見た目の決定は `docs/DESIGN.md` を優先する。GPUI の試作で分かった知見と決定（試作ブランチの `docs/gpui/`）が main に入ったら、それも優先する。
