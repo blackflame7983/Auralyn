@@ -47,7 +47,6 @@ pub enum Key {
     ImePlaceholder,
     OpenEditor,
     Language,
-    NotStarted,
     TrayShow,
     TrayQuit,
     HotkeyFailed,
@@ -114,8 +113,6 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, OpenEditor) => "Open VST editor",
         (Lang::Ja, Language) => "English",
         (Lang::En, Language) => "日本語",
-        (Lang::Ja, NotStarted) => "音声を開始できません",
-        (Lang::En, NotStarted) => "Could not start audio",
         (Lang::Ja, TrayShow) => "Auralyn を表示",
         (Lang::En, TrayShow) => "Show Auralyn",
         (Lang::Ja, TrayQuit) => "終了",
@@ -132,14 +129,52 @@ pub mod keys {
     pub const FLOW_BEFORE: &str = "home.flowBefore";
     pub const FLOW_AFTER: &str = "home.flowAfter";
     pub const FLOW_GRAPH: &str = "home.flowGraph";
+    pub const RAIL_LABEL: &str = "rail.label";
+    pub const RAIL_HOME: &str = "rail.home";
+    pub const RAIL_SOUND: &str = "rail.sound";
+    pub const RAIL_VST: &str = "rail.vst";
+    pub const RAIL_CONNECT: &str = "rail.connect";
+    pub const RAIL_CONNECT_NAME: &str = "rail.connectName";
+    pub const RAIL_SETTINGS: &str = "rail.settings";
+    pub const BAND_LABEL: &str = "band.label";
+    pub const STATUS_UNCONFIGURED: &str = "shell.unconfigured";
+    pub const STATUS_STOPPED: &str = "shell.stopped";
+    pub const STATUS_RUNNING: &str = "device.engine";
+    pub const CONFIGURE: &str = "shell.configure";
+    pub const START: &str = "home.startAudio";
+    pub const STARTING: &str = "home.starting";
+    pub const START_FAILED: &str = "home.startFailed";
+    pub const STOP: &str = "band.stopAudio";
+    pub const STOPPING: &str = "band.stopping";
+    pub const STOP_FAILED: &str = "band.stopFailed";
+    pub const NOT_YET: &str = "gpuiShell.notYet";
 
     #[cfg(test)]
-    pub const ALL: [&str; 5] = [
+    pub const ALL: [&str; 24] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
         FLOW_AFTER,
         FLOW_GRAPH,
+        RAIL_LABEL,
+        RAIL_HOME,
+        RAIL_SOUND,
+        RAIL_VST,
+        RAIL_CONNECT,
+        RAIL_CONNECT_NAME,
+        RAIL_SETTINGS,
+        BAND_LABEL,
+        STATUS_UNCONFIGURED,
+        STATUS_STOPPED,
+        STATUS_RUNNING,
+        CONFIGURE,
+        START,
+        STARTING,
+        START_FAILED,
+        STOP,
+        STOPPING,
+        STOP_FAILED,
+        NOT_YET,
     ];
 }
 

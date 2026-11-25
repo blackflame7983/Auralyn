@@ -3652,5 +3652,6 @@
   "troubleshoot.receiverReason.other": "受け側のアプリで入力に選んでいる名前です。どの入力を確かめたかを見分けるために使います。",
   "troubleshoot.receiverOptional": "空でもかまいません。",
   "troubleshoot.clearReceiver": "名前を消す",
-  "session.retryDetails": "保存済みの並びを読み直す"
+  "session.retryDetails": "保存済みの並びを読み直す",
+  "gpuiShell.notYet": "この画面は、新しい版の Auralyn にはまだありません。今は今までの Auralyn で設定してください。"
 }

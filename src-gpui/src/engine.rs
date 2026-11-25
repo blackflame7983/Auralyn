@@ -14,6 +14,9 @@ use vst_host_lib::vst_host::scanner;
 
 #[derive(Debug)]
 pub enum Command {
+    /// 保存した入出力の設定で開始する。
+    Start,
+    Stop,
     SetMute(bool),
     SetBypass(bool),
     SetInputGain(f32),
@@ -49,8 +52,12 @@ pub enum Notice {
         command: &'static str,
         message: String,
     },
-    /// 保存した設定がない、または開始に失敗した。
+    /// 開始に失敗した。
     NotStarted(String),
+    /// 保存した入出力の設定がない。
+    Unconfigured,
+    /// 停止に失敗した。音声は流れたまま。
+    StopFailed(String),
 }
 
 /// 最新のメーターの値。`seq` が進んだときだけ画面が読む。
@@ -202,9 +209,7 @@ impl Control {
         let config = match self.host.read_saved_audio_config() {
             Ok(Some(config)) => config,
             Ok(None) => {
-                let _ = self.notices.send(Notice::NotStarted(
-                    "保存した音声の設定がありません。Auralyn で一度音声を開始してください。".into(),
-                ));
+                let _ = self.notices.send(Notice::Unconfigured);
                 return;
             }
             Err(e) => {
@@ -257,6 +262,8 @@ impl Control {
 
     fn execute(&mut self, command: &Command) {
         let (name, result) = match *command {
+            Command::Start => return self.start_saved(),
+            Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
             Command::SetBypass(active) => {
                 ("set_global_bypass", self.host.set_global_bypass(active))
@@ -271,6 +278,15 @@ impl Control {
         if let Err(e) = result {
             self.fail(name, e);
         }
+    }
+
+    /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。
+    fn stop(&mut self) {
+        let notice = match self.host.stop() {
+            Ok(()) => Notice::Stopped,
+            Err(e) => Notice::StopFailed(e.to_string()),
+        };
+        let _ = self.notices.send(notice);
     }
 
     fn fail(&self, command: &'static str, error: anyhow::Error) {

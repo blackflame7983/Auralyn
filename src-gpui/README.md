@@ -1,6 +1,6 @@
 # Auralyn の GPUI 版
 
-Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の操作）と、ホームの音の流れの帯だけで、実エンジンのメーターにつながる。右の列の試作から始めた。
+Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左のレール・先頭の帯の開始と停止）、右の列（本番中の操作）、ホームの音の流れの帯がある。実エンジンにつながる。ほかの行き先は「まだ無い」と出し、今までの版で設定するよう案内する。
 
 - 決定と知見：[docs/gpui/decisions.md](../docs/gpui/decisions.md)、[docs/gpui/knowledge.md](../docs/gpui/knowledge.md)
 - 試作の判定の記録：[docs/plans/gpui-prototype-checklist.md](../docs/plans/gpui-prototype-checklist.md)
@@ -10,7 +10,9 @@ Tauri 版を置き換える GPUI Kit の画面。今は右の列（本番中の�
 | ファイル | 役割 |
 | :--- | :--- |
 | `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
-| `src/view.rs` | 窓の中身。中央のホームと、右の列（本番中の操作）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。確認用の欄（IME・VSTのエディタ・言語）は設定の画面に置く。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/shell.rs` | 窓の外枠。左のレール（行き先）、先頭の帯（音声の状態と開始・停止）、まだ無い画面の案内。開始・停止の状態は `auralyn-ui-model` の `session` |
+| `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |
 | `src/color.rs` | 色。`design/tokens.json` から名前で取る |
 | `src/desktop.rs` | トレイ（tray-icon）と Alt+M（global-hotkey）。Windows だけ |

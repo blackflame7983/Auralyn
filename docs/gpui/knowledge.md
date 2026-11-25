@@ -36,3 +36,4 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 - **狭い窓では、状態が変わって文が増えると下が切れる。** 長い説明は読み上げの説明へ回し、見える文は短くする。
 - **`gpui-component` の部品の既定はライト（`ThemeMode::Light`）。** 画面の地を暗く塗っても、ボタン・入力欄はライトの色のまま描かれる。`ghost` のボタンは暗い地に暗い文字になり、マウスを当てるまで見えなかった（2026-11-25）。`gpui_kit::init` の直後に `Theme::change(ThemeMode::Dark, None, cx)` を呼ぶ。地の色とテーマのモードは同じものから決める。
 - **`ghost` のボタンは枠も地もなく、暗い地では文字だけに見える。** マウスを当てるまでボタンと分からなかった（2026-11-25）。押せることを見せたい操作は `outline` 以上にする。
+- **`gpui_kit::assets::Assets` には Lucide の一部しか入っていない（0.11.0）。** `IconName` には全部の名前があるが、既定の組（`default-icons.txt`）に無いアイコン（`House`・`Cable` など）は、`Assets` だけでは何も描かれない。`icon_assets!` で使うものだけを足し、`Assets` と合わせた `AssetSource` を渡す（`src-gpui/src/assets.rs`）。全部入りの `AllAssets` は実行ファイルが大きくなる。

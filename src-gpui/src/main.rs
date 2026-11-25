@@ -4,11 +4,13 @@
 //! 既定の設定のフォルダは、Tauri 版と同じ `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod assets;
 mod color;
 mod desktop;
 mod engine;
 mod home;
 mod i18n;
+mod shell;
 mod view;
 
 use std::path::PathBuf;
@@ -63,7 +65,7 @@ fn main() {
     });
     let lang = args.lang;
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
             gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
