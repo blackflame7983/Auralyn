@@ -677,8 +677,7 @@ impl OutputCallback {
                 channels,
             )
         };
-        let meter_io: ([f32; 2], [f32; 2]);
-        if self.rt_global_mute {
+        let (input, output) = if self.rt_global_mute {
             // ミュート中もゲインの反映を完了させる。出力は無音のまま。
             for _ in 0..frames {
                 self.rt_output_gain.next();
@@ -686,7 +685,7 @@ impl OutputCallback {
             }
             write_device_silence(data);
             // Zero metering too implies output is silence
-            meter_io = ([in_max_l, in_max_r], [0.0, 0.0]);
+            ([in_max_l, in_max_r], [0.0, 0.0])
         } else if measure_action == super::super::latency_measure::OutputAction::Replace {
             // テスト音と同じく gain とピーク保護だけを通し、配信へは送らない。
             data.fill(0.0);
@@ -705,7 +704,7 @@ impl OutputCallback {
                 out_max_l = out_max_l.max(sent[0]);
                 out_max_r = out_max_r.max(sent[1]);
             }
-            meter_io = ([0.0, 0.0], [out_max_l, out_max_r]);
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else if self.rt_test_tone.is_active() {
             data.fill(0.0);
             let mut out_max_l = 0.0f32;
@@ -728,7 +727,7 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            meter_io = ([0.0, 0.0], [out_max_l, out_max_r]);
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else if self.rt_voice_check.is_playback_active() {
             data.fill(0.0);
             let mut out_max_l = 0.0f32;
@@ -751,7 +750,7 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            meter_io = ([0.0, 0.0], [out_max_l, out_max_r]);
+            ([0.0, 0.0], [out_max_l, out_max_r])
         } else {
             // Initialize output with silence
             data.fill(0.0);
@@ -805,9 +804,8 @@ impl OutputCallback {
                 out_max_r = out_max_r.max(sent[1]);
             }
 
-            meter_io = ([in_max_l, in_max_r], [out_max_l, out_max_r]);
-        }
-        let (input, output) = meter_io;
+            ([in_max_l, in_max_r], [out_max_l, out_max_r])
+        };
         // 段の計測は読むだけで、出力のサンプルを変えない。満杯なら捨て、待たない。
         let _ = self.level_prod.try_push(MeterBlock {
             input,
