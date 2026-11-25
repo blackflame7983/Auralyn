@@ -171,6 +171,23 @@ impl Meter {
     }
 }
 
+/// 出力の見出しの横の札。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputTag {
+    /// ミュート中か、出力音量が 0。音が出ないことを、判定より先に知らせる。
+    Muted,
+    Verdict(Verdict),
+}
+
+/// 出力の札を決める。`volume_zero` は出力音量のスライダーが 0。
+pub fn output_tag(muted: bool, volume_zero: bool, output: &Meter) -> Option<OutputTag> {
+    if muted || volume_zero {
+        Some(OutputTag::Muted)
+    } else {
+        output.verdict().map(OutputTag::Verdict)
+    }
+}
+
 /// 保持が切れたピークを `elapsed` 秒ぶん下げる。目盛りの下端より下は 0 にする。
 fn release(peak: f32, elapsed: f32) -> f32 {
     let db = to_dbfs(peak) - PEAK_RELEASE_DB_PER_SEC * elapsed;
@@ -399,5 +416,18 @@ mod tests {
         assert_eq!(format_peak(0.0), "−∞");
         assert_eq!(format_peak(amplitude(-12.34)), "−12.3");
         assert_eq!(format_peak(1.0), "0.0");
+    }
+
+    #[test]
+    fn output_tag_says_muted_before_any_verdict() {
+        let (mut loud, now) = live([0.6, 0.0]);
+        loud.tick(now);
+        assert_eq!(output_tag(true, false, &loud), Some(OutputTag::Muted));
+        assert_eq!(output_tag(false, true, &loud), Some(OutputTag::Muted));
+        assert_eq!(
+            output_tag(false, false, &loud),
+            Some(OutputTag::Verdict(Verdict::High))
+        );
+        assert_eq!(output_tag(false, false, &Meter::stopped(now)), None);
     }
 }
