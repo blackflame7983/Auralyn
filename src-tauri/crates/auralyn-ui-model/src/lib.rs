@@ -3,3 +3,4 @@
 //! このクレートは GPUI・Tauri・音声エンジンのどれにも依存しない。部品（GPUI）はここの結果を描くだけにする。
 pub mod flow;
 pub mod meter;
+pub mod session;

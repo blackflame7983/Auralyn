@@ -1,10 +1,11 @@
-//! 窓の中身。中央にホーム（今は音の流れの帯だけ）、右に本番中の操作の列（DESIGN.md 10.3）。
+//! 窓の中身。左にレール（行き先）、中央に先頭の帯と行き先の画面、右に本番中の操作の列（DESIGN.md 10.3）。
 //! 右の列は DESIGN.md 10.3・10.6 の並びと規則に合わせる。
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
-//! VSTを外して比較。その下に、確認用の欄（IME・VSTのエディタ・言語・トレイとホットキーの状態）を置く。この欄は画面の外枠を作る段階で設定などへ移す。
+//! VSTを外して比較。確認用の欄（IME・VSTのエディタ・言語・トレイとホットキーの状態）は、設定の画面に置く。
 
 use std::time::{Duration, Instant};
 
+use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
@@ -15,9 +16,11 @@ use crate::color;
 use crate::desktop::{Action, Desktop};
 use crate::engine::{Command, Engine, Notice};
 use crate::home;
-use crate::i18n::{t, Key, Lang};
+use crate::i18n::{core, keys, t, Key, Lang};
+use crate::shell::{self, Page};
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
+use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
@@ -28,7 +31,8 @@ pub struct MainView {
     engine: Engine,
     desktop: Desktop,
     lang: Lang,
-    running: bool,
+    page: Page,
+    phase: Phase,
     muted: bool,
     bypassed: bool,
     input_name: Option<String>,
@@ -115,7 +119,8 @@ impl MainView {
             engine,
             desktop,
             lang,
-            running: false,
+            page: Page::Home,
+            phase: Phase::LAUNCH,
             muted: false,
             bypassed: false,
             input_name: None,
@@ -167,11 +172,12 @@ impl MainView {
         }
         if changed {
             self.flow.update(
-                self.running,
+                self.phase.running(),
                 &self.input,
                 &self.processed,
                 cx.reduce_motion(),
             );
+            // shortcut: メーターのために窓全体（レール・帯・画面）を 16ms ごとに組み直す。重くなったらメーターの部分を別の Entity に分け、そこだけ notify する。
             cx.notify();
         }
     }
@@ -179,18 +185,22 @@ impl MainView {
     fn apply(&mut self, notice: Notice) {
         match notice {
             Notice::Started { input, output } => {
-                self.running = true;
                 self.input_name = input;
                 self.output_name = output;
-                self.input.start();
-                self.output.start();
-                self.processed.start();
+                self.advance(SessionEvent::Started);
             }
-            Notice::Stopped => self.stop(None),
-            Notice::StreamError(message) => self.stop(Some(message)),
+            Notice::Stopped => self.advance(SessionEvent::Stopped),
+            Notice::StreamError(message) => {
+                self.advance(SessionEvent::Stopped);
+                self.message = Some(message);
+            }
             Notice::NotStarted(message) => {
-                self.message = Some(format!("{}: {message}", t(self.lang, Key::NotStarted)))
+                self.fail(SessionEvent::StartFailed, keys::START_FAILED, message)
             }
+            Notice::StopFailed(message) => {
+                self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message)
+            }
+            Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::PluginLoaded(name) => self.plugin = Some(name),
@@ -201,14 +211,36 @@ impl MainView {
         }
     }
 
-    fn stop(&mut self, message: Option<String>) {
-        self.running = false;
-        self.input.stop();
-        self.output.stop();
-        self.processed.stop();
-        if message.is_some() {
-            self.message = message;
+    /// 状態を進め、音が流れ始めた・止まったときだけメーターを合わせる（停止の失敗で実行中に戻ったときも含む）。
+    fn advance(&mut self, event: SessionEvent) {
+        let was_running = self.phase.running();
+        self.phase = self.phase.next(event);
+        match (was_running, self.phase.running()) {
+            (false, true) => [&mut self.input, &mut self.output, &mut self.processed]
+                .into_iter()
+                .for_each(Meter::start),
+            (true, false) => [&mut self.input, &mut self.output, &mut self.processed]
+                .into_iter()
+                .for_each(Meter::stop),
+            _ => {}
         }
+    }
+
+    fn fail(&mut self, event: SessionEvent, key: &'static str, detail: String) {
+        self.advance(event);
+        self.message = Some(format!("{} {detail}", core(self.lang, key)));
+    }
+
+    /// 帯のボタン。押せるのは結果を待っていないときだけ（`Phase::busy`）。
+    fn press_band(&mut self) {
+        let (event, command) = match self.phase {
+            Phase::Unconfigured | Phase::Stopped => (SessionEvent::StartRequested, Command::Start),
+            Phase::Running => (SessionEvent::StopRequested, Command::Stop),
+            Phase::Starting | Phase::Stopping => return,
+        };
+        self.advance(event);
+        self.message = None;
+        self.engine.send(command);
     }
 
     fn toggle_mute(&mut self) {
@@ -429,9 +461,6 @@ impl MainView {
                     .text_color(color::muted())
                     .child(t(lang, Key::Checks)),
             )
-            .when_some(self.message.clone(), |this, message| {
-                this.child(div().text_xs().text_color(color::warning()).child(message))
-            })
             .child(
                 div()
                     .flex()
@@ -465,24 +494,63 @@ impl MainView {
 
 impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let lang = self.lang;
+        let entity = cx.entity();
+        let rail = shell::rail(self.page, lang, {
+            let entity = entity.clone();
+            move |page, _, cx| {
+                entity.update(cx, |this, cx| {
+                    this.page = page;
+                    cx.notify();
+                })
+            }
+        });
+        let route = match (self.phase.running(), &self.input_name, &self.output_name) {
+            (true, Some(input), Some(output)) => Some(format!("{input} → {output}").into()),
+            _ => None,
+        };
+        let band = shell::band(self.phase, route, lang, move |_, cx| {
+            entity.update(cx, |this, cx| {
+                this.press_band();
+                cx.notify();
+            })
+        });
         div()
             .size_full()
             .flex()
             .bg(color::background())
             .text_color(color::foreground())
             .font_family("Yu Gothic UI")
+            .child(rail)
             .child(
                 div()
-                    .id("home")
-                    .role(Role::Main)
                     .flex_1()
                     .min_w_0()
+                    .h_full()
                     .flex()
                     .flex_col()
-                    .gap_3()
-                    .p_4()
-                    .overflow_y_scroll()
-                    .children(home::sound_flow(&self.flow, self.lang)),
+                    .child(band)
+                    .when_some(self.message.clone(), |this, message| {
+                        this.child(Alert::warning("message", message).banner())
+                    })
+                    .child(
+                        div()
+                            .id("page")
+                            .role(Role::Main)
+                            .aria_label(self.page.label(lang))
+                            .flex_1()
+                            .min_h_0()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .p_4()
+                            .overflow_y_scroll()
+                            .map(|this| match self.page {
+                                Page::Home => this.children(home::sound_flow(&self.flow, lang)),
+                                Page::Settings => this.child(self.render_checks(cx)),
+                                page => this.justify_center().child(shell::not_yet(page, lang)),
+                            }),
+                    ),
             )
             .child(self.render_safety_column(cx))
     }
@@ -509,15 +577,6 @@ impl MainView {
             .child(self.render_input())
             .child(self.render_output(cx))
             .child(self.render_compare(cx))
-            // 本番中の操作は動かさず、確認用の欄だけを、残りの高さの中でスクロールさせる。
-            .child(
-                div()
-                    .id("checks")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(self.render_checks(cx)),
-            )
     }
 }
 

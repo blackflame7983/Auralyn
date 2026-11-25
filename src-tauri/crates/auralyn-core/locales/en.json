@@ -3652,5 +3652,6 @@
   "troubleshoot.receiverReason.other": "The input you picked in the receiving app. It tells you which input a check was for.",
   "troubleshoot.receiverOptional": "You can leave it blank.",
   "troubleshoot.clearReceiver": "Clear the name",
-  "session.retryDetails": "Reload the saved chain"
+  "session.retryDetails": "Reload the saved chain",
+  "gpuiShell.notYet": "This page is not in the new Auralyn yet. For now, use the current Auralyn for these settings."
 }
