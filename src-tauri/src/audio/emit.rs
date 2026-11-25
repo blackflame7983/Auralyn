@@ -30,9 +30,14 @@ pub(crate) fn trace_mark(kind: &str, name: &str) {
     );
 }
 
+/// Tauri を通さずに通知を受ける関数。通知の名前と、`AppHandle::emit` へ渡すのと同じ内容を JSON にしたものを受ける。
+/// 通知を出したスレッド（reader など）で呼ばれるので、待たずに戻ること。
+pub type EventListener = std::sync::Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
+
 #[derive(Clone)]
 enum Sink {
     App(AppHandle),
+    Listener(EventListener),
     #[cfg(test)]
     Recorder(std::sync::Arc<Recorder>),
 }
@@ -45,10 +50,18 @@ impl AudioEmitter {
         Self(Sink::App(handle))
     }
 
+    pub(crate) fn listener(listener: EventListener) -> Self {
+        Self(Sink::Listener(listener))
+    }
+
     pub(crate) fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
         trace_mark("emit", event);
         match &self.0 {
             Sink::App(handle) => handle.emit(event, payload),
+            Sink::Listener(listener) => {
+                listener(event, serde_json::to_value(payload)?);
+                Ok(())
+            }
             #[cfg(test)]
             Sink::Recorder(recorder) => recorder.push(event, &payload),
         }
@@ -266,5 +279,37 @@ mod tests {
                 let _ = chain.emit("x", ());
             }
         ));
+    }
+
+    #[test]
+    fn a_listener_receives_the_same_names_payloads_and_order_as_the_app() {
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = received.clone();
+        let notifier = Notifier::default();
+        notifier.set(AudioEmitter::listener(Arc::new(move |name, payload| {
+            sink.lock().unwrap().push((name.to_owned(), payload));
+        })));
+        notifier.emit("global-mute-changed", true);
+        notifier.chain(|chain| {
+            let _ = chain.emit("audio-conditions-changed", ());
+            let _ = chain.emit(
+                "audio-stopped",
+                serde_json::json!({"stream_generation": "1:2"}),
+            );
+        });
+        assert_eq!(
+            *received.lock().unwrap(),
+            [
+                ("global-mute-changed".to_owned(), serde_json::json!(true)),
+                (
+                    "audio-conditions-changed".to_owned(),
+                    serde_json::Value::Null
+                ),
+                (
+                    "audio-stopped".to_owned(),
+                    serde_json::json!({"stream_generation": "1:2"})
+                ),
+            ]
+        );
     }
 }

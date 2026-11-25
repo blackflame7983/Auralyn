@@ -1,0 +1,28 @@
+[package]
+name = "auralyn-gpui-proto"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-only"
+description = "Auralyn の右の列を GPUI で試作する（main へは入れない）"
+
+# src-tauri とは別のワークスペースにする。Tauri のビルドに影響させない。
+[workspace]
+
+[[bin]]
+name = "auralyn-gpui-proto"
+path = "src/main.rs"
+
+[dependencies]
+vst-host = { path = "../../src-tauri" }
+gpui-kit = "0.11.0"
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+flume = "0.11"
+
+# Tauri が内部で使うのと同じ版。Windows だけで使う。
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.21"
+global-hotkey = "0.7"

@@ -2,6 +2,7 @@ pub(crate) mod conditions;
 pub(crate) mod control;
 pub(crate) mod emit;
 pub use control::{AudioControl, ControlError, Entry, EntryKind, JobClass};
+pub use emit::EventListener;
 mod deadline;
 mod engine_exit;
 pub(crate) mod engine_life;
@@ -688,6 +689,11 @@ impl AudioHost {
 
     pub fn set_event_emitter(&mut self, handle: AppHandle) {
         self.emitter.set(emit::AudioEmitter::app(handle));
+    }
+
+    /// Tauri を使わない画面が、同じ通知を同じ順序で受ける。`set_event_emitter` と同じ口を置き換える。
+    pub fn set_event_listener(&mut self, listener: emit::EventListener) {
+        self.emitter.set(emit::AudioEmitter::listener(listener));
     }
 
     pub(crate) fn conditions(&self) -> Arc<conditions::Conditions> {
