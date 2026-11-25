@@ -1,0 +1,123 @@
+//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。この表は試作のときに写した分で、`auralyn-core` から読む形へ順に置き換える。
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    Ja,
+    En,
+}
+
+impl Lang {
+    pub fn toggled(self) -> Self {
+        match self {
+            Lang::Ja => Lang::En,
+            Lang::En => Lang::Ja,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Key {
+    SafetyColumn,
+    Emergency,
+    MuteOn,
+    MutedShort,
+    Mic,
+    InputLevel,
+    MicVolume,
+    Output,
+    OutputVolume,
+    Peak,
+    OutputPeak,
+    OutputPeakStopped,
+    LevelHigh,
+    LevelLow,
+    LevelOk,
+    Muted,
+    Compare,
+    CompareOn,
+    StateStopped,
+    StateWaiting,
+    StateSilent,
+    StateActive,
+    Checks,
+    ImeField,
+    ImePlaceholder,
+    OpenEditor,
+    Language,
+    NotStarted,
+    TrayShow,
+    TrayQuit,
+    HotkeyFailed,
+}
+
+pub fn t(lang: Lang, key: Key) -> &'static str {
+    use Key::*;
+    match (lang, key) {
+        (Lang::Ja, SafetyColumn) => "本番中の操作",
+        (Lang::En, SafetyColumn) => "Live controls",
+        (Lang::Ja, Emergency) => "緊急ミュート",
+        (Lang::En, Emergency) => "Emergency mute",
+        (Lang::Ja, MuteOn) => "緊急ミュート中です。Auralyn の出力は無音です。",
+        (Lang::En, MuteOn) => "Emergency mute is on. Auralyn output is silent.",
+        (Lang::Ja, MutedShort) => "ミュート中",
+        (Lang::En, MutedShort) => "Muted",
+        (Lang::Ja, Mic) => "マイク",
+        (Lang::En, Mic) => "Microphone",
+        (Lang::Ja, InputLevel) => "マイクの入力レベル",
+        (Lang::En, InputLevel) => "Microphone input level",
+        (Lang::Ja, MicVolume) => "マイク音量",
+        (Lang::En, MicVolume) => "Mic volume",
+        (Lang::Ja, Output) => "出力",
+        (Lang::En, Output) => "Output",
+        (Lang::Ja, OutputVolume) => "出力音量",
+        (Lang::En, OutputVolume) => "Output volume",
+        (Lang::Ja, Peak) => "ピーク",
+        (Lang::En, Peak) => "Peak",
+        (Lang::Ja, OutputPeak) => "出力のピーク",
+        (Lang::En, OutputPeak) => "Output peak",
+        (Lang::Ja, OutputPeakStopped) => "出力のピーク（音声停止中）",
+        (Lang::En, OutputPeakStopped) => "Output peak (audio stopped)",
+        (Lang::Ja, LevelHigh) => "大きすぎ",
+        (Lang::En, LevelHigh) => "Too loud",
+        (Lang::Ja, LevelLow) => "小さめ",
+        (Lang::En, LevelLow) => "A bit low",
+        (Lang::Ja, LevelOk) => "適正",
+        (Lang::En, LevelOk) => "In range",
+        (Lang::Ja, Muted) => "出力ミュート・音量ゼロ",
+        (Lang::En, Muted) => "Muted / 0%",
+        (Lang::Ja, Compare) => "VSTを外して比較",
+        (Lang::En, Compare) => "Bypass VST",
+        (Lang::Ja, CompareOn) => {
+            "VSTを外して比較中です（VSTオフ。ノイズ低減・声を整える機能は継続）"
+        }
+        (Lang::En, CompareOn) => {
+            "Bypass VST is on (VST off; noise reduction and voice shaping continue)"
+        }
+        (Lang::Ja, StateStopped) => "音声停止中",
+        (Lang::En, StateStopped) => "Audio stopped",
+        (Lang::Ja, StateWaiting) => "レベル未受信",
+        (Lang::En, StateWaiting) => "Waiting for level updates",
+        (Lang::Ja, StateSilent) => "無音",
+        (Lang::En, StateSilent) => "Silent",
+        (Lang::Ja, StateActive) => "受信中",
+        (Lang::En, StateActive) => "Receiving",
+        (Lang::Ja, Checks) => "確認用",
+        (Lang::En, Checks) => "Checks",
+        (Lang::Ja, ImeField) => "日本語入力の確認",
+        (Lang::En, ImeField) => "IME check",
+        (Lang::Ja, ImePlaceholder) => "ここに日本語を入力",
+        (Lang::En, ImePlaceholder) => "Type Japanese here",
+        (Lang::Ja, OpenEditor) => "VSTのエディタを開く",
+        (Lang::En, OpenEditor) => "Open VST editor",
+        (Lang::Ja, Language) => "English",
+        (Lang::En, Language) => "日本語",
+        (Lang::Ja, NotStarted) => "音声を開始できません",
+        (Lang::En, NotStarted) => "Could not start audio",
+        (Lang::Ja, TrayShow) => "Auralyn を表示",
+        (Lang::En, TrayShow) => "Show Auralyn",
+        (Lang::Ja, TrayQuit) => "終了",
+        (Lang::En, TrayQuit) => "Quit",
+        (Lang::Ja, HotkeyFailed) => "Alt+M を登録できません（Auralyn が起動中かもしれません）",
+        (Lang::En, HotkeyFailed) => "Could not register Alt+M (Auralyn may be running)",
+    }
+}

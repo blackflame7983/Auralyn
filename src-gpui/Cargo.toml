@@ -1,0 +1,38 @@
+[package]
+name = "auralyn-gpui"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-only"
+description = "Auralyn の GPUI 版の画面（Tauri 版の置き換え）"
+rust-version = "1.100"
+
+# src-tauri とは別のワークスペースにする。Tauri のビルドに影響させない。
+[workspace]
+
+[[bin]]
+name = "auralyn-gpui"
+path = "src/main.rs"
+
+[dependencies]
+vst-host = { path = "../src-tauri" }
+auralyn-core = { path = "../src-tauri/crates/auralyn-core" }
+auralyn-ui-model = { path = "../src-tauri/crates/auralyn-ui-model" }
+gpui-kit = "0.11.0"
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+flume = "0.11"
+
+# Tauri が内部で使うのと同じ版。Windows だけで使う。
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.21"
+global-hotkey = "0.7"
+
+[lints.clippy]
+await_holding_lock = "deny"
+
+# src-tauri の [patch.crates-io] は、別のワークスペースから依存として読むときには効かないので、同じ差し替えをここにも置く。
+[patch.crates-io]
+cpal = { path = "../third_party/cpal-0.17.3" }

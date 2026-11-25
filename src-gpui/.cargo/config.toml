@@ -1,0 +1,3 @@
+# audio_engine.exe と同じ場所に出し、親が子を見つけられるようにする。既存のビルド領域も使い回す。
+[build]
+target-dir = "../src-tauri/target"
