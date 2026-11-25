@@ -35,7 +35,7 @@ Zodのメジャーoverride、Jimpの旧版への変更、Rust変更、署名付�
 
 ## RustSec の継続監査
 
-依存更新時とリリース前は、最新の RustSec Advisory Database を取得して `cargo audit --file src-tauri/Cargo.lock` を必ず実行し、結果と残る指摘を記録する。インストールは `cargo install cargo-audit --version 0.22.2 --locked`。PR・main 更新・週次・手動の CI でも同じ lockfile を監査する。ASIO SDK やアプリのビルドは不要。
+依存更新時とリリース前は、最新の RustSec Advisory Database を取得して `cargo audit --file src-tauri/Cargo.lock` と `cargo audit --file src-gpui/Cargo.lock`（GPUI 版）を必ず実行し、結果と残る指摘を記録する。インストールは `cargo install cargo-audit --version 0.22.2 --locked`。PR・main 更新・週次・手動の CI でも同じ2つの lockfile を監査する。ASIO SDK やアプリのビルドは不要。
 
 脆弱性が見つかった場合は逆依存と修正版を調査し、更新後に再監査する。例外は advisory ID ごとに影響の根拠、理由、対応担当と期限を記録して再評価し、一括無視しない。警告も内容と利用経路を確認する。監査は既知の advisory と lockfile の照合であり、攻撃成立や安全性の証明ではない。署名・インストーラー・実機の検証とは別に実施する。
 

@@ -80,9 +80,10 @@ try {
         run('rust-clippy', 'cargo', ['clippy', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']);
         run('rust-core', 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '-p', 'auralyn-core', '-p', 'auralyn-ui-model']);
         for (const filter of ['gain_ramp::', 'comparison::', 'native_stream::']) run(`rust-${filter.replaceAll(':', '')}`, 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', filter]);
-        run('gpui-fmt', 'cargo', ['fmt', '--manifest-path', 'src-gpui/Cargo.toml', '--all', '--', '--check']);
-        run('gpui-clippy', 'cargo', ['clippy', '--manifest-path', 'src-gpui/Cargo.toml', '--locked', '--all-targets', '--', '-D', 'warnings']);
-        run('gpui-test', 'cargo', ['test', '--manifest-path', 'src-gpui/Cargo.toml', '--locked']);
+        const gpui = { cwd: path.join(root, 'src-gpui') };
+        run('gpui-fmt', 'cargo', ['fmt', '--all', '--', '--check'], gpui);
+        run('gpui-clippy', 'cargo', ['clippy', '--locked', '--all-targets', '--', '-D', 'warnings'], gpui);
+        run('gpui-test', 'cargo', ['test', '--locked'], gpui);
     }
 } catch (error) {
     console.error(error instanceof Error ? error.message : error);

@@ -19,7 +19,7 @@ npm run verify -- --changed
 | `npm run verify -- --feature connection` | staticと機能のVitest。`home`、`vst`、`voice-check`、`restore`も指定可能 |
 | `npm run verify -- --feature home --browser` | 上記と、その機能のPlaywright。ローカルChromiumの準備が必要 |
 | `npm run verify -- --full` | static、全Vitest、Vite、配布スクリプト、リリース方針 |
-| `npm run verify -- --static --rust` | staticと、容量・他ビルド確認、Rust fmt、Clippy全target（workspace 全体）、auralyn-core・auralyn-ui-model の試験、gain ramp・比較・native変換の既存試験、`src-gpui` の fmt・Clippy・試験（Windows） |
+| `npm run verify -- --static --rust` | staticと、容量・他ビルド確認、Rust fmt、Clippy全target（workspace 全体）、auralyn-core・auralyn-ui-model の試験、gain ramp・比較・native変換の既存試験、`src-gpui` の fmt・Clippy・試験（Windows。`src-gpui` には `clippy.toml` が無く、RT の禁止API・型の検査は効かない） |
 
 `--changed`はHEADからの未コミット差分を使う。コミット済み変更には`--feature`か`--full`を使う。
 機能の対応は`config/verification-features.json`にあり、未知の機能名は失敗する。テスト0件を合格にしない。文書のみ・差分なしでは理由を表示してテストを省く。

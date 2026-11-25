@@ -34,6 +34,7 @@ playwright-report/
 
 # Build artifacts
 src-tauri/target/
+src-gpui/target/
 release_artifacts/*.exe
 release_artifacts/*.zip
 release_artifacts/*.msi

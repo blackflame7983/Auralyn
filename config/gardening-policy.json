@@ -20,7 +20,7 @@
     "config/verification-features.json": "e9eb66ed686d5742956204a2fcb190638b8942b656829dcab8b487d1aa632c66",
     ".github/workflows/frontend-quality.yml": "f4e32db02eda308a86daee549b48628bc070032d74732c6befa330aa1d7af958",
     ".github/CODEOWNERS": "c0e9d98459a15a00544a5715eef1ae895389ed286f68dd942120db113848ba30",
-    "scripts/verify.mjs": "90a6ae1a093acd7c30b37c611590a9960286e866ac51f2d3d399fb0f564750b1",
+    "scripts/verify.mjs": "f17a98a8f861017b19571a2a64c5e59ec78bdd0b87f93e83bbf8e95cc5348ef8",
     "scripts/gardening/baseline.mjs": "e450f9df2e16289a588584acec40ab567133bd1c4cc6ca1a64f62c0a15bed762",
     "scripts/gardening/baseline.test.mjs": "7839627253e12c6afc3ad8e26df7735985c767aada38186bcde1b6c1f0060851",
     "scripts/gardening/cli.test.mjs": "f9993d0a2f5ba05cd145e9c80a433be63d870a610dabd6d0a2cc5a7f1ed8c84a",
