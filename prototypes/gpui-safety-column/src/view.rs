@@ -18,54 +18,89 @@ use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
 
+/// 色は `design/tokens.json`（`auralyn-core` が埋め込んで読む）のダークテーマ「オーロラ（標準）」から取る。値をここで書かない。
 mod color {
-    use gpui_kit::{hsla, Hsla};
+    use auralyn_core::design::{tokens, Theme};
+    use gpui_kit::{rgb, Hsla};
 
-    fn hsl(h: f32, s: f32, l: f32) -> Hsla {
-        hsla(h / 360.0, s / 100.0, l / 100.0, 1.0)
+    fn token(name: &str) -> Hsla {
+        let color = tokens()
+            .color(name, Theme::Dark)
+            .unwrap_or_else(|| panic!("design/tokens.json に色 {name} がありません"));
+        rgb(u32::from_be_bytes([0, color.r, color.g, color.b])).into()
     }
-    // 既定のダークテーマ「オーロラ（標準）」の値（src/index.css）。
+
     pub fn background() -> Hsla {
-        hsl(222.0, 12.0, 7.0)
+        token("background")
     }
     pub fn card() -> Hsla {
-        hsl(222.0, 10.0, 10.0)
+        token("card")
     }
     pub fn foreground() -> Hsla {
-        hsl(220.0, 20.0, 94.0)
+        token("foreground")
     }
     pub fn muted() -> Hsla {
-        hsl(222.0, 8.0, 70.0)
+        token("muted-foreground")
     }
     pub fn border() -> Hsla {
-        hsl(222.0, 8.0, 21.0)
+        token("border")
     }
     pub fn track() -> Hsla {
-        hsl(222.0, 10.0, 16.0)
+        token("muted")
     }
     pub fn destructive_text() -> Hsla {
-        hsl(0.0, 94.0, 82.0)
+        token("destructive-text")
     }
+    /// 緊急ミュート中の塗り。`destructive` は塗り専用（DESIGN.md 5.1）。
     pub fn destructive_soft() -> Hsla {
-        hsla(0.0, 0.628, 0.306, 0.35)
+        token("destructive").alpha(0.35)
     }
     pub fn warning() -> Hsla {
-        hsl(43.0, 96.0, 65.0)
+        token("warning")
     }
-    pub fn danger() -> Hsla {
-        hsl(0.0, 90.0, 72.0)
+    pub fn meter_warning() -> Hsla {
+        token("meter-warning")
+    }
+    pub fn meter_danger() -> Hsla {
+        token("meter-danger")
     }
     pub fn success() -> Hsla {
-        hsl(158.0, 64.0, 65.0)
+        token("success")
     }
     pub fn aurora_green() -> Hsla {
-        hsl(150.0, 70.0, 48.0)
+        token("aurora-green")
     }
     pub fn aurora_teal() -> Hsla {
-        hsl(176.0, 70.0, 48.0)
+        token("aurora-teal")
     }
     pub fn primary() -> Hsla {
-        hsl(166.0, 58.0, 56.0)
+        token("primary")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn every_color_is_in_the_tokens() {
+            for color in [
+                super::background,
+                super::card,
+                super::foreground,
+                super::muted,
+                super::border,
+                super::track,
+                super::destructive_text,
+                super::destructive_soft,
+                super::warning,
+                super::meter_warning,
+                super::meter_danger,
+                super::success,
+                super::aurora_green,
+                super::aurora_teal,
+                super::primary,
+            ] {
+                assert!(color().a > 0.0);
+            }
+        }
     }
 }
 
@@ -598,9 +633,9 @@ fn meter_bar(id: &'static str, reading: &Meter, lang: Lang) -> impl IntoElement 
                     .left(relative(warn))
                     .w(relative(hot))
                     .bg(if reading.peak() >= 1.0 {
-                        color::danger()
+                        color::meter_danger()
                     } else {
-                        color::warning()
+                        color::meter_warning()
                     }),
             )
         })
