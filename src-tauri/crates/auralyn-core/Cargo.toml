@@ -1,0 +1,19 @@
+[package]
+name = "auralyn-core"
+version = "0.1.0"
+description = "UI に依存しない Auralyn の中核（文言・デザイントークン・出来事）"
+authors = ["kuro7983"]
+publish = false
+license = "GPL-3.0-only"
+edition = "2021"
+rust-version = "1.100"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# アプリと同じ設定。禁止API（clippy.toml）は RT 処理のモジュールだけが deny で有効にする。
+[lints.clippy]
+await_holding_lock = "deny"
+disallowed_methods = "allow"
+disallowed_types = "allow"
