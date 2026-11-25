@@ -13,6 +13,7 @@ mod home;
 mod i18n;
 mod shell;
 mod view;
+mod vst;
 
 use std::path::PathBuf;
 

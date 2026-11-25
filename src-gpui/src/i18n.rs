@@ -45,7 +45,6 @@ pub enum Key {
     Checks,
     ImeField,
     ImePlaceholder,
-    OpenEditor,
     Language,
     TrayShow,
     TrayQuit,
@@ -109,8 +108,6 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Lang::En, ImeField) => "IME check",
         (Lang::Ja, ImePlaceholder) => "ここに日本語を入力",
         (Lang::En, ImePlaceholder) => "Type Japanese here",
-        (Lang::Ja, OpenEditor) => "VSTのエディタを開く",
-        (Lang::En, OpenEditor) => "Open VST editor",
         (Lang::Ja, Language) => "English",
         (Lang::En, Language) => "日本語",
         (Lang::Ja, TrayShow) => "Auralyn を表示",
@@ -155,9 +152,23 @@ pub mod keys {
     pub const NO_DEVICES: &str = "settings.AudioSettingsModal.040";
     pub const ASIO_SHARED: &str = "settings.AudioSettingsModal.044";
     pub const FIRST_START_HINT: &str = "settings.connection.firstStartHint";
+    pub const VST_ADD: &str = "rack.addEffects";
+    pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
+    pub const VST_SCANNING: &str = "pluginBrowser.scanning";
+    pub const VST_REFRESH: &str = "pluginBrowser.refresh";
+    pub const VST_EMPTY: &str = "rack.empty.title";
+    pub const VST_EMPTY_SCOPE: &str = "rack.empty.scope";
+    pub const VST_OFF: &str = "vst.off";
+    pub const VST_ENABLE: &str = "rack.card.enable";
+    pub const VST_EDIT: &str = "rack.card.edit";
+    pub const VST_EDIT_NAMED: &str = "rack.card.editAccessible";
+    pub const VST_REMOVE: &str = "rack.card.remove";
+    pub const VST_REMOVE_NAMED: &str = "rack.card.removeAccessible";
+    pub const VST_UP: &str = "postMix.up";
+    pub const VST_DOWN: &str = "postMix.down";
 
     #[cfg(test)]
-    pub const ALL: [&str; 31] = [
+    pub const ALL: [&str; 45] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -189,18 +200,42 @@ pub mod keys {
         NO_DEVICES,
         ASIO_SHARED,
         FIRST_START_HINT,
+        VST_ADD,
+        VST_SEARCH,
+        VST_SCANNING,
+        VST_REFRESH,
+        VST_EMPTY,
+        VST_EMPTY_SCOPE,
+        VST_OFF,
+        VST_ENABLE,
+        VST_EDIT,
+        VST_EDIT_NAMED,
+        VST_REMOVE,
+        VST_REMOVE_NAMED,
+        VST_UP,
+        VST_DOWN,
     ];
+}
+
+fn locale(lang: Lang) -> Locale {
+    match lang {
+        Lang::Ja => Locale::Ja,
+        Lang::En => Locale::En,
+    }
 }
 
 /// `auralyn-core` の文言。`key` は [`keys`] の定数で渡す。あることは試験 `every_core_key_exists_in_both_languages` で確かめる。
 pub fn core(lang: Lang, key: &'static str) -> &'static str {
-    let locale = match lang {
-        Lang::Ja => Locale::Ja,
-        Lang::En => Locale::En,
-    };
     catalog()
-        .messages(locale)
+        .messages(locale(lang))
         .get(key)
+        .unwrap_or_else(|| panic!("文言 {key} がありません"))
+}
+
+/// `{name}` に値を差し込んだ `auralyn-core` の文言。
+pub fn core_with(lang: Lang, key: &'static str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+    catalog()
+        .text(locale(lang), key, args)
         .unwrap_or_else(|| panic!("文言 {key} がありません"))
 }
 

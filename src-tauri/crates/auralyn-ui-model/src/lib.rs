@@ -4,4 +4,5 @@
 pub mod connect;
 pub mod flow;
 pub mod meter;
+pub mod rack;
 pub mod session;
