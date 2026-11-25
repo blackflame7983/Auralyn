@@ -221,8 +221,7 @@ impl MainView {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::ReadPeak);
             }
-            // 測っている間は進みを出すため、同じ間隔で読み直す。
-            if self.sound.measure.capturing() {
+            if self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
                 self.engine
                     .send(Command::Measure(measurement::Action::Read));

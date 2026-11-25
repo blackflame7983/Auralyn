@@ -4,7 +4,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use auralyn_ui_model::measurement::{self, Action, Measurement, Quality, State};
+use auralyn_ui_model::measurement::{Action, Measurement, Quality, State};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::Disableable as _;
@@ -25,42 +25,26 @@ pub struct MeasurePanel {
     answered: bool,
     /// 「話していないと確かめた」の印。別の測定に移ったら外す。
     quiet: Rc<Cell<bool>>,
-    /// この画面で測定を始め、まだ測っている。画面を離れたら中止する。
-    started: Rc<Cell<bool>>,
 }
 
 impl MeasurePanel {
     pub fn set(&mut self, reading: Option<Measurement>) {
         let before = self.reading.as_ref().map(|m| &m.take);
         let take = reading.as_ref().map(|m| &m.take);
-        if !take.is_some_and(|take| measurement::keeps_quiet(before, take)) {
+        if take.is_none() || before != take {
             self.quiet.set(false);
-        }
-        if !reading
-            .as_ref()
-            .is_some_and(|m| m.state == State::Capturing)
-        {
-            self.started.set(false);
         }
         self.reading = reading;
         self.answered = true;
     }
 
-    /// 測っている間だけ、500ms ごとに読み直す（進みを出すため）。
-    pub fn capturing(&self) -> bool {
-        self.reading
-            .as_ref()
-            .is_some_and(|m| m.state == State::Capturing)
-    }
-
-    /// 音づくりの画面を離れるとき。この画面で始めた測定がまだ続いていれば、中止の命令を返す。
+    /// 音づくりの画面を離れるとき。測っている途中なら、中止の命令を返す（測定はこの画面からしか始めない）。
     pub fn leave(&mut self) -> Option<Command> {
         self.answered = false;
         self.quiet.set(false);
-        let started = self.started.replace(false);
         self.reading
             .as_ref()
-            .filter(|m| started && m.state == State::Capturing)
+            .filter(|m| m.state == State::Capturing)
             .map(|m| Command::Measure(Action::Cancel(m.take.clone())))
     }
 
@@ -79,16 +63,12 @@ impl MeasurePanel {
         };
         let button = |id: &'static str, label: &'static str, action: Option<Action>| {
             let send = send.clone();
-            let started = self.started.clone();
             Button::new(id)
                 .label(core(lang, label))
                 .outline()
                 .disabled(action.is_none())
                 .on_click(move |_, _, cx| {
                     if let Some(action) = action.clone() {
-                        if matches!(action, Action::Start(_)) {
-                            started.set(true);
-                        }
                         send(Command::Measure(action), cx);
                     }
                 })

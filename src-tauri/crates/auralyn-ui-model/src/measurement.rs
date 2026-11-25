@@ -110,11 +110,6 @@ impl Measurement {
     }
 }
 
-/// 「話していないと確かめた」の印は、別の測定に移ったら外す。
-pub fn keeps_quiet(before: Option<&Take>, after: &Take) -> bool {
-    before == Some(after)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,12 +155,5 @@ mod tests {
     fn previous_value_note_hides_once_approved() {
         assert!(measurement(State::Stale).shows_previous());
         assert!(!measurement(State::Approved).shows_previous());
-    }
-
-    #[test]
-    fn quiet_check_resets_on_a_new_take() {
-        assert!(keeps_quiet(Some(&take("1")), &take("1")));
-        assert!(!keeps_quiet(Some(&take("1")), &take("2")));
-        assert!(!keeps_quiet(None, &take("1")));
     }
 }

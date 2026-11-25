@@ -100,6 +100,17 @@ impl SoundPage {
         }
     }
 
+    /// 測定の欄を出しているか（ノイズ低減が測定値・会場のとき）。出している間は 500ms ごとに読み直す。
+    /// 測定は、音量・チャンネルの変更や期限でも古くなるので、測っている間だけ読むのでは足りない。
+    pub fn shows_measurement(&self) -> bool {
+        self.current.is_some_and(|sound| {
+            matches!(
+                sound.noise_mode,
+                Some(NoiseMode::Measured | NoiseMode::Venue)
+            )
+        })
+    }
+
     pub fn peak_pending(&self) -> bool {
         self.peak.is_some_and(|peak| peak.pending)
     }
