@@ -11,10 +11,11 @@ use std::time::Instant;
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
+use auralyn_ui_model::rack::{self, Candidate};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::vst_host::scanner;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command {
     /// 保存した入出力の設定で開始する。
     Start,
@@ -30,7 +31,20 @@ pub enum Command {
     SetBypass(bool),
     SetInputGain(f32),
     SetOutputGain(f32),
-    OpenEditor,
+    /// 追加の候補を探す（スキャン）。命令のスレッドとは別のスレッドで行う。
+    ScanPlugins,
+    /// 並びの末尾に足す。
+    AddPlugin(Candidate),
+    RemovePlugin(String),
+    MovePlugin {
+        id: String,
+        up: bool,
+    },
+    SetPluginEnabled {
+        id: String,
+        enabled: bool,
+    },
+    OpenEditor(String),
 }
 
 impl Command {
@@ -55,7 +69,10 @@ pub enum Notice {
     StreamError(String),
     Muted(bool),
     Bypassed(bool),
-    PluginLoaded(String),
+    /// VST の並び（上から音が通る順）。変わるたびに全体を送る。
+    Rack(Vec<Slot>),
+    /// 追加の候補。失敗したときは理由。
+    Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
     Failed {
         command: &'static str,
@@ -71,6 +88,16 @@ pub enum Notice {
         devices: Vec<Device>,
         saved: Option<Saved>,
     },
+}
+
+/// 並びの1つの VST。
+#[derive(Debug, Clone)]
+pub struct Slot {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    path: String,
+    class_id: Option<String>,
 }
 
 /// 最新のメーターの値。`seq` が進んだときだけ画面が読む。
@@ -107,7 +134,7 @@ impl Engine {
         std::thread::Builder::new()
             .name("gpui-control".into())
             .spawn(move || {
-                let mut host = AudioHost::new(options.config_dir);
+                let mut host = AudioHost::new(options.config_dir.clone());
                 host.set_event_sink(Arc::new(Sink {
                     levels: listener_levels,
                     notices: listener_notices,
@@ -116,7 +143,8 @@ impl Engine {
                 Control {
                     host,
                     notices: notice_tx,
-                    plugin_id: None,
+                    config_dir: options.config_dir,
+                    rack: Vec::new(),
                     plugin_path: options.plugin,
                     exited,
                 }
@@ -204,8 +232,9 @@ fn on_event(
 struct Control {
     host: AudioHost,
     notices: flume::Sender<Notice>,
-    plugin_id: Option<String>,
-    /// `--plugin` の VST3。開始するたびに、子に無ければ読む。
+    config_dir: PathBuf,
+    rack: Vec<Slot>,
+    /// `--plugin` の VST3。最初に開始したときに並びへ足す。
     plugin_path: Option<String>,
     exited: Arc<AtomicBool>,
 }
@@ -286,31 +315,136 @@ impl Control {
             input: config.input,
             output: config.output,
         });
-        if self.exited.swap(false, Ordering::SeqCst) {
-            self.plugin_id = None;
-        }
-        if let (None, Some(path)) = (&self.plugin_id, self.plugin_path.clone()) {
-            self.load_plugin(&path);
+        self.recover();
+        if let Some(path) = self.plugin_path.take() {
+            self.add(&path, None);
         }
     }
 
+    /// 子が落ちていたら、次の子（空で始まる）に並びを同じ順・同じ ON/OFF で読み直す。読めなかった VST は並びから外す。
+    /// 開始のあとと、VST を足す前に呼ぶ（足すと子が起き、落ちる前の並びが消えたままになる）。
+    fn recover(&mut self) {
+        if !self.exited.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        for slot in std::mem::take(&mut self.rack) {
+            let Some((id, _)) = self.load(&slot.path, slot.class_id.as_deref()) else {
+                continue;
+            };
+            if !slot.enabled {
+                if let Err(e) = self.host.set_bypass(&id, true) {
+                    self.fail("set_bypass", e);
+                }
+            }
+            self.rack.push(Slot { id, ..slot });
+        }
+        self.send_rack();
+    }
+
+    fn add(&mut self, path: &str, class_id: Option<&str>) {
+        self.recover();
+        if let Some((id, name)) = self.load(path, class_id) {
+            self.rack.push(Slot {
+                id,
+                name,
+                enabled: true,
+                path: path.to_owned(),
+                class_id: class_id.map(str::to_owned),
+            });
+        }
+        self.send_rack();
+    }
+
     /// `.vst3` のバンドル（フォルダ）を渡されたら、Tauri 版のスキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
-    fn load_plugin(&mut self, path: &str) {
+    /// 読めたら、子が付けた ID と名前。
+    fn load(&mut self, path: &str, class_id: Option<&str>) -> Option<(String, String)> {
         let binary = scanner::resolve_binary(Path::new(path));
         let Some(binary) = binary.as_deref().and_then(Path::to_str) else {
             let _ = self.notices.send(Notice::Failed {
                 command: "load_plugin",
                 message: format!("VST3 の実体が見つかりません: {path}"),
             });
-            return;
+            return None;
         };
         log::info!("VST3 を読み込む: {binary}");
-        match self.host.load_plugin(binary, None) {
-            Ok(plugin) => {
-                self.plugin_id = Some(plugin.id);
-                let _ = self.notices.send(Notice::PluginLoaded(plugin.name));
+        match self.host.load_plugin(binary, class_id) {
+            Ok(plugin) => Some((plugin.id, plugin.name)),
+            Err(e) => {
+                self.fail("load_plugin", e);
+                None
             }
-            Err(e) => self.fail("load_plugin", e),
+        }
+    }
+
+    fn send_rack(&self) {
+        let _ = self.notices.send(Notice::Rack(self.rack.clone()));
+    }
+
+    fn position(&self, id: &str) -> Option<usize> {
+        self.rack.iter().position(|slot| slot.id == id)
+    }
+
+    fn remove(&mut self, id: &str) {
+        match self.host.remove_plugin(id) {
+            Ok(()) => self.rack.retain(|slot| slot.id != id),
+            Err(e) => self.fail("remove_plugin", e),
+        }
+        self.send_rack();
+    }
+
+    fn shift(&mut self, id: &str, up: bool) {
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        let Some(other) = rack::neighbour(self.rack.len(), index, up) else {
+            return;
+        };
+        let mut order: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
+        order.swap(index, other);
+        match self.host.reorder_plugins(order) {
+            Ok(()) => self.rack.swap(index, other),
+            Err(e) => self.fail("reorder_plugins", e),
+        }
+        self.send_rack();
+    }
+
+    fn set_enabled(&mut self, id: &str, enabled: bool) {
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        match self.host.set_bypass(id, !enabled) {
+            Ok(()) => self.rack[index].enabled = enabled,
+            Err(e) => self.fail("set_bypass", e),
+        }
+        self.send_rack();
+    }
+
+    /// スキャンは VST ごとに別のプロセスで調べるので時間がかかる。命令のスレッドを塞がないよう、別のスレッドで行う。
+    fn scan(&self) {
+        let config_dir = self.config_dir.clone();
+        let notices = self.notices.clone();
+        let spawned = std::thread::Builder::new()
+            .name("gpui-scan".into())
+            .spawn(move || {
+                let result = std::fs::create_dir_all(&config_dir)
+                    .map_err(|e| e.to_string())
+                    .and_then(|()| scanner::scan_system_vst3(&config_dir, &[]))
+                    .map(|plugins| {
+                        plugins
+                            .into_iter()
+                            .map(|p| Candidate {
+                                name: p.name,
+                                vendor: p.vendor,
+                                category: p.sub_categories,
+                                path: p.path,
+                                class_id: p.class_id,
+                            })
+                            .collect()
+                    });
+                let _ = notices.send(Notice::Catalog(result));
+            });
+        if let Err(e) = spawned {
+            let _ = self.notices.send(Notice::Catalog(Err(e.to_string())));
         }
     }
 
@@ -329,10 +463,14 @@ impl Control {
             }
             Command::SetInputGain(value) => ("set_input_gain", self.host.set_input_gain(value)),
             Command::SetOutputGain(value) => ("set_output_gain", self.host.set_output_gain(value)),
-            Command::OpenEditor => match self.plugin_id.clone() {
-                Some(id) => ("open_editor", self.host.open_editor(&id)),
-                None => return,
-            },
+            Command::ScanPlugins => return self.scan(),
+            Command::AddPlugin(ref candidate) => {
+                return self.add(&candidate.path, candidate.class_id.as_deref())
+            }
+            Command::RemovePlugin(ref id) => return self.remove(id),
+            Command::MovePlugin { ref id, up } => return self.shift(id, up),
+            Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
+            Command::OpenEditor(ref id) => ("open_editor", self.host.open_editor(id)),
         };
         if let Err(e) = result {
             self.fail(name, e);

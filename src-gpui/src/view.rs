@@ -1,8 +1,9 @@
 //! 窓の中身。左にレール（行き先）、中央に先頭の帯と行き先の画面、右に本番中の操作の列（DESIGN.md 10.3）。
 //! 右の列は DESIGN.md 10.3・10.6 の並びと規則に合わせる。
 //! 上から、緊急ミュート、入力（見出し・機器名・横メーター・マイク音量）、出力（一言・ミュートの札・機器名・ピーク・出力音量）、
-//! VSTを外して比較。確認用の欄（IME・VSTのエディタ・言語・トレイとホットキーの状態）は、設定の画面に置く。
+//! VSTを外して比較。確認用の欄（IME・言語・トレイとホットキーの状態）は、設定の画面に置く。
 
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::alert::Alert;
@@ -20,6 +21,7 @@ use crate::engine::{Command, Engine, Notice};
 use crate::home;
 use crate::i18n::{core, keys, t, Key, Lang};
 use crate::shell::{self, Page};
+use crate::vst::VstPage;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::meter::{self, Meter, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
@@ -39,7 +41,6 @@ pub struct MainView {
     bypassed: bool,
     input_name: Option<String>,
     output_name: Option<String>,
-    plugin: Option<String>,
     message: Option<String>,
     input: Meter,
     output: Meter,
@@ -51,6 +52,7 @@ pub struct MainView {
     output_gain: Entity<SliderState>,
     ime: Entity<InputState>,
     connect: ConnectPage,
+    vst: VstPage,
     _ticker: Task<()>,
 }
 
@@ -85,6 +87,7 @@ impl MainView {
         let ime =
             cx.new(|cx| InputState::new(window, cx).placeholder(t(lang, Key::ImePlaceholder)));
         let connect = ConnectPage::new(window, cx);
+        let vst = VstPage::new(window, cx);
         cx.subscribe_in(
             &connect.host,
             window,
@@ -138,7 +141,6 @@ impl MainView {
             bypassed: false,
             input_name: None,
             output_name: None,
-            plugin: None,
             message,
             input: Meter::stopped(now),
             output: Meter::stopped(now),
@@ -149,6 +151,7 @@ impl MainView {
             output_gain,
             ime,
             connect,
+            vst,
             _ticker: ticker,
         }
     }
@@ -217,7 +220,12 @@ impl MainView {
             Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
-            Notice::PluginLoaded(name) => self.plugin = Some(name),
+            Notice::Rack(rack) => self.vst.set_rack(rack),
+            Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
+            Notice::Catalog(Err(message)) => {
+                self.vst.scan_failed();
+                self.message = Some(format!("scan_plugins: {message}"));
+            }
             Notice::Devices { devices, saved } => {
                 self.connect.set_devices(devices, saved, window, cx)
             }
@@ -254,6 +262,17 @@ impl MainView {
         if page == Page::Connect {
             self.engine.send(Command::ListDevices);
         }
+        if page == Page::Vst && self.vst.needs_scan() {
+            self.send(Command::ScanPlugins);
+        }
+    }
+
+    /// 画面からの命令。候補を探し始めたら、終わるまで探し直しのボタンを止める。
+    fn send(&mut self, command: Command) {
+        if matches!(command, Command::ScanPlugins) {
+            self.vst.scan_started();
+        }
+        self.engine.send(command);
     }
 
     /// 接続の画面で選んだ機器で開始する。押せるのは止まっているときだけ。
@@ -478,13 +497,9 @@ impl MainView {
     fn render_checks(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let status = format!(
-            "tray: {} / Alt+M: {}{}",
+            "tray: {} / Alt+M: {}",
             self.desktop.tray_error.as_deref().unwrap_or("OK"),
             self.desktop.hotkey_error.as_deref().unwrap_or("OK"),
-            self.plugin
-                .as_deref()
-                .map(|name| format!(" / VST: {name}"))
-                .unwrap_or_default(),
         );
         div()
             .flex()
@@ -507,16 +522,6 @@ impl MainView {
                     .child(div().text_xs().child(t(lang, Key::ImeField)))
                     .child(Input::new(&self.ime).aria_label(t(lang, Key::ImeField))),
             )
-            .when(self.plugin.is_some(), |this| {
-                this.child(
-                    Button::new("open-editor")
-                        .label(t(lang, Key::OpenEditor))
-                        .outline()
-                        .on_click(
-                            cx.listener(|this, _, _, _| this.engine.send(Command::OpenEditor)),
-                        ),
-                )
-            })
             .child(
                 Button::new("language")
                     .label(t(lang, Key::Language))
@@ -589,6 +594,15 @@ impl Render for MainView {
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
                                 Page::Settings => this.child(self.render_checks(cx)),
+                                Page::Vst => this.child(self.vst.render(lang, cx, {
+                                    let entity = entity.clone();
+                                    Rc::new(move |command, cx| {
+                                        entity.update(cx, |this, cx| {
+                                            this.send(command);
+                                            cx.notify();
+                                        })
+                                    })
+                                })),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,
