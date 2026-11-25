@@ -42,51 +42,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # ブラウザ試験は全件を4台に分けて並べて回す。分けても全件を回すことは変わらない。
-  browser:
-    runs-on: windows-latest
+  # GPUI 版へ移るので、Tauri 版の画面だけを見るブラウザ試験（Playwright）は CI から外した（2026-11-25 利用者の判断）。
+  # GPUI に依存しない Rust のクレートは Linux で検査する。src-gpui と vst-host は Windows 専用のため、ここでは書式だけを見る。
+  rust:
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - name: Frontend build
-        run: npx vite build
-      - name: Install Chromium
-        run: npx playwright install chromium
-      - name: Browser tests (IPC mock)
-        run: npx playwright test --shard=${{ matrix.shard }}/4 --output=ci-artifacts/browser
-      - name: Preserve browser failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: frontend-browser-${{ github.run_id }}-${{ github.run_attempt }}-shard-${{ matrix.shard }}
-          path: ci-artifacts/browser
-          if-no-files-found: ignore
-          retention-days: 7
+      - name: Rust format (src-tauri, src-gpui)
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo fmt --manifest-path src-gpui/Cargo.toml --all -- --check
+      - name: Clippy (auralyn-core, auralyn-ui-model)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked -p auralyn-core -p auralyn-ui-model --all-targets -- -D warnings
+      - name: Tests (auralyn-core, auralyn-ui-model)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -p auralyn-core -p auralyn-ui-model
 
   # 既存の必須チェック名を保ち、片方の失敗・取消・skipを成功扱いにしない。
   frontend:
     if: always()
-    needs: [checks, browser]
+    needs: [checks, rust]
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
       - name: Require both quality jobs
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
-          BROWSER_RESULT: ${{ needs.browser.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
         run: |
-          if ($env:CHECKS_RESULT -ne 'success' -or $env:BROWSER_RESULT -ne 'success') {
-            Write-Error "Frontend quality did not pass: checks=$env:CHECKS_RESULT, browser=$env:BROWSER_RESULT"
+          if ($env:CHECKS_RESULT -ne 'success' -or $env:RUST_RESULT -ne 'success') {
+            Write-Error "Frontend quality did not pass: checks=$env:CHECKS_RESULT, rust=$env:RUST_RESULT"
             exit 1
           }

@@ -25,6 +25,7 @@ npmが提案するtypescript-eslint 8.36.0への旧版化、archiverのメジャ
 
 変更案は[main-protection.json](main-protection.json)。既存の3規則と対象・bypassを維持し、GitHub Actions（app ID 15368）の`frontend`と`rustsec`を必須にする。
 `frontend`は`checks`と`browser`の両成功を要求する集約jobなので、下位jobを別々に必須登録する重複を避ける。最新mainへの追随も要求する。
+（追記 2026-11-25：`browser` は CI から外し、`frontend` は現在 `checks` と `rust` の両成功を要求する。）
 
 書込権限を持つcollaboratorは所有者1人で、別の承認担当者がいなかった。Code Owner承認を必須にすると本人作成PRが承認不能になる場合があるため、この案には含めない。
 ガード変更の独立した人間レビューをGitHubで強制するには、別の承認担当者を決めてから追加設定する。

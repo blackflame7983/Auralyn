@@ -122,19 +122,19 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 
 ### Pull Requestの自動チェック
 
-`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
+`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` と `src-gpui/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` と `cargo audit --file src-gpui/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
 
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
-Node.js 24・Python 3.12とlockfileを使い、設定指紋・ESLint・Ruff・検査器の試験、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
-単体・DOM・型・配布の `checks` と、本番ビルド・Chromium試験の `browser` を別runnerで並行実行する。
-最後の `frontend` は両jobの成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
-ブラウザ試験はCIで全件を4台に分け（`--shard=1/4`〜`4/4`）、各台はファイル単位の2並列とし、ファイル内の試験は直列を保つ。分割はファイル単位で、全件を回すことは変わらない。1台でも失敗・取消になれば、必須チェック `frontend` は失敗する。手元は既定1並列で、`--workers=2` を指定して同じ並列数を試せる。
+Node.js 24・Python 3.12とlockfileを使い、設定指紋・ESLint・Ruff・検査器の試験、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェックを `checks`（Windows）で実行する。
+`rust`（Linux）は `src-tauri` と `src-gpui` の書式検査、`auralyn-core` と `auralyn-ui-model` の Clippy と試験を実行する。
+最後の `frontend` は `checks` と `rust` の両方の成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
+ブラウザ試験は、GPUI 版へ移るため 2026-11-25 に CI から外した（利用者の判断。Tauri 版の画面だけを見るため）。手元では `npm run test:e2e` や `--feature <名前> --browser` で回せる。必須チェック `frontend` は、`checks`（`verify --full`）と `rust`（Linux の Rust 検査）の両方の成功で決まる。手元は既定1並列で、`--workers=2` で2並列にできる。
 並列数・重複ケースの判断と代替ツールの試作は [2026-11-06の比較記録](CI_BROWSER_STUDY_2026-11-06.md) を参照する。
 ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
-失敗したブラウザの証拠は`ci-artifacts/browser`、検証CLIの詳細は`test-results/gardening`から7日間のartifactへ保存する。
+CIで失敗した検証CLIの詳細は`test-results/gardening`から7日間のartifactへ保存する。
 既存証拠を含む `test-results` の初期化を避け、公開・デバイス開始・通常設定の変更は行わない。
 
-これらのjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
+これらのjobは `auralyn-core`・`auralyn-ui-model` 以外のRustビルド（Tauri本体、vst-host、GPUI 版）、実Tauri、GPUI 版の実機、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
 workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
 Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
 
@@ -205,7 +205,7 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 
 ### 利用者目線の評価の撮影
 
-開発プレビューを決まった窓で撮り、PNG と画面の文字（`document.body.innerText`）を評価者に渡す手順です。音声処理・実機の受入には使いません。通常の `npm run test:e2e` と CI の Browser tests には含まれません。撮影ファイルは `e2e/ux-eval/capture.ts` で、Playwright の設定は `playwright.ux-eval.config.ts` です。既定の設定の `testDir` は `e2e/browser` なので、このファイルは拾われません。
+開発プレビューを決まった窓で撮り、PNG と画面の文字（`document.body.innerText`）を評価者に渡す手順です。音声処理・実機の受入には使いません。通常の `npm run test:e2e` には含まれません。撮影ファイルは `e2e/ux-eval/capture.ts` で、Playwright の設定は `playwright.ux-eval.config.ts` です。既定の設定の `testDir` は `e2e/browser` なので、このファイルは拾われません。
 
 ```powershell
 npm run capture:ux-eval
@@ -283,7 +283,7 @@ npm run capture:ux-eval
 
 ### 画面の状態をまとめて開く（screen-matrix）
 
-ある状態を直したときに、別の状態や別の窓で表示が崩れても次の目視まで気づけないのを、CI で止める試験です。`e2e/browser/screen-matrix.spec.ts`。`npm run test:e2e` に含まれ、CI の Browser tests（`npx vite build` のあと `npx playwright test`）でも回ります。
+ある状態を直したときに、別の状態や別の窓で表示が崩れても次の目視まで気づけないのを、手元の実行で止める試験です。`e2e/browser/screen-matrix.spec.ts`。`npm run test:e2e` に含まれます（CI では 2026-11-25 から回していない）。
 
 ホームは、実行中（`?mock=live-home`）・停止中（`?mock=stopped-home`）・未設定 × 配信・音楽鑑賞 × 900×600・1024×768・1280×800・1440×900 × 日本語・英語をすべて開きます。1440×900 は接続の列が常に開く広い窓で、英語の見出しと診断の入口が重なった崩れ（#762）を止めます。配信ミックスも、900×600・1280×800 に 1440×900 を足して開きます。未設定の名前はプレビューの定義に無いので、URL は `?mock=unconfigured` とし、`unconfigured-live.spec.ts` と同じくセットアップ済みで機器設定が無い保存値にします。ほかのページ（音づくり、VST、接続、設定の外観・ホットキー・OBS連携・システム）は実行中だけ、使い方 × 言語 × 900×600 と 1280×800 です。開発サーバーでは `html[data-auralyn-preview]` を待ちます。CI の本番ビルドにはこの印が無いので、無いときは左のレールから同じ画面を開きます。セットアップの最初の画面は、未設定で初めて開いたときに自動で開く状態を、`/` から日英 × 4つの窓（ホームと同じ）で開きます（URL に `?mock=` を付けません）。入場の動きが終わってから測ります。出力のミュートは `setOutputMuted`（`e2eHooks.ts`）で外します。測る前に `e2e/browser/helpers/waitForStableLayout.ts` で、フォントと主な区画の位置が連続3フレーム動いていないことを待ちます。
 
