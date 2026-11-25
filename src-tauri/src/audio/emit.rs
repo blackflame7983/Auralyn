@@ -55,7 +55,11 @@ pub(crate) struct AudioEmitter(Sink);
 
 impl AudioEmitter {
     pub(crate) fn app(handle: AppHandle) -> Self {
-        Self(Sink::Core(Arc::new(TauriSink(handle))))
+        Self::sink(Arc::new(TauriSink(handle)))
+    }
+
+    pub(crate) fn sink(sink: Arc<dyn EventSink>) -> Self {
+        Self(Sink::Core(sink))
     }
 
     pub(crate) fn emit<S: Serialize + Clone>(
@@ -267,6 +271,35 @@ mod tests {
         let names: Vec<&str> = events.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, ["a", "b", "c"]);
         assert_eq!(events[2].1, serde_json::json!(3));
+    }
+
+    // 画面の層の口へは、Tauri の emit と同じ名前・本文（serde_json::to_string）・順で届く。
+    #[test]
+    fn a_core_sink_receives_the_same_names_bodies_and_order() {
+        #[derive(Serialize, Clone)]
+        struct Level {
+            input: [f32; 2],
+        }
+        let notifier = Notifier::default();
+        let (sink, receiver) = auralyn_core::event::channel();
+        notifier.set(AudioEmitter::sink(Arc::new(sink)));
+        notifier.emit("audio-started", ());
+        notifier.chain(|chain| {
+            let _ = chain.emit("audio-level", Level { input: [0.1, 0.5] });
+            let _ = chain.emit("audio-stopped", "user");
+        });
+        let received: Vec<(String, String)> = receiver.try_iter().map(Event::into_parts).collect();
+        let expected = [
+            ("audio-started", serde_json::to_string(&()).unwrap()),
+            (
+                "audio-level",
+                serde_json::to_string(&Level { input: [0.1, 0.5] }).unwrap(),
+            ),
+            ("audio-stopped", serde_json::to_string("user").unwrap()),
+        ]
+        .map(|(name, json)| (name.to_owned(), json));
+        assert_eq!(received, expected);
+        assert_eq!(received[1].1, r#"{"input":[0.1,0.5]}"#);
     }
 
     #[test]

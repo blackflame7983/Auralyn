@@ -690,6 +690,12 @@ impl AudioHost {
         self.emitter.set(emit::AudioEmitter::app(handle));
     }
 
+    /// 通知の出口を、画面の層の `EventSink` にまるごと置き換える（`set_event_emitter` の代わり）。
+    /// sink は reader などのスレッドから同期で呼ばれるので、待たずに戻る実装にする。
+    pub fn set_event_sink(&mut self, sink: Arc<dyn auralyn_core::event::EventSink>) {
+        self.emitter.set(emit::AudioEmitter::sink(sink));
+    }
+
     pub(crate) fn conditions(&self) -> Arc<conditions::Conditions> {
         self.conditions.clone()
     }
