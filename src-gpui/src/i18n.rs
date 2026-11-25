@@ -40,6 +40,11 @@ pub mod keys {
     pub const NO_DEVICES: &str = "settings.AudioSettingsModal.040";
     pub const ASIO_SHARED: &str = "settings.AudioSettingsModal.044";
     pub const FIRST_START_HINT: &str = "settings.connection.firstStartHint";
+    pub const SAMPLE_RATE: &str = "settings.AudioSettingsModal.060";
+    pub const WASAPI_RATE: &str = "settings.AudioSettingsModal.070";
+    pub const BUFFER_SIZE: &str = "settings.AudioSettingsModal.065";
+    pub const SAMPLES: &str = "settings.AudioSettingsModal.067";
+    pub const AUTO: &str = "gpuiShell.auto";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -135,7 +140,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 122] = [
+    pub const ALL: [&str; 127] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -166,6 +171,11 @@ pub mod keys {
         NO_DEVICES,
         ASIO_SHARED,
         FIRST_START_HINT,
+        SAMPLE_RATE,
+        WASAPI_RATE,
+        BUFFER_SIZE,
+        SAMPLES,
+        AUTO,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,
