@@ -140,6 +140,11 @@ impl Listening {
     pub fn can_stop(&self) -> bool {
         self.playback == Playback::Playing
     }
+
+    /// 鳴らしている・止めている途中は、止まったことが届くまで読み直す。
+    pub fn polls(&self) -> bool {
+        matches!(self.playback, Playback::Playing | Playback::Stopping)
+    }
 }
 
 /// 時間の表示（Tauri 版と同じ「3.4s」。0.1 秒未満は切り捨て）。
@@ -208,6 +213,8 @@ mod tests {
         assert!(!listening(Playback::Playing).can_play(true, true));
         assert!(!listening(Playback::Closed).can_play(true, true));
         assert!(listening(Playback::Playing).can_stop());
+        assert!(listening(Playback::Stopping).polls());
+        assert!(!listening(Playback::Stopped).polls());
         let stale = Listening {
             stale: true,
             ..listening(Playback::Idle)

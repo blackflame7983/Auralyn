@@ -241,6 +241,12 @@ impl MainView {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::ReadPeak);
             }
+            let open = self
+                .voice
+                .open(self.phase == Phase::Running && !self.hidden.get());
+            if let Some(command) = open {
+                self.engine.send(command);
+            }
             if self.voice.polls() {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::Listen(Listen::Status));
@@ -313,6 +319,7 @@ impl MainView {
             }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
+                self.voice.audio_stopped();
                 self.reread_peak();
                 self.message = Some(message);
             }
@@ -332,12 +339,16 @@ impl MainView {
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
             Notice::ProfileFile(done) => self.setups.set_done(done, window, cx),
-            Notice::Recording(recording) => {
-                if self.voice.set(recording) && self.phase == Phase::Running {
-                    self.engine.send(Command::Listen(Listen::Open));
+            Notice::Recording(recording) => self.voice.set(recording),
+            Notice::Listening(result) => {
+                self.voice.set_listening(result, window, cx);
+                // 開くのを待つ間に画面を離れた・窓を隠したなら、開いたものをすぐ閉じる。
+                if self.page != Page::Sound || self.hidden.get() {
+                    for command in self.voice.leave() {
+                        self.engine.send(command);
+                    }
                 }
             }
-            Notice::Listening(result) => self.voice.set_listening(result, window, cx),
             Notice::RecordingSaved => self.voice.saved(),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();

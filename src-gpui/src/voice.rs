@@ -1,10 +1,10 @@
 //! ボイスチェック：声を最大 10 秒録り、加工前・加工後を WAV で保存し、配信に乗らない別の出力先で聴き比べる。
 //! 音づくりの画面の下に出す。状態とボタンの規則は `auralyn-ui-model` の `voice_check`。波形・解析・候補の比較は、まだ無い。
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use auralyn_ui_model::voice_check::{self, Listening, Recording, Source, State};
+use auralyn_ui_model::voice_check::{self, Listening, Playback, Recording, Source, State};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::select::{Select, SelectState};
@@ -28,8 +28,12 @@ pub struct VoicePanel {
     /// 試聴の操作が失敗した理由（次の答えが届いたら消す）。
     listen_failed: Option<String>,
     devices: Entity<Names>,
-    /// 「試聴先を配信・通話が取り込んでいないと確かめた」の印。一覧を読み直したら外す。
-    safe: Rc<Cell<bool>>,
+    /// 試聴を開くよう頼んで、答えを待っている。
+    opening: bool,
+    /// 「開き直す」が押された。
+    retry: Rc<Cell<bool>>,
+    /// 「試聴先を配信・通話が取り込んでいないと確かめた」出力先の名前。ほかの出力先を選ぶと外れる。
+    checked: Rc<RefCell<Option<SharedString>>>,
     source: Rc<Cell<Source>>,
     looped: Rc<Cell<bool>>,
 }
@@ -42,20 +46,34 @@ impl VoicePanel {
             listening: None,
             listen_failed: None,
             devices: cx.new(|cx| SelectState::new(Vec::new(), None, window, cx)),
-            safe: Rc::default(),
+            opening: false,
+            retry: Rc::default(),
+            checked: Rc::default(),
             source: Rc::new(Cell::new(Source::Processed)),
             looped: Rc::new(Cell::new(true)),
         }
     }
 
-    /// 録音の状態を替える。録り終えたところなら `true`（試聴を開く合図）。
-    pub fn set(&mut self, recording: Recording) -> bool {
+    pub fn set(&mut self, recording: Recording) {
         if recording.state == State::Recording {
             self.saved = false;
+            self.listen_failed = None;
         }
-        let finished = recording.state == State::Ready && self.recording.state != State::Ready;
         self.recording = recording;
-        finished
+    }
+
+    /// 試聴を開く命令（音づくりの画面を出しているときに毎回聞く）。録り終えていて、まだ開いておらず、
+    /// 開くのに失敗したままでなければ返す。
+    pub fn open(&mut self, running: bool) -> Option<Command> {
+        if self.retry.take() {
+            self.listen_failed = None;
+        }
+        let wanted = self.recording.can_save(running)
+            && self.listening.is_none()
+            && !self.opening
+            && self.listen_failed.is_none();
+        self.opening |= wanted;
+        wanted.then_some(Command::Listen(Listen::Open))
     }
 
     pub fn set_listening(
@@ -64,12 +82,15 @@ impl VoicePanel {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.opening = false;
         match result {
+            // 閉じた答え（一覧は空）は、開いていないのと同じ。出力先の選択はそのまま残す。
+            Ok(listening) if listening.playback == Playback::Closed => self.listening = None,
             Ok(listening) => {
                 let listed =
                     |l: &Listening| l.devices.iter().map(|d| d.name.clone()).collect::<Vec<_>>();
                 if self.listening.as_ref().map(listed) != Some(listed(&listening)) {
-                    self.safe.set(false);
+                    self.checked.replace(None);
                     let names = listed(&listening)
                         .into_iter()
                         .map(SharedString::from)
@@ -80,19 +101,24 @@ impl VoicePanel {
                 self.listen_failed = None;
                 self.listening = Some(listening);
             }
-            Err(message) => self.listen_failed = Some(message),
+            // セッションが失効したかもしれないので、開いていないものとして扱う（「開き直す」で開ける）。
+            Err(message) => {
+                self.listening = None;
+                self.listen_failed = Some(message);
+            }
         }
     }
 
-    /// 鳴らしている間は、位置と止まったことを読み直す。
+    /// 鳴らしている・止めている間は、位置と止まったことを読み直す。
     pub fn polls(&self) -> bool {
-        self.listening.as_ref().is_some_and(Listening::can_stop)
+        self.listening.as_ref().is_some_and(Listening::polls)
     }
 
-    /// 音声が止まった。試聴のセッションも子と一緒に終わる。
+    /// 音声が止まった・異常で止まった。試聴のセッションも子と一緒に終わる。
     pub fn audio_stopped(&mut self) {
         self.listening = None;
         self.listen_failed = None;
+        self.opening = false;
     }
 
     pub fn saved(&mut self) {
@@ -213,7 +239,32 @@ impl VoicePanel {
                     self.listening
                         .as_ref()
                         .filter(|_| recording.can_save(running)),
-                    |this, listening| this.child(self.render_listen(listening, lang, cx, send)),
+                    |this, listening| {
+                        this.child(self.render_listen(listening, lang, cx, send.clone()))
+                    },
+                )
+                .when_some(
+                    self.listen_failed
+                        .as_ref()
+                        .filter(|_| recording.can_save(running)),
+                    |this, message| {
+                        let retry = self.retry.clone();
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(color::warning())
+                                .child(message.clone()),
+                        )
+                        .child(
+                            Button::new("listen-retry")
+                                .label(core(lang, keys::LISTEN_RETRY))
+                                .outline()
+                                .on_click(move |_, window, _| {
+                                    retry.set(true);
+                                    window.refresh();
+                                }),
+                        )
+                    },
                 ),
         )
     }
@@ -226,16 +277,17 @@ impl VoicePanel {
         send: OnCommand,
     ) -> impl IntoElement {
         let chosen = self.devices.read(cx).selected_value().cloned();
-        let device_id = chosen.and_then(|name| {
+        let device_id = chosen.as_ref().and_then(|name| {
             listening
                 .devices
                 .iter()
                 .find(|d| d.name == name.as_ref())
                 .map(|d| d.id.clone())
         });
+        let safe = chosen.is_some() && *self.checked.borrow() == chosen;
         let play = listening
             .recording_id
-            .filter(|_| listening.can_play(device_id.is_some(), self.safe.get()));
+            .filter(|_| listening.can_play(device_id.is_some(), safe));
         let playing = listening.can_stop();
         let source_button = |id: &'static str, label: &'static str, source: Source| {
             let send = send.clone();
@@ -269,10 +321,7 @@ impl VoicePanel {
         } else {
             core(lang, keys::LISTEN_STOPPED).to_owned()
         };
-        let failed = self
-            .listen_failed
-            .clone()
-            .or_else(|| listening.error.clone());
+        let failed = listening.error.clone();
         div()
             .flex()
             .flex_col()
@@ -311,12 +360,13 @@ impl VoicePanel {
             )
             .child(
                 Checkbox::new("listen-safe")
-                    .checked(self.safe.get())
+                    .checked(safe)
                     .label(core(lang, keys::LISTEN_SAFE))
                     .on_click({
-                        let safe = self.safe.clone();
+                        let mark = self.checked.clone();
+                        let chosen = chosen.clone();
                         move |checked, window, _| {
-                            safe.set(*checked);
+                            mark.replace(chosen.clone().filter(|_| *checked));
                             window.refresh();
                         }
                     }),
