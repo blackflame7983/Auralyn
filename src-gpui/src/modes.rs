@@ -17,8 +17,10 @@ use crate::part::{card, note, OnCommand};
 
 #[derive(Default)]
 pub struct ModesPanel {
-    /// 最後に読んだ状態。`Err` は読めなかった理由。
-    state: Option<Result<LiveModes, String>>,
+    /// 最後に読めた状態。読めなかったときも消さない（上の帯の札やロックの表示が点滅しないように）。
+    state: Option<LiveModes>,
+    /// 最後の読み込みが失敗した理由。次に読めたら消す。
+    read_error: Option<String>,
     /// 直前の操作が断られた理由。
     failed: Option<String>,
     /// 雑談の登録が、残響が ON のため止まった。切ってから登録するかを聞く（取り消しはボタンから直接外す）。
@@ -29,14 +31,32 @@ impl ModesPanel {
     /// 状態を入れ替える。切り替えが終わって別のモードがかかったなら `true`：音づくりを読み直す合図。
     /// 手で変えて「いまの調整」になったときは、画面の値がもう新しいので読み直さない。
     pub fn set(&mut self, state: Result<LiveModes, String>) -> bool {
+        let state = match state {
+            Ok(state) => state,
+            Err(error) => {
+                self.read_error = Some(error);
+                return false;
+            }
+        };
+        self.read_error = None;
         let before = self.current().map(|m| (m.switching(), m.selected()));
+        let after = (state.switching(), state.selected());
         self.state = Some(state);
-        let after = self.current().map(|m| (m.switching(), m.selected()));
-        matches!((before, after), (Some(b), Some(a)) if b != a && !a.0 && a.1.is_some())
+        matches!(before, Some(b) if b != after && !after.0 && after.1.is_some())
     }
 
     fn current(&self) -> Option<&LiveModes> {
-        self.state.as_ref()?.as_ref().ok()
+        self.state.as_ref()
+    }
+
+    /// 定期的に読み直すか（Tauri 版と同じ：登録があるか、切り替えの途中。まだ読めていなければ読めるまで）。
+    pub fn polls(&self) -> bool {
+        self.current().is_none_or(|m| {
+            m.saved(Mode::Singing)
+                || m.saved(Mode::Talk)
+                || m.switching()
+                || m.transaction.is_some()
+        })
     }
 
     /// 操作ロック中（最後に読んだ状態で）。
@@ -84,15 +104,19 @@ impl ModesPanel {
 
     pub fn render(&self, lang: Lang, send: OnCommand) -> impl IntoElement {
         let body = div().flex().flex_col().gap_3();
-        let body = match &self.state {
-            None => body.child(note(core(lang, keys::MODES_UNREAD))),
-            Some(Err(error)) => body
+        let body = match &self.read_error {
+            Some(error) => body
                 .child(warning(format!(
                     "{} {error}",
                     core(lang, keys::MODES_STATE_FAILED)
                 )))
                 .child(refresh(lang, send.clone())),
-            Some(Ok(modes)) => self.render_modes(modes, body, lang, send.clone()),
+            None => body,
+        };
+        let body = match &self.state {
+            None if self.read_error.is_none() => body.child(note(core(lang, keys::MODES_UNREAD))),
+            None => body,
+            Some(modes) => self.render_modes(modes, body, lang, send.clone()),
         };
         card(core(lang, keys::MODES_TITLE), div(), body)
     }

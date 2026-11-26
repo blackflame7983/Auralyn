@@ -318,8 +318,8 @@ impl MainView {
             self.engine.send(Command::LiveOutput(None));
         }
         // 歌・雑談と操作ロックは上の帯に出すので、窓が見えている間は Tauri 版と同じ 500ms ごとに読み直す
-        // （手で音を変えていまの調整になったときや、ショートカットでの切り替えも追う）。
-        if !self.hidden.get() && self.modes_polled.elapsed() >= PEAK_POLL {
+        // （手で音を変えていまの調整になったときや、ショートカットでの切り替えも追う）。登録が無ければ読まない。
+        if !self.hidden.get() && self.modes.polls() && self.modes_polled.elapsed() >= PEAK_POLL {
             self.modes_polled = Instant::now();
             self.engine.send(Command::Modes(ModeAction::Read));
         }
