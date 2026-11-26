@@ -142,10 +142,11 @@ pub fn rail(
         }))
 }
 
-/// 中央の先頭の帯。状態の札、入出力の機器名（音が流れているときだけ渡す）、開始・停止のボタン。
+/// 中央の先頭の帯。状態の札、歌・雑談や操作ロックの札、入出力の機器名（音が流れているときだけ渡す）、開始・停止のボタン。
 /// ボタンは今の状態で決まる（未設定・停止中なら開始、実行中なら停止）。
 pub fn band(
     phase: Phase,
+    badges: Vec<SharedString>,
     route: Option<SharedString>,
     lang: Lang,
     on_press: impl Fn(&mut Window, &mut App) + 'static,
@@ -163,6 +164,7 @@ pub fn band(
         .border_b_1()
         .border_color(color::border())
         .child(status_chip(phase, lang))
+        .children(badges.into_iter().map(badge))
         .child(
             div()
                 .flex_1()
@@ -180,6 +182,17 @@ pub fn band(
                 .disabled(phase.busy())
                 .on_click(move |_, window, cx| on_press(window, cx)),
         )
+}
+
+fn badge(text: SharedString) -> impl IntoElement {
+    div()
+        .flex_none()
+        .px_2()
+        .rounded_full()
+        .border_1()
+        .border_color(color::border())
+        .text_xs()
+        .child(text)
 }
 
 /// 状態の札。動いているかを、色の点と文字の両方で示す。

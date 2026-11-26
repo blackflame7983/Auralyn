@@ -75,6 +75,8 @@ pub struct MainView {
     level_seq: u64,
     /// ピーク保護の反映待ちを最後に読み直した時刻。
     peak_polled: Instant,
+    /// 歌・雑談の切り替え中に最後に読み直した時刻（上の帯に出すので、どの画面でも読む）。
+    modes_polled: Instant,
     /// 配信用の出力を最後に読み直した時刻。
     live_polled: Instant,
     /// 窓をトレイへ隠している。隠れている間はメーターを計算しない（DESIGN.md 10.6）。
@@ -278,6 +280,7 @@ impl MainView {
             flow: Flow::default(),
             level_seq: 0,
             peak_polled: now,
+            modes_polled: now,
             live_polled: now,
             hidden,
             input_gain,
@@ -314,6 +317,10 @@ impl MainView {
             self.live_polled = Instant::now();
             self.engine.send(Command::LiveOutput(None));
         }
+        if self.modes.switching() && self.modes_polled.elapsed() >= PEAK_POLL {
+            self.modes_polled = Instant::now();
+            self.engine.send(Command::Modes(ModeAction::Read));
+        }
         // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
             if self.sound.peak_pending() {
@@ -330,10 +337,6 @@ impl MainView {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::Listen(Listen::Status));
             }
-            if self.modes.switching() {
-                self.peak_polled = Instant::now();
-                self.engine.send(Command::Modes(ModeAction::Read));
-            }
             if self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
                 self.engine
@@ -346,6 +349,7 @@ impl MainView {
                 Action::Show => {
                     desktop::set_shown(window, true);
                     self.hidden.set(false);
+                    self.engine.send(Command::Modes(ModeAction::Read));
                     window.activate_window()
                 }
                 Action::Quit => cx.quit(),
@@ -727,7 +731,7 @@ impl Render for MainView {
             (true, Some(input), Some(output)) => Some(format!("{input} → {output}").into()),
             _ => None,
         };
-        let band = shell::band(self.phase, route, lang, {
+        let band = shell::band(self.phase, self.modes.badges(lang), route, lang, {
             let entity = entity.clone();
             move |_, cx| {
                 entity.update(cx, |this, cx| {
