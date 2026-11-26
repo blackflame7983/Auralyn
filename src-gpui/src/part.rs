@@ -72,8 +72,9 @@ impl Card {
     }
 
     /// 見出しの ∨/∧ で中身を畳めるようにする。畳んでいる間も見出しと右の部品は出す。
-    pub fn fold(mut self, fold: &Fold) -> Self {
-        self.fold = Some(fold.clone());
+    /// `attention`（注意・失敗が出ている）の間は畳まずに開いたままにし、∨/∧ も出さない。
+    pub fn fold(mut self, fold: &Fold, attention: bool) -> Self {
+        self.fold = (!attention).then(|| fold.clone());
         self
     }
 
@@ -104,6 +105,7 @@ impl RenderOnce for Card {
                     .child(
                         div()
                             .flex()
+                            .flex_none()
                             .items_center()
                             .gap_2()
                             .when_some(self.icon, |this, icon| {
@@ -127,6 +129,7 @@ impl RenderOnce for Card {
                             .items_center()
                             .gap_2()
                             .children(self.trailing)
+                            .min_w_0()
                             .when_some(self.fold.clone(), |this, fold| {
                                 let open = fold.is_open();
                                 this.child(
@@ -139,7 +142,7 @@ impl RenderOnce for Card {
                                             IconName::ChevronDown
                                         })
                                         .accessibility_label(title)
-                                        .toggled(open)
+                                        .aria_expanded(open)
                                         .on_click(move |_, window, _| {
                                             fold.0.set(!fold.0.get());
                                             window.refresh();

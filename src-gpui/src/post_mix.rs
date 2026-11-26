@@ -279,7 +279,14 @@ impl PostMixPanel {
         )
         .icon(IconName::SlidersHorizontal)
         .hint(lang, core(lang, keys::POST_SCOPE))
-        .fold(&self.fold)
+        // 失敗の間は畳まない（見えないと気づけない）。
+        .fold(
+            &self.fold,
+            self.read_failed.is_some()
+                || self.failed.is_some()
+                || post.failed
+                || post.error.is_some(),
+        )
         .into_any_element()
     }
 }
