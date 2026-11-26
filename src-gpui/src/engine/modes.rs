@@ -1,5 +1,6 @@
 //! 歌・雑談モード。Tauri 版と同じ `AudioHost::live_modes` を使い、保存もホストの同じ場所。
-//! 切り替え・保護の操作には、最後に読んだ `epoch` と、この窓の id・通し番号を付ける（ホストが古い操作を断る）。
+//! 切り替え・保護の操作には、直前に読んだ `epoch` と、この窓の id・通し番号を付ける（ホストが重なった操作を断る）。
+//! 切り替えの反映は後から進むので、音づくりの読み直しは画面が終わりを見てから頼む。
 
 use super::*;
 use auralyn_ui_model::live_modes::{LiveModes, Mode, Transaction};
@@ -25,9 +26,7 @@ pub enum ModeAction {
 
 impl Control {
     /// 読むだけなら状態を送る。変える操作なら結果（`ModesDone`）を送ってから状態を送る。
-    /// 切り替えると音づくりが変わるので、読み直して保存もする。
     pub(super) fn live_modes(&mut self, action: ModeAction) {
-        let switched = matches!(action, ModeAction::Select(_) | ModeAction::Recover);
         let result = match action {
             ModeAction::Read => {
                 let result = self.host.live_modes(ModesRequest::Snapshot);
@@ -58,9 +57,6 @@ impl Control {
         let _ = self.notices.send(notice);
         let result = result.or_else(|_| self.host.live_modes(ModesRequest::Snapshot));
         self.send_modes(result);
-        if switched {
-            self.reread_and_save_sound();
-        }
     }
 
     fn send_modes(&mut self, result: anyhow::Result<ModesSnapshot>) {
@@ -142,6 +138,8 @@ fn view(snapshot: &ModesSnapshot) -> LiveModes {
         phase: snapshot.phase.clone(),
         singing_saved: snapshot.definitions.singing.is_some(),
         talk_saved: snapshot.definitions.talk.is_some(),
+        singing_linked: snapshot.definitions.profiles.singing.is_some(),
+        talk_linked: snapshot.definitions.profiles.talk.is_some(),
         armed: snapshot.armed,
         transaction: snapshot.transaction.as_ref().map(|t| Transaction {
             phase: t.phase.clone(),

@@ -346,17 +346,17 @@ pub mod keys {
     pub const MODES_PARTIAL: &str = "liveOutput.partial";
     pub const MODES_STOPPED: &str = "liveBar.stopped";
     pub const MODES_CUSTOM: &str = "liveBar.customHint";
-    pub const MODES_HINT: &str = "settings.LiveModeControls.215";
+    pub const MODES_HINT: &str = "gpuiShell.modesHint";
     pub const MODES_SINGING: &str = "liveBar.singing";
     pub const MODES_TALK: &str = "liveBar.talk";
-    pub const MODES_TRANSACTION_RUNNING: &str = "liveTransaction.switching";
+    pub const MODES_TRANSACTION_RUNNING: &str = "gpuiShell.modesSwitching";
     pub const MODES_TRANSACTION_FAILED: &str = "liveTransaction.failed";
     pub const MODES_RECOVER: &str = "liveTransaction.recover";
     pub const MODES_FAILED: &str = "liveNotices.operationFailed";
     pub const MODES_SAVED: &str = "settings.LiveModeControls.232";
     pub const MODES_UNSAVED: &str = "settings.LiveModeControls.233";
     pub const MODES_REGISTER: &str = "settings.LiveModeControls.230";
-    pub const MODES_REGISTER_NOTE: &str = "settings.LiveModeControls.231";
+    pub const MODES_REGISTER_NOTE: &str = "gpuiShell.modesRegisterNote";
     pub const MODES_SAVE_SINGING: &str = "gpuiShell.modesSaveSinging";
     pub const MODES_SAVE_TALK: &str = "gpuiShell.modesSaveTalk";
     pub const MODES_REVERB_CONFIRM: &str = "settings.mode.reverbConfirm";
@@ -367,6 +367,9 @@ pub mod keys {
     pub const MODES_PROTECT_HINT: &str = "liveBar.protectHint";
     pub const MODES_PROTECT_NEEDS_AUDIO: &str = "liveBar.protectNeedsAudio";
     pub const MODES_REFRESH: &str = "settings.LiveModeControls.236";
+    pub const MODES_LINKED: &str = "gpuiShell.modesLinked";
+    pub const MODES_CANCEL: &str = "settings.mode.cancelRegistration";
+    pub const MODES_LOCKED: &str = "gpuiShell.modesLocked";
     pub const HELP_SILENT: &str = "help.trouble.silent";
     pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
     pub const HELP_RECEIVER: &str = "help.trouble.receiver";
@@ -377,7 +380,7 @@ pub mod keys {
     pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
 
     #[cfg(test)]
-    pub const ALL: [&str; 364] = [
+    pub const ALL: [&str; 367] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -734,6 +737,9 @@ pub mod keys {
         MODES_PROTECT_HINT,
         MODES_PROTECT_NEEDS_AUDIO,
         MODES_REFRESH,
+        MODES_LINKED,
+        MODES_CANCEL,
+        MODES_LOCKED,
         HELP_SILENT,
         HELP_SILENT_BODY,
         HELP_RECEIVER,

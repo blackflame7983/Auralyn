@@ -1,8 +1,11 @@
 //! 音づくりの画面の「歌・雑談モード」：今の音づくりを歌・雑談として登録し、本番中に切り替える。操作ロックもここ。
 //! 判断の規則は `auralyn-ui-model` の `live_modes`（Tauri 版と同じ）。VST を一緒に切り替える組み合わせは、まだ扱わない。
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use auralyn_ui_model::live_modes::{LiveModes, Mode};
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -18,29 +21,42 @@ pub struct ModesPanel {
     state: Option<Result<LiveModes, String>>,
     /// 直前の操作が断られた理由。
     failed: Option<String>,
-    /// 雑談の登録が、残響が ON のため止まった。切ってから登録するかを聞く。
-    keeps_reverb: bool,
+    /// 雑談の登録が、残響が ON のため止まった。切ってから登録するかを聞く（取り消しはボタンから直接外す）。
+    keeps_reverb: Rc<Cell<bool>>,
 }
 
 impl ModesPanel {
-    pub fn set(&mut self, state: Result<LiveModes, String>) {
+    /// 状態を入れ替える。切り替えが終わった（かかったモードが変わった）なら `true`：音づくりを読み直す合図。
+    pub fn set(&mut self, state: Result<LiveModes, String>) -> bool {
+        let before = self.current().map(|m| (m.switching(), m.selected()));
         self.state = Some(state);
+        let after = self.current().map(|m| (m.switching(), m.selected()));
+        matches!((before, after), (Some(b), Some(a)) if b != a && !a.0)
+    }
+
+    fn current(&self) -> Option<&LiveModes> {
+        self.state.as_ref()?.as_ref().ok()
+    }
+
+    /// 操作ロック中（最後に読んだ状態で）。
+    pub fn armed(&self) -> bool {
+        self.current().is_some_and(|m| m.armed)
     }
 
     /// 変える操作の結果。
     pub fn done(&mut self, result: Result<(), String>) {
         self.failed = result.err();
-        self.keeps_reverb = false;
+        self.keeps_reverb.set(false);
     }
 
     pub fn keeps_reverb(&mut self) {
         self.failed = None;
-        self.keeps_reverb = true;
+        self.keeps_reverb.set(true);
     }
 
     /// 切り替え中で、読み直しを続けたいか。
     pub fn switching(&self) -> bool {
-        matches!(&self.state, Some(Ok(modes)) if modes.switching())
+        self.current().is_some_and(LiveModes::switching)
     }
 
     pub fn render(&self, lang: Lang, send: OnCommand) -> impl IntoElement {
@@ -95,6 +111,9 @@ impl ModesPanel {
                     })),
             )
             .when_some(status, |this, status| this.child(note(status)))
+            .when(modes.singing_linked || modes.talk_linked, |this| {
+                this.child(note(core(lang, keys::MODES_LINKED)))
+            })
             .when_some(modes.transaction.as_ref(), |this, transaction| {
                 this.child(warning(core(
                     lang,
@@ -185,25 +204,36 @@ impl ModesPanel {
                             })
                     })),
             )
-            .when(self.keeps_reverb, |this| {
+            .when(self.keeps_reverb.get(), |this| {
+                let asking = self.keeps_reverb.clone();
                 this.child(note(core(lang, keys::MODES_REVERB_CONFIRM)))
                     .child(
-                        div().child(
-                            Button::new("mode-save-without-reverb")
-                                .label(core(lang, keys::MODES_WITHOUT_REVERB))
-                                .outline()
-                                .small()
-                                .disabled(!modes.can_save())
-                                .on_click(move |_, _, cx| {
-                                    send(
-                                        Command::Modes(ModeAction::Save {
-                                            mode: Mode::Talk,
-                                            drop_reverb: true,
-                                        }),
-                                        cx,
-                                    )
-                                }),
-                        ),
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(
+                                Button::new("mode-save-without-reverb")
+                                    .label(core(lang, keys::MODES_WITHOUT_REVERB))
+                                    .outline()
+                                    .small()
+                                    .disabled(!modes.can_save())
+                                    .on_click(move |_, _, cx| {
+                                        send(
+                                            Command::Modes(ModeAction::Save {
+                                                mode: Mode::Talk,
+                                                drop_reverb: true,
+                                            }),
+                                            cx,
+                                        )
+                                    }),
+                            )
+                            .child(
+                                Button::new("mode-save-cancel")
+                                    .label(core(lang, keys::MODES_CANCEL))
+                                    .ghost()
+                                    .small()
+                                    .on_click(move |_, _, _| asking.set(false)),
+                            ),
                     )
             })
     }

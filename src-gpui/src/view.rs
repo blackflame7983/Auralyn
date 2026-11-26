@@ -215,6 +215,7 @@ impl MainView {
             Command::LiveOutput(None),
             Command::Mix(MixAction::Read),
             Command::PostMix(PostAction::Read, None),
+            Command::Modes(ModeAction::Read),
         ] {
             engine.send(command);
         }
@@ -466,7 +467,11 @@ impl MainView {
             }
             Notice::Mix(result) => self.mix.set(result, self.lang, window, cx),
             Notice::MixDone(result) => self.mix.done(result),
-            Notice::Modes(result) => self.modes.set(result),
+            Notice::Modes(result) => {
+                if self.modes.set(result) {
+                    self.engine.send(Command::ReadSound);
+                }
+            }
             Notice::ModesDone(result) => self.modes.done(result),
             Notice::ModesKeepsReverb => self.modes.keeps_reverb(),
             Notice::PostMix(result) => self.post.set(result, window, cx, Self::send),
@@ -478,7 +483,11 @@ impl MainView {
                 // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
                 // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
                 self.setups.forget_done();
-                self.message = Some(format!("{command}: {message}"));
+                self.message = Some(if self.modes.armed() {
+                    core(self.lang, keys::MODES_LOCKED).to_owned()
+                } else {
+                    format!("{command}: {message}")
+                });
             }
         }
     }
@@ -513,8 +522,9 @@ impl MainView {
             self.engine.send(Command::ReadPeak);
             self.engine
                 .send(Command::Measure(measurement::Action::Read));
-            self.engine.send(Command::Modes(ModeAction::Read));
         }
+        // 操作ロックは、ほかの画面の操作が断られた理由を出すのに使うので、どの画面でも読み直す。
+        self.engine.send(Command::Modes(ModeAction::Read));
     }
 
     fn open(&mut self, page: Page) {

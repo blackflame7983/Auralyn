@@ -124,6 +124,8 @@ impl Control {
 
     /// 構成に無い分類は変えない。外せない VST があればそこで止める（画面から消えたまま鳴り続けないように）。
     pub(super) fn apply_profile_parts(&mut self, name: &str, restore: bool) -> anyhow::Result<()> {
+        // 操作ロック中は VST を外せないので、音づくりだけ変わって止まらないよう、先に丸ごと断る（Tauri 版と同じ）。
+        self.host.preflight_live_changes()?;
         let profile = presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
         if !restore {
             let backup = self.capture_profile(presets::BACKUP_PROFILE_NAME)?;

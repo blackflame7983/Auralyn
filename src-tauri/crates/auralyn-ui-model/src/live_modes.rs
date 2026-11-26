@@ -45,6 +45,9 @@ pub struct LiveModes {
     /// 歌・雑談として保存してあるか。
     pub singing_saved: bool,
     pub talk_saved: bool,
+    /// Tauri 版で VST の構成を結び付けたモード。切り替えると VST も入れ替わるので、この版では選ばせない。
+    pub singing_linked: bool,
+    pub talk_linked: bool,
     /// 本番保護（ON の間は VST の変更などをホストが断る）。
     pub armed: bool,
     pub transaction: Option<Transaction>,
@@ -59,6 +62,13 @@ impl LiveModes {
         }
     }
 
+    pub fn linked(&self, mode: Mode) -> bool {
+        match mode {
+            Mode::Singing => self.singing_linked,
+            Mode::Talk => self.talk_linked,
+        }
+    }
+
     fn blocked(&self) -> bool {
         self.transaction
             .as_ref()
@@ -68,7 +78,7 @@ impl LiveModes {
     /// 切り替えられる。そのモードを保存してあり、途中の切り替えが無いとき。
     /// 止まっていても選べる（ホストが目標として持ち、開始したらかける）。
     pub fn can_select(&self, mode: Mode) -> bool {
-        self.saved(mode) && !self.blocked()
+        self.saved(mode) && !self.linked(mode) && !self.blocked()
     }
 
     /// 今の音づくりを登録できる。かかっている内蔵の処理を読むので、音声が動いているときだけ。
@@ -112,6 +122,8 @@ mod tests {
             phase: "custom".to_owned(),
             singing_saved: true,
             talk_saved: false,
+            singing_linked: false,
+            talk_linked: false,
             armed: false,
             transaction: None,
             error: None,
@@ -137,6 +149,11 @@ mod tests {
         };
         assert!(stopped.can_select(Mode::Singing));
         assert!(!stopped.can_save());
+        let linked = LiveModes {
+            singing_linked: true,
+            ..modes()
+        };
+        assert!(!linked.can_select(Mode::Singing));
     }
 
     #[test]
