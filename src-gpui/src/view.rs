@@ -192,12 +192,11 @@ impl MainView {
             },
         )
         .detach();
-        // 最初はホームを出すので、配信ミックスに要るもの（機器・アプリ・配信用の出力・ミックスの状態）を読んでおく。
+        // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスの状態）を読んでおく。
         for command in [
             Command::ListDevices,
             Command::LiveOutput(None),
             Command::Mix(MixAction::Read),
-            Command::Mix(MixAction::Apps),
         ] {
             engine.send(command);
         }
@@ -490,7 +489,6 @@ impl MainView {
             self.engine.send(Command::ListDevices);
             self.engine.send(Command::LiveOutput(None));
             self.engine.send(Command::Mix(MixAction::Read));
-            self.engine.send(Command::Mix(MixAction::Apps));
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
@@ -603,12 +601,13 @@ impl MainView {
         }
     }
 
-    fn set_lang(&mut self, lang: Lang) {
+    fn set_lang(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
         if lang == self.lang {
             return;
         }
         self.lang = lang;
         self.desktop.set_lang(lang);
+        self.mix.relabel(lang, window, cx);
         let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
         match locale_file::save(&self.config_dir, lang) {
             Ok(()) => {
@@ -708,9 +707,9 @@ impl Render for MainView {
                                     self.desktop.tray_error.as_deref(),
                                     {
                                         let entity = entity.clone();
-                                        move |lang, _, cx| {
+                                        move |lang, window, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.set_lang(lang);
+                                                this.set_lang(lang, window, cx);
                                                 cx.notify();
                                             })
                                         }

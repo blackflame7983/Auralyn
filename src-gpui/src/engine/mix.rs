@@ -13,7 +13,7 @@ use vst_host_lib::input_source::{ProcessConfig, Purpose};
 use vst_host_lib::mixing::{Request as MixRequest, Snapshot as MixSnapshot};
 
 /// 配信ミックスの操作。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MixAction {
     Read,
     /// 入力機器の2チャンネルを混ぜ始める（音量は今の値を引き継ぐ）。

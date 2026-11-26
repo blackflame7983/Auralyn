@@ -41,6 +41,7 @@ enum Pick {
         channels: Option<[usize; 2]>,
     },
     App {
+        id: Option<String>,
         key: String,
         route: Option<String>,
     },
@@ -223,6 +224,7 @@ impl MixPanel {
                 channels: detail.and_then(|row| mix::pairs(device.channels).get(row).copied()),
             },
             Choice::App(app) => Pick::App {
+                id: Some(app.id.clone()),
                 key: app.key.clone(),
                 route: detail.and_then(|row| Some(app.routes.get(row)?.id.clone())),
             },
@@ -239,6 +241,7 @@ impl MixPanel {
                     channels: Some(channels),
                 },
                 Source::App { key, route, .. } => Pick::App {
+                    id: None,
                     key,
                     route: Some(route),
                 },
@@ -256,23 +259,22 @@ impl MixPanel {
             .collect();
         let row = match &pick {
             Some(Pick::Device { id, .. }) => self.devices.iter().position(|d| d.id == *id),
-            Some(Pick::App { key, route }) => {
-                let app = match route {
-                    Some(route) => mix::find_app(&self.apps, key, route),
-                    None => self.apps.iter().find(|a| a.key == *key),
-                };
-                app.and_then(|app| self.apps.iter().position(|a| a.id == app.id))
+            Some(Pick::App { id, key, route }) => {
+                mix::find_app(&self.apps, id.as_deref(), key, route.as_deref())
                     .map(|row| row + self.devices.len())
             }
             None => None,
         };
-        // 選び直した入力元は、確かめ直すまで適用させない（選択を入れ直してもイベントは出ない）。
-        self.confirmed.set(false);
+        let before = self.chosen(cx).map(|(action, _)| action);
         self.source.update(cx, |state, cx| {
             state.set_items(names, window, cx);
             state.set_selected_index(row.map(IndexPath::new), window, cx);
         });
         self.fill_detail(row, pick, lang, window, cx);
+        // 入れ直して選ぶものが変わったら、確かめ直すまで適用させない（選択を入れ直してもイベントは出ない）。
+        if self.chosen(cx).map(|(action, _)| action) != before {
+            self.confirmed.set(false);
+        }
     }
 
     /// 2つ目の選択（機器ならチャンネルの組、アプリなら出力先）を入れ、`chosen`（無ければ先頭、アプリならミュート済みの先頭）を選ぶ。
@@ -305,7 +307,7 @@ impl MixPanel {
                         }
                         _ => None,
                     }
-                    .or_else(|| app.routes.iter().position(mix::Route::usable));
+                    .or((!app.routes.is_empty()).then_some(0));
                     let names = app
                         .routes
                         .iter()
@@ -319,6 +321,12 @@ impl MixPanel {
             state.set_items(names, window, cx);
             state.set_selected_index(selected.map(IndexPath::new), window, cx);
         });
+    }
+
+    /// 表示言語が変わった。選択欄の「(アプリ)」などを書き直す（選択と確認はそのまま）。
+    pub fn relabel(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
+        let pick = self.picked(cx);
+        self.fill(pick, lang, window, cx);
     }
 
     /// 入力元を選び直したら、2つ目の選択を入れ直す（描画の前に呼ぶ）。
@@ -351,7 +359,8 @@ impl MixPanel {
                         name: app.name.clone(),
                         route: route.id.clone(),
                     },
-                    route.usable(),
+                    app.usable_route()
+                        .is_some_and(|usable| usable.id == route.id),
                 )
             }
         })
@@ -382,7 +391,7 @@ impl MixPanel {
         };
         let chosen = self.chosen(cx);
         let app_chosen = matches!(self.selected(cx), Some(Choice::App(_)));
-        let route_unmuted = matches!(chosen, Some((_, false)));
+        let route_unmuted = app_chosen && !matches!(chosen, Some((_, true)));
         let confirmed = self.confirmed.get();
         let ready = output_ready == Some(true);
         let can_apply = ready
@@ -479,7 +488,7 @@ impl MixPanel {
                             this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
                         })
                         .when(route_unmuted, |this| {
-                            this.child(warning(core(lang, keys::MIX_ROUTE_UNMUTED).to_owned()))
+                            this.child(warning(core(lang, keys::MIX_ROUTE_MUTE_FIRST).to_owned()))
                         })
                         .when(mix.running, |this| {
                             this.child(note(core(lang, keys::MIX_STOP_FIRST)))
@@ -636,7 +645,7 @@ fn app_label(lang: Lang, name: &str) -> String {
 
 /// 出力先の行の表記：`名前 (ミュート済み)`・`名前 (ミュートが必要)`。
 fn route_label(lang: Lang, route: &mix::Route) -> String {
-    let state = if route.usable() {
+    let state = if route.muted {
         keys::MIX_ROUTE_MUTED
     } else {
         keys::MIX_ROUTE_NEEDS_MUTE

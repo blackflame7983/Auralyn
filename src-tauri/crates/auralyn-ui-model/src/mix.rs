@@ -1,5 +1,5 @@
 //! 配信ミックス：声に、別の入力（オケ）を混ぜる。オケの取り込み口は WASAPI の入力機器（仮想ケーブルなど）の2チャンネル。
-//! アプリの音も取り込める（そのアプリが音を出す出力先を選び、Windows でその出力先をミュートしておく）。
+//! アプリの音も取り込める（アプリの音を1つの出力先に出し、Windows でその出力先をミュートしておく）。
 //! 選び方と値の範囲は Tauri 版（`MixingPanel.tsx`・`audio_engine/mixing`）に揃える。
 
 use crate::connect::Device;
@@ -71,17 +71,29 @@ pub struct Route {
     pub muted: bool,
 }
 
-impl Route {
-    /// オケに使えるのは、Windows でその出力先をミュートしてあるときだけ（原音がそのまま聞こえて二重にならないように。Tauri 版と同じ）。
-    pub fn usable(&self) -> bool {
-        self.muted
+impl App {
+    /// オケに使える出力先：アプリの音がすべて1つの出力先に出ていて、そこを Windows でミュートしてあるとき
+    /// （原音がそのまま聞こえて二重にならないように。ホストの `process_capture::sessions` の確認と同じ）。
+    pub fn usable_route(&self) -> Option<&Route> {
+        let first = self.routes.first()?;
+        self.routes
+            .iter()
+            .all(|r| r.id == first.id && r.muted)
+            .then_some(first)
     }
 }
 
-/// 保存・適用中のアプリを一覧から探す：同じアプリ（キー）で、同じ出力先に音を出しているもの。
-pub fn find_app<'a>(apps: &'a [App], key: &str, route: &str) -> Option<&'a App> {
-    apps.iter()
-        .find(|a| a.key == key && a.routes.iter().any(|r| r.id == route))
+/// 一覧を読み直したあと、前に選んでいたアプリを探す。同じ候補（`id`）、無ければ同じ出力先に音を出す同じアプリ、
+/// それも無ければ同じアプリ（キー）の位置。
+pub fn find_app(apps: &[App], id: Option<&str>, key: &str, route: Option<&str>) -> Option<usize> {
+    let same = |a: &App| a.key == key;
+    id.and_then(|id| apps.iter().position(|a| same(a) && a.id == id))
+        .or_else(|| {
+            let route = route?;
+            apps.iter()
+                .position(|a| same(a) && a.routes.iter().any(|r| r.id == route))
+        })
+        .or_else(|| apps.iter().position(same))
 }
 
 /// 画面で変えられる音量。オフセット（時間合わせ）は GPUI 版ではまだ変えず、エンジンが持つ値を保つ。
@@ -204,30 +216,59 @@ mod tests {
         assert_eq!(pair_label([2, 2]), "3");
     }
 
-    #[test]
-    fn saved_app_is_found_by_key_and_route() {
-        let route = |id: &str, muted| Route {
+    fn route(id: &str, muted: bool) -> Route {
+        Route {
             id: id.into(),
             name: id.into(),
             muted,
-        };
-        let app = |id: &str, key: &str, routes| App {
+        }
+    }
+
+    fn app(id: &str, key: &str, routes: Vec<Route>) -> App {
+        App {
             id: id.into(),
             key: key.into(),
             name: key.into(),
             routes,
+        }
+    }
+
+    #[test]
+    fn app_is_usable_only_through_one_muted_output() {
+        let usable = |routes| {
+            app("a", "player", routes)
+                .usable_route()
+                .map(|r| r.id.clone())
         };
+        assert_eq!(usable(vec![route("cable", true)]), Some("cable".into()));
+        assert_eq!(
+            usable(vec![route("cable", true), route("cable", true)]),
+            Some("cable".into())
+        );
+        assert_eq!(usable(vec![route("cable", false)]), None);
+        assert_eq!(
+            usable(vec![route("cable", true), route("speaker", false)]),
+            None
+        );
+        assert_eq!(usable(vec![]), None);
+    }
+
+    #[test]
+    fn previous_app_is_found_by_id_then_route_then_key() {
         let apps = [
             app("app-1", "player", vec![route("speaker", false)]),
             app("app-2", "player", vec![route("cable", true)]),
         ];
         assert_eq!(
-            find_app(&apps, "player", "cable").map(|a| a.id.as_str()),
-            Some("app-2")
+            find_app(&apps, Some("app-1"), "player", Some("cable")),
+            Some(0)
         );
-        assert_eq!(find_app(&apps, "browser", "cable"), None);
-        assert!(!apps[0].routes[0].usable());
-        assert!(apps[1].routes[0].usable());
+        assert_eq!(find_app(&apps, None, "player", Some("cable")), Some(1));
+        assert_eq!(
+            find_app(&apps, Some("app-9"), "player", Some("gone")),
+            Some(0)
+        );
+        assert_eq!(find_app(&apps, Some("app-1"), "browser", None), None);
     }
 
     #[test]

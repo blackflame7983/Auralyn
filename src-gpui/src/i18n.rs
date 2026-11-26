@@ -274,7 +274,7 @@ pub mod keys {
     pub const MIX_ROUTE_HELP: &str = "mixing.routeHelp";
     pub const MIX_ROUTE_MUTED: &str = "mixing.muted";
     pub const MIX_ROUTE_NEEDS_MUTE: &str = "mixing.unmuted";
-    pub const MIX_ROUTE_UNMUTED: &str = "mixingUi.routeMuted";
+    pub const MIX_ROUTE_MUTE_FIRST: &str = "mixingUi.routeMuted";
     pub const MIX_INPUT_FAILED: &str = "mixing.accompanimentFailed";
     pub const MIX_SOURCE: &str = "mixing.device";
     pub const MIX_CHANNELS: &str = "mixing.channels";
@@ -554,7 +554,7 @@ pub mod keys {
         MIX_ROUTE_HELP,
         MIX_ROUTE_MUTED,
         MIX_ROUTE_NEEDS_MUTE,
-        MIX_ROUTE_UNMUTED,
+        MIX_ROUTE_MUTE_FIRST,
         MIX_INPUT_FAILED,
         MIX_SOURCE,
         MIX_CHANNELS,
