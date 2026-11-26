@@ -11,7 +11,6 @@ pub enum Lang {
 /// `auralyn-core` の文言のキー。
 pub mod keys {
     pub const FLOW_VOICE: &str = "home.flowVoice";
-    pub const FLOW_COMPARE: &str = "home.flowCompare";
     pub const FLOW_BEFORE: &str = "home.flowBefore";
     pub const FLOW_AFTER: &str = "home.flowAfter";
     pub const FLOW_GRAPH: &str = "home.flowGraph";
@@ -683,7 +682,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 670] = [
+    pub const ALL: [&str; 669] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -763,7 +762,6 @@ pub mod keys {
         OBS_NEEDS,
         OBS_SERVER,
         FLOW_VOICE,
-        FLOW_COMPARE,
         FLOW_BEFORE,
         FLOW_AFTER,
         FLOW_GRAPH,

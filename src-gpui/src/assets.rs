@@ -5,7 +5,21 @@ use std::borrow::Cow;
 use gpui_kit::assets::{icon_assets, Assets};
 use gpui_kit::{AssetSource, Result, SharedString};
 
-icon_assets!(Extra, [House, AudioLines, Puzzle, Cable]);
+icon_assets!(
+    Extra,
+    [
+        House,
+        AudioLines,
+        Puzzle,
+        Cable,
+        ListChecks,
+        Music,
+        SlidersHorizontal,
+        AudioWaveform,
+        ListMusic,
+        Sparkles,
+    ]
+);
 
 pub struct AppAssets;
 

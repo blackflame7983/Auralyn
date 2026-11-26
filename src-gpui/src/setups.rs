@@ -4,6 +4,7 @@
 //! 一覧に出すものと保存する名前の規則は `auralyn-ui-model` の `profile`。
 
 use auralyn_ui_model::profile::{self, Entry, ImportIssue, NameIssue};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectState};
@@ -86,15 +87,11 @@ impl SetupsPanel {
             return None;
         }
         let chosen = self.chosen.read(cx).selected_value().cloned();
-        Some(card(
-            core(lang, keys::MUSIC_PLAYBACK),
-            div(),
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(note(core(lang, keys::MUSIC_SOUND_HINT)))
-                .child(
+        Some(
+            card(
+                core(lang, keys::MUSIC_PLAYBACK),
+                div(),
+                div().flex().flex_col().gap_2().child(
                     div()
                         .flex()
                         .flex_wrap()
@@ -125,7 +122,10 @@ impl SetupsPanel {
                                 }),
                         ),
                 ),
-        ))
+            )
+            .icon(IconName::ListMusic)
+            .hint(core(lang, keys::MUSIC_SOUND_HINT)),
+        )
     }
 
     pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {

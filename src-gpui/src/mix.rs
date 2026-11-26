@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
 use auralyn_ui_model::mix::{self, Change, Field, Mix, OffsetStatus, Source};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -411,15 +412,15 @@ impl MixPanel {
             return card(
                 core(lang, keys::MIX_TITLE),
                 div(),
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(note(core(lang, keys::MIX_LEAD)))
-                    .when_some(self.read_failed.clone(), |this, message| {
+                div().flex().flex_col().gap_2().when_some(
+                    self.read_failed.clone(),
+                    |this, message| {
                         this.child(div().text_sm().text_color(color::warning()).child(message))
-                    }),
+                    },
+                ),
             )
+            .icon(IconName::Music)
+            .hint(core(lang, keys::MIX_LEAD))
             .into_any_element();
         };
         let chosen = self.chosen(cx);
@@ -452,7 +453,6 @@ impl MixPanel {
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::MIX_LEAD)))
                 .when(output_ready == Some(false), |this| {
                     this.child(warning(core(lang, keys::MIX_NEED_OUTPUT).to_owned()))
                 })
@@ -500,6 +500,7 @@ impl MixPanel {
                             div().child(
                                 Button::new("mix-apps")
                                     .label(core(lang, keys::MIX_REFRESH_APPS))
+                                    .icon(IconName::RefreshCw)
                                     .outline()
                                     .small()
                                     .disabled(mix.running)
@@ -508,18 +509,16 @@ impl MixPanel {
                                     }),
                             )
                         })
-                        .child(field(
+                        .child(field_with_hint(
                             lang,
                             if app_chosen {
                                 keys::MIX_ROUTE
                             } else {
                                 keys::MIX_CHANNELS
                             },
+                            app_chosen.then_some(keys::MIX_ROUTE_HELP),
                             Select::new(&self.pair).disabled(mix.running),
                         ))
-                        .when(app_chosen, |this| {
-                            this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
-                        })
                         .when(route_unmuted, |this| {
                             this.child(warning(core(lang, keys::MIX_ROUTE_MUTE_FIRST).to_owned()))
                         })
@@ -654,9 +653,10 @@ impl MixPanel {
             .flex()
             .flex_col()
             .gap_2()
-            .child(field(
+            .child(field_with_hint(
                 lang,
                 keys::MIX_OFFSET,
+                Some(keys::MIX_OFFSET_HELP),
                 div()
                     .flex()
                     .items_center()
@@ -690,7 +690,6 @@ impl MixPanel {
                         .child(core(lang, keys::MIX_OFFSET_INVALID)),
                 )
             })
-            .child(note(core(lang, keys::MIX_OFFSET_HELP)))
             .map(|this| match status {
                 OffsetStatus::Unconfirmed(fields) => {
                     let detail = if fields.is_empty() {
@@ -726,11 +725,33 @@ impl MixPanel {
 }
 
 fn field(lang: Lang, label: &'static str, control: impl IntoElement) -> impl IntoElement {
+    field_with_hint(lang, label, None, control)
+}
+
+/// 見出しの横の ⓘ に説明を出す欄。
+fn field_with_hint(
+    lang: Lang,
+    label: &'static str,
+    hint: Option<&'static str>,
+    control: impl IntoElement,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(div().text_sm().child(core(lang, label)))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(div().text_sm().child(core(lang, label)))
+                .when_some(hint, |this, hint| {
+                    this.child(crate::part::hint(
+                        SharedString::from(label),
+                        core(lang, hint),
+                    ))
+                }),
+        )
         .child(control)
 }
 

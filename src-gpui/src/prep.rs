@@ -293,6 +293,8 @@ impl PrepPanel {
                 this.child(self.render_body(lang, availability, next, &on, act, open_page))
             }),
         )
+        .icon(IconName::ListChecks)
+        .hint(core(lang, keys::PREP_ACK_PURPOSE))
     }
 
     fn render_body<A, G>(
@@ -402,8 +404,7 @@ impl PrepPanel {
                                         on(Action::Confirm(stage), window, cx);
                                     }
                                 })
-                        })
-                        .child(note(core(lang, keys::PREP_ACK_PURPOSE))),
+                        }),
                 )
             })
             .child(div().text_sm().child(core(lang, keys::PREP_LOCATION)))
@@ -451,22 +452,34 @@ impl PrepPanel {
                 Stage::ALL
                     .map(|stage| self.render_stage(lang, stage, act(Action::Unconfirm(stage)))),
             )
-            .child(note(core(
-                lang,
-                match usage {
-                    Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
-                    Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
-                    _ => keys::PREP_MANUAL_SCOPE,
-                },
-            )))
-            .child(note(core(lang, keys::PREP_EXTERNAL_SCOPE)))
             .child(
-                div().child(
-                    Button::new("prep-reset")
-                        .label(core(lang, keys::PREP_EXTERNAL_CHANGED))
-                        .ghost()
-                        .on_click(act(Action::Reset)),
-                ),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        Button::new("prep-reset")
+                            .label(core(lang, keys::PREP_EXTERNAL_CHANGED))
+                            .icon(IconName::RotateCw)
+                            .outline()
+                            .small()
+                            .on_click(act(Action::Reset)),
+                    )
+                    .child(crate::part::hint(
+                        "prep-scope",
+                        format!(
+                            "{}\n{}",
+                            core(
+                                lang,
+                                match usage {
+                                    Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
+                                    Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
+                                    _ => keys::PREP_MANUAL_SCOPE,
+                                },
+                            ),
+                            core(lang, keys::PREP_EXTERNAL_SCOPE)
+                        ),
+                    )),
             )
     }
 

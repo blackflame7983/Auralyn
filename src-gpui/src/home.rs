@@ -2,6 +2,8 @@
 
 use auralyn_ui_model::flow::{Flow, Mode, Sample};
 use auralyn_ui_model::meter;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::Icon;
 use gpui_kit::*;
 
 use crate::color;
@@ -41,15 +43,10 @@ pub fn sound_flow(flow: &Flow, lang: Lang) -> Option<impl IntoElement> {
                 div()
                     .flex()
                     .flex_wrap()
-                    .items_baseline()
+                    .items_center()
                     .gap_x_2()
-                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(color::muted())
-                            .child(core(lang, keys::FLOW_COMPARE)),
-                    ),
+                    .child(Icon::new(IconName::AudioWaveform).text_color(color::primary()))
+                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title)),
             )
             .child(
                 div()
