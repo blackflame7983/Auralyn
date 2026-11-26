@@ -8,11 +8,16 @@
 use std::path::{Path, PathBuf};
 
 use auralyn_ui_model::obs::{Reach, Reached, Request, Target, REACH_MS};
+use auralyn_ui_model::obs_timing::{Comparison, Measurement};
 use vst_host_lib::obs::{self, ObsState, ReachReceipt, ReachTone, ReachValue};
 
 use crate::engine::{Command, ToneStep};
 use vst_host_lib::obs_credentials::{self, Endpoint};
-use vst_host_lib::obs_setup::{self, History, Plan};
+use vst_host_lib::obs_setup::{
+    self, History, Plan, TimingComparison, TimingMeasurement, TimingMethod, TimingPreviewRequest,
+    TimingTargets,
+};
+use vst_host_lib::obs_timing::Conditions;
 
 /// パスワードを含むので Debug は付けない（ログへ出さない）。
 #[derive(Clone)]
@@ -41,6 +46,17 @@ pub enum Setup {
     Forget(u64),
     /// 変更予定を捨てる。画面の中だけで済ませ、このスレッドには送らない。
     Discard,
+    /// 同期調整の対象（音声のオフセットを持つソース）を読む。
+    Targets,
+    /// 同期調整の変更予定を作る（結果は `SetupDone::Plan`）。
+    Timing(Timing),
+}
+
+#[derive(Clone)]
+pub struct Timing {
+    pub token: String,
+    pub comparison: Comparison,
+    pub measurement: Measurement,
 }
 
 /// 変更確認の結果。`Err` はホストの原文。
@@ -50,6 +66,7 @@ pub enum SetupDone {
     History(Vec<History>),
     Restored(Result<History, String>),
     Forgot(Result<u64, String>),
+    Targets(Result<TimingTargets, String>),
 }
 
 pub enum Reply {
@@ -86,14 +103,19 @@ pub struct ObsLink {
 
 impl ObsLink {
     /// `engine` はテスト音を鳴らすときの、音声エンジンへの命令の口。
-    pub fn start(config_dir: &Path, engine: flume::WeakSender<Command>) -> Self {
+    /// `timing` は同期調整の対象を読むときの音声の条件。
+    pub fn start(
+        config_dir: &Path,
+        engine: flume::WeakSender<Command>,
+        timing: Conditions,
+    ) -> Self {
         let (orders, inbox) = flume::unbounded();
         let (outbox, replies) = flume::unbounded();
         let file = obs_credentials::file_in(config_dir);
         let failed = outbox.clone();
         let spawned = std::thread::Builder::new()
             .name("obs".into())
-            .spawn(move || run(file, EngineTone(engine), inbox, outbox));
+            .spawn(move || run(file, EngineTone(engine), timing, inbox, outbox));
         if let Err(error) = spawned {
             let _ = failed.send(Reply::Unavailable(error.to_string()));
         }
@@ -108,6 +130,7 @@ impl ObsLink {
 fn run(
     file: PathBuf,
     tone: EngineTone,
+    timing: Conditions,
     inbox: flume::Receiver<Order>,
     outbox: flume::Sender<Reply>,
 ) {
@@ -160,6 +183,12 @@ fn run(
                         Setup::Forget(id) => SetupDone::Forgot(
                             obs_setup::forget_history(&state, id).await.map(|()| id),
                         ),
+                        Setup::Targets => SetupDone::Targets(
+                            vst_host_lib::obs_timing::targets(&state, &timing).await,
+                        ),
+                        Setup::Timing(timing) => SetupDone::Plan(
+                            obs_setup::preview_timing(&state, timing_request(timing)).await,
+                        ),
                     };
                     let _ = outbox.send(Reply::Setup(Box::new(done)));
                     continue;
@@ -193,6 +222,25 @@ fn run(
         }
         let _ = obs::disconnect_obs(notify(&outbox), &state).await;
     });
+}
+
+fn timing_request(timing: Timing) -> TimingPreviewRequest {
+    let m = timing.measurement;
+    TimingPreviewRequest {
+        target_token: timing.token,
+        additional_delay_ms: m.delay_ms,
+        measurement: TimingMeasurement {
+            method: TimingMethod::Manual,
+            comparison: match timing.comparison {
+                Comparison::VoiceAccompaniment => TimingComparison::VoiceAccompaniment,
+                Comparison::AudioVideo => TimingComparison::AudioVideo,
+            },
+            measured_delay_ms: m.measured_ms,
+            reference_note: m.note,
+            fps: m.fps,
+            track: m.track,
+        },
+    }
 }
 
 /// Tauri 版の `connect_obs` と同じ：パスワードが無ければ保存したものを使い、つながったら保存する。保存できなければ切る。

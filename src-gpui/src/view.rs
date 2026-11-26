@@ -284,7 +284,13 @@ impl MainView {
         });
         let now = Instant::now();
         let desktop = Desktop::new(lang, &config_dir);
-        let obs = ObsPanel::new(&config_dir, engine.sender(), window, cx);
+        let obs = ObsPanel::new(
+            &config_dir,
+            engine.sender(),
+            engine.timing.clone(),
+            window,
+            cx,
+        );
         let scenes = ScenePanel::new(&config_dir, window, cx);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));

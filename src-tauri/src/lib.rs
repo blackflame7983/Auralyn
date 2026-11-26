@@ -73,6 +73,25 @@ pub mod input {
         Ok(())
     }
 }
+/// GPUI 版から OBS の同期調整の対象を読む口（音声の条件 `audio::conditions` 自体は crate 内に閉じる）。
+pub mod obs_timing {
+    use std::sync::Arc;
+
+    /// 対象を読んだ時点の音声の条件と、変更予定・適用のときの条件を比べるための手がかり。
+    #[derive(Clone)]
+    pub struct Conditions(Arc<crate::audio::conditions::Conditions>);
+
+    pub fn conditions(host: &crate::audio::AudioHost) -> Conditions {
+        Conditions(host.conditions())
+    }
+
+    pub async fn targets(
+        state: &crate::obs::ObsState,
+        conditions: &Conditions,
+    ) -> Result<crate::obs_setup::TimingTargets, String> {
+        crate::obs_setup::timing_targets(state, &conditions.0).await
+    }
+}
 pub mod autostart;
 pub mod bundle;
 mod child_process;

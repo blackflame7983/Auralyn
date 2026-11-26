@@ -394,6 +394,8 @@ pub struct Engine {
     commands: flume::Sender<Command>,
     pub notices: flume::Receiver<Notice>,
     pub levels: Arc<Mutex<LevelSlot>>,
+    /// OBS の同期調整で、対象を読んだときの音声の条件を確かめる手がかり。
+    pub timing: vst_host_lib::obs_timing::Conditions,
 }
 
 impl Engine {
@@ -406,10 +408,12 @@ impl Engine {
         let listener_notices = notice_tx.clone();
         let exited = Arc::new(AtomicBool::new(false));
         let listener_exited = exited.clone();
+        let (timing_tx, timing_rx) = flume::bounded(1);
         std::thread::Builder::new()
             .name("gpui-control".into())
             .spawn(move || {
                 let mut host = AudioHost::new(config_dir.clone());
+                let _ = timing_tx.send(vst_host_lib::obs_timing::conditions(&host));
                 host.set_event_sink(Arc::new(Sink {
                     levels: listener_levels,
                     notices: listener_notices,
@@ -437,10 +441,14 @@ impl Engine {
                 .run(command_rx);
             })
             .expect("制御のスレッドを起動できません");
+        let timing = timing_rx
+            .recv()
+            .expect("制御のスレッドが音声の条件を渡しません");
         Self {
             commands,
             notices,
             levels,
+            timing,
         }
     }
 

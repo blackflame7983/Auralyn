@@ -11,6 +11,7 @@ use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, SetupDone};
 use crate::obs_text;
+use crate::obs_timing;
 use crate::part::note;
 
 #[derive(Clone, Copy)]
@@ -36,6 +37,18 @@ impl Changes {
         self.plan = None;
     }
 
+    /// 入力が変わった同期の変更予定を捨てる（ほかの変更予定は残す）。
+    pub fn discard_timing(&mut self) {
+        if self.plan.as_ref().is_some_and(|plan| plan.timing.is_some()) {
+            self.plan = None;
+        }
+    }
+
+    /// 結果を `done` へ渡さない命令（同期調整の対象の読み込み）の返事が届いた。
+    pub fn settled(&mut self) {
+        self.pending = self.pending.saturating_sub(1);
+    }
+
     pub fn busy(&self) -> bool {
         self.pending > 0
     }
@@ -46,7 +59,7 @@ impl Changes {
     }
 
     pub fn done(&mut self, done: SetupDone) {
-        self.pending = self.pending.saturating_sub(1);
+        self.settled();
         match done {
             SetupDone::Plan(result) => match result {
                 Ok(plan) => self.plan = Some(plan),
@@ -80,6 +93,7 @@ impl Changes {
                 Ok(id) => self.history.retain(|h| h.id != id),
                 Err(e) => self.error = Some((Op::Forget, e)),
             },
+            SetupDone::Targets(_) => {}
         }
     }
 
@@ -155,6 +169,9 @@ impl Changes {
             .border_color(crate::color::border())
             .when_some(message, |this, message| {
                 this.child(div().text_sm().child(message))
+            })
+            .when_some(plan.timing.as_ref(), |this, timing| {
+                this.child(div().text_sm().child(obs_timing::timing_line(lang, timing)))
             })
             .map(|this| {
                 if plan.changes.is_empty() {
@@ -257,6 +274,9 @@ impl Changes {
                         ),
                         h.connection_label
                     )))
+                    .when_some(h.timing.as_ref(), |this, timing| {
+                        this.child(note(obs_timing::timing_line(lang, timing)))
+                    })
                     .when(!h.restorable, |this| {
                         this.child(note(core(lang, keys::OBS_SETUP_NOT_RESTORABLE)))
                     })
