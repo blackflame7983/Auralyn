@@ -19,6 +19,7 @@ mod mix;
 mod modes;
 mod part;
 mod post_mix;
+mod recovery;
 mod settings;
 mod setup;
 mod setups;

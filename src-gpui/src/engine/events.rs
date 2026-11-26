@@ -1,6 +1,26 @@
 //! 中核の出来事（Tauri の emit と同じ名前・本文）を、メーターの値と画面への通知にする。
 
 use super::*;
+use auralyn_ui_model::recovery::{Cause, Exit};
+
+/// ホストが `audio-engine-exited` のあとに出す旧の `audio-error` の本文。
+const LEGACY_EXIT: &str = "Audio Engine Process Exited (Crash?)";
+
+/// `audio-engine-exited` の本文（ホストの `ExitPayload`、camelCase）。
+fn exit(payload: &serde_json::Value) -> Exit {
+    let text = |key: &str| payload.get(key).and_then(|v| v.as_str()).map(str::to_owned);
+    Exit {
+        cause: Cause::parse(payload.get("cause").and_then(|v| v.as_str()).unwrap_or("")),
+        op: text("op"),
+        path: text("path"),
+        class_id: text("classId"),
+        name: text("name"),
+        host: text("host"),
+        input: text("input"),
+        output: text("output"),
+        settling: text("phase").as_deref() == Some("settling"),
+    }
+}
 
 pub(super) fn on_event(
     event: &str,
@@ -33,6 +53,9 @@ pub(super) fn on_event(
             return;
         }
         "audio-stopped" => Notice::Stopped,
+        "audio-engine-exited" => Notice::EngineExited(exit(&payload)),
+        // 落ちたことは上の詳しい出来事で伝えるので、あとに続く旧の通知は出さない（Tauri 版と同じ）。
+        "audio-error" if payload.as_str() == Some(LEGACY_EXIT) => return,
         "audio-error" | "audio-stream-error" => Notice::StreamError(
             payload
                 .as_str()
@@ -127,6 +150,25 @@ mod tests {
         );
         assert!(matches!(rx.try_recv(), Ok(Notice::Muted(true))));
         assert!(matches!(rx.try_recv(), Ok(Notice::Stopped)));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn engine_exit_becomes_one_notice_with_the_suspect() {
+        let levels = Mutex::new(LevelSlot::default());
+        let (tx, rx) = flume::unbounded();
+        let payload = serde_json::json!({
+            "cause": "vst_operation", "op": "restore", "path": "C:/a.vst3", "classId": "X", "name": "A"
+        });
+        on_event("audio-engine-exited", payload, &levels, &tx);
+        on_event("audio-error", serde_json::json!(LEGACY_EXIT), &levels, &tx);
+        let Ok(Notice::EngineExited(exit)) = rx.try_recv() else {
+            panic!("落ちた知らせが届かない");
+        };
+        assert_eq!(
+            exit.suspect().map(|s| s.class_id),
+            Some(Some("X".to_owned()))
+        );
         assert!(rx.try_recv().is_err());
     }
 

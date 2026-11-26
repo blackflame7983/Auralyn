@@ -419,9 +419,35 @@ pub mod keys {
     pub const APP_CHOOSE_RAW: &str = "processInput.chooseRaw";
     pub const APP_MUTED: &str = "processInput.muted";
     pub const APP_MUTE_NEEDED: &str = "processInput.muteNeeded";
+    pub const RECOVERY_TITLE: &str = "recovery.title";
+    pub const RECOVERY_DESCRIPTION: &str = "recovery.description";
+    pub const RECOVERY_DEVICE_DESCRIPTION: &str = "recovery.deviceDescription";
+    pub const RECOVERY_PENDING: &str = "recovery.pending";
+    pub const RECOVERY_EXCLUDE: &str = "recovery.exclude";
+    pub const RECOVERY_RELOAD: &str = "recovery.reload";
+    pub const RECOVERY_EMPTY: &str = "recovery.empty";
+    pub const RECOVERY_SAFETY: &str = "recovery.safety";
+    pub const RECOVERY_STOP: &str = "recovery.stop";
+    pub const RECOVERY_DEVICE_STOP: &str = "recovery.deviceStop";
+    pub const RECOVERY_CHOOSE_DEVICE: &str = "recovery.chooseDevice";
+    pub const EXITED_UNKNOWN: &str = "audioNotices.engineExitedUnknown";
+    pub const EXITED_VST: &str = "audioNotices.engineExitedVst";
+    pub const EXITED_DEVICE_OPENING: &str = "audioNotices.engineExitedDeviceOpening";
+    pub const EXITED_DEVICE_SETTLING: &str = "audioNotices.engineExitedDeviceSettling";
+    pub const EXITED_DEVICE_FALLBACK: &str = "audioNotices.deviceFallback";
+    pub const EXITED_VST_FALLBACK: &str = "audioNotices.vstFallback";
+    pub const VST_OP_LOAD: &str = "audioNotices.vstOp.load";
+    pub const VST_OP_RESTORE: &str = "audioNotices.vstOp.restore";
+    pub const VST_OP_SET_STATE: &str = "audioNotices.vstOp.setState";
+    pub const VST_OP_GET_STATE: &str = "audioNotices.vstOp.getState";
+    pub const VST_OP_OPEN_EDITOR: &str = "audioNotices.vstOp.openEditor";
+    pub const VST_OP_REMOVE: &str = "audioNotices.vstOp.remove";
+    pub const VST_OP_RESUME: &str = "audioNotices.vstOp.resume";
+    pub const VST_OP_PROCESSING_SETUP: &str = "audioNotices.vstOp.processingSetup";
+    pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
 
     #[cfg(test)]
-    pub const ALL: [&str; 408] = [
+    pub const ALL: [&str; 434] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -830,6 +856,32 @@ pub mod keys {
         APP_CHOOSE_RAW,
         APP_MUTED,
         APP_MUTE_NEEDED,
+        RECOVERY_TITLE,
+        RECOVERY_DESCRIPTION,
+        RECOVERY_DEVICE_DESCRIPTION,
+        RECOVERY_PENDING,
+        RECOVERY_EXCLUDE,
+        RECOVERY_RELOAD,
+        RECOVERY_EMPTY,
+        RECOVERY_SAFETY,
+        RECOVERY_STOP,
+        RECOVERY_DEVICE_STOP,
+        RECOVERY_CHOOSE_DEVICE,
+        EXITED_UNKNOWN,
+        EXITED_VST,
+        EXITED_DEVICE_OPENING,
+        EXITED_DEVICE_SETTLING,
+        EXITED_DEVICE_FALLBACK,
+        EXITED_VST_FALLBACK,
+        VST_OP_LOAD,
+        VST_OP_RESTORE,
+        VST_OP_SET_STATE,
+        VST_OP_GET_STATE,
+        VST_OP_OPEN_EDITOR,
+        VST_OP_REMOVE,
+        VST_OP_RESUME,
+        VST_OP_PROCESSING_SETUP,
+        VST_OP_OTHER,
     ];
 }
 

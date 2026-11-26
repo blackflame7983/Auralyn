@@ -32,6 +32,7 @@ use crate::mix::MixPanel;
 use crate::modes::ModesPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
+use crate::recovery;
 use crate::settings;
 use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
@@ -46,6 +47,7 @@ use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
+use auralyn_ui_model::recovery::{Choice, Exit};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::shortcuts;
 use auralyn_ui_model::sound::Change;
@@ -101,6 +103,8 @@ pub struct MainView {
     /// 保存した入出力が無いと分かってから、まだ一度も始まっていない。ホームに「はじめての設定」を出す。
     first_run: bool,
     setup: SetupPanel,
+    /// 音声エンジンが落ちて、まだ始め直していない。ホームに復旧のカードを出す。
+    recovery: Option<Exit>,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
@@ -323,6 +327,7 @@ impl MainView {
             modes: ModesPanel::default(),
             first_run: false,
             setup,
+            recovery: None,
             stats: None,
             cleared: None,
             sound,
@@ -426,22 +431,22 @@ impl MainView {
                 self.input_name = input;
                 self.output_name = output;
                 self.first_run = false;
+                self.recovery = None;
                 self.advance(SessionEvent::Started);
                 self.reread_peak();
                 self.reread_mix();
             }
             Notice::Stopped => {
-                self.advance(SessionEvent::Stopped);
-                self.voice.audio_stopped();
-                self.reread_peak();
-                self.reread_mix();
+                self.audio_stopped();
             }
             Notice::StreamError(message) => {
-                self.advance(SessionEvent::Stopped);
-                self.voice.audio_stopped();
-                self.reread_peak();
-                self.reread_mix();
+                self.audio_stopped();
                 self.message = Some(message);
+            }
+            Notice::EngineExited(exit) => {
+                self.audio_stopped();
+                self.recovery = Some(exit);
+                self.open(Page::Home);
             }
             Notice::AppNotResumed(name) => {
                 self.advance(SessionEvent::StartFailed);
@@ -571,6 +576,34 @@ impl MainView {
         }
         // 操作ロックは、ほかの画面の操作が断られた理由を出すのに使うので、どの画面でも読み直す。
         self.engine.send(Command::Modes(ModeAction::Read));
+    }
+
+    /// 音が止まった（止めた・途切れた・エンジンが落ちた）。
+    fn audio_stopped(&mut self) {
+        self.advance(SessionEvent::Stopped);
+        self.voice.audio_stopped();
+        self.reread_peak();
+        self.reread_mix();
+    }
+
+    /// 復旧のカードで選んだ方法。始め直す方法は、止まっているときだけ受ける。
+    fn recover(&mut self, choice: Choice) {
+        match choice.restart() {
+            Some(hold) => {
+                if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
+                    return;
+                }
+                self.advance(SessionEvent::StartRequested);
+                self.message = None;
+                self.engine.send(Command::Recover(hold));
+            }
+            None => {
+                self.recovery = None;
+                if choice == Choice::ChooseDevice {
+                    self.open(Page::Connect);
+                }
+            }
+        }
     }
 
     fn open(&mut self, page: Page) {
@@ -830,6 +863,25 @@ impl Render for MainView {
                             .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this
+                                    .when_some(self.recovery.as_ref(), |this, exit| {
+                                        this.child(div().max_w(px(560.)).child(recovery::render(
+                                            exit,
+                                            lang,
+                                            matches!(
+                                                self.phase,
+                                                Phase::Stopped | Phase::Unconfigured
+                                            ),
+                                            {
+                                                let entity = entity.clone();
+                                                move |choice, _, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.recover(choice);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            },
+                                        )))
+                                    })
                                     .when(self.first_run, |this| {
                                         this.child(div().max_w(px(560.)).child(self.setup.render(
                                             lang,

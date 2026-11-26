@@ -34,14 +34,29 @@ impl Control {
 
     /// 子が落ちていたら、次の子（空で始まる）に並びを、最後に保存した VST の中の設定で読み直す。
     /// 開始のあとと、VST を足す前に呼ぶ（足すと子が起き、落ちる前の並びが消えたままになる）。
+    /// 復旧で選んだ `hold` の VST は読まずに並びへ残す。
     pub(super) fn recover(&mut self) {
         if !self.exited.swap(false, Ordering::SeqCst) {
             return;
         }
         let old = std::mem::take(&mut self.rack);
         self.renamed = old.iter().map(|slot| slot.id.clone()).collect();
+        let hold = self.hold.take();
         for slot in old {
-            self.restore(slot.request());
+            if hold
+                .as_ref()
+                .is_some_and(|h| h.holds(&slot.path, slot.class_id.as_deref()))
+            {
+                // 読まずに、保存にある設定のまま「読めていない」枠として残す（保存からも消さない）。
+                let id = format!("missing-{}", self.rack.len());
+                self.rack.push(Slot {
+                    id,
+                    loaded: false,
+                    ..slot
+                });
+            } else {
+                self.restore(slot.request());
+            }
         }
         // 新しい子の音づくりは既定値で始まるので、落ちる前の設定を送り直す。
         if let Some(sound) = self.sound {
