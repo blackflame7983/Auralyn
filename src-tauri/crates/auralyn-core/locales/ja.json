@@ -3676,5 +3676,7 @@
   "gpuiShell.voiceNeedsAudio": "録音するには、先に音声を開始してください。",
   "gpuiShell.shortcutsUnreadable": "保存したショートカットを読めないため、どれも登録していません",
   "gpuiShell.shortcutUnsupported": "GPUI 版ではまだ使えません",
-  "gpuiShell.shortcutsEditInTauri": "キーの変更は、いまは Tauri 版の設定で行います（同じ保存を使います）。変えたら GPUI 版を起動し直してください。"
+  "gpuiShell.shortcutsEditInTauri": "キーの変更は、いまは Tauri 版の設定で行います（同じ保存を使います）。変えたら GPUI 版を起動し直してください。",
+  "gpuiShell.liveInactive": "配信用の出力は止まっています。出力先を変えるときは、音声を止めてから保存し、もう一度開始してください。",
+  "gpuiShell.liveSplitKept": "自分用と配信用で処理を分ける設定（自分用の歌・雑談の加工）は、いまは Tauri 版で変えます。ここで保存しても保ちます。"
 }

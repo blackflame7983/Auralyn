@@ -11,6 +11,8 @@ pub struct Device {
     pub id: Option<String>,
     pub is_input: bool,
     pub is_default: bool,
+    /// チャンネル数（分からなければ 0）。
+    pub channels: u16,
     /// 受け付ける周波数（Hz）の範囲。分からなければ `None`。
     pub rates: Option<Vec<(u32, u32)>>,
     /// 受け付けるバッファ（サンプル数）の範囲。分からなければ `None`。
@@ -190,6 +192,7 @@ mod tests {
             id: Some(format!("{host}:{name}")),
             is_input,
             is_default,
+            channels: 2,
             rates: None,
             buffers: None,
         }

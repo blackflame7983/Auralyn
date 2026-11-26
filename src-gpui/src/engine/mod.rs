@@ -30,6 +30,7 @@ use vst_host_lib::vst_host::{presets, scanner};
 use crate::store;
 
 mod events;
+mod live;
 mod profile;
 mod slots;
 mod sound;
@@ -111,6 +112,8 @@ pub enum Command {
     Listen(Listen),
     /// 音声処理の稼働統計を読む。結果は `Notice::Stats`。
     ReadStats,
+    /// 配信用の出力（`live.rs`）。`None` は読むだけ、`Some` は保存・反映。
+    LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
     /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
     ClearExclusions,
     /// 構成のファイルを消す。
@@ -155,6 +158,7 @@ impl Command {
                     Command::Listen(Listen::Status),
                     Command::Listen(Listen::Status)
                 )
+                | (Command::LiveOutput(None), Command::LiveOutput(None))
         )
     }
 }
@@ -218,6 +222,8 @@ pub enum Notice {
     /// 稼働統計。`None` は読めなかった（音声が止まっているときは、すべて 0 で届く）。
     Stats(Option<Stats>),
     ExclusionsCleared(Result<(), String>),
+    /// 配信用の出力の状態。`Err` は読めない・断られた理由。
+    Live(Result<auralyn_ui_model::live_output::Live, String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
@@ -583,6 +589,7 @@ impl Control {
                 ("export_voice_check", saved)
             }
             Command::Listen(ref listen) => return self.listen(listen.clone()),
+            Command::LiveOutput(ref draft) => return self.live_output(draft.clone()),
             Command::ReadStats => {
                 let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
                     loaded: s.active_plugin_count,
@@ -651,6 +658,7 @@ impl Control {
                     id: d.id,
                     is_input: d.is_input,
                     is_default: d.is_default,
+                    channels: d.channels,
                     rates: d.sample_rate_ranges,
                     buffers: d.buffer_size_range,
                 })

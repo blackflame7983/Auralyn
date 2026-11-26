@@ -245,9 +245,24 @@ pub mod keys {
     pub const TRAY_SHOW: &str = "gpuiShell.trayShow";
     pub const TRAY_QUIT: &str = "gpuiShell.trayQuit";
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
+    pub const LIVE_TITLE: &str = "liveOutput.title";
+    pub const LIVE_SCOPE: &str = "liveOutput.scope";
+    pub const LIVE_REFRESH: &str = "liveOutput.refresh";
+    pub const LIVE_DEVICE: &str = "liveOutput.device";
+    pub const LIVE_OFF: &str = "liveOutput.disabled";
+    pub const LIVE_MISSING: &str = "liveOutput.missing";
+    pub const LIVE_ACTIVE: &str = "liveOutput.active";
+    pub const LIVE_INACTIVE: &str = "gpuiShell.liveInactive";
+    pub const LIVE_FAILED: &str = "liveOutput.failed";
+    pub const LIVE_MONITOR_TRIM: &str = "liveOutput.monitorTrim";
+    pub const LIVE_BROADCAST_TRIM: &str = "liveOutput.broadcastTrim";
+    pub const LIVE_MONITOR_MUTED: &str = "liveOutput.monitorMuted";
+    pub const LIVE_CONFIRM: &str = "liveOutput.confirm";
+    pub const LIVE_SAVE: &str = "liveOutput.save";
+    pub const LIVE_SPLIT_KEPT: &str = "gpuiShell.liveSplitKept";
 
     #[cfg(test)]
-    pub const ALL: [&str; 234] = [
+    pub const ALL: [&str; 249] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -482,6 +497,21 @@ pub mod keys {
         TRAY_SHOW,
         TRAY_QUIT,
         HOTKEY_FAILED,
+        LIVE_TITLE,
+        LIVE_SCOPE,
+        LIVE_REFRESH,
+        LIVE_DEVICE,
+        LIVE_OFF,
+        LIVE_MISSING,
+        LIVE_ACTIVE,
+        LIVE_INACTIVE,
+        LIVE_FAILED,
+        LIVE_MONITOR_TRIM,
+        LIVE_BROADCAST_TRIM,
+        LIVE_MONITOR_MUTED,
+        LIVE_CONFIRM,
+        LIVE_SAVE,
+        LIVE_SPLIT_KEPT,
     ];
 }
 

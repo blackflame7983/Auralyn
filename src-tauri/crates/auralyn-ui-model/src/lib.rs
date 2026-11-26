@@ -4,6 +4,7 @@
 pub mod connect;
 pub mod diagnostics;
 pub mod flow;
+pub mod live_output;
 pub mod measurement;
 pub mod meter;
 pub mod peak;
