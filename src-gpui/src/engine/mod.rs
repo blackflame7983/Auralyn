@@ -13,7 +13,7 @@ use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
-use auralyn_ui_model::profile::Entry as ProfileEntry;
+use auralyn_ui_model::profile::{save_name, Entry as ProfileEntry, NameIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
@@ -91,6 +91,15 @@ pub enum Command {
         name: String,
         restore: bool,
     },
+    /// 構成のファイルを消す。
+    DeleteProfile(String),
+    /// 構成をファイルへ書き出す。接続は含めない（Tauri 版の書き出しの既定と同じ）。結果は `Notice::ProfileFile`。
+    ExportProfile {
+        name: String,
+        path: PathBuf,
+    },
+    /// ファイルの構成を、ファイルの中の名前で取り込む。同じ名前があれば取り込まない。結果は `Notice::ProfileFile`。
+    ImportProfile(PathBuf),
     /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
     SetPeak(bool),
     /// ピーク保護の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
@@ -124,6 +133,15 @@ impl Command {
     }
 }
 
+/// 構成の書き出し・読み込みの結果。名前は構成の名前。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProfileFile {
+    Exported(String),
+    Imported(String),
+    /// 同じ名前の構成があるので、取り込まなかった。
+    Exists(String),
+}
+
 #[derive(Debug, Clone)]
 pub enum Notice {
     Started {
@@ -145,6 +163,8 @@ pub enum Notice {
     Measurement(Option<Measurement>),
     /// 保存した構成の一覧。
     Profiles(Vec<ProfileEntry>),
+    /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
+    ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
     Catalog(Result<Vec<Candidate>, String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
@@ -492,6 +512,11 @@ impl Control {
             Command::ApplyProfile { ref name, restore } => {
                 return self.apply_profile(name, restore)
             }
+            Command::DeleteProfile(ref name) => return self.delete_profile(name),
+            Command::ExportProfile { ref name, ref path } => {
+                return self.export_profile(name, path)
+            }
+            Command::ImportProfile(ref path) => return self.import_profile(path),
             Command::SetPeak(enabled) => {
                 return self.set_peak(|config| PeakConfig { enabled, ..config })
             }

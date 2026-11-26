@@ -317,6 +317,7 @@ impl MainView {
             Notice::Measurement(reading) => self.sound.measure.set(reading),
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
+            Notice::ProfileFile(done) => self.setups.set_done(done, window, cx),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));

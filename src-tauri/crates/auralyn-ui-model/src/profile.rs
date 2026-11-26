@@ -45,6 +45,7 @@ pub enum NameIssue {
 }
 
 /// 入力から保存する名前を作る。前後の空白は除く。使えない文字は保存のときにエンジンが断る。
+/// ファイルから読み込むときも、ファイルの中の名前にこの規則を当てる（Tauri 版と違い、同じ名前は上書きしない）。
 pub fn save_name(input: &str, entries: &[Entry]) -> Result<String, NameIssue> {
     let name = input.trim();
     if name.is_empty() {
@@ -57,6 +58,11 @@ pub fn save_name(input: &str, entries: &[Entry]) -> Result<String, NameIssue> {
     } else {
         Ok(name.to_owned())
     }
+}
+
+/// 書き出すファイルの名前の候補（Tauri 版と同じ）。
+pub fn export_file_name(name: &str) -> String {
+    format!("{name}.auralyn-preset.json")
 }
 
 #[cfg(test)]
@@ -99,5 +105,10 @@ mod tests {
             save_name("__backup_previous", &entries),
             Err(NameIssue::Exists)
         );
+    }
+
+    #[test]
+    fn exported_files_carry_the_setup_name() {
+        assert_eq!(export_file_name("Talk"), "Talk.auralyn-preset.json");
     }
 }
