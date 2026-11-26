@@ -273,7 +273,12 @@ async fn obs_check_audio_reach(
     audio_state: State<'_, audio::AudioState>,
     duration_ms: Option<u32>,
 ) -> Result<obs::ObsAudioReachResult, String> {
-    obs::check_audio_reach(&obs_state, &audio_state, duration_ms.unwrap_or(1500)).await
+    obs::check_audio_reach(
+        &obs_state,
+        audio::AudioState(audio_state.0.clone()),
+        duration_ms.unwrap_or(1500),
+    )
+    .await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

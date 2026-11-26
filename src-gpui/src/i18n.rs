@@ -486,6 +486,20 @@ pub mod keys {
     pub const OBS_EDIT_HINT: &str = "settings.ObsConnectionSettings.287";
     pub const OBS_NEEDS: &str = "settings.ObsConnectionSettings.296";
     pub const OBS_SERVER: &str = "settings.ObsConnectionSettings.297";
+    pub const OBS_PEAK: &str = "settings.obs.peak";
+    pub const OBS_REACHED: &str = "obsReach.confirmed";
+    pub const OBS_NOT_REACHED: &str = "settings.ObsConnectionSettings.277";
+    pub const OBS_NOT_REACHED_HINT: &str = "settings.ObsConnectionSettings.306";
+    pub const OBS_METER_UNSUPPORTED: &str = "settings.ObsConnectionSettings.301";
+    pub const OBS_REACH_STALE: &str = "obsReach.stale";
+    pub const OBS_REACH_TITLE: &str = "obs.section.reach";
+    pub const OBS_REACHING: &str = "settings.ObsConnectionSettings.299";
+    pub const OBS_REACH_CHECK: &str = "settings.ObsConnectionSettings.300";
+    pub const OBS_REACH_CONFIRM_TITLE: &str = "settings.ObsConnectionSettings.271";
+    pub const OBS_REACH_CONFIRM_TEXT: &str = "settings.ObsConnectionSettings.272";
+    pub const OBS_REACH_PLAY: &str = "settings.ObsConnectionSettings.273";
+    pub const OBS_REACH_FAILED: &str = "settings.ObsConnectionSettings.279";
+    pub const OBS_REACH_SCOPE: &str = "obsReach.scope";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -507,7 +521,21 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 494] = [
+    pub const ALL: [&str; 508] = [
+        OBS_PEAK,
+        OBS_REACHED,
+        OBS_NOT_REACHED,
+        OBS_NOT_REACHED_HINT,
+        OBS_METER_UNSUPPORTED,
+        OBS_REACH_STALE,
+        OBS_REACH_TITLE,
+        OBS_REACHING,
+        OBS_REACH_CHECK,
+        OBS_REACH_CONFIRM_TITLE,
+        OBS_REACH_CONFIRM_TEXT,
+        OBS_REACH_PLAY,
+        OBS_REACH_FAILED,
+        OBS_REACH_SCOPE,
         OBS_TITLE,
         OBS_HOST,
         OBS_PORT,

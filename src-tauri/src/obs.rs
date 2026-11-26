@@ -20,7 +20,9 @@ struct ReachTask {
 }
 
 // OBSの確認処理と音声IPCを分け、実デバイスを起動せず中止を検証する。
-trait ReachTone: Send + Sync {
+/// 到達確認のテスト音を鳴らす・止める口。Tauri は音声の actor 経由、GPUI はエンジンのスレッド経由で
+/// [`begin_reach_tone`]・[`finish_reach_tone`] を呼ぶ。
+pub trait ReachTone: Send + Sync + 'static {
     fn play(
         &self,
         duration_ms: u32,
@@ -31,7 +33,8 @@ trait ReachTone: Send + Sync {
     ) -> impl std::future::Future<Output = Result<ReachReceipt, String>> + Send;
 }
 
-struct ReachReceipt {
+#[derive(Clone, Debug)]
+pub struct ReachReceipt {
     witness: Witness,
     config: Option<ActiveAudioConfig>,
 }
@@ -42,40 +45,52 @@ struct ReachMeasurement {
     fingerprint: Option<u64>,
 }
 
+/// テスト音を鳴らし始める。音声の条件（エンジンの世代・設定）を受け取りに残す。
+pub fn begin_reach_tone(
+    host: &mut crate::audio::AudioHost,
+    duration_ms: u32,
+) -> Result<ReachReceipt, String> {
+    let witness = host
+        .begin_obs_reach_tone(duration_ms)
+        .map_err(|e| e.to_string())?;
+    Ok(ReachReceipt {
+        witness,
+        config: host.get_state().config,
+    })
+}
+
+/// テスト音を止め、鳴らしていた間に音声の条件が変わっていないかを確かめる。
+pub fn finish_reach_tone(
+    host: &mut crate::audio::AudioHost,
+    receipt: &ReachReceipt,
+) -> Result<ReachReceipt, String> {
+    let witness = host
+        .finish_obs_reach_tone(&receipt.witness)
+        .map_err(|e| e.to_string())?;
+    Ok(ReachReceipt {
+        witness,
+        config: host.get_state().config,
+    })
+}
+
 impl ReachTone for AudioState {
     async fn play(&self, duration_ms: u32) -> Result<ReachReceipt, String> {
         crate::commands::call(
             &self.0,
             Entry::new(EntryKind::Obs, "play"),
             "音声状態を取得できません",
-            move |host| -> Result<_, String> {
-                let witness = host
-                    .begin_obs_reach_tone(duration_ms)
-                    .map_err(|e| e.to_string())?;
-                Ok(ReachReceipt {
-                    witness,
-                    config: host.get_state().config,
-                })
-            },
+            move |host| begin_reach_tone(host, duration_ms),
         )
         .await
     }
 
     async fn stop(&self, receipt: &ReachReceipt) -> Result<ReachReceipt, String> {
-        let witness = receipt.witness.clone();
+        let receipt = receipt.clone();
         crate::commands::call(
             &self.0,
             Entry::new(EntryKind::Obs, "stop"),
             "音声状態を取得できません",
-            move |host| -> Result<_, String> {
-                let witness = host
-                    .finish_obs_reach_tone(&witness)
-                    .map_err(|e| e.to_string())?;
-                Ok(ReachReceipt {
-                    witness,
-                    config: host.get_state().config,
-                })
-            },
+            move |host| finish_reach_tone(host, &receipt),
         )
         .await
     }
@@ -226,6 +241,13 @@ pub struct ObsReachVerification {
     audio_engine_epoch: u64,
     audio_conditions_revision: u64,
     config: Option<ActiveAudioConfig>,
+}
+
+impl ObsReachVerification {
+    /// [`audio_reach_current`] で、この確認がまだ有効かを聞くときの番号。
+    pub fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
 }
 
 #[derive(Clone)]
@@ -637,7 +659,7 @@ async fn invalidate_setup_target(
 /// テストトーンを再生し、OBS の入力メーターで到達を確認する
 pub async fn check_audio_reach(
     obs_state: &ObsState,
-    audio_state: &AudioState,
+    audio: impl ReachTone,
     duration_ms: u32,
 ) -> Result<ObsAudioReachResult, String> {
     // 登録と切断を同じロックで直列化し、切断後に確認処理を開始しない。
@@ -674,7 +696,6 @@ pub async fn check_audio_reach(
         .await
         .clone()
         .ok_or("OBS の接続情報がありません。再接続してください。")?;
-    let audio = AudioState(audio_state.0.clone());
     let client = guard.as_ref().cloned().ok_or("OBSの接続が終了しました")?;
     let (cancel, receiver) = watch::channel(false);
     let (reply, result) = oneshot::channel();

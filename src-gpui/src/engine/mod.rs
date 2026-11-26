@@ -32,6 +32,7 @@ use vst_host_lib::audio_engine::singing::SingingParams;
 use vst_host_lib::audio_engine::true_peak_limiter::Config as TruePeakConfig;
 use vst_host_lib::input;
 use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};
+use vst_host_lib::obs::{self, ReachReceipt};
 use vst_host_lib::vst_host::{presets, scanner};
 
 use crate::store;
@@ -153,6 +154,14 @@ pub enum Command {
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
+    /// OBS への到達確認のテスト音（`obs_link`）。結果は `Notice` でなく、渡された口へ返す。
+    ReachTone(ToneStep, flume::Sender<Result<ReachReceipt, String>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum ToneStep {
+    Play(u32),
+    Stop(Box<ReachReceipt>),
 }
 
 impl Command {
@@ -432,6 +441,11 @@ impl Engine {
         let _ = self.commands.send(command);
     }
 
+    /// 別のスレッドから命令を送る口（OBS の到達確認のテスト音）。弱い口なので、画面が閉じればエンジンは終わる。
+    pub fn sender(&self) -> flume::WeakSender<Command> {
+        self.commands.downgrade()
+    }
+
     /// 終了の前に、並びと VST の中の設定を保存し終えるのを待つ。エンジンが応えなければ数秒で諦める。
     pub fn save_before_quit(&self) {
         let (done, saved) = flume::bounded(1);
@@ -641,6 +655,14 @@ impl Control {
                 return;
             }
             Command::StartWith(ref start) => return self.start_with(start.clone()),
+            Command::ReachTone(ref step, ref reply) => {
+                let result = match step {
+                    ToneStep::Play(ms) => obs::begin_reach_tone(&mut self.host, *ms),
+                    ToneStep::Stop(receipt) => obs::finish_reach_tone(&mut self.host, receipt),
+                };
+                let _ = reply.send(result);
+                return;
+            }
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
