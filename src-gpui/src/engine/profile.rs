@@ -1,25 +1,69 @@
-//! 保存した構成（Tauri 版と同じ `presets/`）の一覧・保存・適用。接続は扱わない。
+//! 保存した構成（Tauri 版と同じ `presets/`）の一覧・保存・適用・削除・書き出し・読み込み。接続は扱わない。
 
 use super::*;
 
 impl Control {
+    fn profile_entries(&self) -> anyhow::Result<Vec<ProfileEntry>> {
+        let list = presets::list_profile_meta(&self.config_dir).map_err(anyhow::Error::msg)?;
+        Ok(list.into_iter().map(entry).collect())
+    }
+
     pub(super) fn list_profiles(&mut self) {
-        match presets::list_profile_meta(&self.config_dir) {
-            Ok(list) => {
-                let entries = list
-                    .into_iter()
-                    .map(|meta| ProfileEntry {
-                        name: meta.name,
-                        has_plugins: meta.has_plugins,
-                        has_noise: meta.has_noise_control,
-                        has_effects: meta.has_builtin_fx,
-                        is_backup: meta.is_backup,
-                    })
-                    .collect();
+        match self.profile_entries() {
+            Ok(entries) => {
                 let _ = self.notices.send(Notice::Profiles(entries));
             }
-            Err(e) => self.fail("list_profiles", anyhow::anyhow!(e)),
+            Err(e) => self.fail("list_profiles", e),
         }
+    }
+
+    pub(super) fn delete_profile(&mut self, name: &str) {
+        if let Err(e) = presets::delete_preset(&self.config_dir, name) {
+            self.fail("delete_profile", anyhow::anyhow!(e));
+        }
+        self.list_profiles();
+    }
+
+    pub(super) fn export_profile(&mut self, name: &str, path: &Path) {
+        let result = presets::load_preset(&self.config_dir, name)
+            .map_err(anyhow::Error::msg)
+            .and_then(|mut preset| {
+                preset.audio_config = None;
+                Ok(serde_json::to_string_pretty(&preset)?)
+            })
+            .and_then(|json| Ok(std::fs::write(path, json)?));
+        match result {
+            Ok(()) => self.tell(ProfileFile::Exported(name.to_owned())),
+            Err(e) => self.fail("export_profile", e),
+        }
+    }
+
+    pub(super) fn import_profile(&mut self, path: &Path) {
+        match self.import_parts(path) {
+            Ok(done) => {
+                self.list_profiles();
+                self.tell(done);
+            }
+            Err(e) => self.fail("import_profile", e),
+        }
+    }
+
+    fn import_parts(&mut self, path: &Path) -> anyhow::Result<ProfileFile> {
+        let text = std::fs::read_to_string(path)?;
+        let Ok(mut preset) = serde_json::from_str::<presets::Preset>(&text) else {
+            return Ok(ProfileFile::NotImported(ImportIssue::Invalid));
+        };
+        let name = match import_name(&entry(preset.to_meta()), &self.profile_entries()?) {
+            Ok(name) => name,
+            Err(issue) => return Ok(ProfileFile::NotImported(issue)),
+        };
+        preset.name = name.clone();
+        presets::save_preset(&self.config_dir, &name, &preset).map_err(anyhow::Error::msg)?;
+        Ok(ProfileFile::Imported(name))
+    }
+
+    fn tell(&self, done: ProfileFile) {
+        let _ = self.notices.send(Notice::ProfileFile(done));
     }
 
     /// 今の並び（中の設定を取り直す）と音づくりを、構成の形にする。接続は含めない
@@ -134,5 +178,28 @@ impl Control {
             self.changed();
         }
         Ok(())
+    }
+}
+
+fn entry(meta: presets::ProfileMeta) -> ProfileEntry {
+    ProfileEntry {
+        name: meta.name,
+        has_plugins: meta.has_plugins,
+        has_noise: meta.has_noise_control,
+        has_effects: meta.has_builtin_fx,
+        is_backup: meta.is_backup,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_backup_name_matches_the_core() {
+        assert_eq!(
+            auralyn_ui_model::profile::BACKUP_NAME,
+            presets::BACKUP_PROFILE_NAME
+        );
     }
 }

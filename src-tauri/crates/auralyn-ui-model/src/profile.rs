@@ -3,6 +3,9 @@
 //! GPUI 版が読み書きするのは、VST の並び・ノイズ低減・声を整える設定だけ（接続は変えない）。
 //! そのどれも持たない構成（接続だけの構成）は、適用しても何も変わらないので一覧に出さない。
 
+/// 適用の前に自動で取る退避の名前（Tauri 版の `presets::BACKUP_PROFILE_NAME` と同じ）。
+pub const BACKUP_NAME: &str = "__backup_previous";
+
 /// 構成の一覧の1行。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
@@ -40,7 +43,7 @@ pub fn backup_name(entries: &[Entry]) -> Option<&str> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NameIssue {
     Empty,
-    /// 同じ名前がある（上書きはさせない。退避の名前もここに入る）。Windows のファイル名と同じく、大文字・小文字は区別しない。
+    /// 同じ名前がある（上書きはさせない。退避の名前は、まだ退避が無くても使わせない）。Windows のファイル名と同じく、大文字・小文字は区別しない。
     Exists,
 }
 
@@ -49,14 +52,37 @@ pub fn save_name(input: &str, entries: &[Entry]) -> Result<String, NameIssue> {
     let name = input.trim();
     if name.is_empty() {
         Err(NameIssue::Empty)
-    } else if entries
-        .iter()
-        .any(|entry| entry.name.to_lowercase() == name.to_lowercase())
+    } else if name.to_lowercase() == BACKUP_NAME
+        || entries
+            .iter()
+            .any(|entry| entry.name.to_lowercase() == name.to_lowercase())
     {
         Err(NameIssue::Exists)
     } else {
         Ok(name.to_owned())
     }
+}
+
+/// ファイルから読み込まなかった理由。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportIssue {
+    /// 構成のファイルとして読めない（名前が無いときも）。
+    Invalid,
+    /// 同じ名前の構成がある（Tauri 版と違い、上書きしない）。
+    Exists(String),
+    /// 接続だけの構成。GPUI 版では一覧に出ず、適用しても何も変わらない。
+    NothingToApply,
+}
+
+/// ファイルの中の構成を取り込む名前。名前の規則は保存と同じ。
+pub fn import_name(file: &Entry, entries: &[Entry]) -> Result<String, ImportIssue> {
+    if !file.applicable() {
+        return Err(ImportIssue::NothingToApply);
+    }
+    save_name(&file.name, entries).map_err(|issue| match issue {
+        NameIssue::Empty => ImportIssue::Invalid,
+        NameIssue::Exists => ImportIssue::Exists(file.name.trim().to_owned()),
+    })
 }
 
 #[cfg(test)]
@@ -98,6 +124,32 @@ mod tests {
         assert_eq!(
             save_name("__backup_previous", &entries),
             Err(NameIssue::Exists)
+        );
+        assert_eq!(save_name("__Backup_Previous", &[]), Err(NameIssue::Exists));
+    }
+
+    #[test]
+    fn imports_keep_the_file_name_but_never_overwrite() {
+        let entries = [entry("Talk", true, false)];
+        assert_eq!(
+            import_name(&entry(" Sing ", true, false), &entries),
+            Ok("Sing".into())
+        );
+        assert_eq!(
+            import_name(&entry("talk", true, false), &entries),
+            Err(ImportIssue::Exists("talk".into()))
+        );
+        assert_eq!(
+            import_name(&entry("__backup_previous", true, true), &[]),
+            Err(ImportIssue::Exists("__backup_previous".into()))
+        );
+        assert_eq!(
+            import_name(&entry("", true, false), &entries),
+            Err(ImportIssue::Invalid)
+        );
+        assert_eq!(
+            import_name(&entry("Devices only", false, false), &entries),
+            Err(ImportIssue::NothingToApply)
         );
     }
 }

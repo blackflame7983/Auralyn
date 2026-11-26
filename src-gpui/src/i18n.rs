@@ -56,6 +56,17 @@ pub mod keys {
     pub const SETUPS_NAME: &str = "presets.copy.061";
     pub const SETUPS_SAVE: &str = "presets.copy.063";
     pub const SETUPS_EXISTS: &str = "presets.copy.022";
+    pub const SETUPS_DELETE: &str = "presets.copy.080";
+    pub const SETUPS_DELETE_TITLE: &str = "presets.copy.036";
+    pub const SETUPS_DELETE_WARNING: &str = "presets.copy.037";
+    pub const SETUPS_CONFIRM_DELETE: &str = "presets.copy.038";
+    pub const SETUPS_EXPORT: &str = "presets.copy.078";
+    pub const SETUPS_EXPORTED: &str = "presets.copy.041";
+    pub const SETUPS_IMPORT: &str = "presets.copy.065";
+    pub const SETUPS_IMPORTED: &str = "presets.copy.043";
+    pub const SETUPS_IMPORT_EXISTS: &str = "gpuiShell.setupImportExists";
+    pub const SETUPS_IMPORT_NOTHING: &str = "gpuiShell.setupImportNothing";
+    pub const SETUPS_IMPORT_INVALID: &str = "gpuiShell.setupImportInvalid";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -177,7 +188,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 164] = [
+    pub const ALL: [&str; 175] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -224,6 +235,17 @@ pub mod keys {
         SETUPS_NAME,
         SETUPS_SAVE,
         SETUPS_EXISTS,
+        SETUPS_DELETE,
+        SETUPS_DELETE_TITLE,
+        SETUPS_DELETE_WARNING,
+        SETUPS_CONFIRM_DELETE,
+        SETUPS_EXPORT,
+        SETUPS_EXPORTED,
+        SETUPS_IMPORT,
+        SETUPS_IMPORTED,
+        SETUPS_IMPORT_EXISTS,
+        SETUPS_IMPORT_NOTHING,
+        SETUPS_IMPORT_INVALID,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,

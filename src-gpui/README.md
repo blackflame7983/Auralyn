@@ -17,7 +17,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/locale_file.rs` | 表示言語の保存（`gpui_locale.json`）。無ければ Tauri 版の `display-locale.json` を読むだけ |
 | `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・環境に合わせる（測定値・会場）・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）と、大きな音を抑える（ON/OFF・天井・復帰時間。アプリの中だけで持つ）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine/sound.rs` の `gpui_sound.json` |
 | `src/measure.rs` | 周囲の音の測定（3秒測る・中止・話していないと確かめて採用）。測定値・会場のときに音づくりの詳細に出す。規則は `auralyn-ui-model` の `measurement` |
-| `src/setups.rs` | 保存した構成（Tauri 版と同じ `presets/`）。選んで適用・直前の状態に戻す・名前を付けて保存。VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。規則は `auralyn-ui-model` の `profile` |
+| `src/setups.rs` | 保存した構成（Tauri 版と同じ `presets/`）。選んで適用・直前の状態に戻す・名前を付けて保存・削除・ファイルへ書き出す／ファイルから読み込む。VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。規則は `auralyn-ui-model` の `profile` |
 | `src/vst.rs` | VST の画面。並び（ON/OFF・音量・ミュート・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine/slots.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |
