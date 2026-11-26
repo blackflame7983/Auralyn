@@ -9,7 +9,7 @@ pub(crate) mod frontend_bootstrap;
 mod link;
 mod live_bundle;
 mod live_modes;
-pub(crate) mod mixing;
+pub mod mixing;
 mod mixing_bundle;
 mod mode_vst;
 mod output_bundle;

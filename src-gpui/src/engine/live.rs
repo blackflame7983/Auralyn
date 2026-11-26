@@ -2,24 +2,47 @@
 
 use super::*;
 use auralyn_ui_model::live_output::{Draft, Live};
+use vst_host_lib::audio_engine::builtin::{Config as BuiltinConfig, Preset as BuiltinPreset};
 use vst_host_lib::audio_engine::live_output::{Config as LiveConfig, Status as LiveStatus};
+use vst_host_lib::audio_engine::reverb::ReverbParams;
+use vst_host_lib::audio_engine::singing::SingingParams;
 
 impl Control {
-    /// `draft` があれば、今の構成に重ねて保存・反映する（自分用と配信用の処理の分け方は保つ。分けないなら外す）。
+    /// `draft` があれば、今の構成に重ねて保存・反映する。
     /// 保存の結果を送り、断られたら今の状態を読み直して送る。`None` なら読むだけ。
     pub(super) fn live_output(&mut self, draft: Option<Draft>) {
         let saving = draft.is_some();
         let result = match draft {
             None => self.host.live_output(None),
             Some(draft) => self.host.live_output(None).and_then(|status| {
-                let split = status.config.split_processing && draft.device_id.is_some();
+                // 分けるときは、自分用の歌・雑談の加工が要る。無ければ Tauri 版の既定で入れる（ある値は変えない）。
+                let (singing, talk) = if draft.split {
+                    (
+                        status
+                            .config
+                            .monitor_singing
+                            .clone()
+                            .or_else(|| Some(monitor(true))),
+                        status
+                            .config
+                            .monitor_talk
+                            .clone()
+                            .or_else(|| Some(monitor(false))),
+                    )
+                } else {
+                    (
+                        status.config.monitor_singing.clone(),
+                        status.config.monitor_talk.clone(),
+                    )
+                };
                 self.host.live_output(Some(LiveConfig {
-                    split_processing: split,
+                    split_processing: draft.split && draft.device_id.is_some(),
+                    monitor_singing: singing,
+                    monitor_talk: talk,
                     device_id: draft.device_id,
                     monitor_trim: draft.monitor_trim,
                     broadcast_trim: draft.broadcast_trim,
                     monitor_muted: draft.monitor_muted,
-                    ..status.config
                 }))
             }),
         };
@@ -46,10 +69,30 @@ fn view(status: &LiveStatus) -> Live {
             monitor_trim: config.monitor_trim,
             broadcast_trim: config.broadcast_trim,
             monitor_muted: config.monitor_muted,
+            split: config.split_processing,
         },
-        split: config.split_processing,
         active: status.sink.as_ref().is_some_and(|sink| sink.active),
         failed: status.sink.as_ref().is_some_and(|sink| sink.failed),
         error: status.error.clone(),
+    }
+}
+
+/// 自分用の歌（`singing`）・雑談の加工の既定（Tauri 版の `LiveOutputPanel` と同じ。歌だけ軽い残響）。
+fn monitor(singing: bool) -> BuiltinConfig {
+    BuiltinConfig {
+        active: true,
+        preset: BuiltinPreset::Singing,
+        amount: 0.35,
+        singing: Some(SingingParams::default()),
+        reverb: Some(ReverbParams {
+            enabled: singing,
+            mix: if singing {
+                0.05
+            } else {
+                ReverbParams::default().mix
+            },
+            ..ReverbParams::default()
+        }),
+        deesser: None,
     }
 }

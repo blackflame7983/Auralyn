@@ -15,6 +15,7 @@ mod i18n;
 mod live;
 mod locale_file;
 mod measure;
+mod mix;
 mod part;
 mod settings;
 mod setups;

@@ -19,11 +19,12 @@ use gpui_kit::*;
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
-use crate::engine::{Command, Engine, Listen, Notice};
+use crate::engine::{Command, Engine, Listen, MixAction, Notice};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::live::LivePanel;
 use crate::locale_file;
+use crate::mix::MixPanel;
 use crate::part::OnCommand;
 use crate::settings;
 use crate::setups::SetupsPanel;
@@ -82,6 +83,7 @@ pub struct MainView {
     setups: SetupsPanel,
     voice: VoicePanel,
     live: LivePanel,
+    mix: MixPanel,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
@@ -180,6 +182,24 @@ impl MainView {
             )
             .detach();
         }
+        let mix = MixPanel::new(window, cx, Self::send);
+        cx.subscribe_in(
+            mix.source_state(),
+            window,
+            |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
+                this.mix.source_changed(window, cx);
+                cx.notify();
+            },
+        )
+        .detach();
+        // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスの状態）を読んでおく。
+        for command in [
+            Command::ListDevices,
+            Command::LiveOutput(None),
+            Command::Mix(MixAction::Read),
+        ] {
+            engine.send(command);
+        }
         let ticker = cx.spawn_in(window, async move |this, cx| loop {
             cx.background_executor().timer(FRAME).await;
             if this
@@ -248,6 +268,7 @@ impl MainView {
             setups,
             voice: VoicePanel::new(window, cx),
             live: LivePanel::new(window, cx),
+            mix,
             stats: None,
             cleared: None,
             sound,
@@ -345,11 +366,13 @@ impl MainView {
                 self.output_name = output;
                 self.advance(SessionEvent::Started);
                 self.reread_peak();
+                self.reread_mix();
             }
             Notice::Stopped => {
                 self.advance(SessionEvent::Stopped);
                 self.voice.audio_stopped();
                 self.reread_peak();
+                self.reread_mix();
             }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
@@ -398,8 +421,12 @@ impl MainView {
             Notice::Devices { devices, saved } => {
                 self.live.set_devices(&devices, self.lang, window, cx);
                 self.connect
-                    .set_devices(devices, saved, self.lang, window, cx)
+                    .set_devices(devices.clone(), saved, self.lang, window, cx);
+                let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
+                self.mix.set_devices(&devices, voice.as_deref(), window, cx);
             }
+            Notice::Mix(result) => self.mix.set(result, window, cx),
+            Notice::MixDone(result) => self.mix.done(result),
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
             Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
@@ -455,6 +482,11 @@ impl MainView {
             self.live_polled = Instant::now();
             self.engine.send(Command::LiveOutput(None));
         }
+        if page == Page::Home {
+            self.engine.send(Command::ListDevices);
+            self.engine.send(Command::LiveOutput(None));
+            self.engine.send(Command::Mix(MixAction::Read));
+        }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
             self.reread_peak();
@@ -485,6 +517,13 @@ impl MainView {
     }
 
     /// 画面からの命令。候補を探し始めたら、終わるまで探し直しのボタンを止める。
+    /// ホームを出しているなら、配信ミックスの状態を読み直す（音声の開始・停止で、流れているかが変わる）。
+    fn reread_mix(&mut self) {
+        if self.page == Page::Home {
+            self.engine.send(Command::Mix(MixAction::Read));
+        }
+    }
+
     fn send(&mut self, command: Command) {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
@@ -651,7 +690,14 @@ impl Render for MainView {
                             .p_4()
                             .overflow_y_scroll()
                             .map(|this| match self.page {
-                                Page::Home => this.children(home::sound_flow(&self.flow, lang)),
+                                Page::Home => this
+                                    .children(home::sound_flow(&self.flow, lang))
+                                    .child(div().max_w(px(560.)).child(self.mix.render(
+                                        lang,
+                                        self.live.ready(),
+                                        cx,
+                                        send,
+                                    ))),
                                 Page::Settings => this.child(settings::render(
                                     lang,
                                     self.desktop.tray_error.as_deref(),

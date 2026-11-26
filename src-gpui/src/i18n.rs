@@ -260,9 +260,30 @@ pub mod keys {
     pub const LIVE_CONFIRM: &str = "liveOutput.confirm";
     pub const LIVE_SAVE: &str = "liveOutput.save";
     pub const LIVE_SPLIT_KEPT: &str = "gpuiShell.liveSplitKept";
+    pub const LIVE_SPLIT: &str = "liveOutput.split";
+    pub const LIVE_SPLIT_SCOPE: &str = "liveOutput.splitScope";
+    pub const MIX_TITLE: &str = "streamMix.title";
+    pub const MIX_LEAD: &str = "mixing.prepare";
+    pub const MIX_NEED_OUTPUT: &str = "gpuiShell.mixNeedOutput";
+    pub const MIX_CURRENT: &str = "mixing.current";
+    pub const MIX_SAVED: &str = "mixing.saved";
+    pub const MIX_NONE: &str = "mixing.none";
+    pub const MIX_APP_LATER: &str = "gpuiShell.mixAppLater";
+    pub const MIX_INPUT_FAILED: &str = "mixing.accompanimentFailed";
+    pub const MIX_SOURCE: &str = "mixing.device";
+    pub const MIX_CHANNELS: &str = "mixing.channels";
+    pub const MIX_STOP_FIRST: &str = "mixing.stopped";
+    pub const MIX_CONFIRM: &str = "mixing.confirm";
+    pub const MIX_APPLY: &str = "mixing.save";
+    pub const MIX_DISABLE: &str = "mixing.disable";
+    pub const MIX_VOICE: &str = "mixing.voice";
+    pub const MIX_MUSIC: &str = "mixing.accompaniment";
+    pub const MIX_VOICE_MUTE: &str = "gpuiShell.mixVoiceMute";
+    pub const MIX_MUSIC_MUTE: &str = "gpuiShell.mixMusicMute";
+    pub const MIX_MONITOR: &str = "mixing.monitor";
 
     #[cfg(test)]
-    pub const ALL: [&str; 249] = [
+    pub const ALL: [&str; 270] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -512,6 +533,27 @@ pub mod keys {
         LIVE_CONFIRM,
         LIVE_SAVE,
         LIVE_SPLIT_KEPT,
+        LIVE_SPLIT,
+        LIVE_SPLIT_SCOPE,
+        MIX_TITLE,
+        MIX_LEAD,
+        MIX_NEED_OUTPUT,
+        MIX_CURRENT,
+        MIX_SAVED,
+        MIX_NONE,
+        MIX_APP_LATER,
+        MIX_INPUT_FAILED,
+        MIX_SOURCE,
+        MIX_CHANNELS,
+        MIX_STOP_FIRST,
+        MIX_CONFIRM,
+        MIX_APPLY,
+        MIX_DISABLE,
+        MIX_VOICE,
+        MIX_MUSIC,
+        MIX_VOICE_MUTE,
+        MIX_MUSIC_MUTE,
+        MIX_MONITOR,
     ];
 }
 
