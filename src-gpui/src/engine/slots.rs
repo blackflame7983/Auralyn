@@ -89,7 +89,10 @@ impl Control {
 
     /// 読めていない VST を、同じ位置のまま読み直す。読めたら子の中の順を並びに合わせる。
     pub(super) fn reload_missing(&mut self) {
-        self.recover();
+        // 子が落ちていたら、読み直し（`recover`）が読めていない枠も含めて全部読むので、それで終わり。
+        if self.exited.load(Ordering::SeqCst) {
+            return self.recover();
+        }
         let ids: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
         let mut reloaded = false;
         for index in 0..self.rack.len() {
@@ -109,9 +112,14 @@ impl Control {
                 }
                 Err(e) => self.fail("restore_plugin", e),
             }
+            // 読んだ VST で子が落ちたら、ここで止める（続けて読むと新しい子が起き、あとの読み直しと二重になる）。
+            // 並びは次の操作か開始のときに `recover` が読み直す。
+            if self.exited.load(Ordering::SeqCst) {
+                break;
+            }
         }
         self.renamed = ids;
-        if reloaded {
+        if reloaded && !self.exited.load(Ordering::SeqCst) {
             // 子は読んだ VST を末尾に足すので、並びの順へ戻す。
             let order = self
                 .rack
