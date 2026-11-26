@@ -10,5 +10,6 @@ pub mod peak;
 pub mod profile;
 pub mod rack;
 pub mod session;
+pub mod shortcuts;
 pub mod sound;
 pub mod voice_check;

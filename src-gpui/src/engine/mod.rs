@@ -83,6 +83,8 @@ pub enum Command {
     ReadSound,
     /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
     SetSound(Change),
+    /// ノイズ低減の ON/OFF を、いまのエンジンの値から反転する（ショートカット）。
+    ToggleNoise,
     /// 大きな音を抑える（ピーク保護）の今の状態を読む。
     ReadPeak,
     /// 周囲の音の測定を読む・始める・止める・採用する。結果は `Notice::Measurement`。
@@ -622,6 +624,7 @@ impl Control {
                 })
             }
             Command::SetSound(change) => return self.set_sound(change),
+            Command::ToggleNoise => return self.toggle_noise(),
             Command::SaveRack(ref done) => {
                 self.save(true);
                 if let Some(done) = done {

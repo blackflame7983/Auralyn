@@ -3661,18 +3661,20 @@
   "gpuiShell.offUntilOn": "OFFのままでも種類と整え具合を選べます。ONにするまで音には反映されません。",
   "gpuiShell.desktop": "Windows との連携",
   "gpuiShell.tray": "通知領域のアイコン",
-  "gpuiShell.hotkey": "Alt+M でミュート",
   "gpuiShell.ready": "使えます",
   "gpuiShell.unavailable": "使えません",
   "gpuiShell.noiseModeFirst": "ノイズ低減の種類が分かりません。弱か強を選ぶと、ON/OFF・強さ・声を守るを送れます。",
   "gpuiShell.trayShow": "Auralyn を表示",
   "gpuiShell.trayQuit": "終了",
-  "gpuiShell.hotkeyFailed": "Alt+M を登録できません（Auralyn が起動中かもしれません）",
+  "gpuiShell.hotkeyFailed": "登録できないショートカットがあります（Auralyn が起動中かもしれません）。設定の画面で確かめてください。",
   "gpuiShell.peakResets": "アプリを起動し直すと、OFF と既定の天井・復帰時間に戻ります。",
   "gpuiShell.auto": "自動（機器に合わせる）",
   "gpuiShell.setupScope": "保存・適用するのは、VST の並び・ノイズ低減・声を整える設定です。接続（機器・周波数）は変えません。",
   "gpuiShell.setupImportExists": "「{arg0}」という構成がすでにあるので、読み込みませんでした。",
   "gpuiShell.setupImportNothing": "このファイルには VST の並び・ノイズ低減・声を整える設定のどれも入っていないので、読み込みませんでした。",
   "gpuiShell.setupImportInvalid": "構成のファイルとして読めませんでした。",
-  "gpuiShell.voiceNeedsAudio": "録音するには、先に音声を開始してください。"
+  "gpuiShell.voiceNeedsAudio": "録音するには、先に音声を開始してください。",
+  "gpuiShell.shortcutsUnreadable": "保存したショートカットを読めないため、どれも登録していません",
+  "gpuiShell.shortcutUnsupported": "GPUI 版ではまだ使えません",
+  "gpuiShell.shortcutsEditInTauri": "キーの変更は、いまは Tauri 版の設定で行います（同じ保存を使います）。変えたら GPUI 版を起動し直してください。"
 }

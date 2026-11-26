@@ -107,6 +107,14 @@ impl Control {
         self.reread_and_save_sound();
     }
 
+    /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める（Tauri 版のショートカットと同じ）。
+    pub(super) fn toggle_noise(&mut self) {
+        self.read_sound();
+        if let Some(sound) = self.sound {
+            self.set_sound(Change::NoiseOn(!sound.noise_on));
+        }
+    }
+
     /// エンジンが受け付けた音づくりを読み、次の起動のために保存する。
     /// 読む前に `sound` を消さない（子が落ちていたら、読み直しで前の設定を送り直すのに使う）。
     pub(super) fn reread_and_save_sound(&mut self) {

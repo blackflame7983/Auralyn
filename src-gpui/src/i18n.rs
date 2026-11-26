@@ -200,7 +200,22 @@ pub mod keys {
     pub const LANGUAGE_SAVE_FAILED: &str = "language.saveFailed";
     pub const DESKTOP: &str = "gpuiShell.desktop";
     pub const TRAY: &str = "gpuiShell.tray";
-    pub const HOTKEY: &str = "gpuiShell.hotkey";
+    pub const SHORTCUTS_TITLE: &str = "settings.ShortcutsPanel.378";
+    pub const SHORTCUTS_EMPTY: &str = "shortcuts.captureEmpty";
+    pub const SHORTCUTS_UNREADABLE: &str = "gpuiShell.shortcutsUnreadable";
+    pub const SHORTCUT_UNSUPPORTED: &str = "gpuiShell.shortcutUnsupported";
+    pub const SHORTCUTS_EDIT_IN_TAURI: &str = "gpuiShell.shortcutsEditInTauri";
+    pub const SHORTCUT_MUTE_TOGGLE: &str = "settings.ShortcutsPanel.363";
+    pub const SHORTCUT_MUTE_ON: &str = "settings.ShortcutsPanel.364";
+    pub const SHORTCUT_MUTE_OFF: &str = "settings.ShortcutsPanel.365";
+    pub const SHORTCUT_BYPASS_TOGGLE: &str = "settings.ShortcutsPanel.366";
+    pub const SHORTCUT_BYPASS_ON: &str = "settings.ShortcutsPanel.367";
+    pub const SHORTCUT_BYPASS_OFF: &str = "settings.ShortcutsPanel.368";
+    pub const SHORTCUT_GAIN_UP: &str = "settings.ShortcutsPanel.369";
+    pub const SHORTCUT_GAIN_DOWN: &str = "settings.ShortcutsPanel.370";
+    pub const SHORTCUT_SINGING: &str = "settings.ShortcutsPanel.371";
+    pub const SHORTCUT_TALK: &str = "settings.ShortcutsPanel.372";
+    pub const SHORTCUT_NOISE: &str = "settings.ShortcutsPanel.393";
     pub const READY: &str = "gpuiShell.ready";
     pub const UNAVAILABLE: &str = "gpuiShell.unavailable";
     pub const VERSION: &str = "settings.AudioSettingsModal.138";
@@ -232,7 +247,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 219] = [
+    pub const ALL: [&str; 234] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -423,7 +438,22 @@ pub mod keys {
         LANGUAGE_SAVE_FAILED,
         DESKTOP,
         TRAY,
-        HOTKEY,
+        SHORTCUTS_TITLE,
+        SHORTCUTS_EMPTY,
+        SHORTCUTS_UNREADABLE,
+        SHORTCUT_UNSUPPORTED,
+        SHORTCUTS_EDIT_IN_TAURI,
+        SHORTCUT_MUTE_TOGGLE,
+        SHORTCUT_MUTE_ON,
+        SHORTCUT_MUTE_OFF,
+        SHORTCUT_BYPASS_TOGGLE,
+        SHORTCUT_BYPASS_ON,
+        SHORTCUT_BYPASS_OFF,
+        SHORTCUT_GAIN_UP,
+        SHORTCUT_GAIN_DOWN,
+        SHORTCUT_SINGING,
+        SHORTCUT_TALK,
+        SHORTCUT_NOISE,
         READY,
         UNAVAILABLE,
         VERSION,

@@ -3661,18 +3661,20 @@
   "gpuiShell.offUntilOn": "You can choose the type and amount while it stays off. The sound does not change until you turn it on.",
   "gpuiShell.desktop": "Windows integration",
   "gpuiShell.tray": "Notification area icon",
-  "gpuiShell.hotkey": "Mute with Alt+M",
   "gpuiShell.ready": "Ready",
   "gpuiShell.unavailable": "Unavailable",
   "gpuiShell.noiseModeFirst": "The noise reduction type is unknown. Choose Low or High to apply on/off, strength and voice protection.",
   "gpuiShell.trayShow": "Show Auralyn",
   "gpuiShell.trayQuit": "Quit",
-  "gpuiShell.hotkeyFailed": "Could not register Alt+M (Auralyn may be running)",
+  "gpuiShell.hotkeyFailed": "Some shortcuts could not be registered (Auralyn may be running). Check the Settings page.",
   "gpuiShell.peakResets": "When you restart the app, it turns off and the ceiling and release return to their defaults.",
   "gpuiShell.auto": "Auto (match the device)",
   "gpuiShell.setupScope": "Saving and applying cover the VST chain, noise reduction and the voice chain. Devices and sample rate stay as they are.",
   "gpuiShell.setupImportExists": "A setup named “{arg0}” already exists, so the file was not imported.",
   "gpuiShell.setupImportNothing": "This file has no VST chain, noise reduction or voice shaping settings, so it was not imported.",
   "gpuiShell.setupImportInvalid": "This file could not be read as a setup.",
-  "gpuiShell.voiceNeedsAudio": "Start audio first to record."
+  "gpuiShell.voiceNeedsAudio": "Start audio first to record.",
+  "gpuiShell.shortcutsUnreadable": "Could not read the saved shortcuts, so none are registered",
+  "gpuiShell.shortcutUnsupported": "Not available in the GPUI version yet",
+  "gpuiShell.shortcutsEditInTauri": "For now, change keys in the Tauri version settings (they share the same file). Restart the GPUI version after changing them."
 }

@@ -1,24 +1,25 @@
-//! 設定の画面：表示言語と、Windows との連携（トレイ・Alt+M）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
+//! 設定の画面：表示言語と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
 use auralyn_ui_model::diagnostics::Stats;
+use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
+use crate::desktop::Registered;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::part::{card, note, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
-/// `tray`・`hotkey` は、使えないときの理由。
+/// `tray` は、使えないときの理由。
 pub fn render(
     lang: Lang,
     tray: Option<&str>,
-    hotkey: Option<&str>,
     on_lang: impl Fn(Lang, &mut Window, &mut App) + 'static,
     more: impl IntoElement,
 ) -> impl IntoElement {
@@ -58,8 +59,7 @@ pub fn render(
                 .child(status(lang, keys::TRAY, tray))
                 .when(tray.is_none(), |this| {
                     this.child(note(core(lang, keys::QUIT_HELP)))
-                })
-                .child(status(lang, keys::HOTKEY, hotkey)),
+                }),
         ))
         .child(more)
         .child(note(format!(
@@ -86,6 +86,75 @@ fn status(lang: Lang, name: &'static str, error: Option<&str>) -> impl IntoEleme
                     None => core(lang, keys::READY).to_owned(),
                 }),
         )
+}
+
+/// グローバルショートカット：保存した組合せと、使えるか。`error` は保存を読めなかった理由（このときは1つも登録していない）。
+pub fn shortcuts(lang: Lang, saved: &[Registered], error: Option<&str>) -> impl IntoElement {
+    card(
+        core(lang, keys::SHORTCUTS_TITLE),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .when_some(error, |this, error| {
+                this.child(div().text_sm().text_color(color::warning()).child(format!(
+                    "{}: {error}",
+                    core(lang, keys::SHORTCUTS_UNREADABLE)
+                )))
+            })
+            .when(error.is_none() && saved.is_empty(), |this| {
+                this.child(note(core(lang, keys::SHORTCUTS_EMPTY)))
+            })
+            .children(saved.iter().map(|saved| {
+                let state = if !saved.binding.action.supported() {
+                    Some(core(lang, keys::SHORTCUT_UNSUPPORTED).to_owned())
+                } else {
+                    saved
+                        .error
+                        .as_ref()
+                        .map(|e| format!("{}: {e}", core(lang, keys::UNAVAILABLE)))
+                };
+                div()
+                    .flex()
+                    .justify_between()
+                    .gap_3()
+                    .text_sm()
+                    .child(
+                        div()
+                            .flex_none()
+                            .child(core(lang, action_label(saved.binding.action))),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .items_end()
+                            .child(shortcuts::label(&saved.binding.shortcut))
+                            .when_some(state, |this, state| {
+                                this.child(div().text_color(color::warning()).child(state))
+                            }),
+                    )
+            }))
+            .child(note(core(lang, keys::SHORTCUTS_EDIT_IN_TAURI))),
+    )
+}
+
+fn action_label(action: Action) -> &'static str {
+    match action {
+        Action::MuteToggle => keys::SHORTCUT_MUTE_TOGGLE,
+        Action::MuteOn => keys::SHORTCUT_MUTE_ON,
+        Action::MuteOff => keys::SHORTCUT_MUTE_OFF,
+        Action::BypassToggle => keys::SHORTCUT_BYPASS_TOGGLE,
+        Action::BypassOn => keys::SHORTCUT_BYPASS_ON,
+        Action::BypassOff => keys::SHORTCUT_BYPASS_OFF,
+        Action::GainUp => keys::SHORTCUT_GAIN_UP,
+        Action::GainDown => keys::SHORTCUT_GAIN_DOWN,
+        Action::SingingOn => keys::SHORTCUT_SINGING,
+        Action::TalkOn => keys::SHORTCUT_TALK,
+        Action::NoiseToggle => keys::SHORTCUT_NOISE,
+    }
 }
 
 /// 診断：稼働統計。`stats` が `None` なら読めなかった（音声が止まっているときは、すべて 0 として読める）。
