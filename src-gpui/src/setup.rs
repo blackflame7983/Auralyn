@@ -51,6 +51,10 @@ impl SetupPanel {
     }
 
     /// 使い道を選んだ。出力先は勧め直す（勧められなければ選択を外す）。
+    pub fn goal(&self) -> Goal {
+        self.goal
+    }
+
     pub fn set_goal(&mut self, goal: Goal, window: &mut Window, cx: &mut App) {
         self.goal = goal;
         let outputs: Vec<&Device> = self.outputs.iter().collect();

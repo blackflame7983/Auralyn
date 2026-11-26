@@ -33,6 +33,7 @@ use crate::modes::ModesPanel;
 use crate::obs::ObsPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
+use crate::prep::{Goto, PrepPanel};
 use crate::recovery;
 use crate::scenes::ScenePanel;
 use crate::settings;
@@ -117,6 +118,7 @@ pub struct MainView {
     sound: SoundPage,
     obs: ObsPanel,
     scenes: ScenePanel,
+    prep: PrepPanel,
     _ticker: Task<()>,
 }
 
@@ -292,6 +294,7 @@ impl MainView {
             cx,
         );
         let scenes = ScenePanel::new(&config_dir, window, cx);
+        let prep = PrepPanel::new(&config_dir, window, cx);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
@@ -362,6 +365,7 @@ impl MainView {
             sound,
             obs,
             scenes,
+            prep,
             _ticker: ticker,
         }
     }
@@ -384,6 +388,12 @@ impl MainView {
         }
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
+        }
+        self.prep.set_hidden(self.hidden.get());
+        if self.page == Page::Home && !self.hidden.get() {
+            if let Some(command) = self.prep.tick(window, cx) {
+                self.engine.send(command);
+            }
         }
         // 接続の画面を出している間は、配信用の出力が届いているかを読み直す。
         if self.page == Page::Connect
@@ -473,6 +483,10 @@ impl MainView {
 
     fn apply(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
         match notice {
+            Notice::Preparation {
+                observation,
+                confirm,
+            } => self.prep.apply(observation, confirm),
             // 落ちたあと、まだ始め直していないのに届いた開始は、落ちる前の開始の知らせ（落ちた知らせと別のスレッドから届く）。
             Notice::Started { .. }
                 if self.recovery.is_some() && !matches!(self.phase, Phase::Starting) => {}
@@ -481,6 +495,7 @@ impl MainView {
                 self.output_name = output;
                 self.first_run = false;
                 self.recovery = None;
+                self.prep.audio_changed();
                 self.advance(SessionEvent::Started);
                 self.reread_peak();
                 self.reread_mix();
@@ -638,6 +653,7 @@ impl MainView {
 
     /// 音が止まった（止めた・途切れた・エンジンが落ちた）。
     fn audio_stopped(&mut self) {
+        self.prep.audio_changed();
         self.advance(SessionEvent::Stopped);
         self.voice.audio_stopped();
         self.reread_peak();
@@ -723,6 +739,13 @@ impl MainView {
     fn send(&mut self, command: Command) {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
+        }
+        // ピーク保護・true-peak 制限は「接続の確認」の鍵に出ないので、変えたら確認をやり直す（Tauri 版と同じ）。
+        if matches!(
+            command,
+            Command::SetPeak(..) | Command::SetPeakLimits { .. }
+        ) {
+            self.prep.external();
         }
         // ミックス後の VST を変える操作には、画面が見た世代を付ける（見た後に変わっていればホストが断る）。
         let command = match command {
@@ -959,6 +982,12 @@ impl Render for MainView {
                                                         if let Some((input, output)) =
                                                             this.setup.chosen(cx)
                                                         {
+                                                            let usage = this.setup.goal().into();
+                                                            if let Some(command) = this.prep.act(
+                                                                crate::prep::Action::Usage(usage),
+                                                            ) {
+                                                                this.engine.send(command);
+                                                            }
                                                             this.start_with(StartWith {
                                                                 input: Input::Device(input),
                                                                 purpose: Purpose::Voice,
@@ -984,6 +1013,33 @@ impl Render for MainView {
                                         )))
                                     })
                                     .children(home::sound_flow(&self.flow, lang))
+                                    .child(div().max_w(px(560.)).child(self.prep.render(
+                                        lang,
+                                        {
+                                            let entity = entity.clone();
+                                            Rc::new(move |action, _, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    if let Some(command) = this.prep.act(action) {
+                                                        this.engine.send(command);
+                                                    }
+                                                    cx.notify();
+                                                })
+                                            })
+                                        },
+                                        {
+                                            let entity = entity.clone();
+                                            Rc::new(move |goto, _, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.open(match goto {
+                                                        Goto::Connect => Page::Connect,
+                                                        Goto::Sound => Page::Sound,
+                                                        Goto::Settings => Page::Settings,
+                                                    });
+                                                    cx.notify();
+                                                })
+                                            })
+                                        },
+                                    )))
                                     .child(div().max_w(px(560.)).child(self.mix.render(
                                         lang,
                                         self.live.ready(),

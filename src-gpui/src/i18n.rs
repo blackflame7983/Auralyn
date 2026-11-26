@@ -585,6 +585,57 @@ pub mod keys {
     pub const OBS_TIMING_FAILURE: &str = "obsTiming.failure";
     pub const OBS_TIMING_FOOTER: &str = "obsTiming.copy.53";
     pub const OBS_TIMING_HISTORY: &str = "settings.obs.timing";
+    pub const HOME_CHANGE_DEVICES: &str = "home.changeDevices";
+    pub const HOME_VOICE_CHECK: &str = "home.voiceCheck";
+    pub const PREP_ACK_LISTEN: &str = "prep.ackListen";
+    pub const PREP_ACK_LOCAL: &str = "prep.ackLocal";
+    pub const PREP_ACK_PURPOSE: &str = "prep.ackPurpose";
+    pub const PREP_ACK_RECEIVER: &str = "prep.ackReceiver";
+    pub const PREP_ACK_SOUND: &str = "prep.ackSound";
+    pub const PREP_CALL: &str = "prep.call";
+    pub const PREP_CALL_SCOPE: &str = "prep.callScope";
+    pub const PREP_CHECKING: &str = "prep.checking";
+    pub const PREP_CHECK_RECEIVER: &str = "prep.checkReceiver";
+    pub const PREP_EXTERNAL_CHANGED: &str = "prep.externalChanged";
+    pub const PREP_EXTERNAL_SCOPE: &str = "prep.externalScope";
+    pub const PREP_FAILED: &str = "prep.failed";
+    pub const PREP_HOME: &str = "prep.home";
+    pub const PREP_LISTEN_CONFIRMED: &str = "prep.listenConfirmed";
+    pub const PREP_LISTEN_UNCONFIRMED: &str = "prep.listenUnconfirmed";
+    pub const PREP_LOCAL: &str = "prep.local";
+    pub const PREP_LOCAL_RECEIVER: &str = "prep.localReceiver";
+    pub const PREP_LOCAL_SCOPE: &str = "prep.localScope";
+    pub const PREP_LOCATION: &str = "prep.location";
+    pub const PREP_MANUAL_SCOPE: &str = "prep.manualScope";
+    pub const PREP_MIXED: &str = "prep.mixed";
+    pub const PREP_MIXED_WARNING: &str = "prep.mixedWarning";
+    pub const PREP_MUTED: &str = "prep.muted";
+    pub const PREP_OBS: &str = "prep.obs";
+    pub const PREP_OBS_TARGET: &str = "prep.obsTarget";
+    pub const PREP_OTHER: &str = "prep.other";
+    pub const PREP_PENDING: &str = "prep.pending";
+    pub const PREP_RECEIVER: &str = "prep.receiver";
+    pub const PREP_REFRESH: &str = "prep.refresh";
+    pub const PREP_RUNNING: &str = "prep.running";
+    pub const PREP_SEPARATE: &str = "prep.separate";
+    pub const PREP_SESSION_CHECKED: &str = "prep.sessionChecked";
+    pub const PREP_SIGNAL: &str = "prep.signal";
+    pub const PREP_SIGNAL_UNKNOWN: &str = "prep.signalUnknown";
+    pub const PREP_STALE: &str = "prep.stale";
+    pub const PREP_STEPS: &str = "prep.steps";
+    pub const PREP_TARGET: &str = "prep.target";
+    pub const PREP_TITLE: &str = "prep.title";
+    pub const PREP_UNCONFIRM: &str = "prep.unconfirm";
+    pub const PREP_UNCONFIRMED: &str = "prep.unconfirmed";
+    pub const PREP_USER_CONFIRMED: &str = "prep.userConfirmed";
+    pub const PREP_VENUE: &str = "prep.venue";
+    pub const PREP_VENUE_WARNING: &str = "prep.venueWarning";
+    pub const SHELL_CONFIGURE: &str = "shell.configure";
+    pub const SHELL_LISTEN: &str = "shell.listen";
+    pub const SHELL_SOUND: &str = "shell.sound";
+    pub const SHELL_STOPPED: &str = "shell.stopped";
+    pub const SHELL_UNCONFIGURED: &str = "shell.unconfigured";
+    pub const SHELL_UNKNOWN: &str = "shell.unknown";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -606,7 +657,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 593] = [
+    pub const ALL: [&str; 644] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1181,6 +1232,57 @@ pub mod keys {
         OBS_TIMING_FAILURE,
         OBS_TIMING_FOOTER,
         OBS_TIMING_HISTORY,
+        HOME_CHANGE_DEVICES,
+        HOME_VOICE_CHECK,
+        PREP_ACK_LISTEN,
+        PREP_ACK_LOCAL,
+        PREP_ACK_PURPOSE,
+        PREP_ACK_RECEIVER,
+        PREP_ACK_SOUND,
+        PREP_CALL,
+        PREP_CALL_SCOPE,
+        PREP_CHECKING,
+        PREP_CHECK_RECEIVER,
+        PREP_EXTERNAL_CHANGED,
+        PREP_EXTERNAL_SCOPE,
+        PREP_FAILED,
+        PREP_HOME,
+        PREP_LISTEN_CONFIRMED,
+        PREP_LISTEN_UNCONFIRMED,
+        PREP_LOCAL,
+        PREP_LOCAL_RECEIVER,
+        PREP_LOCAL_SCOPE,
+        PREP_LOCATION,
+        PREP_MANUAL_SCOPE,
+        PREP_MIXED,
+        PREP_MIXED_WARNING,
+        PREP_MUTED,
+        PREP_OBS,
+        PREP_OBS_TARGET,
+        PREP_OTHER,
+        PREP_PENDING,
+        PREP_RECEIVER,
+        PREP_REFRESH,
+        PREP_RUNNING,
+        PREP_SEPARATE,
+        PREP_SESSION_CHECKED,
+        PREP_SIGNAL,
+        PREP_SIGNAL_UNKNOWN,
+        PREP_STALE,
+        PREP_STEPS,
+        PREP_TARGET,
+        PREP_TITLE,
+        PREP_UNCONFIRM,
+        PREP_UNCONFIRMED,
+        PREP_USER_CONFIRMED,
+        PREP_VENUE,
+        PREP_VENUE_WARNING,
+        SHELL_CONFIGURE,
+        SHELL_LISTEN,
+        SHELL_SOUND,
+        SHELL_STOPPED,
+        SHELL_UNCONFIGURED,
+        SHELL_UNKNOWN,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,
