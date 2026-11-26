@@ -156,7 +156,11 @@ impl ObsPanel {
                     if !connected {
                         self.reach = None;
                         self.reach_error = None;
-                        self.changes.disconnected();
+                        self.changes.discard();
+                        // 切断中の履歴は「この接続では元に戻せない」に変わる。
+                        if self.connected == Some(true) {
+                            self.order(Order::Setup(Setup::History));
+                        }
                     }
                     self.connected = Some(connected);
                     self.fill(saved.as_ref().ok().cloned().flatten(), window, cx);
@@ -315,6 +319,7 @@ impl ObsPanel {
                                     Button::new("obs-disconnect")
                                         .label(core(lang, keys::OBS_DISCONNECT))
                                         .outline()
+                                        .disabled(self.changes.busy())
                                         .on_click(move |_, _, cx| on(Order::Disconnect, cx)),
                                 )
                             } else {
@@ -358,7 +363,10 @@ impl ObsPanel {
                 .when(state == State::Connected, |this| {
                     this.child(self.render_reach(lang, on.clone()))
                 })
-                .child(self.changes.render(lang, state == State::Connected, on))
+                .child(
+                    self.changes
+                        .render(lang, state == State::Connected, self.reaching, on),
+                )
                 .child(note(core(lang, keys::OBS_NEEDS)))
                 .child(note(core(lang, keys::OBS_SERVER))),
         )
@@ -405,7 +413,7 @@ impl ObsPanel {
                             },
                         ))
                         .outline()
-                        .disabled(self.reaching)
+                        .disabled(self.reaching || self.changes.busy())
                         .on_click(move |_, window, cx| {
                             let on = on.clone();
                             window.open_alert_dialog(cx, move |alert, _, _| {

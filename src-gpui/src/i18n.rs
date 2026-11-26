@@ -517,7 +517,6 @@ pub mod keys {
     pub const SCENE_NAMES: &str = "settings.ObsModeRoutingSettings.308";
     pub const SCENE_SAVE_FAILED: &str = "settings.ObsModeRoutingSettings.310";
     pub const OBS_SETUP_TITLE: &str = "settings.ObsSafeSetup.335";
-    pub const OBS_SETUP_LEAD: &str = "settings.ObsSafeSetup.336";
     pub const OBS_SETUP_STOP_FIRST: &str = "obsSetup.stopFirst";
     pub const OBS_SETUP_PREVIEW: &str = "settings.ObsSafeSetup.337";
     pub const OBS_SETUP_BUSY: &str = "settings.obs.operationBusy";
@@ -546,7 +545,6 @@ pub mod keys {
     pub const OBS_SETUP_UNDO_FAILED: &str = "obsSetup.undoFailed";
     pub const OBS_SETUP_FORGET_FAILED: &str = "obsSetup.forgetFailed";
     pub const OBS_SETUP_FORGET_NEXT: &str = "obsSetup.forgetNextStep";
-    pub const OBS_SETUP_ORIGINAL: &str = "obsTyped.original";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -568,9 +566,8 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 555] = [
+    pub const ALL: [&str; 553] = [
         OBS_SETUP_TITLE,
-        OBS_SETUP_LEAD,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
         OBS_SETUP_BUSY,
@@ -599,7 +596,6 @@ pub mod keys {
         OBS_SETUP_UNDO_FAILED,
         OBS_SETUP_FORGET_FAILED,
         OBS_SETUP_FORGET_NEXT,
-        OBS_SETUP_ORIGINAL,
         SCENE_TITLE,
         SCENE_LEAD,
         SCENE_NONE,
@@ -1149,9 +1145,7 @@ pub fn core(lang: Lang, key: &'static str) -> &'static str {
 
 /// `{name}` に値を差し込んだ `auralyn-core` の文言。
 pub fn core_with(lang: Lang, key: &'static str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
-    catalog()
-        .text(locale(lang), key, args)
-        .unwrap_or_else(|| panic!("文言 {key} がありません"))
+    text(lang, key, args).unwrap_or_else(|| panic!("文言 {key} がありません"))
 }
 
 #[cfg(test)]

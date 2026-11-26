@@ -71,7 +71,7 @@ pub fn value(
     }
 }
 
-fn original(lang: Lang, fallback: &str) -> String {
+pub fn original(lang: Lang, fallback: &str) -> String {
     text(lang, "obsTyped.original", &[("value", &fallback)]).unwrap_or_else(|| fallback.into())
 }
 
@@ -87,7 +87,7 @@ fn on_off(lang: Lang, value: bool) -> String {
 /// 小数は 3 桁までにして、末尾の 0 は付けない（Tauri 版の `numeric` と同じ）。
 fn number(n: &serde_json::Number) -> String {
     let value = n.as_f64().unwrap_or_default();
-    let rounded = (value * 1000.0).round() / 1000.0;
+    let rounded = (value * 1000.0).round() / 1000.0 + 0.0;
     format!("{rounded}")
 }
 
@@ -152,13 +152,18 @@ fn fill(lang: Lang, key: &str, shown: &BTreeMap<&str, String>) -> Option<String>
         .iter()
         .map(|(key, value)| (*key, value as &dyn std::fmt::Display))
         .collect();
-    let filled = text(lang, key, &args)?;
-    let left = filled.split('{').skip(1).any(|rest| {
+    let template = text(lang, key, &[])?;
+    let missing = template.split('{').skip(1).any(|rest| {
         rest.split_once('}').is_some_and(|(name, _)| {
-            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !shown.contains_key(name)
         })
     });
-    (!left).then_some(filled)
+    if missing {
+        return None;
+    }
+    text(lang, key, &args)
 }
 
 #[cfg(test)]
@@ -196,6 +201,20 @@ mod tests {
             )],
         );
         assert_eq!(render(Lang::Ja, &ms), "12.346 ms");
+        let braces = ui(
+            "obs.field.filterEnabled",
+            &[("filter", UiArg::Text("{Gate}".into()))],
+        );
+        let shown = render(Lang::Ja, &braces);
+        assert!(shown.contains("{Gate}") && !shown.contains("原文"));
+        let tiny = ui(
+            "obs.value.milliseconds",
+            &[(
+                "value",
+                UiArg::Number(serde_json::Number::from_f64(-0.0004).unwrap()),
+            )],
+        );
+        assert_eq!(render(Lang::Ja, &tiny), "0 ms");
     }
 
     #[test]

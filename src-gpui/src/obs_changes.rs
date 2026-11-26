@@ -25,29 +25,28 @@ enum Op {
 pub struct Changes {
     plan: Option<Plan>,
     history: Vec<History>,
-    /// 命令を送って、まだ結果が届いていない。
-    busy: bool,
+    /// 送って、まだ結果が届いていない命令の数（作業スレッドは受けた順に1つずつ返す）。
+    pending: u32,
     error: Option<(Op, String)>,
 }
 
 impl Changes {
-    /// 変更予定を捨てる（ホストへは送らない）。
+    /// 変更予定を捨てる（ホストへは送らない）。切断したときも捨てる（別の接続で適用しない。ホストも断る）。
     pub fn discard(&mut self) {
         self.plan = None;
     }
 
+    pub fn busy(&self) -> bool {
+        self.pending > 0
+    }
+
     pub fn sent(&mut self) {
-        self.busy = true;
+        self.pending += 1;
         self.error = None;
     }
 
-    /// 切断したら、変更予定は捨てる（別の接続で適用しない。ホストも断る）。
-    pub fn disconnected(&mut self) {
-        self.plan = None;
-    }
-
     pub fn done(&mut self, done: SetupDone) {
-        self.busy = false;
+        self.pending = self.pending.saturating_sub(1);
         match done {
             SetupDone::Plan(result) => match result {
                 Ok(plan) => self.plan = Some(plan),
@@ -63,9 +62,14 @@ impl Changes {
                 }
                 Err(e) => self.error = Some((Op::Apply, e)),
             },
-            SetupDone::History(history) => self.history = history,
+            // 読み直し・元に戻すでホストは変更予定を捨てる（Tauri 版も同じ）。
+            SetupDone::History(history) => {
+                self.plan = None;
+                self.history = history;
+            }
             SetupDone::Restored(result) => match result {
                 Ok(restored) => {
+                    self.plan = None;
                     if let Some(item) = self.history.iter_mut().find(|h| h.id == restored.id) {
                         *item = restored;
                     }
@@ -79,12 +83,19 @@ impl Changes {
         }
     }
 
-    pub fn render(&self, lang: Lang, connected: bool, on: OnOrder) -> impl IntoElement {
+    /// `reaching` は到達確認の最中（OBS への命令が後ろに積まれて待たされる）。
+    pub fn render(
+        &self,
+        lang: Lang,
+        connected: bool,
+        reaching: bool,
+        on: OnOrder,
+    ) -> impl IntoElement {
         let send = |setup: Setup| {
             let on = on.clone();
             move |_: &ClickEvent, _: &mut Window, cx: &mut App| on(Order::Setup(setup.clone()), cx)
         };
-        let blocked = self.busy || !connected;
+        let blocked = self.busy() || reaching || !connected;
         div()
             .flex()
             .flex_col()
@@ -97,7 +108,6 @@ impl Changes {
                     .font_weight(FontWeight::MEDIUM)
                     .child(core(lang, keys::OBS_SETUP_TITLE)),
             )
-            .child(note(core(lang, keys::OBS_SETUP_LEAD)))
             .child(note(core(lang, keys::OBS_SETUP_STOP_FIRST)))
             .child(
                 div().child(
@@ -108,10 +118,10 @@ impl Changes {
                         .on_click(send(Setup::Preview(None))),
                 ),
             )
-            .when(self.busy, |this| {
+            .when(self.busy() || reaching, |this| {
                 this.child(note(core(lang, keys::OBS_SETUP_BUSY)))
             })
-            .when(!connected, |this| {
+            .when(!connected && !self.busy() && !reaching, |this| {
                 this.child(note(core(lang, keys::OBS_SETUP_NEEDS_OBS)))
             })
             .when_some(self.error.as_ref(), |this, (op, message)| {
@@ -175,7 +185,7 @@ impl Changes {
                         Button::new("obs-plan-cancel")
                             .label(core(lang, keys::OBS_SETUP_CANCEL))
                             .ghost()
-                            .disabled(self.busy)
+                            .disabled(self.busy())
                             .on_click(move |_, _, cx| on(Order::Setup(Setup::Discard), cx))
                     }),
             )
@@ -221,7 +231,7 @@ impl Changes {
                 Button::new("obs-history")
                     .label(core(lang, keys::OBS_SETUP_REFRESH))
                     .ghost()
-                    .disabled(self.busy)
+                    .disabled(self.busy())
                     .on_click(move |_, _, cx| on(Order::Setup(Setup::History), cx))
             }))
             .children(self.history.iter().rev().map(|h| {
@@ -252,7 +262,12 @@ impl Changes {
                     })
                     .children(h.changes.iter().enumerate().map(|(i, c)| {
                         let result = results.then(|| {
-                            match h.result_entries.as_ref().and_then(|entries| entries.get(i)) {
+                            match h
+                                .result_entries
+                                .as_ref()
+                                .filter(|entries| entries.len() == h.results.len())
+                                .and_then(|entries| entries.get(i))
+                            {
                                 Some(entry) => obs_text::render(lang, &entry.text),
                                 None => h.results[i].clone(),
                             }
@@ -279,7 +294,7 @@ impl Changes {
                                 Button::new(SharedString::from(format!("obs-forget-{id}")))
                                     .label(core_with(lang, keys::OBS_SETUP_FORGET, &[("id", &id)]))
                                     .ghost()
-                                    .disabled(self.busy)
+                                    .disabled(self.busy())
                                     .on_click(move |_, window, cx| {
                                         let on = on.clone();
                                         window.open_alert_dialog(cx, move |alert, _, _| {
@@ -348,7 +363,9 @@ fn change(lang: Lang, c: &Change, result: Option<String>) -> impl IntoElement {
 
 /// 失敗の表示。ホストの文は訳さず、原文として後ろに付ける（Tauri 版と同じ）。
 fn failure(lang: Lang, op: Op, message: &str) -> String {
-    if message.starts_with("変更履歴が20件あります") {
+    // ホストの `obs_setup::HISTORY_FULL`（非公開）と同じ文。Tauri 版も全文で比べる。
+    if message == "変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。"
+    {
         return core(lang, keys::OBS_SETUP_HISTORY_FULL).to_string();
     }
     let (failed, next) = match op {
@@ -366,6 +383,6 @@ fn failure(lang: Lang, op: Op, message: &str) -> String {
             ("refresh", &core(lang, keys::OBS_SETUP_REFRESH)),
         ],
     );
-    let original = core_with(lang, keys::OBS_SETUP_ORIGINAL, &[("value", &message)]);
+    let original = obs_text::original(lang, message);
     format!("{} {next} {original}", core(lang, failed))
 }
