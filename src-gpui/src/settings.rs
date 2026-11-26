@@ -1,7 +1,8 @@
-//! 設定の画面：表示言語と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
+//! 設定の画面：表示言語・外観（テーマ）と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
 //! 困ったとき（症状ごとの次の1手と、公式サイトのドキュメントへのリンク）と、言葉の意味（user-docs の用語集から）。
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
+use auralyn_core::design::Theme;
 use auralyn_ui_model::diagnostics::Stats;
 use std::sync::LazyLock;
 
@@ -71,6 +72,60 @@ pub fn render(
             core(lang, keys::VERSION).trim(),
             env!("CARGO_PKG_VERSION")
         )))
+}
+
+const THEMES: [(Theme, &str, &str); 3] = [
+    (Theme::Light, keys::THEME_LIGHT, keys::THEME_LIGHT_BODY),
+    (Theme::Dark, keys::THEME_DARK, keys::THEME_DARK_BODY),
+    (Theme::Gaming, keys::THEME_GAMING, keys::THEME_GAMING_BODY),
+];
+
+/// 外観：テーマを選ぶ（Tauri 版と同じ3つ）。この版は色だけを替える。
+pub fn appearance(
+    lang: Lang,
+    theme: Theme,
+    on_theme: impl Fn(Theme, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let body = THEMES
+        .iter()
+        .find(|(value, _, _)| *value == theme)
+        .map(|(_, _, body)| core(lang, body));
+    card(
+        core(lang, keys::APPEARANCE),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(core(lang, keys::THEME_TITLE)),
+            )
+            .child(
+                ButtonGroup::new("theme")
+                    .outline()
+                    .children(THEMES.iter().map(|(value, label, _)| {
+                        Button::new(*label)
+                            .label(core(lang, label))
+                            .selected(*value == theme)
+                    }))
+                    .on_click(move |clicked, window, cx| {
+                        if let Some((value, _, _)) = clicked.first().and_then(|i| THEMES.get(*i)) {
+                            on_theme(*value, window, cx);
+                        }
+                    }),
+            )
+            .children(body.map(note))
+            .child(note(core(lang, keys::THEME_NOTE)))
+            .child(div().child(doc_link(
+                "help-appearance".into(),
+                core(lang, keys::HELP_MORE),
+                docs::APPEARANCE,
+                lang == Lang::En,
+            ))),
+    )
 }
 
 /// 1行：名前と、使えるか（使えないなら理由）。

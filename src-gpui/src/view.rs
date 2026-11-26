@@ -16,6 +16,8 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use auralyn_core::design::Theme;
+
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
@@ -33,6 +35,7 @@ use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
+use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
 use auralyn_ui_model::connect::{Device, Routing, SYSTEM_ROUTING};
@@ -688,6 +691,30 @@ impl MainView {
         }
     }
 
+    /// テーマを替えて保存する。保存できなくても、この起動の間は替えたままにする。
+    fn set_theme(&mut self, theme: Theme, cx: &mut App) {
+        if theme == color::theme() {
+            return;
+        }
+        color::set_theme(theme, cx);
+        let failed = |lang| core(lang, keys::THEME_SAVE_FAILED);
+        match theme_file::save(&self.config_dir, theme) {
+            Ok(()) => {
+                if self.message.as_deref().is_some_and(|m| {
+                    [Lang::Ja, Lang::En]
+                        .into_iter()
+                        .any(|l| m.starts_with(failed(l)))
+                }) {
+                    self.message = None;
+                }
+            }
+            Err(e) => {
+                log::warn!("テーマを保存できません: {e}");
+                self.message = Some(format!("{} {e}", failed(self.lang)));
+            }
+        }
+    }
+
     fn set_lang(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
         if lang == self.lang {
             return;
@@ -861,6 +888,15 @@ impl Render for MainView {
                                         .flex()
                                         .flex_col()
                                         .gap_6()
+                                        .child(settings::appearance(lang, color::theme(), {
+                                            let entity = entity.clone();
+                                            move |theme, _, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.set_theme(theme, cx);
+                                                    cx.notify();
+                                                })
+                                            }
+                                        }))
                                         .child(settings::trouble(
                                             lang,
                                             self.desktop.tray_error.is_none(),

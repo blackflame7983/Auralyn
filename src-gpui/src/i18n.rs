@@ -390,9 +390,19 @@ pub mod keys {
     pub const CHANNEL_INPUT: &str = "settings.channel.input";
     pub const CHANNEL_TITLE: &str = "settings.InputChannelSelector.205";
     pub const CHANNEL_UNVERIFIED: &str = "settings.InputChannelSelector.unverified";
+    pub const APPEARANCE: &str = "settings.appearance";
+    pub const THEME_TITLE: &str = "settings.AudioSettingsModal.130";
+    pub const THEME_LIGHT: &str = "header.light";
+    pub const THEME_DARK: &str = "header.dark";
+    pub const THEME_GAMING: &str = "header.gaming";
+    pub const THEME_LIGHT_BODY: &str = "settings.AudioSettingsModal.131";
+    pub const THEME_DARK_BODY: &str = "settings.AudioSettingsModal.132";
+    pub const THEME_GAMING_BODY: &str = "settings.AudioSettingsModal.133";
+    pub const THEME_NOTE: &str = "gpuiShell.themeNote";
+    pub const THEME_SAVE_FAILED: &str = "gpuiShell.themeSaveFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 379] = [
+    pub const ALL: [&str; 389] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -772,6 +782,16 @@ pub mod keys {
         CHANNEL_INPUT,
         CHANNEL_TITLE,
         CHANNEL_UNVERIFIED,
+        APPEARANCE,
+        THEME_TITLE,
+        THEME_LIGHT,
+        THEME_DARK,
+        THEME_GAMING,
+        THEME_LIGHT_BODY,
+        THEME_DARK_BODY,
+        THEME_GAMING_BODY,
+        THEME_NOTE,
+        THEME_SAVE_FAILED,
     ];
 }
 
