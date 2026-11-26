@@ -176,6 +176,29 @@ pub fn hint(
         .child(div().max_w(px(HINT_WIDTH)).text_sm().child(text))
 }
 
+/// 項目名などの後ろに ⓘ を置いた行。
+pub fn with_hint(
+    id: impl Into<SharedString>,
+    lang: Lang,
+    text: impl Into<SharedString>,
+    label: impl IntoElement,
+) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(label)
+        .child(hint(id, lang, text))
+}
+
+/// ⓘ に出す説明をつなげる（段落の間は空行）。
+pub fn paragraphs(lang: Lang, keys: &[&'static str]) -> String {
+    keys.iter()
+        .map(|key| core(lang, key))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// ⓘ の窓の幅の上限。長い説明も窓に収まるよう折り返す。
 const HINT_WIDTH: f32 = 320.;
 

@@ -2,6 +2,7 @@
 //! どちらも ON/OFF・天井・復帰時間で、値の範囲と注記の決め方は `auralyn-ui-model` の `peak`。読めない（止まっている）間は操作させない。
 
 use auralyn_ui_model::peak::{self, Limit, Peak};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::Disableable as _;
@@ -10,7 +11,7 @@ use gpui_kit::*;
 
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, paragraphs, OnCommand};
 use crate::sound::{range, slider_row, unknown};
 
 pub struct LimiterPanel {
@@ -101,16 +102,6 @@ impl LimiterPanel {
                 .flex()
                 .flex_col()
                 .gap_2()
-                .map(|this| {
-                    if true_peak {
-                        this.child(note(core(lang, keys::TRUE_PEAK_LEAD)))
-                            .child(note(core(lang, keys::TRUE_PEAK_SCOPE)))
-                    } else {
-                        this.child(note(core(lang, keys::PEAK_LEAD)))
-                            .child(note(core(lang, keys::PEAK_SCOPE)))
-                            .child(note(core(lang, keys::PEAK_RESETS)))
-                    }
-                })
                 .when(locked, |this| {
                     this.child(note(core(lang, keys::PEAK_LOCKED)))
                 })
@@ -165,6 +156,22 @@ impl LimiterPanel {
                 .when(true_peak, |this| {
                     this.child(note(core(lang, keys::TRUE_PEAK_LIMITS)))
                 }),
+        )
+        .icon(if true_peak {
+            IconName::ShieldCheck
+        } else {
+            IconName::Shield
+        })
+        .hint(
+            lang,
+            paragraphs(
+                lang,
+                if true_peak {
+                    &[keys::TRUE_PEAK_LEAD, keys::TRUE_PEAK_SCOPE]
+                } else {
+                    &[keys::PEAK_LEAD, keys::PEAK_SCOPE, keys::PEAK_RESETS]
+                },
+            ),
         )
     }
 }

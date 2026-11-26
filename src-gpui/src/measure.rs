@@ -14,8 +14,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::note;
-use crate::part::OnCommand;
+use crate::part::{note, with_hint, OnCommand};
 
 #[derive(Default)]
 pub struct MeasurePanel {
@@ -81,10 +80,15 @@ impl MeasurePanel {
             .flex_col()
             .gap_2()
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(core(lang, keys::MEASURE_TITLE)),
+                with_hint(
+                    "measure-hint",
+                    lang,
+                    core(lang, keys::MEASURE_LIMITS),
+                    div()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(core(lang, keys::MEASURE_TITLE)),
+                )
+                .text_sm(),
             )
             .child(note(core(lang, keys::MEASURE_SCOPE)))
             .child(
@@ -129,7 +133,6 @@ impl MeasurePanel {
             .when(reading.is_some_and(Measurement::shows_previous), |this| {
                 this.child(note(core(lang, keys::MEASURE_PREVIOUS)))
             })
-            .child(note(core(lang, keys::MEASURE_LIMITS)))
     }
 }
 

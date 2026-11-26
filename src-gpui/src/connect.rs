@@ -5,6 +5,7 @@
 use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
@@ -13,7 +14,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::note;
+use crate::part::{note, with_hint};
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -505,6 +506,7 @@ impl ConnectPage {
         let shared = connect::shares_device(&host);
         let app = self.uses_app(cx);
         let stopped = phase.can_start();
+        let unchosen = self.start_choice(cx).is_none();
         let empty = core(lang, keys::NO_DEVICES);
         div()
             .flex()
@@ -553,36 +555,33 @@ impl ConnectPage {
                 if app {
                     this.child(self.render_app(lang, on_apps))
                 } else {
-                    this.child(field(
-                        core(
+                    this.child(if shared {
+                        field_hint(
                             lang,
-                            if shared {
-                                keys::DEVICE
-                            } else {
-                                keys::MICROPHONE
-                            },
-                        ),
-                        Select::new(&self.input).placeholder(empty),
-                    ))
+                            core(lang, keys::DEVICE),
+                            Some(keys::ASIO_SHARED),
+                            Select::new(&self.input).placeholder(empty),
+                        )
+                    } else {
+                        field(
+                            core(lang, keys::MICROPHONE),
+                            Select::new(&self.input).placeholder(empty),
+                        )
+                    })
                 }
             })
-            .map(|this| {
-                if shared {
-                    this.child(note(core(lang, keys::ASIO_SHARED)))
-                } else {
-                    this.child(field(
-                        core(lang, keys::OUTPUT),
-                        Select::new(&self.output).placeholder(empty),
-                    ))
-                }
+            .when(!shared, |this| {
+                this.child(field(
+                    core(lang, keys::OUTPUT),
+                    Select::new(&self.output).placeholder(empty),
+                ))
             })
-            .child(field(
+            .child(field_hint(
+                lang,
                 core(lang, keys::SAMPLE_RATE),
+                connect::uses_system_rate(&host).then_some(keys::WASAPI_RATE),
                 Select::new(&self.rate),
             ))
-            .when(connect::uses_system_rate(&host), |this| {
-                this.child(note(core(lang, keys::WASAPI_RATE)))
-            })
             .child(field(
                 core(lang, keys::BUFFER_SIZE),
                 Select::new(&self.buffer),
@@ -596,18 +595,20 @@ impl ConnectPage {
                     .child(
                         Button::new("connect-start")
                             .label(core(lang, keys::START))
+                            .icon(IconName::Play)
                             .outline()
-                            .disabled(!stopped || self.start_choice(cx).is_none())
+                            .disabled(!stopped || unchosen)
                             .on_click(move |_, window, cx| on_start(window, cx)),
                     )
-                    .child(note(core(
-                        lang,
-                        if stopped {
-                            keys::FIRST_START_HINT
+                    .map(|this| {
+                        if !stopped {
+                            this.child(note(core(lang, keys::STOP_TO_CHANGE)))
+                        } else if unchosen {
+                            this.child(note(core(lang, keys::FIRST_START_HINT)))
                         } else {
-                            keys::STOP_TO_CHANGE
-                        },
-                    ))),
+                            this
+                        }
+                    }),
             )
     }
 }
@@ -628,21 +629,23 @@ impl ConnectPage {
             .flex()
             .flex_col()
             .gap_2()
-            .child(note(core(lang, keys::APP_ROUTE_HELP)))
-            .child(field(
+            .child(field_hint(
+                lang,
                 core(lang, keys::APP),
+                Some(keys::APP_ROUTE_HELP),
                 Select::new(&self.app).placeholder(placeholder),
             ))
-            .child(
-                div().child(
-                    Button::new("connect-apps")
-                        .label(core(lang, keys::APP_REFRESH))
-                        .outline()
-                        .small()
-                        .on_click(move |_, window, cx| on_apps(window, cx)),
-                ),
-            )
-            .child(note(core(lang, keys::APP_REFRESH_HELP)))
+            .child(with_hint(
+                "connect-apps-hint",
+                lang,
+                core(lang, keys::APP_REFRESH_HELP),
+                Button::new("connect-apps")
+                    .label(core(lang, keys::APP_REFRESH))
+                    .icon(IconName::RefreshCw)
+                    .outline()
+                    .small()
+                    .on_click(move |_, window, cx| on_apps(window, cx)),
+            ))
             .when_some(self.apps_failed.clone(), |this, error| {
                 this.child(div().text_sm().text_color(color::warning()).child(error))
             })
@@ -729,11 +732,37 @@ fn purpose_label(purpose: Purpose) -> &'static str {
     }
 }
 
-fn field(label: &'static str, select: Select<Vec<SharedString>>) -> impl IntoElement {
+fn field(label: &'static str, select: Select<Vec<SharedString>>) -> Div {
     div()
         .flex()
         .flex_col()
         .gap_1p5()
         .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(label))
+        .child(select.accessibility_label(label))
+}
+
+/// 項目名の後ろに ⓘ（`hint` が無ければ [`field`] と同じ）。
+fn field_hint(
+    lang: Lang,
+    label: &'static str,
+    hint: Option<&'static str>,
+    select: Select<Vec<SharedString>>,
+) -> Div {
+    let Some(hint) = hint else {
+        return field(label, select);
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap_1p5()
+        .child(
+            with_hint(
+                format!("{label}-hint"),
+                lang,
+                core(lang, hint),
+                div().font_weight(FontWeight::MEDIUM).child(label),
+            )
+            .text_sm(),
+        )
         .child(select.accessibility_label(label))
 }

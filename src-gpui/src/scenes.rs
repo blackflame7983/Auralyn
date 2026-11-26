@@ -14,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{choices, note};
+use crate::part::{choices, note, with_hint};
 use crate::scene_file;
 
 const STRATEGIES: [(Strategy, &str); 3] = [
@@ -133,12 +133,14 @@ impl ScenePanel {
             .pt_3()
             .border_t_1()
             .border_color(crate::color::border())
-            .child(
+            .child(with_hint(
+                "scene-hint",
+                lang,
+                core(lang, keys::SCENE_LEAD),
                 div()
                     .font_weight(FontWeight::MEDIUM)
                     .child(core(lang, keys::SCENE_TITLE)),
-            )
-            .child(note(core(lang, keys::SCENE_LEAD)))
+            ))
             .child(choices(
                 "scene-strategy",
                 lang,

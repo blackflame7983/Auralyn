@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
@@ -18,7 +19,7 @@ use crate::color;
 use crate::desktop::Registered;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, with_hint, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
@@ -96,24 +97,21 @@ pub fn language(
     card(
         core(lang, keys::LANGUAGE),
         div(),
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(
-                ButtonGroup::new("language")
-                    .outline()
-                    .children(LANGS.iter().map(|(value, label)| {
-                        Button::new(*label).label(*label).selected(*value == lang)
-                    }))
-                    .on_click(move |clicked, window, cx| {
-                        if let Some((value, _)) = clicked.first().and_then(|i| LANGS.get(*i)) {
-                            on_lang(*value, window, cx);
-                        }
-                    }),
-            )
-            .child(note(core(lang, keys::LANGUAGE_PARTIAL))),
+        div().flex().flex_col().gap_2().child(
+            ButtonGroup::new("language")
+                .outline()
+                .children(LANGS.iter().map(|(value, label)| {
+                    Button::new(*label).label(*label).selected(*value == lang)
+                }))
+                .on_click(move |clicked, window, cx| {
+                    if let Some((value, _)) = clicked.first().and_then(|i| LANGS.get(*i)) {
+                        on_lang(*value, window, cx);
+                    }
+                }),
+        ),
     )
+    .icon(IconName::Languages)
+    .hint(lang, core(lang, keys::LANGUAGE_PARTIAL))
 }
 
 /// `tray` は、使えないときの理由。
@@ -130,6 +128,7 @@ pub fn desktop(lang: Lang, tray: Option<&str>) -> impl IntoElement {
                 this.child(note(core(lang, keys::QUIT_HELP)))
             }),
     )
+    .icon(IconName::Monitor)
 }
 
 const THEMES: [(Theme, &str, &str); 3] = [
@@ -176,7 +175,6 @@ pub fn appearance(
                     }),
             )
             .children(body.map(note))
-            .child(note(core(lang, keys::THEME_NOTE)))
             .child(div().child(doc_link(
                 "help-appearance".into(),
                 core(lang, keys::HELP_MORE),
@@ -184,6 +182,8 @@ pub fn appearance(
                 lang == Lang::En,
             ))),
     )
+    .icon(IconName::Palette)
+    .hint(lang, core(lang, keys::THEME_NOTE))
 }
 
 /// 1行：名前と、使えるか（使えないなら理由）。
@@ -252,6 +252,7 @@ pub fn shortcuts(lang: Lang, saved: &[Registered], error: Option<&str>) -> impl 
             }))
             .child(note(core(lang, keys::SHORTCUTS_EDIT_IN_TAURI))),
     )
+    .icon(IconName::Keyboard)
 }
 
 fn action_label(action: Action) -> &'static str {
@@ -278,6 +279,7 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
         core(lang, keys::DIAG_TITLE),
         Button::new("diag-refresh")
             .label(core(lang, keys::DIAG_REFRESH))
+            .icon(IconName::RefreshCw)
             .outline()
             .on_click(move |_, _, cx| send(Command::ReadStats, cx)),
         div()
@@ -328,9 +330,6 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
                     },
                 ),
             ))
-            .when(health.is_some(), |this| {
-                this.child(note(core(lang, keys::DIAG_RECENT_NOTE)))
-            })
             .when(health.is_some_and(|h| h.warns()), |this| {
                 this.child(
                     div()
@@ -340,6 +339,8 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
                 )
             }),
     )
+    .icon(IconName::Stethoscope)
+    .hint(lang, core(lang, keys::DIAG_RECENT_NOTE))
 }
 
 /// 配信ミックスの診断。診断と一緒に読む（「読み直す」で両方）。読めない項目は「-」。
@@ -399,12 +400,16 @@ pub fn plugins(
             .flex_col()
             .gap_2()
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(core(lang, keys::EXCL_TITLE)),
+                with_hint(
+                    "exclusions-hint",
+                    lang,
+                    core(lang, keys::EXCL_LEAD),
+                    div()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(core(lang, keys::EXCL_TITLE)),
+                )
+                .text_sm(),
             )
-            .child(note(core(lang, keys::EXCL_LEAD)))
             .child(
                 div().child(
                     Button::new("exclusions-clear")
@@ -436,6 +441,7 @@ pub fn plugins(
                 }))
             }),
     )
+    .icon(IconName::Puzzle)
 }
 
 /// 統計の1行：名前と値。
@@ -497,6 +503,7 @@ pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
                 }),
         ),
     )
+    .icon(IconName::LifeBuoy)
 }
 
 /// 公式サイトのドキュメントを開くリンク。
@@ -596,4 +603,5 @@ pub fn glossary(lang: Lang) -> impl IntoElement {
                     )
             })),
     )
+    .icon(IconName::BookOpen)
 }

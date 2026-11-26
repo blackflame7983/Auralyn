@@ -18,6 +18,23 @@ icon_assets!(
         AudioWaveform,
         ListMusic,
         Sparkles,
+        Wind,
+        WandSparkles,
+        Orbit,
+        Speech,
+        Shield,
+        ShieldCheck,
+        Radio,
+        Headphones,
+        MicVocal,
+        Layers,
+        FolderSearch,
+        Languages,
+        Monitor,
+        Keyboard,
+        Stethoscope,
+        LifeBuoy,
+        Cast,
     ]
 );
 

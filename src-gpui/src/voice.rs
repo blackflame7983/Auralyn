@@ -5,6 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use auralyn_ui_model::voice_check::{self, Listening, Playback, Recording, Source, State};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::select::{Select, SelectState};
@@ -15,7 +16,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Listen};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, save_as, OnCommand};
+use crate::part::{card, note, paragraphs, save_as, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -186,8 +187,6 @@ impl VoicePanel {
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::VOICE_LEAD)))
-                .child(note(core(lang, keys::VOICE_SCOPE)))
                 .when(!running, |this| {
                     this.child(note(core(lang, keys::VOICE_NEEDS_AUDIO)))
                 })
@@ -266,6 +265,11 @@ impl VoicePanel {
                         )
                     },
                 ),
+        )
+        .icon(IconName::Headphones)
+        .hint(
+            lang,
+            paragraphs(lang, &[keys::VOICE_LEAD, keys::VOICE_SCOPE]),
         )
     }
 
