@@ -99,9 +99,13 @@ pub struct Suspect {
 }
 
 impl Suspect {
-    /// 並びの VST がこの候補か。候補の種類（class_id）が分かれば、同じファイルの別の VST と見分ける。
+    /// 並びの VST がこの候補か。両方の種類（class_id）が分かれば、同じファイルの別の VST と見分ける。
     pub fn matches(&self, path: &str, class_id: Option<&str>) -> bool {
-        self.path == path && self.class_id.as_deref().is_none_or(|c| class_id == Some(c))
+        self.path == path
+            && match (self.class_id.as_deref(), class_id) {
+                (Some(a), Some(b)) => a == b,
+                _ => true,
+            }
     }
 }
 
@@ -240,6 +244,9 @@ mod tests {
             }
         );
         assert!(suspect.matches(r"C:\VST\Comp.vst3", Some("A")));
+        // 古い形式のスキャンで足した VST は種類が分からないので、ファイルだけで当てる。
+        assert!(suspect.matches(r"C:\VST\Comp.vst3", None));
+        assert!(!suspect.matches(r"C:\VST\Other.vst3", None));
         assert!(!suspect.matches(r"C:\VST\Comp.vst3", Some("B")));
         let any = Suspect {
             class_id: None,

@@ -609,7 +609,11 @@ impl Control {
         let (name, result) = match *command {
             Command::Start => return self.start_saved(),
             Command::Recover(ref hold) => {
-                self.hold = hold.clone();
+                // 落ちたあとの並びをもう読み直していたら（選ぶ前に別の操作で子が起きた）、先に外す。
+                match hold {
+                    Some(hold) if !self.exited.load(Ordering::SeqCst) => self.hold_loaded(hold),
+                    _ => self.hold = hold.clone(),
+                }
                 self.start_saved();
                 self.hold = None;
                 return;

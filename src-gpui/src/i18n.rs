@@ -426,7 +426,7 @@ pub mod keys {
     pub const RECOVERY_EXCLUDE: &str = "recovery.exclude";
     pub const RECOVERY_RELOAD: &str = "recovery.reload";
     pub const RECOVERY_EMPTY: &str = "recovery.empty";
-    pub const RECOVERY_SAFETY: &str = "recovery.safety";
+    pub const RECOVERY_SAFETY: &str = "gpuiShell.recoverySafety";
     pub const RECOVERY_STOP: &str = "recovery.stop";
     pub const RECOVERY_DEVICE_STOP: &str = "recovery.deviceStop";
     pub const RECOVERY_CHOOSE_DEVICE: &str = "recovery.chooseDevice";

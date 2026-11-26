@@ -427,6 +427,9 @@ impl MainView {
 
     fn apply(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
         match notice {
+            // 落ちたあと、まだ始め直していないのに届いた開始は、落ちる前の開始の知らせ（落ちた知らせと別のスレッドから届く）。
+            Notice::Started { .. }
+                if self.recovery.is_some() && !matches!(self.phase, Phase::Starting) => {}
             Notice::Started { input, output } => {
                 self.input_name = input;
                 self.output_name = output;
