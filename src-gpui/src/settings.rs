@@ -5,7 +5,7 @@
 use auralyn_ui_model::diagnostics::Stats;
 use std::sync::LazyLock;
 
-use auralyn_ui_model::docs::{self, Term, Trouble};
+use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
@@ -332,19 +332,14 @@ pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
                                     english,
                                 ))
                                 .when(trouble == Trouble::NotReceived, |this| {
-                                    this.children(
-                                        docs::GUIDES
-                                            .into_iter()
-                                            .zip([keys::GUIDE_OBS, keys::GUIDE_DISCORD])
-                                            .map(|(target, label)| {
-                                                doc_link(
-                                                    format!("help-{target}"),
-                                                    core(lang, label),
-                                                    target,
-                                                    english,
-                                                )
-                                            }),
-                                    )
+                                    this.children(Guide::ALL.map(|guide| {
+                                        doc_link(
+                                            format!("help-{guide:?}"),
+                                            core(lang, guide_label(guide)),
+                                            guide.target(),
+                                            english,
+                                        )
+                                    }))
                                 }),
                         )
                 }),
@@ -358,6 +353,13 @@ fn doc_link(id: String, label: &'static str, target: &'static str, english: bool
         .label(label)
         .link()
         .on_click(move |_, _, cx| cx.open_url(&docs::url(target, english)))
+}
+
+fn guide_label(guide: Guide) -> &'static str {
+    match guide {
+        Guide::Obs => keys::GUIDE_OBS,
+        Guide::Call => keys::GUIDE_CALL,
+    }
 }
 
 fn trouble_text(lang: Lang, trouble: Trouble) -> (&'static str, String) {

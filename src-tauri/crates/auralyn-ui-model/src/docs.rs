@@ -29,8 +29,24 @@ impl Trouble {
     }
 }
 
-/// 送り先ごとのつなぎ方（OBS・通話）。相手に届かないときに出す。
-pub const GUIDES: [&str; 2] = ["obs#connect", "discord#connect"];
+/// 送り先ごとのつなぎ方。相手に届かないときに出す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Guide {
+    Obs,
+    Call,
+}
+
+impl Guide {
+    pub const ALL: [Guide; 2] = [Guide::Obs, Guide::Call];
+
+    /// 行き先（ページ名#印）。`links.json` の guide.* と同じ。
+    pub fn target(self) -> &'static str {
+        match self {
+            Guide::Obs => "obs#connect",
+            Guide::Call => "discord#connect",
+        }
+    }
+}
 
 /// ドキュメントの入口（はじめに）。
 pub const INDEX: &str = "index";
@@ -119,7 +135,7 @@ mod tests {
             let target = trouble.target();
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
-        for target in GUIDES {
+        for target in Guide::ALL.map(Guide::target) {
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
         for term in glossary(include_str!("../../../../user-docs/ja/glossary.md")) {

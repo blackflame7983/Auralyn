@@ -337,8 +337,8 @@ pub mod keys {
     pub const HELP_DOCS: &str = "help.readMore";
     pub const HELP_MORE: &str = "help.learnMore";
     pub const HELP_TERMS: &str = "help.section.terms";
-    pub const GUIDE_OBS: &str = "header.obs";
-    pub const GUIDE_DISCORD: &str = "header.discord";
+    pub const GUIDE_OBS: &str = "gpuiShell.guideObs";
+    pub const GUIDE_CALL: &str = "gpuiShell.guideCall";
     pub const HELP_SILENT: &str = "help.trouble.silent";
     pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
     pub const HELP_RECEIVER: &str = "help.trouble.receiver";
@@ -677,7 +677,7 @@ pub mod keys {
         HELP_MORE,
         HELP_TERMS,
         GUIDE_OBS,
-        GUIDE_DISCORD,
+        GUIDE_CALL,
         HELP_SILENT,
         HELP_SILENT_BODY,
         HELP_RECEIVER,
