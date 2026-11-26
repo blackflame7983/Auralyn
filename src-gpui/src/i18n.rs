@@ -45,6 +45,17 @@ pub mod keys {
     pub const BUFFER_SIZE: &str = "settings.AudioSettingsModal.065";
     pub const SAMPLES: &str = "settings.AudioSettingsModal.067";
     pub const AUTO: &str = "gpuiShell.auto";
+    pub const SETUPS: &str = "presets.savedProfiles";
+    pub const SETUPS_LEAD: &str = "presets.copy.060";
+    pub const SETUPS_SCOPE: &str = "gpuiShell.setupScope";
+    pub const SETUPS_CHOOSE: &str = "music.presetChoose";
+    pub const SETUPS_EMPTY: &str = "presets.copy.070";
+    pub const SETUPS_APPLY: &str = "presets.copy.074";
+    pub const SETUPS_RESTORE: &str = "presets.copy.052";
+    pub const SETUPS_BACKED_UP: &str = "presets.copy.030";
+    pub const SETUPS_NAME: &str = "presets.copy.061";
+    pub const SETUPS_SAVE: &str = "presets.copy.063";
+    pub const SETUPS_EXISTS: &str = "presets.copy.022";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -166,7 +177,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 153] = [
+    pub const ALL: [&str; 164] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -202,6 +213,17 @@ pub mod keys {
         BUFFER_SIZE,
         SAMPLES,
         AUTO,
+        SETUPS,
+        SETUPS_LEAD,
+        SETUPS_SCOPE,
+        SETUPS_CHOOSE,
+        SETUPS_EMPTY,
+        SETUPS_APPLY,
+        SETUPS_RESTORE,
+        SETUPS_BACKED_UP,
+        SETUPS_NAME,
+        SETUPS_SAVE,
+        SETUPS_EXISTS,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,

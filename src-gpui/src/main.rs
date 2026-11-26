@@ -16,6 +16,7 @@ mod locale_file;
 mod measure;
 mod part;
 mod settings;
+mod setups;
 mod shell;
 mod sound;
 mod store;
