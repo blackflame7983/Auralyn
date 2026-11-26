@@ -3681,5 +3681,6 @@
   "gpuiShell.liveSplitKept": "自分用の歌・雑談の加工の細かい値は、いまは Tauri 版で変えます。初めて分けるときは既定の値で入れ、ある値はそのまま保ちます。",
   "gpuiShell.mixNeedOutput": "先に、接続の画面の「自分用と配信用に分ける」で配信用の出力を選び、処理を分けて保存してください。",
   "gpuiShell.mixVoiceMute": "声をミュート",
+  "gpuiShell.postUnsaved": "保存していない変更があります。残すには「配信VSTを保存」を押してください。",
   "gpuiShell.mixMusicMute": "オケをミュート"
 }

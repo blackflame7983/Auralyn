@@ -169,6 +169,11 @@ impl MixPanel {
         }
     }
 
+    /// オケを適用中か（ミックス後の VST を有効にする前提）。
+    pub fn active(&self) -> bool {
+        self.mix.as_ref().is_some_and(|m| m.active.is_some())
+    }
+
     /// 変える操作の結果。
     pub fn done(&mut self, result: Result<(), String>) {
         self.failed = result.err();

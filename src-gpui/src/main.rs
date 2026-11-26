@@ -17,6 +17,7 @@ mod locale_file;
 mod measure;
 mod mix;
 mod part;
+mod post_mix;
 mod settings;
 mod setups;
 mod shell;

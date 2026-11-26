@@ -32,6 +32,7 @@ use crate::store;
 mod events;
 mod live;
 mod mix;
+mod post_mix;
 mod profile;
 mod slots;
 mod sound;
@@ -39,6 +40,7 @@ mod voice;
 
 use events::on_event;
 pub use mix::MixAction;
+pub use post_mix::PostAction;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -118,6 +120,8 @@ pub enum Command {
     LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
     /// 配信ミックス（`mix.rs`）。
     Mix(MixAction),
+    /// ミックス後の VST（`post_mix.rs`）。
+    PostMix(PostAction),
     /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
     ClearExclusions,
     /// 構成のファイルを消す。
@@ -163,6 +167,16 @@ impl Command {
                     Command::Listen(Listen::Status)
                 )
                 | (Command::LiveOutput(None), Command::LiveOutput(None))
+                | (
+                    Command::PostMix(PostAction::Read),
+                    Command::PostMix(PostAction::Read)
+                )
+        ) || matches!(
+            (self, earlier),
+            (
+                Command::PostMix(PostAction::Gain { id, .. }),
+                Command::PostMix(PostAction::Gain { id: other, .. })
+            ) if id == other
         ) || {
             use auralyn_ui_model::mix::Change::{MusicGain, VoiceGain};
             matches!(
@@ -246,6 +260,10 @@ pub enum Notice {
     Mix(Result<auralyn_ui_model::mix::Mix, String>),
     /// 配信ミックスを変える操作の結果（`Err` は断られた理由）。このあと状態が `Mix` で届く。
     MixDone(Result<(), String>),
+    /// ミックス後の VST の状態と並び。`Err` は読めなかった理由。
+    PostMix(Result<(auralyn_ui_model::post_mix::PostMix, Vec<Slot>), String>),
+    /// ミックス後の VST を変える操作の結果（`Err` は断られた理由）。このあと状態が `PostMix` で届く。
+    PostMixDone(Result<(), String>),
     /// オケに選べる起動中のアプリ。
     MixApps(Result<Vec<auralyn_ui_model::mix::App>, String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
@@ -350,6 +368,7 @@ impl Engine {
                     renamed: Vec::new(),
                     listen: voice::Session::default(),
                     mixed: None,
+                    posted: None,
                     sound: None,
                     read_only: false,
                     exited,
@@ -426,6 +445,8 @@ struct Control {
     listen: voice::Session,
     /// 最後に読んだ配信ミックスの状態（世代と音量）。
     mixed: Option<vst_host_lib::mixing::Snapshot>,
+    /// 最後に読んだミックス後の VST の状態（世代）。
+    posted: Option<vst_host_lib::post_mix::Snapshot>,
 }
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
@@ -618,6 +639,7 @@ impl Control {
             Command::Listen(ref listen) => return self.listen(listen.clone()),
             Command::LiveOutput(ref draft) => return self.live_output(draft.clone()),
             Command::Mix(ref action) => return self.mix(action.clone()),
+            Command::PostMix(ref action) => return self.post_mix(action.clone()),
             Command::ReadStats => {
                 let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
                     loaded: s.active_plugin_count,

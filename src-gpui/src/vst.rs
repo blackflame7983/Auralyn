@@ -39,12 +39,133 @@ impl SelectItem for Choice {
     }
 }
 
-type Choices = SelectState<SearchableVec<Choice>>;
+pub type Choices = SelectState<SearchableVec<Choice>>;
+
+/// 並びへの操作を、どの並びへの命令にするか（声用の並びと、ミックス後の VST で同じ部品を使う）。
+#[derive(Clone, Copy)]
+pub struct Ops {
+    /// 部品の ID の頭（同じ窓に2つの並びがあっても重ならないように）。
+    pub prefix: &'static str,
+    pub enable: fn(String, bool) -> Command,
+    pub shift: fn(String, bool) -> Command,
+    pub edit: fn(String) -> Command,
+    pub remove: fn(String) -> Command,
+    pub mute: fn(String, bool) -> Command,
+    pub gain: fn(String, f32) -> Command,
+}
+
+/// 声用の並び。
+const VOICE: Ops = Ops {
+    prefix: "vst",
+    enable: |id, enabled| Command::SetPluginEnabled { id, enabled },
+    shift: |id, up| Command::MovePlugin { id, up },
+    edit: Command::OpenEditor,
+    remove: Command::RemovePlugin,
+    mute: |id, muted| Command::SetPluginMuted { id, muted },
+    gain: |id, gain| Command::SetPluginGain { id, gain },
+};
+
+/// 並びの描き方：どの並びか、追加・削除・並べ替えを止めるか（ミックス後の VST は音声を止めてから）、表示言語。
+#[derive(Clone, Copy)]
+pub struct Look {
+    pub ops: Ops,
+    pub locked: bool,
+    pub lang: Lang,
+}
+
+/// 読めている VST ごとの音量のスライダー（ID で引く）。離したときに音量を送る。
+#[derive(Default)]
+pub struct Gains(HashMap<String, (Entity<SliderState>, Subscription)>);
+
+impl Gains {
+    /// 並びに合わせてスライダーを作り直し、値をエンジンの値に合わせる。`send` はスライダーを離したときの送り先。
+    pub fn sync<V: 'static>(
+        &mut self,
+        rack: &[Slot],
+        ops: Ops,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        send: fn(&mut V, Command),
+    ) {
+        let mut old = std::mem::take(&mut self.0);
+        for slot in rack.iter().filter(|slot| slot.loaded) {
+            let (state, subscription) = old.remove(&slot.id).unwrap_or_else(|| {
+                let state = cx.new(|_| SliderState::new().min(0.).max(200.).step(1.));
+                let id = slot.id.clone();
+                let subscription = cx.subscribe(&state, move |this, _, event: &SliderEvent, _| {
+                    let SliderEvent::Release(value) = event else {
+                        return;
+                    };
+                    send(
+                        this,
+                        (ops.gain)(id.clone(), rack::gain_from_percent(value.end())),
+                    );
+                });
+                (state, subscription)
+            });
+            let percent = rack::gain_percent(slot.gain);
+            state.update(cx, |state, cx| state.set_value(percent, window, cx));
+            self.0.insert(slot.id.clone(), (state, subscription));
+        }
+    }
+
+    /// スライダーと、その値（動かしている間もついてくる）。
+    fn get<'a>(&'a self, id: &str, cx: &App) -> Option<(&'a Entity<SliderState>, f32)> {
+        self.0
+            .get(id)
+            .map(|(state, _)| (state, state.read(cx).value().end()))
+    }
+}
+
+/// 候補を選ぶ欄（検索できる）。
+pub fn new_catalog<V: 'static>(window: &mut Window, cx: &mut Context<V>) -> Entity<Choices> {
+    cx.new(|cx| SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true))
+}
+
+/// 候補を入れ替える（選択は外す）。
+pub fn fill_catalog(
+    catalog: &Entity<Choices>,
+    candidates: &[Candidate],
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let choices = SearchableVec::new(candidates.iter().cloned().map(Choice).collect::<Vec<_>>());
+    catalog.update(cx, |state, cx| {
+        state.set_items(choices, window, cx);
+        state.set_selected_index(None, window, cx);
+    });
+}
+
+/// 並びの一覧。
+pub fn list(
+    rack: &[Slot],
+    gains: &Gains,
+    look: Look,
+    cx: &App,
+    send: OnCommand,
+) -> impl IntoElement {
+    let last = rack.len().saturating_sub(1);
+    div()
+        .id(SharedString::from(format!("{}-rack", look.ops.prefix)))
+        .role(Role::List)
+        .flex()
+        .flex_col()
+        .gap_2()
+        .children(rack.iter().enumerate().map(|(index, slot)| {
+            row(
+                slot,
+                gains.get(&slot.id, cx),
+                index,
+                index == last,
+                look,
+                send.clone(),
+            )
+        }))
+}
 
 pub struct VstPage {
     rack: Vec<Slot>,
-    /// 読めている VST ごとの音量のスライダー（ID で引く）。離したときに音量を送る。
-    gains: HashMap<String, (Entity<SliderState>, Subscription)>,
+    gains: Gains,
     catalog: Entity<Choices>,
     /// 候補を探している。`None` はまだ一度も探していない。
     scanning: Option<bool>,
@@ -54,10 +175,8 @@ impl VstPage {
     pub fn new<V: 'static>(window: &mut Window, cx: &mut Context<V>) -> Self {
         Self {
             rack: Vec::new(),
-            gains: HashMap::new(),
-            catalog: cx.new(|cx| {
-                SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
-            }),
+            gains: Gains::default(),
+            catalog: new_catalog(window, cx),
             scanning: None,
         }
     }
@@ -79,40 +198,17 @@ impl VstPage {
         cx: &mut Context<V>,
         send: fn(&mut V, Command),
     ) {
-        let mut old = std::mem::take(&mut self.gains);
-        for slot in rack.iter().filter(|slot| slot.loaded) {
-            let (state, subscription) = old.remove(&slot.id).unwrap_or_else(|| {
-                let state = cx.new(|_| SliderState::new().min(0.).max(200.).step(1.));
-                let id = slot.id.clone();
-                let subscription = cx.subscribe(&state, move |this, _, event: &SliderEvent, _| {
-                    let SliderEvent::Release(value) = event else {
-                        return;
-                    };
-                    let gain = rack::gain_from_percent(value.end());
-                    send(
-                        this,
-                        Command::SetPluginGain {
-                            id: id.clone(),
-                            gain,
-                        },
-                    );
-                });
-                (state, subscription)
-            });
-            let percent = rack::gain_percent(slot.gain);
-            state.update(cx, |state, cx| state.set_value(percent, window, cx));
-            self.gains.insert(slot.id.clone(), (state, subscription));
-        }
+        self.gains.sync(&rack, VOICE, window, cx, send);
         self.rack = rack;
     }
 
-    pub fn set_catalog(&mut self, candidates: Vec<Candidate>, window: &mut Window, cx: &mut App) {
+    pub fn set_catalog(&mut self, candidates: &[Candidate], window: &mut Window, cx: &mut App) {
         self.scanning = Some(false);
-        let choices = SearchableVec::new(candidates.into_iter().map(Choice).collect::<Vec<_>>());
-        self.catalog.update(cx, |state, cx| {
-            state.set_items(choices, window, cx);
-            state.set_selected_index(None, window, cx);
-        });
+        fill_catalog(&self.catalog, candidates, window, cx);
+    }
+
+    pub fn scanning(&self) -> bool {
+        self.scanning == Some(true)
     }
 
     pub fn scan_failed(&mut self) {
@@ -185,23 +281,12 @@ impl VstPage {
                         ),
                     )
                 } else {
-                    let last = self.rack.len() - 1;
-                    this.child(
-                        div()
-                            .id("vst-rack")
-                            .role(Role::List)
-                            .flex()
-                            .flex_col()
-                            .gap_2()
-                            .children(self.rack.iter().enumerate().map(|(index, slot)| {
-                                // 百分率はスライダーの値（動かしている間もついてくる）。
-                                let gain = self
-                                    .gains
-                                    .get(&slot.id)
-                                    .map(|(state, _)| (state, state.read(cx).value().end()));
-                                row(slot, gain, index, index == last, lang, send.clone())
-                            })),
-                    )
+                    let look = Look {
+                        ops: VOICE,
+                        locked: false,
+                        lang,
+                    };
+                    this.child(list(&self.rack, &self.gains, look, cx, send))
                 }
             })
     }
@@ -213,14 +298,16 @@ fn row(
     gain: Option<(&Entity<SliderState>, f32)>,
     index: usize,
     last: bool,
-    lang: Lang,
+    look: Look,
     send: OnCommand,
 ) -> impl IntoElement {
+    let Look { ops, locked, lang } = look;
+    let prefix = ops.prefix;
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
     let button = |suffix: &str, label: &'static str, command: Command| {
         let send = send.clone();
-        Button::new(SharedString::from(format!("vst-{suffix}-{}", slot.id)))
+        Button::new(SharedString::from(format!("{prefix}-{suffix}-{}", slot.id)))
             .label(label)
             .ghost()
             .small()
@@ -282,67 +369,56 @@ fn row(
         .when(loaded, |this| {
             this.child({
                 let send = send.clone();
-                Switch::new(SharedString::from(format!("vst-enable-{}", slot.id)))
+                Switch::new(SharedString::from(format!("{prefix}-enable-{}", slot.id)))
                     .checked(enabled)
                     .accessibility_label(named(keys::VST_ENABLE))
-                    .on_click(move |checked, _, cx| {
-                        send(
-                            Command::SetPluginEnabled {
-                                id: id.clone(),
-                                enabled: *checked,
-                            },
-                            cx,
-                        )
-                    })
+                    .on_click(move |checked, _, cx| send((ops.enable)(id.clone(), *checked), cx))
             })
             .child(
                 button(
                     "up",
                     core(lang, keys::VST_UP),
-                    Command::MovePlugin {
-                        id: slot.id.clone(),
-                        up: true,
-                    },
+                    (ops.shift)(slot.id.clone(), true),
                 )
                 .accessibility_label(format!("{name} {}", core(lang, keys::VST_UP)))
-                .disabled(index == 0),
+                .disabled(locked || index == 0),
             )
             .child(
                 button(
                     "down",
                     core(lang, keys::VST_DOWN),
-                    Command::MovePlugin {
-                        id: slot.id.clone(),
-                        up: false,
-                    },
+                    (ops.shift)(slot.id.clone(), false),
                 )
                 .accessibility_label(format!("{name} {}", core(lang, keys::VST_DOWN)))
-                .disabled(last),
+                .disabled(locked || last),
             )
             .child(
                 button(
                     "edit",
                     core(lang, keys::VST_EDIT),
-                    Command::OpenEditor(slot.id.clone()),
+                    (ops.edit)(slot.id.clone()),
                 )
                 .accessibility_label(named(keys::VST_EDIT_NAMED)),
             )
         })
         .child(
-            Button::new(SharedString::from(format!("vst-remove-{}", slot.id)))
+            Button::new(SharedString::from(format!("{prefix}-remove-{}", slot.id)))
                 .label(core(lang, keys::VST_REMOVE))
                 .ghost()
                 .small()
+                .disabled(locked)
                 .accessibility_label(named(keys::VST_REMOVE_NAMED))
                 .on_click({
                     let title = named(keys::VST_REMOVE_TITLE);
-                    let id = slot.id.clone();
+                    let command = (ops.remove)(slot.id.clone());
                     let send = send.clone();
-                    move |_, window, cx| confirm_remove(&title, &id, lang, send.clone(), window, cx)
+                    move |_, window, cx| {
+                        confirm_remove(&title, command.clone(), lang, send.clone(), window, cx)
+                    }
                 }),
         );
     div()
-        .id(SharedString::from(format!("vst-slot-{}", slot.id)))
+        .id(SharedString::from(format!("{prefix}-slot-{}", slot.id)))
         .role(Role::ListItem)
         .aria_label(name.to_owned())
         .flex()
@@ -356,7 +432,7 @@ fn row(
         .bg(color::card())
         .child(top)
         .when_some(gain, |this, (gain, percent)| {
-            this.child(volume(slot, gain, percent, lang, send))
+            this.child(volume(slot, gain, percent, look, send))
         })
 }
 
@@ -365,15 +441,13 @@ fn volume(
     slot: &Slot,
     gain: &Entity<SliderState>,
     percent: f32,
-    lang: Lang,
+    look: Look,
     send: OnCommand,
 ) -> impl IntoElement {
+    let Look { ops, lang, .. } = look;
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
-    let command = Command::SetPluginMuted {
-        id: slot.id.clone(),
-        muted: !slot.muted,
-    };
+    let command = (ops.mute)(slot.id.clone(), !slot.muted);
     div()
         .flex()
         .items_center()
@@ -395,30 +469,32 @@ fn volume(
                 .child(format!("{percent}%")),
         )
         .child(
-            Button::new(SharedString::from(format!("vst-mute-{}", slot.id)))
-                .label(core(lang, keys::VST_MUTE))
-                .outline()
-                .small()
-                .selected(slot.muted)
-                .accessibility_label(named(keys::VST_MUTE_NAMED))
-                .on_click(move |_, _, cx| send(command.clone(), cx)),
+            Button::new(SharedString::from(format!(
+                "{}-mute-{}",
+                ops.prefix, slot.id
+            )))
+            .label(core(lang, keys::VST_MUTE))
+            .outline()
+            .small()
+            .selected(slot.muted)
+            .accessibility_label(named(keys::VST_MUTE_NAMED))
+            .on_click(move |_, _, cx| send(command.clone(), cx)),
         )
 }
 
 /// 削除の前に確かめる。VST の中の設定は戻せないので、押し間違いで消さない。
 fn confirm_remove(
     title: &str,
-    id: &str,
+    remove: Command,
     lang: Lang,
     send: OnCommand,
     window: &mut Window,
     cx: &mut App,
 ) {
     let title = SharedString::from(title.to_owned());
-    let id = id.to_owned();
     window.open_alert_dialog(cx, move |alert, _, _| {
         let send = send.clone();
-        let id = id.clone();
+        let remove = remove.clone();
         alert
             .title(title.clone())
             .description(core(lang, keys::VST_REMOVE_WARNING))
@@ -427,7 +503,7 @@ fn confirm_remove(
             .cancel_text(core(lang, keys::CANCEL))
             .show_cancel(true)
             .on_ok(move |_, _, cx| {
-                send(Command::RemovePlugin(id.clone()), cx);
+                send(remove.clone(), cx);
                 true
             })
     });

@@ -8,6 +8,10 @@ use tauri_plugin_global_shortcut::ShortcutState;
 pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
+/// GPUI 版からミックス後の VST を呼ぶための公開口（`audio::post_mix` 自体は crate 内に閉じる）。
+pub mod post_mix {
+    pub use crate::audio::post_mix::{Request, SavedPlugin, Snapshot};
+}
 /// GPUI 版から配信ミックスを呼ぶための公開口（`audio::mixing` 自体は crate 内に閉じる）。
 pub mod mixing {
     pub use crate::audio::mixing::{Request, Snapshot};
