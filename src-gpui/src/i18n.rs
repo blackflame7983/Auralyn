@@ -55,7 +55,6 @@ pub mod keys {
     pub const SETUPS_BACKED_UP: &str = "presets.copy.030";
     pub const SETUPS_NAME: &str = "presets.copy.061";
     pub const SETUPS_SAVE: &str = "presets.copy.063";
-    pub const SETUPS_NAME_NEEDED: &str = "presets.saveNameNeeded";
     pub const SETUPS_EXISTS: &str = "presets.copy.022";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
@@ -178,7 +177,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 165] = [
+    pub const ALL: [&str; 164] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -224,7 +223,6 @@ pub mod keys {
         SETUPS_BACKED_UP,
         SETUPS_NAME,
         SETUPS_SAVE,
-        SETUPS_NAME_NEEDED,
         SETUPS_EXISTS,
         VST_ADD,
         VST_SEARCH,

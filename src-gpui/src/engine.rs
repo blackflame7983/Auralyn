@@ -812,6 +812,8 @@ impl Control {
     /// 今の並び（中の設定を取り直す）と音づくりを、構成の形にする。接続は含めない
     /// （GPUI 版は入出力の音量・チャンネルを Tauri 版の形で持たないので、違う値を保存しないため）。
     fn capture_profile(&mut self, name: &str) -> anyhow::Result<presets::Preset> {
+        // 子が落ちていると既定の音づくりが読めてしまうので、先に読み直す。
+        self.recover();
         self.save(true);
         let plugins = self
             .rack
@@ -852,61 +854,9 @@ impl Control {
     /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
     /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
     fn apply_profile(&mut self, name: &str, restore: bool) {
-        let result = (|| -> anyhow::Result<()> {
-            let profile =
-                presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
-            if !restore {
-                let backup = self.capture_profile(presets::BACKUP_PROFILE_NAME)?;
-                presets::save_preset(&self.config_dir, presets::BACKUP_PROFILE_NAME, &backup)
-                    .map_err(anyhow::Error::msg)?;
-            }
-            if let Some(nc) = &profile.noise_control {
-                self.host.set_noise_control_config(
-                    nc.enabled,
-                    nc.mode.clone(),
-                    nc.strength,
-                    nc.voice_guard,
-                )?;
-            }
-            if let Some(fx) = &profile.builtin_fx {
-                self.host.set_built_in_effects_from_profile(
-                    fx.enabled,
-                    Some(fx.preset.clone()),
-                    fx.amount,
-                    fx.singing,
-                    Some(fx.reverb.unwrap_or_default()),
-                    fx.deesser,
-                )?;
-            }
-            if profile.includes_plugin_category() {
-                self.recover();
-                for id in self
-                    .rack
-                    .iter()
-                    .filter(|s| s.loaded)
-                    .map(|s| s.id.clone())
-                    .collect::<Vec<_>>()
-                {
-                    if let Err(e) = self.host.remove_plugin(&id) {
-                        log::warn!("構成を読む前に VST を外せません: {e}");
-                    }
-                }
-                self.rack.clear();
-                self.renamed.clear();
-                for plugin in profile.plugins {
-                    self.restore(RestorePluginRequest {
-                        path: plugin.path,
-                        state: plugin.state,
-                        bypassed: !plugin.enabled,
-                        muted: plugin.muted,
-                        gain: plugin.gain,
-                        class_id: plugin.class_id,
-                    });
-                }
-                self.changed();
-            }
-            Ok(())
-        })();
+        // 子が落ちていたら先に読み直す（あとで読み直すと、落ちる前の音づくりで構成の値を上書きしてしまう）。
+        self.recover();
+        let result = self.apply_profile_parts(name, restore);
         if let Err(e) = result {
             self.fail("apply_profile", e);
         }
@@ -917,6 +867,64 @@ impl Control {
             self.save_sound(sound);
         }
         self.list_profiles();
+    }
+
+    /// 構成に無い分類は変えない。外せない VST があればそこで止める（画面から消えたまま鳴り続けないように）。
+    fn apply_profile_parts(&mut self, name: &str, restore: bool) -> anyhow::Result<()> {
+        let profile = presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
+        if !restore {
+            let backup = self.capture_profile(presets::BACKUP_PROFILE_NAME)?;
+            presets::save_preset(&self.config_dir, presets::BACKUP_PROFILE_NAME, &backup)
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(nc) = &profile.noise_control {
+            self.host.set_noise_control_config(
+                nc.enabled,
+                nc.mode.clone(),
+                nc.strength,
+                nc.voice_guard,
+            )?;
+        }
+        if let Some(fx) = &profile.builtin_fx {
+            self.host.set_built_in_effects_from_profile(
+                fx.enabled,
+                Some(fx.preset.clone()),
+                fx.amount,
+                fx.singing,
+                Some(fx.reverb.unwrap_or_default()),
+                fx.deesser,
+            )?;
+        }
+        if profile.includes_plugin_category() {
+            // 位置がずれるので、古い ID では当てない。
+            self.renamed.clear();
+            let loaded: Vec<String> = self
+                .rack
+                .iter()
+                .filter(|s| s.loaded)
+                .map(|s| s.id.clone())
+                .collect();
+            for id in loaded {
+                if let Err(e) = self.host.remove_plugin(&id) {
+                    self.changed();
+                    return Err(e);
+                }
+                self.rack.retain(|slot| slot.id != id);
+            }
+            self.rack.clear();
+            for plugin in profile.plugins {
+                self.restore(RestorePluginRequest {
+                    path: plugin.path,
+                    state: plugin.state,
+                    bypassed: !plugin.enabled,
+                    muted: plugin.muted,
+                    gain: plugin.gain,
+                    class_id: plugin.class_id,
+                });
+            }
+            self.changed();
+        }
+        Ok(())
     }
 
     /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。

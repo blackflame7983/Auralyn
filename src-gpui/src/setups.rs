@@ -6,7 +6,7 @@ use auralyn_ui_model::profile::{self, Entry, NameIssue};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectState};
-use gpui_kit::component::{Disableable as _, IndexPath};
+use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -34,18 +34,15 @@ impl SetupsPanel {
         }
     }
 
-    /// 一覧を替える。選んでいた構成が残っていれば選んだままにする。保存した名前が一覧に入ったら、名前の欄を空にする。
+    /// 一覧を替える。保存した名前が一覧に入ったら、名前の欄を空にする。
     pub fn set(&mut self, entries: Vec<Entry>, window: &mut Window, cx: &mut App) {
-        let before = self.chosen.read(cx).selected_value().cloned();
         let names: Vec<SharedString> = profile::choices(&entries)
             .into_iter()
             .map(SharedString::from)
             .collect();
-        let row = before.and_then(|name| names.iter().position(|n| *n == name));
-        self.chosen.update(cx, |state, cx| {
-            state.set_items(names, window, cx);
-            state.set_selected_index(row.map(IndexPath::new), window, cx);
-        });
+        // 選んでいた構成が一覧に残っていれば、`set_items` が選んだままにする。
+        self.chosen
+            .update(cx, |state, cx| state.set_items(names, window, cx));
         let typed = self.name.read(cx).value();
         if profile::save_name(&typed, &entries) == Err(NameIssue::Exists) {
             self.name
@@ -66,7 +63,8 @@ impl SetupsPanel {
         let chosen = self.chosen.read(cx).selected_value().cloned();
         let backup = profile::backup_name(&self.entries).map(str::to_owned);
         let typed = self.name.read(cx).value();
-        let issue = profile::save_name(&typed, &self.entries).err();
+        // 何も書いていないうちは何も出さない（保存のボタンが押せないだけ）。
+        let exists = profile::save_name(&typed, &self.entries) == Err(NameIssue::Exists);
         let save = self.save(cx);
         let apply = {
             let send = send.clone();
@@ -153,14 +151,8 @@ impl SetupsPanel {
                                         }),
                                 ),
                         )
-                        .when_some(issue, |this, issue| {
-                            this.child(note(core(
-                                lang,
-                                match issue {
-                                    NameIssue::Empty => keys::SETUPS_NAME_NEEDED,
-                                    NameIssue::Exists => keys::SETUPS_EXISTS,
-                                },
-                            )))
+                        .when(exists, |this| {
+                            this.child(note(core(lang, keys::SETUPS_EXISTS)))
                         }),
                 ),
         )

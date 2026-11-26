@@ -40,7 +40,7 @@ pub fn backup_name(entries: &[Entry]) -> Option<&str> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NameIssue {
     Empty,
-    /// 同じ名前がある（上書きはさせない。退避の名前もここに入る）。
+    /// 同じ名前がある（上書きはさせない。退避の名前もここに入る）。Windows のファイル名と同じく、大文字・小文字は区別しない。
     Exists,
 }
 
@@ -49,7 +49,10 @@ pub fn save_name(input: &str, entries: &[Entry]) -> Result<String, NameIssue> {
     let name = input.trim();
     if name.is_empty() {
         Err(NameIssue::Empty)
-    } else if entries.iter().any(|entry| entry.name == name) {
+    } else if entries
+        .iter()
+        .any(|entry| entry.name.to_lowercase() == name.to_lowercase())
+    {
         Err(NameIssue::Exists)
     } else {
         Ok(name.to_owned())
@@ -91,6 +94,7 @@ mod tests {
         assert_eq!(save_name("  Sing ", &entries), Ok("Sing".into()));
         assert_eq!(save_name("   ", &entries), Err(NameIssue::Empty));
         assert_eq!(save_name("Talk ", &entries), Err(NameIssue::Exists));
+        assert_eq!(save_name("talk", &entries), Err(NameIssue::Exists));
         assert_eq!(
             save_name("__backup_previous", &entries),
             Err(NameIssue::Exists)
