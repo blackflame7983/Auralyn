@@ -99,6 +99,7 @@ pub struct MainView {
     config_dir: PathBuf,
     connect: ConnectPage,
     vst: VstPage,
+    scan_folders: crate::vst_folders::ScanFolders,
     setups: SetupsPanel,
     voice: VoicePanel,
     live: LivePanel,
@@ -165,6 +166,7 @@ impl MainView {
             .detach();
         }
         let vst = VstPage::new(window, cx);
+        let scan_folders = crate::vst_folders::ScanFolders::new(&config_dir, window, cx);
         let setups = SetupsPanel::new(window, cx);
         cx.subscribe(&setups.name, |this, _, event: &InputEvent, cx| {
             if let InputEvent::PressEnter { .. } = event {
@@ -350,6 +352,7 @@ impl MainView {
             config_dir,
             connect,
             vst,
+            scan_folders,
             setups,
             voice: VoicePanel::new(window, cx),
             live: LivePanel::new(window, cx),
@@ -543,8 +546,9 @@ impl MainView {
                 answered,
             } => self.sound.limiter(limit).set(peak, answered, window, cx),
             Notice::Measurement(reading) => self.sound.measure.set(reading),
-            Notice::Catalog(Ok(candidates)) => {
+            Notice::Catalog(Ok((candidates, skipped))) => {
                 self.vst.set_catalog(&candidates, window, cx);
+                self.scan_folders.set_skipped(skipped);
                 self.post.set_catalog(&candidates, window, cx);
             }
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
@@ -1121,6 +1125,11 @@ impl Render for MainView {
                                 )),
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
+                                    .child(self.scan_folders.render(
+                                        lang,
+                                        self.vst.scanning(),
+                                        send.clone(),
+                                    ))
                                     .child(self.setups.render(lang, cx, send)),
                                 Page::Sound => this
                                     .child(self.sound.render(
