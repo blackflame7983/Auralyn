@@ -235,7 +235,7 @@ impl Control {
     }
 
     /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。分からない種類は送らない。
-    /// 何を送るかは `Sound::effects_request`。断られなければ、送った値を「最後の値」として持つ
+    /// 何を送るかは `Sound::effects_request`。断られなければ（前の値を知らなければ断られても）、送った値を「最後の値」として持つ
     /// （エンジンが持たない値＝歌向けでないときの歌向けの値・OFF の歯擦音の量は、次に読むときこの値を使う）。
     pub(super) fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
         let mut accepted = true;
@@ -289,7 +289,8 @@ impl Control {
                 self.fail("set_built_in_effects", e);
             }
         }
-        if accepted {
+        // 前の値を知らない（起動時の復元が断られた）ときも持つ。既定値より保存した値のほうが正しい。
+        if accepted || self.sound.is_none() {
             self.sound = Some(next);
         }
     }
