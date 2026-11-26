@@ -3689,5 +3689,12 @@
   "gpuiShell.helpKeepsRunningBody": "Closing the window with × hides it in the notification area, and the audio keeps running. To stop it, choose “{stop}” on the top band. To quit, choose “{quit}” from the notification area icon.",
   "gpuiShell.helpReceiverBody": "Set the input of the destination app (OBS, Discord and so on) to the device that Auralyn’s output reaches. “Learn more” explains how to connect a virtual cable.",
   "gpuiShell.guideObs": "Connecting to OBS",
-  "gpuiShell.guideCall": "Connecting to call apps"
+  "gpuiShell.guideCall": "Connecting to call apps",
+  "gpuiShell.modesSaveSinging": "Register the current sound as singing",
+  "gpuiShell.modesSaveTalk": "Register the current sound as talk",
+  "gpuiShell.modesHint": "Switches only the registered voice shaping and reverb. The microphone, VSTs, noise reduction, volume and mute stay as they are.",
+  "gpuiShell.modesRegisterNote": "Registers the voice shaping and reverb in use now. For talk, the reverb is registered as off.",
+  "gpuiShell.modesSwitching": "Switching.",
+  "gpuiShell.modesLinked": "Switch modes that are linked to a VST setup in the previous version.",
+  "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock with “Lock controls” on the Sound page, then try again."
 }

@@ -3689,5 +3689,12 @@
   "gpuiShell.helpKeepsRunningBody": "窓の × で閉じると通知領域に隠れ、音は動き続けます。止めるには上の帯の「{stop}」を、アプリを終えるには通知領域のアイコンの「{quit}」を選びます。",
   "gpuiShell.helpReceiverBody": "送り先のアプリ（OBS・Discord など）の入力を、Auralyn の出力先につながる機器に合わせてください。仮想ケーブルのつなぎ方は「詳しく」の先にあります。",
   "gpuiShell.guideObs": "OBS へのつなぎ方",
-  "gpuiShell.guideCall": "通話アプリへのつなぎ方"
+  "gpuiShell.guideCall": "通話アプリへのつなぎ方",
+  "gpuiShell.modesSaveSinging": "今の音を歌として登録",
+  "gpuiShell.modesSaveTalk": "今の音を雑談として登録",
+  "gpuiShell.modesHint": "マイク・VST・ノイズ低減・音量・ミュートは変えず、登録した声を整える処理と残響だけを切り替えます。",
+  "gpuiShell.modesRegisterNote": "いまかかっている声を整える処理と残響を登録します。雑談では残響を OFF にして登録します。",
+  "gpuiShell.modesSwitching": "切り替えています。",
+  "gpuiShell.modesLinked": "VST と一緒に切り替える組み合わせを結び付けたモードは、今までの版で切り替えてください。",
+  "gpuiShell.modesLocked": "操作ロック中のため、この操作はできません。音づくりの画面の「操作をロック」で解除してから、もう一度操作してください。"
 }
