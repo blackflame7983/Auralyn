@@ -301,12 +301,14 @@ pub mod keys {
     pub const POST_CHOOSE: &str = "postMix.choose";
     pub const POST_ADD: &str = "postMix.add";
     pub const POST_SCAN: &str = "postMix.scan";
-    pub const POST_UNSAVED: &str = "gpuiShell.postUnsaved";
+    pub const POST_RECOVERY: &str = "postMix.recovery";
+    pub const POST_RECOVERY_HELP: &str = "postMix.recoveryHelp";
+    pub const POST_RESET: &str = "postMix.reset";
     pub const POST_SAVE: &str = "postMix.save";
     pub const POST_RELOAD: &str = "postMix.reload";
 
     #[cfg(test)]
-    pub const ALL: [&str; 293] = [
+    pub const ALL: [&str; 295] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -597,7 +599,9 @@ pub mod keys {
         POST_CHOOSE,
         POST_ADD,
         POST_SCAN,
-        POST_UNSAVED,
+        POST_RECOVERY,
+        POST_RECOVERY_HELP,
+        POST_RESET,
         POST_SAVE,
         POST_RELOAD,
     ];

@@ -200,7 +200,7 @@ impl MainView {
             Command::ListDevices,
             Command::LiveOutput(None),
             Command::Mix(MixAction::Read),
-            Command::PostMix(PostAction::Read),
+            Command::PostMix(PostAction::Read, None),
         ] {
             engine.send(command);
         }
@@ -386,11 +386,14 @@ impl MainView {
                 self.reread_mix();
                 self.message = Some(message);
             }
+            // 開始・停止に失敗したときも、ホストがミックス後の VST を止めて捨てていることがあるので読み直す。
             Notice::NotStarted(message) => {
-                self.fail(SessionEvent::StartFailed, keys::START_FAILED, message)
+                self.fail(SessionEvent::StartFailed, keys::START_FAILED, message);
+                self.reread_mix();
             }
             Notice::StopFailed(message) => {
-                self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message)
+                self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message);
+                self.reread_mix();
             }
             Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
             Notice::Muted(muted) => self.muted = muted,
@@ -499,7 +502,7 @@ impl MainView {
             self.engine.send(Command::ListDevices);
             self.engine.send(Command::LiveOutput(None));
             self.engine.send(Command::Mix(MixAction::Read));
-            self.engine.send(Command::PostMix(PostAction::Read));
+            self.engine.send(Command::PostMix(PostAction::Read, None));
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
@@ -534,7 +537,7 @@ impl MainView {
     fn reread_mix(&mut self) {
         if self.page == Page::Home {
             self.engine.send(Command::Mix(MixAction::Read));
-            self.engine.send(Command::PostMix(PostAction::Read));
+            self.engine.send(Command::PostMix(PostAction::Read, None));
         }
     }
 
@@ -543,6 +546,11 @@ impl MainView {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
         }
+        // ミックス後の VST を変える操作には、画面が見た世代を付ける（見た後に変わっていればホストが断る）。
+        let command = match command {
+            Command::PostMix(action, None) => Command::PostMix(action, self.post.seen()),
+            other => other,
+        };
         self.engine.send(command);
     }
 

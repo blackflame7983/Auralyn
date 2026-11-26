@@ -1,9 +1,13 @@
 //! ミックス後の VST（配信音だけを仕上げる、声用とは別の並び）。Tauri 版と同じ `AudioHost::post_mix` を使い、保存も同じ。
-//! 変える操作には、最後に読んだ世代（epoch・revision）を付ける。ずれていれば断られるので、読み直して画面へ送る。
+//! 変える操作には、画面が最後に見た世代（epoch・revision）を付ける。見た後に変わっていれば断られる（二度押しや古い行への操作を通さない）。
+//! どの操作のあとも読み直して画面へ送る。
 
 use super::*;
-use auralyn_ui_model::post_mix::{self as rules, Entry, PostMix};
+use auralyn_ui_model::post_mix::PostMix;
 use vst_host_lib::post_mix::{Request as PostRequest, Snapshot as PostSnapshot};
+
+/// 画面が最後に見た世代（epoch・revision）。変える操作に付けて、見た後に変わっていれば断らせる。
+pub type Witness = (String, String);
 
 /// ミックス後の VST の操作。
 #[derive(Debug, Clone)]
@@ -34,32 +38,26 @@ pub enum PostAction {
     Save,
     /// 保存していない変更を捨てて、保存した並びに戻す。
     Reload,
+    /// 保存が読めないときの復旧：今の保存を脇へ保管し、無効にする。
+    Reset,
 }
 
 impl Control {
-    /// 読むだけなら状態を送る。変える操作なら、その結果（`PostMixDone`）を送ってから、今の状態を送る。
-    pub(super) fn post_mix(&mut self, action: PostAction) {
-        let request = match action {
-            PostAction::Read => {
-                let result = self.host.post_mix(PostRequest::Snapshot);
-                return self.send_post(result);
+    /// 読むだけなら状態を送る。変える操作なら、画面が見た世代を付けて頼み、その結果（`PostMixDone`）を送ってから、今の状態を送る。
+    pub(super) fn post_mix(&mut self, action: PostAction, seen: Option<Witness>) {
+        let request = match (action, seen) {
+            (PostAction::Read, _) => None,
+            (_, None) => Some(Err(anyhow::anyhow!("post-mix state has not been read yet"))),
+            (action, Some((epoch, revision))) => {
+                request(action, epoch, revision, self.posted.as_ref()).map(Ok)
             }
-            PostAction::Move { id, up } => {
-                let Some(ids) = self.posted.as_ref().and_then(|s| moved(s, &id, up)) else {
-                    return;
-                };
-                Request::Reorder(ids)
-            }
-            other => Request::Plain(other),
         };
-        let result = self.post_request(request);
-        let done = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
-        let _ = self.notices.send(Notice::PostMixDone(done));
-        let result = result.or_else(|_| self.host.post_mix(PostRequest::Snapshot));
-        self.send_post(result);
-    }
-
-    fn send_post(&mut self, result: anyhow::Result<PostSnapshot>) {
+        if let Some(request) = request {
+            let result = request.and_then(|request| self.host.post_mix(request));
+            let done = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
+            let _ = self.notices.send(Notice::PostMixDone(done));
+        }
+        let result = self.host.post_mix(PostRequest::Snapshot);
         let notice = match result {
             Ok(snapshot) => {
                 let view = view(&snapshot);
@@ -70,130 +68,92 @@ impl Control {
         };
         let _ = self.notices.send(Notice::PostMix(notice));
     }
-
-    /// 最後に読んだ世代を付けて頼む。まだ読んでいなければ先に読む。
-    fn post_request(&mut self, request: Request) -> anyhow::Result<PostSnapshot> {
-        if self.posted.is_none() {
-            self.posted = Some(self.host.post_mix(PostRequest::Snapshot)?);
-        }
-        let (epoch, revision) = self
-            .posted
-            .as_ref()
-            .map(|s| (s.epoch.clone(), s.revision.clone()))
-            .unwrap_or_default();
-        self.host.post_mix(request.with(epoch, revision))
-    }
 }
 
-/// 世代を付ける前の頼みごと。
-enum Request {
-    Plain(PostAction),
-    Reorder(Vec<String>),
-}
-
-impl Request {
-    fn with(self, expected_epoch: String, expected_revision: String) -> PostRequest {
-        let action = match self {
-            Self::Reorder(ids) => {
-                return PostRequest::Reorder {
-                    expected_epoch,
-                    expected_revision,
-                    ids,
-                }
-            }
-            Self::Plain(action) => action,
-        };
-        match action {
-            PostAction::Read | PostAction::Move { .. } => PostRequest::Snapshot,
-            PostAction::Enable(enabled) => PostRequest::Enable {
-                expected_epoch,
-                expected_revision,
-                enabled,
-            },
-            PostAction::Restore => PostRequest::RestoreSaved {
-                expected_epoch,
-                expected_revision,
-            },
-            PostAction::Add(candidate) => PostRequest::Add {
-                expected_epoch,
-                expected_revision,
-                path: candidate.path,
-                class_id: candidate.class_id,
-            },
-            PostAction::Remove(id) => PostRequest::Remove {
-                expected_epoch,
-                expected_revision,
-                id,
-            },
-            PostAction::Enabled { id, enabled } => PostRequest::Bypass {
-                expected_epoch,
-                expected_revision,
-                id,
-                active: !enabled,
-            },
-            PostAction::Muted { id, muted } => PostRequest::Mute {
-                expected_epoch,
-                expected_revision,
-                id,
-                active: muted,
-            },
-            PostAction::Gain { id, gain } => PostRequest::Gain {
-                expected_epoch,
-                expected_revision,
-                id,
-                value: gain,
-            },
-            PostAction::Editor(id) => PostRequest::Editor {
-                expected_epoch,
-                expected_revision,
-                id,
-            },
-            PostAction::Save => PostRequest::Save {
-                expected_epoch,
-                expected_revision,
-            },
-            PostAction::Reload => PostRequest::Reload {
-                expected_epoch,
-                expected_revision,
-            },
-        }
-    }
+/// 画面が見た世代を付けた頼みごと。読むだけ・動かせない（端）なら `None`。
+/// 並べ替えの順は最後に読んだ並びから作る（画面が見た世代と違えば、ホストが断る）。
+fn request(
+    action: PostAction,
+    expected_epoch: String,
+    expected_revision: String,
+    posted: Option<&PostSnapshot>,
+) -> Option<PostRequest> {
+    Some(match action {
+        PostAction::Read => return None,
+        PostAction::Move { id, up } => PostRequest::Reorder {
+            expected_epoch,
+            expected_revision,
+            ids: moved(posted?, &id, up)?,
+        },
+        PostAction::Enable(enabled) => PostRequest::Enable {
+            expected_epoch,
+            expected_revision,
+            enabled,
+        },
+        PostAction::Restore => PostRequest::RestoreSaved {
+            expected_epoch,
+            expected_revision,
+        },
+        PostAction::Add(candidate) => PostRequest::Add {
+            expected_epoch,
+            expected_revision,
+            path: candidate.path,
+            class_id: candidate.class_id,
+        },
+        PostAction::Remove(id) => PostRequest::Remove {
+            expected_epoch,
+            expected_revision,
+            id,
+        },
+        PostAction::Enabled { id, enabled } => PostRequest::Bypass {
+            expected_epoch,
+            expected_revision,
+            id,
+            active: !enabled,
+        },
+        PostAction::Muted { id, muted } => PostRequest::Mute {
+            expected_epoch,
+            expected_revision,
+            id,
+            active: muted,
+        },
+        PostAction::Gain { id, gain } => PostRequest::Gain {
+            expected_epoch,
+            expected_revision,
+            id,
+            value: gain,
+        },
+        PostAction::Editor(id) => PostRequest::Editor {
+            expected_epoch,
+            expected_revision,
+            id,
+        },
+        PostAction::Save => PostRequest::Save {
+            expected_epoch,
+            expected_revision,
+        },
+        PostAction::Reload => PostRequest::Reload {
+            expected_epoch,
+            expected_revision,
+        },
+        PostAction::Reset => PostRequest::Reset {
+            expected_epoch,
+            expected_revision,
+        },
+    })
 }
 
 /// 1つ上（下）へ動かしたあとの順。端なら `None`。
 fn moved(snapshot: &PostSnapshot, id: &str, up: bool) -> Option<Vec<String>> {
-    let items: Vec<(String, bool)> = snapshot
-        .plugins
-        .iter()
-        .map(|p| (p.id.clone(), true))
-        .collect();
-    let index = items.iter().position(|(other, _)| other == id)?;
-    rack::reordered(&items, index, up).map(|(_, ids)| ids)
+    let ids: Vec<&str> = snapshot.plugins.iter().map(|p| p.id.as_str()).collect();
+    let index = ids.iter().position(|other| *other == id)?;
+    let other = rack::neighbour(ids.len(), index, up)?;
+    let mut ids: Vec<String> = ids.into_iter().map(str::to_owned).collect();
+    ids.swap(index, other);
+    Some(ids)
 }
 
 fn view(snapshot: &PostSnapshot) -> (PostMix, Vec<Slot>) {
-    let saved: Vec<Entry> = snapshot
-        .saved_plugins
-        .iter()
-        .map(|p| Entry {
-            path: p.path.clone(),
-            class_id: p.class_id.clone(),
-            enabled: p.enabled,
-            muted: p.muted,
-            gain: p.gain,
-        })
-        .collect();
-    let current: Vec<Entry> = snapshot
-        .plugins
-        .iter()
-        .map(|p| Entry {
-            path: p.path.clone(),
-            class_id: p.class_id.clone(),
-            enabled: p.enabled,
-            muted: p.muted,
-            gain: p.gain,
-        })
-        .collect();
     let slots = snapshot
         .plugins
         .iter()
@@ -210,6 +170,7 @@ fn view(snapshot: &PostSnapshot) -> (PostMix, Vec<Slot>) {
         })
         .collect();
     let post = PostMix {
+        seen: (snapshot.epoch.clone(), snapshot.revision.clone()),
         enabled: snapshot.enabled,
         running: snapshot.running,
         saved: snapshot
@@ -218,7 +179,6 @@ fn view(snapshot: &PostSnapshot) -> (PostMix, Vec<Slot>) {
             .map(|p| p.name.clone())
             .collect(),
         restored: snapshot.restored,
-        unsaved: snapshot.restored && rules::unsaved(&saved, &current),
         failed: snapshot.failed == Some(true),
         error: snapshot.error.clone(),
     };

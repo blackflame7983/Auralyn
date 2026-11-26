@@ -40,7 +40,7 @@ mod voice;
 
 use events::on_event;
 pub use mix::MixAction;
-pub use post_mix::PostAction;
+pub use post_mix::{PostAction, Witness};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -120,8 +120,8 @@ pub enum Command {
     LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
     /// 配信ミックス（`mix.rs`）。
     Mix(MixAction),
-    /// ミックス後の VST（`post_mix.rs`）。
-    PostMix(PostAction),
+    /// ミックス後の VST（`post_mix.rs`）。変える操作には、画面が見た世代を付ける（`MainView::send` が付ける）。
+    PostMix(PostAction, Option<Witness>),
     /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
     ClearExclusions,
     /// 構成のファイルを消す。
@@ -168,14 +168,14 @@ impl Command {
                 )
                 | (Command::LiveOutput(None), Command::LiveOutput(None))
                 | (
-                    Command::PostMix(PostAction::Read),
-                    Command::PostMix(PostAction::Read)
+                    Command::PostMix(PostAction::Read, _),
+                    Command::PostMix(PostAction::Read, _)
                 )
         ) || matches!(
             (self, earlier),
             (
-                Command::PostMix(PostAction::Gain { id, .. }),
-                Command::PostMix(PostAction::Gain { id: other, .. })
+                Command::PostMix(PostAction::Gain { id, .. }, _),
+                Command::PostMix(PostAction::Gain { id: other, .. }, _)
             ) if id == other
         ) || {
             use auralyn_ui_model::mix::Change::{MusicGain, VoiceGain};
@@ -639,7 +639,9 @@ impl Control {
             Command::Listen(ref listen) => return self.listen(listen.clone()),
             Command::LiveOutput(ref draft) => return self.live_output(draft.clone()),
             Command::Mix(ref action) => return self.mix(action.clone()),
-            Command::PostMix(ref action) => return self.post_mix(action.clone()),
+            Command::PostMix(ref action, ref seen) => {
+                return self.post_mix(action.clone(), seen.clone())
+            }
             Command::ReadStats => {
                 let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
                     loaded: s.active_plugin_count,
