@@ -134,6 +134,8 @@ pub mod keys {
     pub const VST_CONFIRM_REMOVE: &str = "rack.card.confirmRemove";
     pub const CANCEL: &str = "rack.card.cancel";
     pub const VST_NOT_LOADED: &str = "gpuiShell.notLoaded";
+    pub const VST_RELOAD_MISSING: &str = "gpuiShell.reloadMissing";
+    pub const VST_RELOAD_MISSING_HINT: &str = "gpuiShell.reloadMissingHint";
     pub const SOUND_UNREAD: &str = "gpuiShell.soundUnread";
     pub const OFF_UNTIL_ON: &str = "gpuiShell.offUntilOn";
     pub const NOISE: &str = "settings.AudioSettingsModal.105";
@@ -447,7 +449,7 @@ pub mod keys {
     pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
 
     #[cfg(test)]
-    pub const ALL: [&str; 434] = [
+    pub const ALL: [&str; 436] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -572,6 +574,8 @@ pub mod keys {
         VST_CONFIRM_REMOVE,
         CANCEL,
         VST_NOT_LOADED,
+        VST_RELOAD_MISSING,
+        VST_RELOAD_MISSING_HINT,
         SOUND_UNREAD,
         OFF_UNTIL_ON,
         NOISE,
