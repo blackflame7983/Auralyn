@@ -3683,5 +3683,8 @@
   "gpuiShell.mixVoiceMute": "声をミュート",
   "gpuiShell.mixMusicMute": "オケをミュート",
   "gpuiShell.setupLead": "使い道を選ぶと、合いそうなマイクと出力先を選んでおきます。違っていれば選び直してください。",
-  "gpuiShell.setupOther": "ASIO などは接続の画面で選ぶ"
+  "gpuiShell.setupOther": "ASIO などは接続の画面で選ぶ",
+  "gpuiShell.helpSilentBody": "上の帯で音声が動いているか、右の列の「{emergency}」が外れていて「{gain}」が 0 でないかを確かめてください。",
+  "gpuiShell.helpDropoutsBody": "この画面の「{diagnostics}」で、処理の遅れと音切れの数を確かめてください。接続の画面でバッファを大きくすると安定することがありますが、遅れも増えます。",
+  "gpuiShell.helpKeepsRunningBody": "窓の × で閉じると通知領域に隠れ、音は動き続けます。止めるには上の帯の「{stop}」を、アプリを終えるには通知領域のアイコンの「{quit}」を選びます。"
 }
