@@ -276,7 +276,11 @@ impl Control {
             .ok()
             .and_then(|value| sound_from_json(&value))
         {
-            Some(sound) => self.apply_sound(sound, None),
+            Some(sound) => {
+                self.apply_sound(sound, None);
+                // 歌向けでないときエンジンは歌向けの値を持たないので、保存の値を次に読むときの「最後の値」にする。
+                self.sound = Some(sound);
+            }
             None => self.fail("read_sound", anyhow::anyhow!("{SOUND_FILE} を読めません")),
         }
     }
