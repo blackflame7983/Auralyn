@@ -441,7 +441,6 @@ impl MainView {
                 self.reread_mix();
                 self.message = Some(message);
             }
-            // 開始・停止に失敗したときも、ホストがミックス後の VST を止めて捨てていることがあるので読み直す。
             Notice::AppNotResumed(name) => {
                 self.advance(SessionEvent::StartFailed);
                 self.message = Some(core_with(
@@ -450,6 +449,7 @@ impl MainView {
                     &[("name", &name)],
                 ));
             }
+            // 開始・停止に失敗したときも、ホストがミックス後の VST を止めて捨てていることがあるので読み直す。
             Notice::NotStarted(message) => {
                 self.fail(SessionEvent::StartFailed, keys::START_FAILED, message);
                 self.reread_mix();

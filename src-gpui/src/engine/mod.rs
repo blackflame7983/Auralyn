@@ -21,7 +21,7 @@ use auralyn_ui_model::voice_check::{
     Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
     State as VoiceState, MAX_MS,
 };
-use vst_host_lib::audio::AudioHost;
+use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::input;
@@ -521,33 +521,31 @@ impl Control {
                 return;
             }
         };
-        let purpose = match config.input_source {
-            Some(input::Config::ProcessLoopback(app)) => {
-                // アプリの候補は起動のたびに変わるので、自動では再開しない（既定のマイクにも替えない）。
-                let _ = self.notices.send(Notice::AppNotResumed(app.app_name));
-                return;
-            }
-            Some(input::Config::Device { purpose }) => purpose,
-            None => input::Purpose::Voice,
+        let app = match &config.input_source {
+            Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
+            _ => None,
         };
-        let result = input::start(
-            &mut self.host,
-            input::Start {
-                host: config.host,
-                input: config.input.clone(),
-                input_id: config.input_id,
-                output: config.output.clone(),
-                output_id: config.output_id,
-                buffer_size: config.buffer_size,
-                sample_rate: config.sample_rate,
-                routing: config.routing,
-                request: input::Request {
-                    source: input::Config::Device { purpose },
-                    candidate_id: None,
-                },
-            },
-        );
-        self.started(result, config.input, config.output);
+        let source = config
+            .input_source
+            .clone()
+            .unwrap_or(input::Config::Device {
+                purpose: input::Purpose::Voice,
+            });
+        let request = input::Request {
+            source,
+            candidate_id: None,
+        };
+        let input = app.clone().or(config.input.clone());
+        let output = config.output.clone();
+        let result = input::start(&mut self.host, saved_start(config, request));
+        // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する（Tauri 版と同じ）。
+        // 起動し直したあとは候補が無いので、選び直してもらう（既定のマイクにも替えない）。
+        if let (Some(name), Err(e)) = (app, &result) {
+            log::warn!("保存したアプリの音声で再開できません: {e}");
+            let _ = self.notices.send(Notice::AppNotResumed(name));
+            return;
+        }
+        self.started(result, input, output);
     }
 
     /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する（Tauri 版の開始と同じく入力の元を明示する）。
@@ -852,6 +850,21 @@ impl Control {
             command,
             message: error.to_string(),
         });
+    }
+}
+
+/// 保存した設定で開始する値。入力の元は `request` で明示する。
+fn saved_start(config: ActiveAudioConfig, request: input::Request) -> input::Start {
+    input::Start {
+        host: config.host,
+        input: config.input,
+        input_id: config.input_id,
+        output: config.output,
+        output_id: config.output_id,
+        buffer_size: config.buffer_size,
+        sample_rate: config.sample_rate,
+        routing: config.routing,
+        request,
     }
 }
 

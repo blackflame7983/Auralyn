@@ -117,12 +117,16 @@ impl ConnectPage {
         let saved = self.saved.as_ref();
         let rate = connect::saved_value(saved, &host, |s| s.sample_rate);
         let buffer = connect::saved_value(saved, &host, |s| s.buffer_size);
-        self.fill_source(
-            connect::starts_with_app(saved, &host),
-            saved.map(|s| s.purpose).unwrap_or_default(),
-            window,
-            cx,
-        );
+        // 一度入れたあと（機器の一覧の読み直し・接続方式の選び直し）は、選んでいた入力元と使い道を保つ。
+        let (app, purpose) = if self.source.read(cx).selected_index(cx).is_none() {
+            (
+                connect::starts_with_app(saved, &host),
+                saved.map(|s| s.purpose).unwrap_or_default(),
+            )
+        } else {
+            (self.uses_app(cx), self.chosen_purpose(cx))
+        };
+        self.fill_source(app, purpose, window, cx);
         self.fill_values(rate, buffer, window, cx);
         self.fill_routing(None, window, cx);
     }
@@ -142,7 +146,8 @@ impl ConnectPage {
             .collect();
         let row = Purpose::ALL.iter().position(|p| *p == purpose);
         set(&self.purpose, purposes, row, window, cx);
-        self.fill_apps(window, cx);
+        let current = self.app_source(cx);
+        self.fill_apps(current, window, cx);
     }
 
     /// 入力にアプリの音声を選んでいるか。
@@ -165,6 +170,8 @@ impl ConnectPage {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // 選んでいたアプリは、一覧を差し替える前に読む（行の番号は新しい一覧では別のアプリを指す）。
+        let current = self.app_source(cx);
         match result {
             Ok(apps) => {
                 self.apps = apps;
@@ -172,12 +179,16 @@ impl ConnectPage {
             }
             Err(message) => self.apps_failed = Some(message),
         }
-        self.fill_apps(window, cx);
+        self.fill_apps(current, window, cx);
     }
 
-    /// アプリの選択肢を入れる。選んでいたアプリ（無ければ保存したアプリ）がまだあれば選ぶ。
-    fn fill_apps(&mut self, window: &mut Window, cx: &mut App) {
-        let current = self.app_source(cx);
+    /// アプリの選択肢を入れる。`current`（選んでいたアプリ）、無ければ保存したアプリがまだあれば選ぶ。
+    fn fill_apps(
+        &mut self,
+        current: Option<(String, AppSource)>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let saved = self.saved.as_ref().and_then(|s| s.app.clone());
         let keep = current
             .as_ref()
