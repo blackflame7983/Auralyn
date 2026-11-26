@@ -9,16 +9,16 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 
 | ファイル | 役割 |
 | :--- | :--- |
-| `src/engine.rs` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く |
-| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/engine/` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く。`mod.rs` が命令の受付と開始・停止、`slots.rs` が VST の並び、`sound.rs` が音づくり・ピーク保護・測定、`profile.rs` が保存した構成、`events.rs` が中核の出来事の読み取り |
+| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作。描画は `src/view/safety.rs`）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/shell.rs` | 窓の外枠。左のレール（行き先）、先頭の帯（音声の状態と開始・停止）。開始・停止の状態は `auralyn-ui-model` の `session` |
 | `src/connect.rs` | 接続の画面。接続方式・マイク・出力先・周波数・バッファを選び、その機器で開始する（開始できると設定が保存される）。最初に選ぶ項目は `auralyn-ui-model` の `connect` |
 | `src/settings.rs` | 設定の画面。表示言語（日本語・English）と、Windows との連携（トレイ・Alt+M）が使えるかと、版 |
 | `src/locale_file.rs` | 表示言語の保存（`gpui_locale.json`）。無ければ Tauri 版の `display-locale.json` を読むだけ |
-| `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・環境に合わせる（測定値・会場）・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）と、大きな音を抑える（ON/OFF・天井・復帰時間。アプリの中だけで持つ）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine.rs` の `gpui_sound.json` |
+| `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・環境に合わせる（測定値・会場）・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）と、大きな音を抑える（ON/OFF・天井・復帰時間。アプリの中だけで持つ）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine/sound.rs` の `gpui_sound.json` |
 | `src/measure.rs` | 周囲の音の測定（3秒測る・中止・話していないと確かめて採用）。測定値・会場のときに音づくりの詳細に出す。規則は `auralyn-ui-model` の `measurement` |
 | `src/setups.rs` | 保存した構成（Tauri 版と同じ `presets/`）。選んで適用・直前の状態に戻す・名前を付けて保存。VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。規則は `auralyn-ui-model` の `profile` |
-| `src/vst.rs` | VST の画面。並び（ON/OFF・音量・ミュート・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine.rs` が設定のフォルダの `gpui_rack.json` に保存する |
+| `src/vst.rs` | VST の画面。並び（ON/OFF・音量・ミュート・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine/slots.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
 | `src/home.rs` | ホームの区画。今は音の流れの帯（加工前の包絡線と、加工後＝`processed` の塗り）。DESIGN.md 10.5 の「入力か出力が live」は、GPUI 版では「入力か加工後が live」と読む |
 | `src/color.rs` | 色。`design/tokens.json` から名前で取る |

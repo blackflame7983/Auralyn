@@ -14,9 +14,9 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 | 場面 | 書き方 | 場所 |
 | :--- | :--- | :--- |
 | 描画の周期 | 16ms の周期を1つだけ `cx.spawn_in` で持ち、全メーターで共有する。変化があったときだけ `cx.notify()` | `view.rs` の `tick` |
-| 音声エンジン | `AudioHost` の命令は応答を待つので、画面のスレッドで呼ばない。専用のスレッドで受付順に実行し、続けて届いた音量は最後の値だけを送る | `engine.rs` |
-| メーターの値 | 届くたびに画面へ送らず、最新の値だけを置く。画面が周期で読む | `engine.rs`、`view.rs` |
-| 色 | 値を書かず、`auralyn_core::design::tokens()` から名前で取り、`rgb(..)` で `Hsla` にする。使う名前は試験で確かめる | `view.rs` の `mod color` |
+| 音声エンジン | `AudioHost` の命令は応答を待つので、画面のスレッドで呼ばない。専用のスレッドで受付順に実行し、続けて届いた音量は最後の値だけを送る | `engine/mod.rs` |
+| メーターの値 | 届くたびに画面へ送らず、最新の値だけを置く。画面が周期で読む | `engine/events.rs`、`view.rs` の `tick`、`view/safety.rs` |
+| 色 | 値を書かず、`auralyn_core::design::tokens()` から名前で取り、`rgb(..)` で `Hsla` にする。使う名前は試験で確かめる | `color.rs` |
 | 振る舞いの規則 | 平滑化・保持・判定のような規則は GPUI に依存しないクレートに置き、時刻を引数で受けて試験する | `src-tauri/crates/auralyn-ui-model/` |
 | スライダー | `SliderState` を `cx.new` で持ち、`cx.subscribe` で `SliderEvent::Change` と `Release` を受ける | `view.rs` の `new` |
 | 読み上げ | 操作する要素に `.id(..)` と `.role(Role::..)` を付ける。ナレーターでの合格は AccessKit（UIA）による | `view.rs` |
