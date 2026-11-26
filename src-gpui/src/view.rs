@@ -35,6 +35,7 @@ use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
+use auralyn_ui_model::shortcuts;
 use auralyn_ui_model::sound::Change;
 
 mod safety;
@@ -183,7 +184,7 @@ impl MainView {
             }
         });
         let now = Instant::now();
-        let desktop = Desktop::new(lang);
+        let desktop = Desktop::new(lang, &config_dir);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
@@ -197,13 +198,23 @@ impl MainView {
         if let Some(error) = &desktop.tray_error {
             log::warn!("トレイを作れません: {error}");
         }
-        if let Some(error) = &desktop.hotkey_error {
-            log::warn!("Alt+M を登録できません: {error}");
+        if let Some(error) = &desktop.shortcuts_error {
+            log::warn!("ショートカットを登録できません: {error}");
         }
-        let message = desktop
-            .hotkey_error
-            .as_ref()
-            .map(|e| format!("{}: {e}", core(lang, keys::HOTKEY_FAILED)));
+        for failed in &desktop.shortcuts {
+            if let Some(error) = &failed.error {
+                log::warn!("{} を登録できません: {error}", failed.binding.shortcut);
+            }
+        }
+        let message = match &desktop.shortcuts_error {
+            Some(error) => Some(format!(
+                "{}: {error}",
+                core(lang, keys::SHORTCUTS_UNREADABLE)
+            )),
+            None => desktop
+                .shortcut_failed()
+                .then(|| core(lang, keys::HOTKEY_FAILED).to_owned()),
+        };
         Self {
             engine,
             desktop,
@@ -266,7 +277,7 @@ impl MainView {
         }
         for action in self.desktop.poll() {
             match action {
-                Action::ToggleMute => self.toggle_mute(),
+                Action::Shortcut(action) => self.shortcut(action, window, cx),
                 Action::Show => {
                     desktop::set_shown(window, true);
                     self.hidden.set(false);
@@ -499,6 +510,33 @@ impl MainView {
         self.engine.send(Command::SetMute(!self.muted));
     }
 
+    /// グローバルショートカットの操作（Tauri 版と同じ動き）。比較は音声が動いているときだけ切り替える。
+    fn shortcut(&mut self, action: shortcuts::Action, window: &mut Window, cx: &mut App) {
+        use shortcuts::Action as A;
+        match action {
+            A::MuteToggle => self.toggle_mute(),
+            A::MuteOn | A::MuteOff => self.engine.send(Command::SetMute(action == A::MuteOn)),
+            A::BypassToggle | A::BypassOn | A::BypassOff => {
+                if self.phase == Phase::Running {
+                    self.engine.send(Command::SetBypass(match action {
+                        A::BypassOn => true,
+                        A::BypassOff => false,
+                        _ => !self.bypassed,
+                    }));
+                }
+            }
+            A::GainUp | A::GainDown => {
+                let current = self.output_gain.read(cx).value().end() / 100.0;
+                let next = shortcuts::gain_step(current, action == A::GainUp);
+                self.output_gain
+                    .update(cx, |state, cx| state.set_value(next * 100.0, window, cx));
+                self.engine.send(Command::SetOutputGain(next));
+            }
+            A::NoiseToggle => self.engine.send(Command::ToggleNoise),
+            A::SingingOn | A::TalkOn => {}
+        }
+    }
+
     fn set_lang(&mut self, lang: Lang) {
         if lang == self.lang {
             return;
@@ -595,7 +633,6 @@ impl Render for MainView {
                                 Page::Settings => this.child(settings::render(
                                     lang,
                                     self.desktop.tray_error.as_deref(),
-                                    self.desktop.hotkey_error.as_deref(),
                                     {
                                         let entity = entity.clone();
                                         move |lang, _, cx| {
@@ -609,6 +646,11 @@ impl Render for MainView {
                                         .flex()
                                         .flex_col()
                                         .gap_6()
+                                        .child(settings::shortcuts(
+                                            lang,
+                                            &self.desktop.shortcuts,
+                                            self.desktop.shortcuts_error.as_deref(),
+                                        ))
                                         .child(settings::diagnostics(
                                             lang,
                                             self.stats.as_ref(),
