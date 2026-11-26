@@ -30,6 +30,7 @@ use crate::live::LivePanel;
 use crate::locale_file;
 use crate::mix::MixPanel;
 use crate::modes::ModesPanel;
+use crate::obs::ObsPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
 use crate::recovery;
@@ -112,6 +113,7 @@ pub struct MainView {
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
     cleared: Option<Result<(), String>>,
     sound: SoundPage,
+    obs: ObsPanel,
     _ticker: Task<()>,
 }
 
@@ -279,6 +281,7 @@ impl MainView {
         });
         let now = Instant::now();
         let desktop = Desktop::new(lang, &config_dir);
+        let obs = ObsPanel::new(&config_dir, window, cx);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
@@ -347,6 +350,7 @@ impl MainView {
             mix_stats: diagnostics::Mix::default(),
             cleared: None,
             sound,
+            obs,
             _ticker: ticker,
         }
     }
@@ -357,6 +361,7 @@ impl MainView {
             self.apply(notice, window, cx);
             changed = true;
         }
+        changed |= self.obs.poll(window, cx);
         // 接続の画面を出している間は、配信用の出力が届いているかを読み直す。
         if self.page == Page::Connect
             && !self.hidden.get()
@@ -662,6 +667,7 @@ impl MainView {
         }
         if page == Page::Settings {
             self.cleared = None;
+            self.obs.open();
             self.engine.send(Command::ReadStats);
         }
         if page == Page::Vst && self.vst.needs_scan() {
@@ -993,6 +999,15 @@ impl Render for MainView {
                                                     cx.notify();
                                                 })
                                             }
+                                        }))
+                                        .child(self.obs.render(lang, cx, {
+                                            let entity = entity.clone();
+                                            Rc::new(move |order, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.obs.order(order);
+                                                    cx.notify();
+                                                })
+                                            })
                                         }))
                                         .child(settings::trouble(
                                             lang,

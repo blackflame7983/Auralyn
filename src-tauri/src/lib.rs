@@ -88,7 +88,7 @@ pub mod input_source;
 pub mod ipc;
 mod migration;
 pub mod obs;
-mod obs_credentials;
+pub mod obs_credentials;
 pub mod obs_setup;
 #[cfg(windows)]
 mod process_job;
@@ -148,6 +148,12 @@ async fn open_url(url: String) -> Result<(), String> {
     commands::run_blocking(move || open::that(&url).map_err(|e| e.to_string())).await
 }
 
+fn obs_notify(app: AppHandle) -> impl obs::Notify {
+    move |name, payload| {
+        let _ = app.emit(name, payload);
+    }
+}
+
 #[tauri::command]
 async fn connect_obs(
     app: AppHandle,
@@ -162,8 +168,8 @@ async fn connect_obs(
     let endpoint = obs_credentials::Endpoint::new(host, port)?;
     let password = obs_credentials::resolve(&app, endpoint.clone(), password).await?;
     obs::connect_obs(
-        app.clone(),
-        state.clone(),
+        obs_notify(app.clone()),
+        &state,
         endpoint.host.clone(),
         endpoint.port,
         password.clone(),
@@ -173,7 +179,7 @@ async fn connect_obs(
         if let Err(error) =
             obs_credentials::remember(&app, endpoint, password.unwrap_or_default()).await
         {
-            let _ = obs::disconnect_obs(app, state).await;
+            let _ = obs::disconnect_obs(obs_notify(app), &state).await;
             return Err(error);
         }
     }
@@ -188,7 +194,7 @@ async fn disconnect_obs(
 ) -> Result<(), String> {
     // 復号待ちの接続も含めて停止する。ロック順は接続と同じ資格情報→client。
     let _guard = credentials.0.lock().await;
-    obs::disconnect_obs(app, state).await
+    obs::disconnect_obs(obs_notify(app), &state).await
 }
 
 #[tauri::command]

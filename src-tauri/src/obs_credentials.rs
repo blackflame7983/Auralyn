@@ -96,11 +96,41 @@ fn crypt(bytes: &[u8], decrypt: bool) -> Result<Vec<u8>, String> {
         Ok(data)
     }
 }
+/// 設定フォルダの中の保存先。Tauri 版と GPUI 版で同じファイルを使う。
+pub fn file_in(config_dir: &Path) -> PathBuf {
+    config_dir.join("obs-credentials.dpapi")
+}
 fn path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
-        .map(|p| p.join("obs-credentials.dpapi"))
+        .map(|p| file_in(&p))
         .map_err(|_| FAILURE.into())
+}
+/// 保存した接続先。パスワードは返さない。
+pub fn saved_endpoint(file: &Path) -> Result<Option<Endpoint>, String> {
+    Ok(read(file)?.map(|record| record.endpoint))
+}
+/// 接続に使うパスワード。`Some("")` は認証なしへの明示変更。`None` だけが、同じ接続先として保存したパスワードを使う。
+pub fn password_for(
+    file: &Path,
+    endpoint: Endpoint,
+    password: Option<String>,
+) -> Result<Option<String>, String> {
+    match password {
+        Some(value) if value.len() <= 4096 => Ok(Some(value)),
+        Some(_) => Err(FAILURE.into()),
+        None => Ok(select(read(file)?, endpoint)),
+    }
+}
+pub fn store(file: &Path, endpoint: Endpoint, password: String) -> Result<(), String> {
+    save(file, endpoint, password, false)
+}
+pub fn forget(file: &Path) -> Result<(), String> {
+    match std::fs::remove_file(file) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(FAILURE.into()),
+    }
 }
 fn read(path: &Path) -> Result<Option<Record>, String> {
     let file = match std::fs::File::open(path) {
@@ -161,16 +191,8 @@ pub async fn resolve(
     endpoint: Endpoint,
     password: Option<String>,
 ) -> Result<Option<String>, String> {
-    // Some("")は認証なしへの明示変更。Noneだけが保存済み認証を要求する。
-    if let Some(value) = password {
-        return if value.len() <= 4096 {
-            Ok(Some(value))
-        } else {
-            Err(FAILURE.into())
-        };
-    }
     let file = path(app)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(select(read(&file)?, endpoint)))
+    tauri::async_runtime::spawn_blocking(move || password_for(&file, endpoint, password))
         .await
         .map_err(|_| FAILURE.to_string())?
 }
@@ -181,7 +203,7 @@ fn select(record: Option<Record>, endpoint: Endpoint) -> Option<String> {
 }
 pub async fn remember(app: &AppHandle, endpoint: Endpoint, password: String) -> Result<(), String> {
     let file = path(app)?;
-    tauri::async_runtime::spawn_blocking(move || save(&file, endpoint, password, false))
+    tauri::async_runtime::spawn_blocking(move || store(&file, endpoint, password))
         .await
         .map_err(|_| FAILURE.to_string())?
 }
@@ -192,7 +214,7 @@ pub async fn get_obs_credentials(
 ) -> Result<Option<Endpoint>, String> {
     let _guard = credentials.0.lock().await;
     let file = path(&app)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(read(&file)?.map(|record| record.endpoint)))
+    tauri::async_runtime::spawn_blocking(move || saved_endpoint(&file))
         .await
         .map_err(|_| FAILURE.to_string())?
 }
@@ -218,13 +240,9 @@ pub async fn clear_obs_credentials(
 ) -> Result<(), String> {
     let _guard = credentials.0.lock().await;
     let file = path(&app)?;
-    tauri::async_runtime::spawn_blocking(move || match std::fs::remove_file(file) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(FAILURE.into()),
-    })
-    .await
-    .map_err(|_| FAILURE.to_string())?
+    tauri::async_runtime::spawn_blocking(move || forget(&file))
+        .await
+        .map_err(|_| FAILURE.to_string())?
 }
 
 #[cfg(test)]

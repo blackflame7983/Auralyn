@@ -467,6 +467,25 @@ pub mod keys {
     pub const VST_OP_RESUME: &str = "audioNotices.vstOp.resume";
     pub const VST_OP_PROCESSING_SETUP: &str = "audioNotices.vstOp.processingSetup";
     pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
+    pub const OBS_TITLE: &str = "obs.section.connect";
+    pub const OBS_HOST: &str = "settings.ObsConnectionSettings.280";
+    pub const OBS_PORT: &str = "settings.ObsConnectionSettings.282";
+    pub const OBS_PASSWORD: &str = "settings.ObsConnectionSettings.285";
+    pub const OBS_PASSWORD_SCOPE: &str = "obs.passwordScope";
+    pub const OBS_USE_SAVED: &str = "obs.useSavedPassword";
+    pub const OBS_FORGET: &str = "obs.forgetPassword";
+    pub const OBS_SAVED_UNREADABLE: &str = "obs.credentialsUnavailable";
+    pub const OBS_CHECKING: &str = "settings.ObsConnectionSettings.288";
+    pub const OBS_CONNECTING: &str = "settings.ObsConnectionSettings.289";
+    pub const OBS_CONNECT: &str = "settings.ObsConnectionSettings.290";
+    pub const OBS_CONNECTED: &str = "settings.ObsConnectionSettings.291";
+    pub const OBS_DISCONNECT: &str = "settings.ObsConnectionSettings.292";
+    pub const OBS_FAILED: &str = "settings.ObsConnectionSettings.268";
+    pub const OBS_DISCONNECTED: &str = "obs.status.disconnected";
+    pub const OBS_TARGET: &str = "settings.obs.connectedTarget";
+    pub const OBS_EDIT_HINT: &str = "settings.ObsConnectionSettings.287";
+    pub const OBS_NEEDS: &str = "settings.ObsConnectionSettings.296";
+    pub const OBS_SERVER: &str = "settings.ObsConnectionSettings.297";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -488,7 +507,26 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 475] = [
+    pub const ALL: [&str; 494] = [
+        OBS_TITLE,
+        OBS_HOST,
+        OBS_PORT,
+        OBS_PASSWORD,
+        OBS_PASSWORD_SCOPE,
+        OBS_USE_SAVED,
+        OBS_FORGET,
+        OBS_SAVED_UNREADABLE,
+        OBS_CHECKING,
+        OBS_CONNECTING,
+        OBS_CONNECT,
+        OBS_CONNECTED,
+        OBS_DISCONNECT,
+        OBS_FAILED,
+        OBS_DISCONNECTED,
+        OBS_TARGET,
+        OBS_EDIT_HINT,
+        OBS_NEEDS,
+        OBS_SERVER,
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,

@@ -24,6 +24,8 @@ anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 flume = "0.11"
+# OBS との接続（vst-host の obs）を動かす。版は src-tauri と同じ。
+tokio = { version = "1.51.6", features = ["rt-multi-thread"] }
 
 # Tauri が内部で使うのと同じ版。Windows だけで使う。
 [target.'cfg(windows)'.dependencies]
