@@ -1,4 +1,4 @@
-//! 音づくりの画面：ノイズ低減と「声を整える」（歌向けの3つの値を含む）と残響。
+//! 音づくりの画面：ノイズ低減と「声を整える」（歌向けの3つの値を含む）と残響と歯擦音の抑制。
 //!
 //! エンジンの統計（文字列と 0〜1 の値）を読み、画面が選べる形にする。保存と読み直しも同じ形を使う。
 
@@ -85,6 +85,9 @@ pub enum Change {
     ReverbDecay(f32),
     /// 高域の減衰（0〜1）。
     ReverbDamping(f32),
+    DeEsserOn(bool),
+    /// 抑える量（0〜1）。
+    DeEsserAmount(f32),
 }
 
 /// 歌向けの3つの値（エンジンの `singing::SingingParams` と同じ範囲・既定）。
@@ -127,6 +130,24 @@ impl Default for Reverb {
             mix: 0.08,
             decay_seconds: 1.2,
             damping: 0.5,
+        }
+    }
+}
+
+/// 歯擦音（サ行）の抑制。OFF でも量は保つ（エンジンへは OFF を `None` で送る）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DeEsser {
+    pub on: bool,
+    /// 抑える量（0〜1。1 で最大約 −12 dB）。
+    pub amount: f32,
+}
+
+impl Default for DeEsser {
+    /// Tauri 版の初めの量と同じ 50%。
+    fn default() -> Self {
+        Self {
+            on: false,
+            amount: 0.5,
         }
     }
 }
@@ -190,6 +211,7 @@ pub struct Sound {
     /// 歌向けの値。歌向けでないときも、次に歌向けを選んだときのために持つ。
     pub singing: Singing,
     pub reverb: Reverb,
+    pub deesser: DeEsser,
 }
 
 impl Sound {
@@ -208,6 +230,10 @@ impl Sound {
             },
             singing: self.singing.normalized(),
             reverb: self.reverb.normalized(),
+            deesser: DeEsser {
+                amount: within(self.deesser.amount, (0.0, 1.0), DeEsser::default().amount),
+                ..self.deesser
+            },
             ..self
         }
     }
@@ -262,6 +288,18 @@ impl Sound {
                 damping,
                 ..self.reverb
             }),
+            Change::DeEsserOn(on) => Self {
+                deesser: DeEsser { on, ..self.deesser },
+                ..self
+            },
+            Change::DeEsserAmount(amount) => Self {
+                deesser: DeEsser {
+                    amount,
+                    ..self.deesser
+                },
+                ..self
+            }
+            .normalized(),
         }
     }
 
@@ -288,7 +326,7 @@ impl Sound {
         )
     }
 
-    /// 「声を整える」か残響の設定が `other` と違う（エンジンへは同じ命令で送る）。
+    /// 「声を整える」・残響・歯擦音の抑制の設定が `other` と違う（エンジンへは同じ命令で送る）。
     /// 歌向けの値は、歌向けを選んでいるときだけ比べる（ほかの種類では使わない）。
     pub fn effects_differ(&self, other: &Sound) -> bool {
         let singing = |s: &Sound| (s.preset == Some(Preset::Singing)).then_some(s.singing);
@@ -298,12 +336,14 @@ impl Sound {
             self.amount,
             singing(self),
             self.reverb,
+            self.deesser,
         ) != (
             other.effects_on,
             other.preset,
             other.amount,
             singing(other),
             other.reverb,
+            other.deesser,
         )
     }
 }
@@ -333,6 +373,7 @@ mod tests {
             amount: 0.7,
             singing: Singing::default(),
             reverb: Reverb::default(),
+            deesser: DeEsser::default(),
         }
     }
 
@@ -394,6 +435,15 @@ mod tests {
             .with(Change::ReverbMix(1.0));
         assert!(wet.reverb.enabled && wet.reverb.mix == 0.25);
         assert!(wet.effects_differ(&sound()) && !wet.noise_differs(&sound()));
+        let sharp = sound().with(Change::DeEsserAmount(2.0));
+        assert_eq!(
+            sharp.deesser,
+            DeEsser {
+                on: false,
+                amount: 1.0
+            }
+        );
+        assert!(sharp.with(Change::DeEsserOn(true)).effects_differ(&sharp));
     }
 
     #[test]
