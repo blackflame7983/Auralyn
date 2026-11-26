@@ -653,6 +653,10 @@ pub mod keys {
     pub const SCAN_FOLDER_FULL: &str = "pluginBrowser.scanFolderFull";
     pub const USAGE_SWITCH: &str = "purpose.switch";
     pub const USAGE_SWITCH_DEVICES: &str = "purpose.switchDevices";
+    pub const MUSIC_PLAYBACK: &str = "music.playback";
+    pub const MUSIC_PRESET_LABEL: &str = "music.presetLabel";
+    pub const MUSIC_PRESET_CHOOSE: &str = "music.presetChoose";
+    pub const MUSIC_SOUND_HINT: &str = "music.soundHint";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -674,7 +678,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 661] = [
+    pub const ALL: [&str; 665] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1317,6 +1321,10 @@ pub mod keys {
         SCAN_FOLDER_FULL,
         USAGE_SWITCH,
         USAGE_SWITCH_DEVICES,
+        MUSIC_PLAYBACK,
+        MUSIC_PRESET_LABEL,
+        MUSIC_PRESET_CHOOSE,
+        MUSIC_SOUND_HINT,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,

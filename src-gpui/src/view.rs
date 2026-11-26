@@ -100,6 +100,8 @@ pub struct MainView {
     connect: ConnectPage,
     vst: VstPage,
     scan_folders: crate::vst_folders::ScanFolders,
+    /// 保存した接続（最後に始めた接続）の使い道が音楽。ホームに構成の切り替えを出す。
+    music: bool,
     setups: SetupsPanel,
     voice: VoicePanel,
     live: LivePanel,
@@ -366,6 +368,7 @@ impl MainView {
             connect,
             vst,
             scan_folders,
+            music: false,
             setups,
             voice: VoicePanel::new(window, cx),
             live: LivePanel::new(window, cx),
@@ -604,6 +607,7 @@ impl MainView {
                 self.setup.set_devices(&devices, window, cx);
                 self.live.set_devices(&devices, self.lang, window, cx);
                 self.connect.remembered = remembered;
+                self.music = saved.as_ref().is_some_and(|s| s.purpose == Purpose::Music);
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
@@ -728,7 +732,7 @@ impl MainView {
             self.engine.send(Command::ReadSound);
             self.reread_peak();
         }
-        if page == Page::Vst {
+        if matches!(page, Page::Vst | Page::Home) {
             self.engine.send(Command::ListProfiles);
         }
         if page == Page::Settings {
@@ -1040,6 +1044,13 @@ impl Render for MainView {
                                         )))
                                     })
                                     .children(home::sound_flow(&self.flow, lang))
+                                    .when(self.music, |this| {
+                                        this.children(
+                                            self.setups
+                                                .render_music(lang, cx, send.clone())
+                                                .map(|card| div().max_w(px(560.)).child(card)),
+                                        )
+                                    })
                                     .child(div().max_w(px(560.)).child(self.prep.render(
                                         lang,
                                         {
