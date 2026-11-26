@@ -19,12 +19,13 @@ use gpui_kit::*;
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
-use crate::engine::{Command, Engine, Listen, MixAction, Notice, PostAction};
+use crate::engine::{Command, Engine, Listen, MixAction, ModeAction, Notice, PostAction};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::live::LivePanel;
 use crate::locale_file;
 use crate::mix::MixPanel;
+use crate::modes::ModesPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
 use crate::settings;
@@ -88,6 +89,7 @@ pub struct MainView {
     live: LivePanel,
     mix: MixPanel,
     post: PostMixPanel,
+    modes: ModesPanel,
     /// 保存した入出力が無いと分かってから、まだ一度も始まっていない。ホームに「はじめての設定」を出す。
     first_run: bool,
     setup: SetupPanel,
@@ -286,6 +288,7 @@ impl MainView {
             live: LivePanel::new(window, cx),
             mix,
             post,
+            modes: ModesPanel::default(),
             first_run: false,
             setup,
             stats: None,
@@ -324,6 +327,10 @@ impl MainView {
             if self.voice.polls() {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::Listen(Listen::Status));
+            }
+            if self.modes.switching() {
+                self.peak_polled = Instant::now();
+                self.engine.send(Command::Modes(ModeAction::Read));
             }
             if self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
@@ -459,6 +466,9 @@ impl MainView {
             }
             Notice::Mix(result) => self.mix.set(result, self.lang, window, cx),
             Notice::MixDone(result) => self.mix.done(result),
+            Notice::Modes(result) => self.modes.set(result),
+            Notice::ModesDone(result) => self.modes.done(result),
+            Notice::ModesKeepsReverb => self.modes.keeps_reverb(),
             Notice::PostMix(result) => self.post.set(result, window, cx, Self::send),
             Notice::PostMixDone(result) => self.post.done(result),
             Notice::MixApps(result) => self.mix.set_apps(result, self.lang, window, cx),
@@ -497,12 +507,13 @@ impl MainView {
         self.message = Some(format!("{} {detail}", core(self.lang, key)));
     }
 
-    /// ピーク保護と測定は音声が動いているときだけ読めるので、開始・停止のあと、音づくりの画面を見ていれば読み直す。
+    /// ピーク保護・測定・歌と雑談のモードは開始・停止で変わるので、音づくりの画面を見ていれば読み直す。
     fn reread_peak(&self) {
         if self.page == Page::Sound {
             self.engine.send(Command::ReadPeak);
             self.engine
                 .send(Command::Measure(measurement::Action::Read));
+            self.engine.send(Command::Modes(ModeAction::Read));
         }
     }
 
@@ -845,6 +856,7 @@ impl Render for MainView {
                                     .child(self.setups.render(lang, cx, send)),
                                 Page::Sound => this
                                     .child(self.sound.render(lang, cx, send.clone()))
+                                    .child(self.modes.render(lang, send.clone()))
                                     .child(self.voice.render(
                                         lang,
                                         self.phase == Phase::Running,

@@ -339,6 +339,34 @@ pub mod keys {
     pub const HELP_TERMS: &str = "help.section.terms";
     pub const GUIDE_OBS: &str = "gpuiShell.guideObs";
     pub const GUIDE_CALL: &str = "gpuiShell.guideCall";
+    pub const MODES_TITLE: &str = "liveBar.label";
+    pub const MODES_UNREAD: &str = "settings.LiveModeControls.216";
+    pub const MODES_STATE_FAILED: &str = "liveNotices.stateFailed";
+    pub const MODES_SWITCHING: &str = "liveBar.switching";
+    pub const MODES_PARTIAL: &str = "liveOutput.partial";
+    pub const MODES_STOPPED: &str = "liveBar.stopped";
+    pub const MODES_CUSTOM: &str = "liveBar.customHint";
+    pub const MODES_HINT: &str = "settings.LiveModeControls.215";
+    pub const MODES_SINGING: &str = "liveBar.singing";
+    pub const MODES_TALK: &str = "liveBar.talk";
+    pub const MODES_TRANSACTION_RUNNING: &str = "liveTransaction.switching";
+    pub const MODES_TRANSACTION_FAILED: &str = "liveTransaction.failed";
+    pub const MODES_RECOVER: &str = "liveTransaction.recover";
+    pub const MODES_FAILED: &str = "liveNotices.operationFailed";
+    pub const MODES_SAVED: &str = "settings.LiveModeControls.232";
+    pub const MODES_UNSAVED: &str = "settings.LiveModeControls.233";
+    pub const MODES_REGISTER: &str = "settings.LiveModeControls.230";
+    pub const MODES_REGISTER_NOTE: &str = "settings.LiveModeControls.231";
+    pub const MODES_SAVE_SINGING: &str = "gpuiShell.modesSaveSinging";
+    pub const MODES_SAVE_TALK: &str = "gpuiShell.modesSaveTalk";
+    pub const MODES_REVERB_CONFIRM: &str = "settings.mode.reverbConfirm";
+    pub const MODES_WITHOUT_REVERB: &str = "settings.mode.registerWithoutReverb";
+    pub const MODES_PROTECTING: &str = "liveBar.protecting";
+    pub const MODES_PROTECT: &str = "liveBar.protect";
+    pub const MODES_UNLOCK_HINT: &str = "liveBar.unlockHint";
+    pub const MODES_PROTECT_HINT: &str = "liveBar.protectHint";
+    pub const MODES_PROTECT_NEEDS_AUDIO: &str = "liveBar.protectNeedsAudio";
+    pub const MODES_REFRESH: &str = "settings.LiveModeControls.236";
     pub const HELP_SILENT: &str = "help.trouble.silent";
     pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
     pub const HELP_RECEIVER: &str = "help.trouble.receiver";
@@ -349,7 +377,7 @@ pub mod keys {
     pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
 
     #[cfg(test)]
-    pub const ALL: [&str; 336] = [
+    pub const ALL: [&str; 364] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -678,6 +706,34 @@ pub mod keys {
         HELP_TERMS,
         GUIDE_OBS,
         GUIDE_CALL,
+        MODES_TITLE,
+        MODES_UNREAD,
+        MODES_STATE_FAILED,
+        MODES_SWITCHING,
+        MODES_PARTIAL,
+        MODES_STOPPED,
+        MODES_CUSTOM,
+        MODES_HINT,
+        MODES_SINGING,
+        MODES_TALK,
+        MODES_TRANSACTION_RUNNING,
+        MODES_TRANSACTION_FAILED,
+        MODES_RECOVER,
+        MODES_FAILED,
+        MODES_SAVED,
+        MODES_UNSAVED,
+        MODES_REGISTER,
+        MODES_REGISTER_NOTE,
+        MODES_SAVE_SINGING,
+        MODES_SAVE_TALK,
+        MODES_REVERB_CONFIRM,
+        MODES_WITHOUT_REVERB,
+        MODES_PROTECTING,
+        MODES_PROTECT,
+        MODES_UNLOCK_HINT,
+        MODES_PROTECT_HINT,
+        MODES_PROTECT_NEEDS_AUDIO,
+        MODES_REFRESH,
         HELP_SILENT,
         HELP_SILENT_BODY,
         HELP_RECEIVER,

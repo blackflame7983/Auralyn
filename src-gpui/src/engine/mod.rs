@@ -32,6 +32,7 @@ use crate::store;
 mod events;
 mod live;
 mod mix;
+mod modes;
 mod post_mix;
 mod profile;
 mod slots;
@@ -40,6 +41,7 @@ mod voice;
 
 use events::on_event;
 pub use mix::MixAction;
+pub use modes::ModeAction;
 pub use post_mix::{PostAction, Witness};
 
 #[derive(Debug, Clone)]
@@ -120,6 +122,8 @@ pub enum Command {
     LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
     /// 配信ミックス（`mix.rs`）。
     Mix(MixAction),
+    /// 歌・雑談モード（`modes.rs`）。
+    Modes(ModeAction),
     /// ミックス後の VST（`post_mix.rs`）。変える操作には、画面が見た世代を付ける（`MainView::send` が付ける）。
     PostMix(PostAction, Option<Witness>),
     /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
@@ -167,6 +171,10 @@ impl Command {
                     Command::Listen(Listen::Status)
                 )
                 | (Command::LiveOutput(None), Command::LiveOutput(None))
+                | (
+                    Command::Modes(ModeAction::Read),
+                    Command::Modes(ModeAction::Read)
+                )
                 | (
                     Command::PostMix(PostAction::Read, _),
                     Command::PostMix(PostAction::Read, _)
@@ -260,6 +268,12 @@ pub enum Notice {
     Mix(Result<auralyn_ui_model::mix::Mix, String>),
     /// 配信ミックスを変える操作の結果（`Err` は断られた理由）。このあと状態が `Mix` で届く。
     MixDone(Result<(), String>),
+    /// 歌・雑談モードの状態。`Err` は読めなかった理由。
+    Modes(Result<auralyn_ui_model::live_modes::LiveModes, String>),
+    /// 歌・雑談モードを変える操作の結果（`Err` は断られた理由）。このあと状態が `Modes` で届く。
+    ModesDone(Result<(), String>),
+    /// 雑談の登録を、残響が ON のため止めた。切ってから登録するかを画面で聞く。
+    ModesKeepsReverb,
     /// ミックス後の VST の状態と並び。`Err` は読めなかった理由。
     PostMix(Result<(auralyn_ui_model::post_mix::PostMix, Vec<Slot>), String>),
     /// ミックス後の VST を変える操作の結果（`Err` は断られた理由）。このあと状態が `PostMix` で届く。
@@ -368,6 +382,7 @@ impl Engine {
                     renamed: Vec::new(),
                     listen: voice::Session::default(),
                     mixed: None,
+                    modes_sequence: 0,
                     posted: None,
                     sound: None,
                     read_only: false,
@@ -445,6 +460,8 @@ struct Control {
     listen: voice::Session,
     /// 最後に読んだ配信ミックスの状態（世代と音量）。
     mixed: Option<vst_host_lib::mixing::Snapshot>,
+    /// 歌・雑談モードの操作の通し番号（ホストが同じ窓の古い操作を断るのに使う）。
+    modes_sequence: u64,
     /// 最後に読んだミックス後の VST の状態（世代）。
     posted: Option<vst_host_lib::post_mix::Snapshot>,
 }
@@ -639,6 +656,7 @@ impl Control {
             Command::Listen(ref listen) => return self.listen(listen.clone()),
             Command::LiveOutput(ref draft) => return self.live_output(draft.clone()),
             Command::Mix(ref action) => return self.mix(action.clone()),
+            Command::Modes(ref action) => return self.live_modes(action.clone()),
             Command::PostMix(ref action, ref seen) => {
                 return self.post_mix(action.clone(), seen.clone())
             }

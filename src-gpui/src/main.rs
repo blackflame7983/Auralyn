@@ -16,6 +16,7 @@ mod live;
 mod locale_file;
 mod measure;
 mod mix;
+mod modes;
 mod part;
 mod post_mix;
 mod settings;
