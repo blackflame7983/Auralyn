@@ -8,11 +8,38 @@ impl Control {
         self.current_sound();
     }
 
+    /// 歌向けの値と残響。統計に無いので内蔵処理の状態から読む。止まっていて読めなければ、最後に読んだ値（無ければ既定）。
+    fn builtin_values(&mut self) -> (Singing, Reverb) {
+        let last = self
+            .sound
+            .map_or_else(Default::default, |s| (s.singing, s.reverb));
+        match self.host.builtin_effects(BuiltinRequest::Snapshot) {
+            Ok(snapshot) => (
+                snapshot.config.singing.map_or(last.0, |p| Singing {
+                    low_cut_hz: p.low_cut_hz,
+                    dynamics: p.dynamics,
+                    brightness_db: p.brightness_db,
+                }),
+                snapshot.config.reverb.map_or(last.1, |p| Reverb {
+                    enabled: p.enabled,
+                    mix: p.mix,
+                    decay_seconds: p.decay_seconds,
+                    damping: p.damping,
+                }),
+            ),
+            Err(e) => {
+                log::info!("内蔵処理の状態を読めません: {e}");
+                last
+            }
+        }
+    }
+
     /// [`Self::read_sound`] と同じく読んで送り、読めた値と、ノイズ低減の種類がまだ無い（空）かを返す。読めなければ `None`。
     fn current_sound(&mut self) -> Option<(Sound, bool)> {
         self.recover();
         match self.host.get_engine_runtime_stats() {
             Ok(stats) => {
+                let (singing, reverb) = self.builtin_values();
                 let sound = Sound {
                     noise_on: stats.noise_reduction_enabled,
                     noise_mode: NoiseMode::parse(&stats.noise_reduction_mode),
@@ -21,6 +48,8 @@ impl Control {
                     effects_on: stats.built_in_effects_enabled,
                     preset: Preset::parse(&stats.built_in_effects_preset),
                     amount: stats.built_in_effects_amount,
+                    singing,
+                    reverb,
                 }
                 .normalized();
                 self.sound = Some(sound);
@@ -192,7 +221,8 @@ impl Control {
         }
     }
 
-    /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。歌向け・分からない種類など、この画面で変えない種類は送らない。
+    /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。分からない種類は送らない。
+    /// 残響は変わったときだけ送る（送らなければエンジンは今の残響を保つ）。
     pub(super) fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
         // 種類が分からない（エンジンが知らない名前を返した）ときは送らない。種類を「弱」に書き換えないため。
         if let Some(mode) = next
@@ -208,12 +238,28 @@ impl Control {
                 self.fail("set_noise_control_config", e);
             }
         }
-        if next.effects_editable() && before.is_none_or(|before| next.effects_differ(&before)) {
+        if before.is_none_or(|before| next.effects_differ(&before)) {
             let preset = next.preset.map(|p| p.key().to_owned());
-            if let Err(e) = self
-                .host
-                .set_built_in_effects(next.effects_on, preset, next.amount)
-            {
+            let singing = (next.preset == Some(Preset::Singing)).then_some(SingingParams {
+                low_cut_hz: next.singing.low_cut_hz,
+                dynamics: next.singing.dynamics,
+                brightness_db: next.singing.brightness_db,
+            });
+            let reverb = before
+                .is_none_or(|before| before.reverb != next.reverb)
+                .then_some(ReverbParams {
+                    enabled: next.reverb.enabled,
+                    mix: next.reverb.mix,
+                    decay_seconds: next.reverb.decay_seconds,
+                    damping: next.reverb.damping,
+                });
+            if let Err(e) = self.host.set_built_in_effects_with_reverb(
+                next.effects_on,
+                preset,
+                next.amount,
+                singing,
+                reverb,
+            ) {
                 self.fail("set_built_in_effects", e);
             }
         }
@@ -230,7 +276,11 @@ impl Control {
             .ok()
             .and_then(|value| sound_from_json(&value))
         {
-            Some(sound) => self.apply_sound(sound, None),
+            Some(sound) => {
+                self.apply_sound(sound, None);
+                // 歌向けでないときエンジンは歌向けの値を持たないので、保存の値を次に読むときの「最後の値」にする。
+                self.sound = Some(sound);
+            }
             None => self.fail("read_sound", anyhow::anyhow!("{SOUND_FILE} を読めません")),
         }
     }
@@ -252,10 +302,22 @@ pub(super) fn sound_to_json(sound: Sound) -> serde_json::Value {
         "effectsOn": sound.effects_on,
         "preset": sound.preset.map(Preset::key),
         "amount": sound.amount,
+        "singing": {
+            "lowCutHz": sound.singing.low_cut_hz,
+            "dynamics": sound.singing.dynamics,
+            "brightnessDb": sound.singing.brightness_db,
+        },
+        "reverb": {
+            "enabled": sound.reverb.enabled,
+            "mix": sound.reverb.mix,
+            "decaySeconds": sound.reverb.decay_seconds,
+            "damping": sound.reverb.damping,
+        },
     })
 }
 
 /// 形の違う保存は `None`（読めないと知らせ、上書きは次に変えたときだけ）。
+/// 歌向けの値と残響は後から足したので、無ければ既定にする。
 pub(super) fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
     let text = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
     let flag = |key: &str| value.get(key).and_then(serde_json::Value::as_bool);
@@ -269,9 +331,45 @@ pub(super) fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
             effects_on: flag("effectsOn")?,
             preset: text("preset").and_then(Preset::parse),
             amount: number("amount")? as f32,
+            singing: singing_from_json(value),
+            reverb: reverb_from_json(value),
         }
         .normalized(),
     )
+}
+
+fn singing_from_json(value: &serde_json::Value) -> Singing {
+    let d = Singing::default();
+    let number = |key: &str, default: f32| {
+        value
+            .pointer(&format!("/singing/{key}"))
+            .and_then(serde_json::Value::as_f64)
+            .map_or(default, |n| n as f32)
+    };
+    Singing {
+        low_cut_hz: number("lowCutHz", d.low_cut_hz),
+        dynamics: number("dynamics", d.dynamics),
+        brightness_db: number("brightnessDb", d.brightness_db),
+    }
+}
+
+fn reverb_from_json(value: &serde_json::Value) -> Reverb {
+    let d = Reverb::default();
+    let number = |key: &str, default: f32| {
+        value
+            .pointer(&format!("/reverb/{key}"))
+            .and_then(serde_json::Value::as_f64)
+            .map_or(default, |n| n as f32)
+    };
+    Reverb {
+        enabled: value
+            .pointer("/reverb/enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(d.enabled),
+        mix: number("mix", d.mix),
+        decay_seconds: number("decaySeconds", d.decay_seconds),
+        damping: number("damping", d.damping),
+    }
 }
 
 /// エンジンの測定の状態を画面の形にする。知らない状態は読めないものとする。
@@ -308,10 +406,24 @@ mod tests {
             strength: 0.8,
             voice_guard: false,
             effects_on: true,
-            preset: Some(Preset::Warm),
+            preset: Some(Preset::Singing),
             amount: 0.5,
+            singing: Singing {
+                low_cut_hz: 100.0,
+                dynamics: 0.5,
+                brightness_db: -1.0,
+            },
+            reverb: Reverb {
+                enabled: true,
+                mix: 0.1,
+                decay_seconds: 2.0,
+                damping: 0.25,
+            },
         };
         assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));
+        let mut old = sound_to_json(sound);
+        old.as_object_mut().unwrap().remove("reverb");
+        assert_eq!(sound_from_json(&old).unwrap().reverb, Reverb::default());
         assert_eq!(sound_from_json(&serde_json::json!({"noiseOn": true})), None);
     }
 }

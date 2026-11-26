@@ -1,4 +1,4 @@
-//! 音づくりの画面：ノイズ低減と「声を整える」。
+//! 音づくりの画面：ノイズ低減と「声を整える」（歌向けの3つの値を含む）と残響。
 //!
 //! エンジンの統計（文字列と 0〜1 の値）を読み、画面が選べる形にする。保存と読み直しも同じ形を使う。
 
@@ -33,7 +33,7 @@ impl NoiseMode {
     }
 }
 
-/// 「声を整える」の種類。歌向けは専用の3つの値で調整するので、まだ GPUI 版では変えない。
+/// 「声を整える」の種類。歌向けは整え具合の代わりに [`Singing`] の3つの値で調整する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Preset {
     Broadcast,
@@ -75,6 +75,100 @@ pub enum Change {
     Preset(Preset),
     /// 整え具合（0〜1）。
     Amount(f32),
+    LowCut(f32),
+    /// 音量差を整える量（0〜1）。
+    Dynamics(f32),
+    Brightness(f32),
+    ReverbOn(bool),
+    /// 響きの量（0〜0.25）。
+    ReverbMix(f32),
+    ReverbDecay(f32),
+    /// 高域の減衰（0〜1）。
+    ReverbDamping(f32),
+}
+
+/// 歌向けの3つの値（エンジンの `singing::SingingParams` と同じ範囲・既定）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Singing {
+    /// 低音の整理（Hz、40〜160）。
+    pub low_cut_hz: f32,
+    /// 音量差を整える量（0〜1）。
+    pub dynamics: f32,
+    /// 声の明るさ（dB、-3〜3）。
+    pub brightness_db: f32,
+}
+
+impl Default for Singing {
+    fn default() -> Self {
+        Self {
+            low_cut_hz: 80.0,
+            dynamics: 0.35,
+            brightness_db: 0.0,
+        }
+    }
+}
+
+/// 残響（「声を整える」の ON/OFF とは別に使える。エンジンの `reverb::ReverbParams` と同じ範囲・既定）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Reverb {
+    pub enabled: bool,
+    /// 響きの量（0〜0.25）。
+    pub mix: f32,
+    /// 残響の長さ（秒、0.3〜2.5）。
+    pub decay_seconds: f32,
+    /// 高域の減衰（0〜1）。
+    pub damping: f32,
+}
+
+impl Default for Reverb {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mix: 0.08,
+            decay_seconds: 1.2,
+            damping: 0.5,
+        }
+    }
+}
+
+/// スライダーの範囲と刻み（画面の単位。百分率のものは 0〜1 の値の 100 倍）。
+pub const LOW_CUT_HZ: (f32, f32, f32) = (40.0, 160.0, 1.0);
+pub const DYNAMICS_PERCENT: (f32, f32, f32) = (0.0, 100.0, 1.0);
+pub const BRIGHTNESS_DB: (f32, f32, f32) = (-3.0, 3.0, 0.1);
+pub const MIX_PERCENT: (f32, f32, f32) = (0.0, 25.0, 1.0);
+pub const DECAY_SECONDS: (f32, f32, f32) = (0.3, 2.5, 0.1);
+pub const DAMPING_PERCENT: (f32, f32, f32) = (0.0, 100.0, 1.0);
+
+/// 範囲に収める。数でなければ既定にする（エンジンは範囲外を断る）。
+fn within(value: f32, (min, max): (f32, f32), default: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(min, max)
+    } else {
+        default
+    }
+}
+
+impl Singing {
+    fn normalized(self) -> Self {
+        let d = Self::default();
+        Self {
+            low_cut_hz: within(self.low_cut_hz, (40.0, 160.0), d.low_cut_hz),
+            dynamics: within(self.dynamics, (0.0, 1.0), d.dynamics),
+            brightness_db: within(self.brightness_db, (-3.0, 3.0), d.brightness_db),
+        }
+    }
+}
+
+impl Reverb {
+    fn normalized(self) -> Self {
+        let d = Self::default();
+        Self {
+            enabled: self.enabled,
+            mix: within(self.mix, (0.0, 0.25), d.mix),
+            decay_seconds: within(self.decay_seconds, (0.3, 2.5), d.decay_seconds),
+            damping: within(self.damping, (0.0, 1.0), d.damping),
+        }
+    }
 }
 
 /// 抑制の強さの既定（Tauri 版と同じ 80%）。統計が 0 以下（まだ設定していない）のときに使う。
@@ -91,8 +185,11 @@ pub struct Sound {
     pub voice_guard: bool,
     pub effects_on: bool,
     pub preset: Option<Preset>,
-    /// 整え具合（0〜1）。
+    /// 整え具合（0〜1）。歌向けでは使わない。
     pub amount: f32,
+    /// 歌向けの値。歌向けでないときも、次に歌向けを選んだときのために持つ。
+    pub singing: Singing,
+    pub reverb: Reverb,
 }
 
 impl Sound {
@@ -109,14 +206,10 @@ impl Sound {
             } else {
                 0.0
             },
+            singing: self.singing.normalized(),
+            reverb: self.reverb.normalized(),
             ..self
         }
-    }
-
-    /// 画面で「声を整える」を変えられるか。歌向けは、今までの版で調整する。
-    /// 種類が分からない（音声をまだ始めていない）ときは変えられる。種類を選べば送れる。
-    pub fn effects_editable(&self) -> bool {
-        self.preset != Some(Preset::Singing)
     }
 
     /// 画面の1つの操作を重ねる。画面が持つ古い値で、ほかの区画を上書きしないため。
@@ -144,7 +237,40 @@ impl Sound {
                 ..self
             },
             Change::Amount(amount) => Self { amount, ..self }.normalized(),
+            Change::LowCut(low_cut_hz) => self.singing_with(Singing {
+                low_cut_hz,
+                ..self.singing
+            }),
+            Change::Dynamics(dynamics) => self.singing_with(Singing {
+                dynamics,
+                ..self.singing
+            }),
+            Change::Brightness(brightness_db) => self.singing_with(Singing {
+                brightness_db,
+                ..self.singing
+            }),
+            Change::ReverbOn(enabled) => self.reverb_with(Reverb {
+                enabled,
+                ..self.reverb
+            }),
+            Change::ReverbMix(mix) => self.reverb_with(Reverb { mix, ..self.reverb }),
+            Change::ReverbDecay(decay_seconds) => self.reverb_with(Reverb {
+                decay_seconds,
+                ..self.reverb
+            }),
+            Change::ReverbDamping(damping) => self.reverb_with(Reverb {
+                damping,
+                ..self.reverb
+            }),
         }
+    }
+
+    fn singing_with(self, singing: Singing) -> Self {
+        Self { singing, ..self }.normalized()
+    }
+
+    fn reverb_with(self, reverb: Reverb) -> Self {
+        Self { reverb, ..self }.normalized()
     }
 
     /// ノイズ低減の設定が `other` と違う（エンジンへ送り直す）。
@@ -162,10 +288,23 @@ impl Sound {
         )
     }
 
-    /// 「声を整える」の設定が `other` と違う。
+    /// 「声を整える」か残響の設定が `other` と違う（エンジンへは同じ命令で送る）。
+    /// 歌向けの値は、歌向けを選んでいるときだけ比べる（ほかの種類では使わない）。
     pub fn effects_differ(&self, other: &Sound) -> bool {
-        (self.effects_on, self.preset, self.amount)
-            != (other.effects_on, other.preset, other.amount)
+        let singing = |s: &Sound| (s.preset == Some(Preset::Singing)).then_some(s.singing);
+        (
+            self.effects_on,
+            self.preset,
+            self.amount,
+            singing(self),
+            self.reverb,
+        ) != (
+            other.effects_on,
+            other.preset,
+            other.amount,
+            singing(other),
+            other.reverb,
+        )
     }
 }
 
@@ -192,6 +331,8 @@ mod tests {
             effects_on: false,
             preset: Some(Preset::Broadcast),
             amount: 0.7,
+            singing: Singing::default(),
+            reverb: Reverb::default(),
         }
     }
 
@@ -238,16 +379,21 @@ mod tests {
     }
 
     #[test]
-    fn only_singing_is_not_editable_here() {
-        let mut sound = Sound {
-            preset: Some(Preset::Singing),
-            ..sound()
-        };
-        assert!(!sound.effects_editable());
-        sound.preset = None;
-        assert!(sound.effects_editable());
-        sound.preset = Some(Preset::Bright);
-        assert!(sound.effects_editable());
+    fn singing_values_count_only_while_singing_and_stay_in_range() {
+        let low = sound().with(Change::LowCut(500.0));
+        assert_eq!(low.singing.low_cut_hz, 160.0);
+        assert!(!low.effects_differ(&sound()));
+        let singing = sound().with(Change::Preset(Preset::Singing));
+        assert!(singing.with(Change::Dynamics(0.5)).effects_differ(&singing));
+        assert_eq!(
+            singing.with(Change::Brightness(f32::NAN)).singing,
+            Singing::default()
+        );
+        let wet = sound()
+            .with(Change::ReverbOn(true))
+            .with(Change::ReverbMix(1.0));
+        assert!(wet.reverb.enabled && wet.reverb.mix == 0.25);
+        assert!(wet.effects_differ(&sound()) && !wet.noise_differs(&sound()));
     }
 
     #[test]

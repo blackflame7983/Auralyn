@@ -183,6 +183,21 @@ impl MainView {
             this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
         })
         .detach();
+        for (slider, change) in [
+            (&sound.low_cut, Change::LowCut as fn(f32) -> Change),
+            (&sound.dynamics, |v| Change::Dynamics(v / 100.0)),
+            (&sound.brightness, Change::Brightness),
+            (&sound.reverb_mix, |v| Change::ReverbMix(v / 100.0)),
+            (&sound.reverb_decay, Change::ReverbDecay),
+            (&sound.reverb_damping, |v| Change::ReverbDamping(v / 100.0)),
+        ] {
+            cx.subscribe(slider, move |this, _, event: &SliderEvent, _| {
+                if let SliderEvent::Release(value) = event {
+                    this.send(Command::SetSound(change(value.end())));
+                }
+            })
+            .detach();
+        }
         for (limit, panel) in [
             (Limit::Sample, &sound.peak),
             (Limit::TruePeak, &sound.true_peak),
