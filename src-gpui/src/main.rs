@@ -80,12 +80,21 @@ fn main() {
         .or_else(|| locale_file::load(&args.config_dir))
         .unwrap_or(Lang::Ja);
     let config_dir = args.config_dir.clone();
-    let theme = theme_file::load(&args.config_dir).unwrap_or(auralyn_core::design::Theme::Dark);
+    let theme = theme_file::load(&args.config_dir);
     let engine = engine::Engine::start(args.config_dir);
     gpui_kit::application()
         .with_assets(assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            // 保存が無ければ Tauri 版と同じく Windows の明暗に合わせる（ライトならライト、ほかはオーロラ）。
+            let theme = theme.unwrap_or(match cx.window_appearance() {
+                WindowAppearance::Light | WindowAppearance::VibrantLight => {
+                    auralyn_core::design::Theme::Light
+                }
+                WindowAppearance::Dark | WindowAppearance::VibrantDark => {
+                    auralyn_core::design::Theme::Dark
+                }
+            });
             color::set_theme(theme, cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
