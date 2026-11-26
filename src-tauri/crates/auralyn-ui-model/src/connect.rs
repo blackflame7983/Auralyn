@@ -31,6 +31,50 @@ pub struct Saved {
     pub buffer_size: Option<u32>,
     /// ASIO のチャンネルの割り当て。
     pub routing: Option<Routing>,
+    /// 入力の使い道。
+    pub purpose: Purpose,
+    /// アプリの音声を入力にしていたら、そのアプリ。
+    pub app: Option<AppSource>,
+}
+
+/// 入力の使い道（Tauri 版と同じ2つ）。音楽なら声向けの処理を省く。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Purpose {
+    #[default]
+    Voice,
+    Music,
+}
+
+impl Purpose {
+    pub const ALL: [Purpose; 2] = [Purpose::Voice, Purpose::Music];
+}
+
+/// 入力にするアプリの音声。`route` はアプリが音を出している出力先（原音の出力先）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppSource {
+    pub key: String,
+    pub name: String,
+    pub route: String,
+}
+
+/// 開始に使う入力。アプリの `candidate_id` は一覧を読み直すまで有効。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Input {
+    Device(Device),
+    App {
+        candidate_id: String,
+        source: AppSource,
+    },
+}
+
+/// アプリの音声を選べる接続方式（Tauri 版と同じく WASAPI だけ）。
+pub fn allows_app(host: &str) -> bool {
+    host.eq_ignore_ascii_case("WASAPI")
+}
+
+/// 最初にアプリの音声を選んでおくか。同じ接続方式でアプリを保存していたとき。
+pub fn starts_with_app(saved: Option<&Saved>, host: &str) -> bool {
+    saved.is_some_and(|s| s.app.is_some() && s.host == host) && allows_app(host)
 }
 
 /// ASIO の出力の返し方（Tauri 版 `OutputRouting` と同じ3つ）。
@@ -413,6 +457,25 @@ mod tests {
         assert_eq!(value_at(&values, 2), Some(512));
         assert_eq!(value_at(&values, 3), None);
         assert!(uses_system_rate("WASAPI") && !uses_system_rate("ASIO"));
+    }
+
+    #[test]
+    fn app_audio_is_offered_only_on_wasapi_and_restored_on_the_same_host() {
+        assert!(allows_app("WASAPI") && !allows_app("ASIO"));
+        let saved = Saved {
+            host: "WASAPI".into(),
+            app: Some(AppSource {
+                key: "k".into(),
+                name: "player.exe".into(),
+                route: "r".into(),
+            }),
+            ..Saved::default()
+        };
+        assert!(starts_with_app(Some(&saved), "WASAPI"));
+        assert!(!starts_with_app(Some(&saved), "ASIO"));
+        let device = Saved { app: None, ..saved };
+        assert!(!starts_with_app(Some(&device), "WASAPI"));
+        assert!(!starts_with_app(None, "WASAPI"));
     }
 
     #[test]

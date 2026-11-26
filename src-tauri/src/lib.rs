@@ -41,6 +41,40 @@ pub mod mixing {
         Ok(serde_json::from_value(listed)?)
     }
 }
+/// 入力の元（マイク・仮想ケーブルか、アプリの音声か）を選んで開始する（Tauri 版の `start_audio` と同じ手順）。
+pub mod input {
+    pub use crate::input_source::{Config, ProcessConfig, Purpose, Request};
+
+    /// 開始に使う値。アプリの音声のときは入力の機器を渡さない。
+    pub struct Start {
+        pub host: String,
+        pub input: Option<String>,
+        pub input_id: Option<String>,
+        pub output: Option<String>,
+        pub output_id: Option<String>,
+        pub buffer_size: Option<u32>,
+        pub sample_rate: Option<u32>,
+        pub routing: Option<crate::ipc::ChannelRouting>,
+        pub request: Request,
+    }
+
+    /// 入力の元を確かめて（アプリの候補は一覧を読み直すまで有効）開始する。
+    pub fn start(host: &mut crate::audio::AudioHost, start: Start) -> anyhow::Result<()> {
+        let source = host.resolve_input_source(Some(start.request))?;
+        host.start_with_input_source(
+            Some(start.host),
+            start.input,
+            start.output,
+            start.buffer_size,
+            start.sample_rate,
+            start.input_id,
+            start.output_id,
+            start.routing,
+            source,
+        )?;
+        Ok(())
+    }
+}
 pub mod autostart;
 pub mod bundle;
 mod child_process;

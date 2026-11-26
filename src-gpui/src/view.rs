@@ -23,7 +23,7 @@ use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
 use crate::engine::{Command, Engine, Listen, MixAction, ModeAction, Notice, PostAction};
 use crate::home;
-use crate::i18n::{core, keys, Lang};
+use crate::i18n::{core, core_with, keys, Lang};
 use crate::live::LivePanel;
 use crate::locale_file;
 use crate::mix::MixPanel;
@@ -38,7 +38,7 @@ use crate::sound::SoundPage;
 use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
-use auralyn_ui_model::connect::{Device, Routing, SYSTEM_ROUTING};
+use auralyn_ui_model::connect::{Device, Input, Purpose, Routing, SYSTEM_ROUTING};
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
@@ -189,6 +189,28 @@ impl MainView {
             window,
             |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
                 this.connect.fill(window, cx);
+                cx.notify();
+            },
+        )
+        .detach();
+        cx.subscribe_in(
+            &connect.source,
+            window,
+            |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
+                this.connect.devices_changed(window, cx);
+                // アプリの音声を選んだら、一覧をすぐ読む（Tauri 版と同じ）。
+                if this.connect.uses_app(cx) {
+                    this.send(Command::Mix(MixAction::Apps));
+                }
+                cx.notify();
+            },
+        )
+        .detach();
+        cx.subscribe_in(
+            &connect.app,
+            window,
+            |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
+                this.connect.app_changed(window, cx);
                 cx.notify();
             },
         )
@@ -419,6 +441,14 @@ impl MainView {
                 self.reread_mix();
                 self.message = Some(message);
             }
+            Notice::AppNotResumed(name) => {
+                self.advance(SessionEvent::StartFailed);
+                self.message = Some(core_with(
+                    self.lang,
+                    keys::APP_RESELECT_HELP,
+                    &[("name", &name)],
+                ));
+            }
             // 開始・停止に失敗したときも、ホストがミックス後の VST を止めて捨てていることがあるので読み直す。
             Notice::NotStarted(message) => {
                 self.fail(SessionEvent::StartFailed, keys::START_FAILED, message);
@@ -486,7 +516,11 @@ impl MainView {
             Notice::ModesKeepsReverb => self.modes.keeps_reverb(),
             Notice::PostMix(result) => self.post.set(result, window, cx, Self::send),
             Notice::PostMixDone(result) => self.post.done(result),
-            Notice::MixApps(result) => self.mix.set_apps(result, self.lang, window, cx),
+            Notice::MixApps(result) => {
+                // 配信ミックスのオケと接続の画面のアプリ入力は、同じ一覧（候補の id は読み直すまで有効）を使う。
+                self.connect.set_apps(result.clone(), window, cx);
+                self.mix.set_apps(result, self.lang, window, cx);
+            }
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
             Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
@@ -604,23 +638,23 @@ impl MainView {
         self.engine.send(command);
     }
 
-    /// 接続の画面で選んだ機器で開始する。
+    /// 接続の画面で選んだ入力・出力先で開始する。
     fn start_chosen(&mut self, cx: &App) {
-        let Some((input, output)) = self.connect.chosen(cx) else {
+        let Some((input, purpose, output)) = self.connect.start_choice(cx) else {
             return;
         };
-        let (sample_rate, buffer_size) = self.connect.values(cx);
+        let values = self.connect.values(cx);
         let routing = self.connect.routing(cx);
-        self.start_with(input, output, sample_rate, buffer_size, routing);
+        self.start_with(input, purpose, output, values, routing);
     }
 
-    /// 選んだ機器で開始する。押せるのは止まっているときだけ。
+    /// 選んだ入力・出力先で開始する。`values` は周波数とバッファ（`None` は自動）。押せるのは止まっているときだけ。
     fn start_with(
         &mut self,
-        input: Device,
+        input: Input,
+        purpose: Purpose,
         output: Device,
-        sample_rate: Option<u32>,
-        buffer_size: Option<u32>,
+        (sample_rate, buffer_size): (Option<u32>, Option<u32>),
         routing: Routing,
     ) {
         if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
@@ -630,6 +664,7 @@ impl MainView {
         self.message = None;
         self.engine.send(Command::StartWith {
             input,
+            purpose,
             output,
             sample_rate,
             buffer_size,
@@ -835,10 +870,10 @@ impl Render for MainView {
                                                             this.setup.chosen(cx)
                                                         {
                                                             this.start_with(
-                                                                input,
+                                                                Input::Device(input),
+                                                                Purpose::Voice,
                                                                 output,
-                                                                None,
-                                                                None,
+                                                                (None, None),
                                                                 SYSTEM_ROUTING,
                                                             );
                                                         }
@@ -935,9 +970,18 @@ impl Render for MainView {
                                         self.phase,
                                         lang,
                                         cx,
+                                        {
+                                            let entity = entity.clone();
+                                            move |_, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.start_chosen(cx);
+                                                    cx.notify();
+                                                })
+                                            }
+                                        },
                                         move |_, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.start_chosen(cx);
+                                                this.send(Command::Mix(MixAction::Apps));
                                                 cx.notify();
                                             })
                                         },
