@@ -513,6 +513,10 @@ impl MainView {
                 self.recovery = None;
                 self.prep.audio_changed();
                 self.advance(SessionEvent::Started);
+                // 始めた接続を使い道の記録に残したので、接続の画面の切り替え先を読み直す。
+                if self.page == Page::Connect {
+                    self.send(Command::ListDevices);
+                }
                 self.reread_peak();
                 self.reread_mix();
             }
@@ -1190,6 +1194,10 @@ impl Render for MainView {
                                         move |window, cx| {
                                             entity.update(cx, |this, cx| {
                                                 this.connect.switch_purpose(window, cx);
+                                                // 選択を替えても選んだ通知は出ないので、アプリの一覧はここで読む。
+                                                if this.connect.uses_app(cx) {
+                                                    this.send(Command::Mix(MixAction::Apps));
+                                                }
                                                 cx.notify();
                                             })
                                         },

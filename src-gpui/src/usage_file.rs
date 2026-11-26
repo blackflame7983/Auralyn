@@ -23,16 +23,18 @@ pub fn purpose_of(config: &ActiveAudioConfig) -> Purpose {
     }
 }
 
-fn read(config_dir: &Path) -> serde_json::Map<String, serde_json::Value> {
-    std::fs::read_to_string(config_dir.join(FILE))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+/// まだ無ければ空。読めなければ `Err`（上書きして、もう一方の記録を消さないように）。
+fn read(config_dir: &Path) -> anyhow::Result<serde_json::Map<String, serde_json::Value>> {
+    match std::fs::read_to_string(config_dir.join(FILE)) {
+        Ok(text) => Ok(serde_json::from_str(&text)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(serde_json::Map::new()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// 残した接続。読めないものは飛ばす。
 pub fn load(config_dir: &Path) -> Vec<ActiveAudioConfig> {
-    parse(read(config_dir))
+    read(config_dir).map(parse).unwrap_or_default()
 }
 
 fn parse(map: serde_json::Map<String, serde_json::Value>) -> Vec<ActiveAudioConfig> {
@@ -48,7 +50,7 @@ fn parse(map: serde_json::Map<String, serde_json::Value>) -> Vec<ActiveAudioConf
 
 /// 始められた接続を、その入力の使い道の記録として残す。
 pub fn remember(config_dir: &Path, config: &ActiveAudioConfig) -> anyhow::Result<()> {
-    let mut map = read(config_dir);
+    let mut map = read(config_dir)?;
     map.insert(
         key(purpose_of(config)).into(),
         serde_json::to_value(config)?,
