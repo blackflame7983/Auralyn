@@ -9,7 +9,7 @@ use crate::meter::State;
 pub const SOURCE_HINT_AFTER: Duration = Duration::from_secs(5);
 
 /// 名前の末尾の「 [48 kHz]」のような周波数の札を除く（札のあとに空白があれば除かない。Tauri 版と同じ）。
-fn without_rate(name: &str) -> &str {
+pub fn without_rate(name: &str) -> &str {
     let Some(body) = name
         .len()
         .checked_sub(4)
