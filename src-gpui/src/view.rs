@@ -918,6 +918,7 @@ impl MainView {
             return;
         }
         self.lang = lang;
+        gpui_kit::component::set_locale(locale_file::code(lang));
         self.desktop.set_lang(lang);
         self.mix.relabel(lang, window, cx);
         self.connect.set_lang(lang, window, cx);

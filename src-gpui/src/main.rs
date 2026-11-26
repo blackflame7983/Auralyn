@@ -100,6 +100,8 @@ fn main() {
         .with_assets(assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            // 部品に組み込みの文言（選ぶ欄の「選択してください」など）も同じ言語にする。
+            gpui_kit::component::set_locale(locale_file::code(lang));
             // 保存が無ければ Tauri 版と同じく Windows の明暗に合わせる（ライトならライト、ほかはオーロラ）。
             let theme = theme.unwrap_or(match cx.window_appearance() {
                 WindowAppearance::Light | WindowAppearance::VibrantLight => {

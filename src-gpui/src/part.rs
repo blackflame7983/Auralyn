@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use gpui_kit::component::button::{Button, ButtonGroup};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::Selectable as _;
 use gpui_kit::*;
 
@@ -114,7 +114,7 @@ fn picked<T, E>(answer: Result<anyhow::Result<Option<T>>, E>) -> Option<T> {
     }
 }
 
-/// どれか1つを選ぶボタンの組。今の値が無い（分からない）ときは、どれも選ばない。
+/// どれか1つを選ぶボタンの組（幅が足りなければ折り返す）。今の値が無い（分からない）ときは、どれも選ばない。
 pub fn choices<T: Copy + PartialEq + 'static>(
     id: impl Into<SharedString>,
     lang: Lang,
@@ -123,17 +123,18 @@ pub fn choices<T: Copy + PartialEq + 'static>(
     on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let id: SharedString = id.into();
-    let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
-    ButtonGroup::new(id.clone())
-        .outline()
+    let on_pick = Rc::new(on_pick);
+    div()
+        .flex()
+        .flex_wrap()
+        .gap_1()
         .children(options.iter().enumerate().map(|(index, (value, label))| {
+            let value = *value;
+            let on_pick = on_pick.clone();
             Button::new(SharedString::from(format!("{id}-{index}")))
+                .outline()
                 .label(core(lang, label))
-                .selected(current == Some(*value))
+                .selected(current == Some(value))
+                .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
-        .on_click(move |clicked, window, cx| {
-            if let Some(value) = clicked.first().and_then(|index| values.get(*index)) {
-                on_pick(*value, window, cx);
-            }
-        })
 }

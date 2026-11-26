@@ -92,6 +92,34 @@ pub mod obs_timing {
         crate::obs_setup::timing_targets(state, &conditions.0).await
     }
 }
+/// GPUI 版から機器の一覧を、子の走査を待たずに取る口（Tauri 版の `enumerate_devices_async` と同じ begin/poll）。
+pub mod devices {
+    use crate::audio::{AudioDeviceList, AudioHost, DeviceScanStart, DeviceScanTicket};
+
+    /// 走査中の受付票。
+    pub struct Scan(DeviceScanTicket);
+
+    pub enum Start {
+        Ready(AudioDeviceList),
+        Pending(Scan),
+    }
+
+    pub fn begin(host: &mut AudioHost) -> anyhow::Result<Start> {
+        Ok(match host.begin_device_scan(false)? {
+            DeviceScanStart::Cached(list) => Start::Ready(list),
+            DeviceScanStart::Pending(ticket) => Start::Pending(Scan(ticket)),
+        })
+    }
+
+    /// 終わっていなければ `None`。
+    pub fn poll(host: &mut AudioHost, scan: &Scan) -> anyhow::Result<Option<AudioDeviceList>> {
+        host.poll_device_scan(&scan.0)
+    }
+
+    pub fn cancel(host: &mut AudioHost, scan: &Scan) -> anyhow::Result<()> {
+        host.cancel_device_scan(&scan.0)
+    }
+}
 pub mod autostart;
 pub mod bundle;
 mod child_process;
