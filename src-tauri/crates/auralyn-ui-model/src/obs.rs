@@ -26,10 +26,20 @@ impl State {
 }
 
 /// 接続の要求。`password` が `None` なら保存したパスワードを使う。`Some("")` は認証なし。
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Request {
     pub target: Target,
     pub password: Option<String>,
+}
+
+/// パスワードはログへ出さない。
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Request")
+            .field("target", &self.target)
+            .field("password", &self.password.as_ref().map(|_| "<hidden>"))
+            .finish()
+    }
 }
 
 pub fn port(text: &str) -> Option<u16> {
@@ -101,6 +111,12 @@ mod tests {
     fn blank_hosts_and_bad_ports_make_no_request() {
         assert_eq!(request("  ", "4455", "", false, None), None);
         assert_eq!(request("localhost", "0", "", false, None), None);
+    }
+
+    #[test]
+    fn debug_output_hides_the_password() {
+        let request = request("localhost", "4455", "OBS_SECRET_CANARY", false, None).unwrap();
+        assert!(!format!("{request:?}").contains("OBS_SECRET_CANARY"));
     }
 
     #[test]

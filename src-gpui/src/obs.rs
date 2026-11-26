@@ -26,8 +26,10 @@ pub struct ObsPanel {
     port: Entity<InputState>,
     password: Entity<InputState>,
     connected: Option<bool>,
-    /// 送った接続の命令のうち、まだ結果の届いていない数。
-    connecting: usize,
+    /// 接続の命令を送り、まだ結果が届いていない（届くまで接続のボタンは押せない）。
+    connecting: bool,
+    /// OBS を扱うスレッドを動かせない理由。画面を開き直しても消さない。
+    unavailable: Option<String>,
     saved: Result<Option<Target>, String>,
     use_saved: Rc<Cell<bool>>,
     /// 接続先の欄を、保存した接続先（無ければ既定）で埋めたか。埋めるのは最初の1回だけ。
@@ -44,7 +46,8 @@ impl ObsPanel {
             port: cx.new(|cx| InputState::new(window, cx)),
             password: cx.new(|cx| InputState::new(window, cx).masked(true)),
             connected: None,
-            connecting: 0,
+            connecting: false,
+            unavailable: None,
             saved: Ok(None),
             use_saved: Rc::new(Cell::new(true)),
             filled: false,
@@ -61,7 +64,7 @@ impl ObsPanel {
     pub fn order(&mut self, order: Order) {
         self.error = None;
         if matches!(order, Order::Connect(_)) {
-            self.connecting += 1;
+            self.connecting = true;
         }
         self.link.send(order);
     }
@@ -78,7 +81,7 @@ impl ObsPanel {
                     after_connect,
                 } => {
                     if after_connect {
-                        self.connecting = self.connecting.saturating_sub(1);
+                        self.connecting = false;
                         if connected {
                             self.password
                                 .update(cx, |state, cx| state.set_value("", window, cx));
@@ -90,6 +93,7 @@ impl ObsPanel {
                 }
                 Reply::Failed { connect, message } => self.error = Some((connect, message)),
                 Reply::Lost => self.link.send(Order::Read),
+                Reply::Unavailable(message) => self.unavailable = Some(message),
             }
         }
         any
@@ -111,7 +115,7 @@ impl ObsPanel {
 
     fn state(&self) -> State {
         match self.connected {
-            _ if self.connecting > 0 => State::Connecting,
+            _ if self.connecting => State::Connecting,
             None => State::Checking,
             Some(true) => State::Connected,
             Some(false) => State::Disconnected,
@@ -249,6 +253,9 @@ impl ObsPanel {
                 )
                 .when(state == State::Connected, |this| {
                     this.child(note(core(lang, keys::OBS_EDIT_HINT)))
+                })
+                .when_some(self.unavailable.as_ref(), |this, message| {
+                    this.child(note(format!("{} {message}", core(lang, keys::OBS_FAILED))))
                 })
                 .when_some(self.error.as_ref(), |this, (connect, message)| {
                     this.child(note(if *connect {

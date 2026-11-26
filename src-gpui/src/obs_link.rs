@@ -1,7 +1,8 @@
 //! OBS との接続を、画面とは別のスレッドで扱う。接続は Tauri 版と同じ `vst_host_lib::obs`（obws と tokio）を使い、
 //! パスワードは同じ `obs-credentials.dpapi`（Windows のユーザー単位で保護）へ保存する。
 //!
-//! 命令は1本のスレッドが受付順に実行する（接続と切断が入れ替わらない）。接続が切れたら `Reply::Lost` を送る。
+//! 命令は1本のスレッドが受付順に実行する（接続と切断が入れ替わらない）。OBS 側から切れたら `Reply::Lost` を送る
+//! （自分で切断したときは送らない）。
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +10,8 @@ use auralyn_ui_model::obs::{Request, Target};
 use vst_host_lib::obs::{self, ObsState};
 use vst_host_lib::obs_credentials::{self, Endpoint};
 
-#[derive(Debug, Clone)]
+/// パスワードを含むので Debug は付けない（ログへ出さない）。
+#[derive(Clone)]
 pub enum Order {
     /// 接続しているかと、保存した接続先を読む。
     Read,
@@ -30,8 +32,10 @@ pub enum Reply {
     },
     /// 命令が失敗した。状態はこのあとの `State` で届く。
     Failed { connect: bool, message: String },
-    /// OBS との接続が切れた（OBS を閉じたときや、切断したとき）。
+    /// OBS 側から接続が切れた（OBS を閉じたときなど）。
     Lost,
+    /// OBS を扱うスレッドを動かせない。以後の命令には返事が来ない。
+    Unavailable(String),
 }
 
 pub struct ObsLink {
@@ -44,11 +48,12 @@ impl ObsLink {
         let (orders, inbox) = flume::unbounded();
         let (outbox, replies) = flume::unbounded();
         let file = obs_credentials::file_in(config_dir);
+        let failed = outbox.clone();
         let spawned = std::thread::Builder::new()
             .name("obs".into())
             .spawn(move || run(file, inbox, outbox));
         if let Err(error) = spawned {
-            log::error!("OBS のスレッドを作れません: {error}");
+            let _ = failed.send(Reply::Unavailable(error.to_string()));
         }
         Self { orders, replies }
     }
@@ -67,10 +72,7 @@ fn run(file: PathBuf, inbox: flume::Receiver<Order>, outbox: flume::Sender<Reply
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            let _ = outbox.send(Reply::Failed {
-                connect: false,
-                message: error.to_string(),
-            });
+            let _ = outbox.send(Reply::Unavailable(error.to_string()));
             return;
         }
     };
