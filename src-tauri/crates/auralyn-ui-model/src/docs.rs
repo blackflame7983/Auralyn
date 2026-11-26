@@ -51,6 +51,9 @@ impl Guide {
 /// ドキュメントの入口（はじめに）。
 pub const INDEX: &str = "index";
 
+/// 外観（テーマ）の説明。`links.json` の help.appearance と同じ。
+pub const APPEARANCE: &str = "settings#appearance";
+
 /// 行き先（ページ名#印）の URL。英語は `/en/` の下。利用者の情報は付けない。
 pub fn url(target: &str, english: bool) -> String {
     let (page, anchor) = target.split_once('#').unwrap_or((target, ""));
@@ -135,7 +138,11 @@ mod tests {
             let target = trouble.target();
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
-        for target in Guide::ALL.map(Guide::target) {
+        for target in Guide::ALL
+            .map(Guide::target)
+            .into_iter()
+            .chain([APPEARANCE])
+        {
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
         for term in glossary(include_str!("../../../../user-docs/ja/glossary.md")) {

@@ -25,6 +25,7 @@ mod setups;
 mod shell;
 mod sound;
 mod store;
+mod theme_file;
 mod view;
 mod voice;
 mod vst;
@@ -79,12 +80,13 @@ fn main() {
         .or_else(|| locale_file::load(&args.config_dir))
         .unwrap_or(Lang::Ja);
     let config_dir = args.config_dir.clone();
+    let theme = theme_file::load(&args.config_dir).unwrap_or(auralyn_core::design::Theme::Dark);
     let engine = engine::Engine::start(args.config_dir);
     gpui_kit::application()
         .with_assets(assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
-            gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
+            color::set_theme(theme, cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,

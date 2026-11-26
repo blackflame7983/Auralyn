@@ -1,11 +1,40 @@
-//! 色は `design/tokens.json`（`auralyn-core` が埋め込んで読む）のダークテーマ「オーロラ（標準）」から取る。値をここで書かない。
+//! 色は `design/tokens.json`（`auralyn-core` が埋め込んで読む）の、選んでいるテーマから取る。値をここで書かない。
+
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use auralyn_core::design::{tokens, Theme};
-use gpui_kit::{linear_color_stop, linear_gradient, rgb, Background, Hsla};
+use gpui_kit::{linear_color_stop, linear_gradient, rgb, App, Background, Hsla};
+
+/// 選んでいるテーマ（`Theme::ALL` の位置）。描くたびに読むので、変えたら窓を描き直す。
+static THEME: AtomicU8 = AtomicU8::new(1);
+
+pub fn theme() -> Theme {
+    Theme::ALL[usize::from(THEME.load(Ordering::Relaxed))]
+}
+
+fn store(theme: Theme) {
+    let index = match theme {
+        Theme::Light => 0,
+        Theme::Dark => 1,
+        Theme::Gaming => 2,
+    };
+    THEME.store(index, Ordering::Relaxed);
+}
+
+/// テーマを替える。部品（gpui-kit）の明暗も合わせ、窓を描き直す。ゲーミングは暗い地。
+pub fn set_theme(theme: Theme, cx: &mut App) {
+    store(theme);
+    let mode = match theme {
+        Theme::Light => gpui_kit::component::ThemeMode::Light,
+        Theme::Dark | Theme::Gaming => gpui_kit::component::ThemeMode::Dark,
+    };
+    gpui_kit::component::Theme::change(mode, None, cx);
+    cx.refresh_windows();
+}
 
 fn token(name: &str) -> Hsla {
     let color = tokens()
-        .color(name, Theme::Dark)
+        .color(name, theme())
         .unwrap_or_else(|| panic!("design/tokens.json に色 {name} がありません"));
     rgb(u32::from_be_bytes([0, color.r, color.g, color.b])).into()
 }
@@ -75,6 +104,15 @@ pub fn radius(name: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn every_color_is_in_the_tokens_of_every_theme() {
+        for theme in auralyn_core::design::Theme::ALL {
+            super::store(theme);
+            assert_eq!(super::theme(), theme);
+            every_color_is_in_the_tokens();
+        }
+        super::store(auralyn_core::design::Theme::Dark);
+    }
+
     fn every_color_is_in_the_tokens() {
         for color in [
             super::background,

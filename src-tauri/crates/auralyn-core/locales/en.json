@@ -3695,5 +3695,7 @@
   "gpuiShell.modesRegisterNote": "Registers the voice shaping and reverb in use now. For talk, the reverb is registered as off.",
   "gpuiShell.modesSwitching": "Switching.",
   "gpuiShell.modesLinked": "Switch modes that are linked to a VST setup in the previous version.",
-  "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock with “Lock controls” on the Sound page, then try again."
+  "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock with “Lock controls” on the Sound page, then try again.",
+  "gpuiShell.themeSaveFailed": "The theme changed for this session, but could not be saved. It may reset when you reopen the app.",
+  "gpuiShell.themeNote": "Only the colors change here. The cut corners and italic headings of Gaming are only in the previous version."
 }
