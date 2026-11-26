@@ -22,6 +22,7 @@ mod obs;
 mod obs_changes;
 mod obs_link;
 mod obs_text;
+mod obs_timing;
 mod part;
 mod post_mix;
 mod recovery;

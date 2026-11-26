@@ -545,6 +545,46 @@ pub mod keys {
     pub const OBS_SETUP_UNDO_FAILED: &str = "obsSetup.undoFailed";
     pub const OBS_SETUP_FORGET_FAILED: &str = "obsSetup.forgetFailed";
     pub const OBS_SETUP_FORGET_NEXT: &str = "obsSetup.forgetNextStep";
+    pub const OBS_TIMING_TITLE: &str = "obsTiming.copy.06";
+    pub const OBS_TIMING_LEAD: &str = "obsTiming.copy.07";
+    pub const OBS_TIMING_SCOPE: &str = "obsTiming.copy.08";
+    pub const OBS_TIMING_STEP: &str = "obsTiming.copy.16";
+    pub const OBS_TIMING_COMPARE: &str = "obsTiming.copy.17";
+    pub const OBS_TIMING_VOICE_MUSIC: &str = "obsTiming.copy.18";
+    pub const OBS_TIMING_AUDIO_VIDEO: &str = "obsTiming.copy.19";
+    pub const OBS_TIMING_SEPARATE: &str = "guide.copy.149";
+    pub const OBS_TIMING_MIXED: &str = "guide.copy.150";
+    pub const OBS_TIMING_WHEN: &str = "obsTiming.copy.20";
+    pub const OBS_TIMING_AV_EARLY: &str = "obsTiming.copy.22";
+    pub const OBS_TIMING_VOICE_EARLY: &str = "obsTiming.copy.23";
+    pub const OBS_TIMING_AV_LATE: &str = "obsTiming.copy.24";
+    pub const OBS_TIMING_VOICE_LATE: &str = "obsTiming.copy.25";
+    pub const OBS_TIMING_UNKNOWN: &str = "obsTiming.copy.26";
+    pub const OBS_TIMING_DIFFERENCE: &str = "obsTiming.copy.27";
+    pub const OBS_TIMING_NOTE: &str = "obsTiming.copy.28";
+    pub const OBS_TIMING_NOTE_HINT: &str = "obsTiming.copy.29";
+    pub const OBS_TIMING_FPS: &str = "obsTiming.copy.30";
+    pub const OBS_TIMING_TRACK: &str = "obsTiming.copy.31";
+    pub const OBS_TIMING_CHECKED: &str = "obsTiming.copy.32";
+    pub const OBS_TIMING_BLOCK_MIXED: &str = "obsTiming.copy.33";
+    pub const OBS_TIMING_BLOCK_UNKNOWN: &str = "obsTiming.copy.34";
+    pub const OBS_TIMING_BLOCK_AUDIO_LATE: &str = "obsTiming.copy.35";
+    pub const OBS_TIMING_ROLE_AUDIO: &str = "obsTiming.copy.03";
+    pub const OBS_TIMING_ROLE_MUSIC: &str = "obsTiming.copy.04";
+    pub const OBS_TIMING_ROLE_VOICE: &str = "obsTiming.copy.05";
+    pub const OBS_TIMING_ROLE: &str = "obsTiming.targetRole";
+    pub const OBS_TIMING_FETCH: &str = "obsTiming.copy.36";
+    pub const OBS_TIMING_NO_TARGETS: &str = "obsTiming.copy.37";
+    pub const OBS_TIMING_TARGET: &str = "obsTiming.copy.38";
+    pub const OBS_TIMING_OUT_OF_RANGE: &str = "obsTiming.copy.40";
+    pub const OBS_TIMING_PREVIEW: &str = "obsTiming.copy.41";
+    pub const OBS_TIMING_READY: &str = "obsTiming.targetsReady";
+    pub const OBS_TIMING_UNAVAILABLE: &str = "obsTiming.targetsUnavailable";
+    pub const OBS_TIMING_SOURCE: &str = "obsTiming.sourceOption";
+    pub const OBS_TIMING_OFFSET: &str = "obsTiming.offset";
+    pub const OBS_TIMING_FAILURE: &str = "obsTiming.failure";
+    pub const OBS_TIMING_FOOTER: &str = "obsTiming.copy.53";
+    pub const OBS_TIMING_HISTORY: &str = "settings.obs.timing";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -566,7 +606,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 553] = [
+    pub const ALL: [&str; 593] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1101,6 +1141,46 @@ pub mod keys {
         VST_OP_RESUME,
         VST_OP_PROCESSING_SETUP,
         VST_OP_OTHER,
+        OBS_TIMING_TITLE,
+        OBS_TIMING_LEAD,
+        OBS_TIMING_SCOPE,
+        OBS_TIMING_STEP,
+        OBS_TIMING_COMPARE,
+        OBS_TIMING_VOICE_MUSIC,
+        OBS_TIMING_AUDIO_VIDEO,
+        OBS_TIMING_SEPARATE,
+        OBS_TIMING_MIXED,
+        OBS_TIMING_WHEN,
+        OBS_TIMING_AV_EARLY,
+        OBS_TIMING_VOICE_EARLY,
+        OBS_TIMING_AV_LATE,
+        OBS_TIMING_VOICE_LATE,
+        OBS_TIMING_UNKNOWN,
+        OBS_TIMING_DIFFERENCE,
+        OBS_TIMING_NOTE,
+        OBS_TIMING_NOTE_HINT,
+        OBS_TIMING_FPS,
+        OBS_TIMING_TRACK,
+        OBS_TIMING_CHECKED,
+        OBS_TIMING_BLOCK_MIXED,
+        OBS_TIMING_BLOCK_UNKNOWN,
+        OBS_TIMING_BLOCK_AUDIO_LATE,
+        OBS_TIMING_ROLE_AUDIO,
+        OBS_TIMING_ROLE_MUSIC,
+        OBS_TIMING_ROLE_VOICE,
+        OBS_TIMING_ROLE,
+        OBS_TIMING_FETCH,
+        OBS_TIMING_NO_TARGETS,
+        OBS_TIMING_TARGET,
+        OBS_TIMING_OUT_OF_RANGE,
+        OBS_TIMING_PREVIEW,
+        OBS_TIMING_READY,
+        OBS_TIMING_UNAVAILABLE,
+        OBS_TIMING_SOURCE,
+        OBS_TIMING_OFFSET,
+        OBS_TIMING_FAILURE,
+        OBS_TIMING_FOOTER,
+        OBS_TIMING_HISTORY,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,

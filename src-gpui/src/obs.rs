@@ -19,7 +19,8 @@ use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs_changes::Changes;
-use crate::obs_link::{ObsLink, Order, Reply, Setup};
+use crate::obs_link::{ObsLink, Order, Reply, Setup, SetupDone};
+use crate::obs_timing::TimingPanel;
 use crate::part::{card, note};
 
 /// 画面からの OBS の命令の送り口（`MainView` が受けて描き直す）。
@@ -52,17 +53,19 @@ pub struct ObsPanel {
     /// まだ連動に渡していない、最後に替わったシーン。続けて替わったら最後だけを使う。
     scene: Option<String>,
     changes: Changes,
+    timing: TimingPanel,
 }
 
 impl ObsPanel {
     pub fn new<V: 'static>(
         config_dir: &Path,
         engine: flume::WeakSender<crate::engine::Command>,
+        timing: vst_host_lib::obs_timing::Conditions,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self {
         Self {
-            link: ObsLink::start(config_dir, engine),
+            link: ObsLink::start(config_dir, engine, timing),
             host: cx.new(|cx| InputState::new(window, cx)),
             port: cx.new(|cx| InputState::new(window, cx)),
             password: cx.new(|cx| InputState::new(window, cx).masked(true)),
@@ -80,6 +83,7 @@ impl ObsPanel {
             asking: false,
             scene: None,
             changes: Changes::default(),
+            timing: TimingPanel::new(window, cx),
         }
     }
 
@@ -118,6 +122,16 @@ impl ObsPanel {
         self.error = None;
         match order {
             Order::Setup(Setup::Discard) => return self.changes.discard(),
+            // ホストは対象を読むとき、どの変更予定も捨てる。
+            Order::Setup(Setup::Targets) => {
+                self.timing.forget_targets();
+                self.changes.discard();
+                self.changes.sent();
+            }
+            Order::Setup(Setup::Timing(_)) => {
+                self.timing.asked();
+                self.changes.sent();
+            }
             Order::Setup(_) => self.changes.sent(),
             Order::Connect(_) => self.connecting = true,
             // 確かめ始めたら、前の結果はもう今のものではない（ホストも無効にする）。
@@ -134,7 +148,11 @@ impl ObsPanel {
     /// 届いた返事を反映する。何か届いたら `true`。
     pub fn poll(&mut self, window: &mut Window, cx: &mut App) -> bool {
         let replies: Vec<Reply> = self.link.replies.try_iter().collect();
-        let any = !replies.is_empty();
+        let mut any = !replies.is_empty();
+        if self.timing.take_edited() {
+            self.changes.discard_timing();
+            any = true;
+        }
         for reply in replies {
             match reply {
                 Reply::State {
@@ -157,6 +175,7 @@ impl ObsPanel {
                         self.reach = None;
                         self.reach_error = None;
                         self.changes.discard();
+                        self.timing.reset();
                         // 切断中の履歴は「この接続では元に戻せない」に変わる。
                         if self.connected == Some(true) {
                             self.order(Order::Setup(Setup::History));
@@ -174,7 +193,33 @@ impl ObsPanel {
                 }
                 Reply::Scene(scene) => self.scene = Some(scene),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
-                Reply::Setup(done) => self.changes.done(*done),
+                Reply::Targets(targets) => {
+                    self.changes.settled();
+                    // 切断のあとに届いた一覧は、もう今の接続のものではない。
+                    if self.connected == Some(true) {
+                        self.timing.set_targets(*targets);
+                    }
+                }
+                Reply::Setup(done) => {
+                    let done = *done;
+                    // OBS のオフセットが変われば、読んだ対象の「現在」はもう今の値ではない。
+                    let moved = matches!(
+                        &done,
+                        SetupDone::Applied(Ok(h)) | SetupDone::Restored(Ok(h)) if h.timing.is_some()
+                    );
+                    let stale = matches!(
+                        &done,
+                        SetupDone::Plan(Ok(plan)) if plan.timing.is_some() && !self.timing.plan_current()
+                    );
+                    self.changes.done(done);
+                    if moved {
+                        self.timing.reset();
+                    }
+                    // 頼んだあと入力を変えたなら、届いた予定は今の入力のものではない。
+                    if stale {
+                        self.changes.discard_timing();
+                    }
+                }
                 Reply::Reach(result) => {
                     self.reaching = false;
                     match result {
@@ -363,6 +408,13 @@ impl ObsPanel {
                 .when(state == State::Connected, |this| {
                     this.child(self.render_reach(lang, on.clone()))
                 })
+                .child(self.timing.render(
+                    lang,
+                    cx,
+                    state == State::Connected,
+                    self.changes.busy() || self.reaching,
+                    on.clone(),
+                ))
                 .child(
                     self.changes
                         .render(lang, state == State::Connected, self.reaching, on),
