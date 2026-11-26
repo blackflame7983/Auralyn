@@ -87,6 +87,53 @@ impl Control {
         self.changed();
     }
 
+    /// 読めていない VST を、同じ位置のまま読み直す。読めたら子の中の順を並びに合わせる。
+    pub(super) fn reload_missing(&mut self) {
+        // 子が落ちていたら、読み直し（`recover`）が読めていない枠も含めて全部読むので、それで終わり。
+        if self.exited.load(Ordering::SeqCst) {
+            return self.recover();
+        }
+        let ids: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
+        let mut reloaded = false;
+        for index in 0..self.rack.len() {
+            if self.rack[index].loaded {
+                continue;
+            }
+            let mut request = self.rack[index].request();
+            request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
+            match self.host.restore_plugin(request) {
+                Ok(plugin) => {
+                    let slot = &mut self.rack[index];
+                    slot.id = plugin.id;
+                    slot.name = plugin.name;
+                    slot.loaded = true;
+                    slot.class_id = plugin.class_id.or(slot.class_id.take());
+                    reloaded = true;
+                }
+                Err(e) => self.fail("restore_plugin", e),
+            }
+            // 読んだ VST で子が落ちたら、ここで止める（続けて読むと新しい子が起き、あとの読み直しと二重になる）。
+            // 並びは次の操作か開始のときに `recover` が読み直す。
+            if self.exited.load(Ordering::SeqCst) {
+                break;
+            }
+        }
+        self.renamed = ids;
+        if reloaded && !self.exited.load(Ordering::SeqCst) {
+            // 子は読んだ VST を末尾に足すので、並びの順へ戻す。
+            let order = self
+                .rack
+                .iter()
+                .filter(|slot| slot.loaded)
+                .map(|slot| slot.id.clone())
+                .collect();
+            if let Err(e) = self.host.reorder_plugins(order) {
+                self.fail("reorder_plugins", e);
+            }
+        }
+        self.changed();
+    }
+
     /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
     /// 並びを空から作り直すときだけ呼ぶので、仮の ID（位置）は重ならない。
     pub(super) fn restore(&mut self, mut request: RestorePluginRequest) {

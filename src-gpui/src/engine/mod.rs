@@ -66,6 +66,8 @@ pub enum Command {
     /// 並びの末尾に足す。
     AddPlugin(Candidate),
     RemovePlugin(String),
+    /// 読めていない VST を、並びの同じ位置でもう一度読む。
+    ReloadMissing,
     MovePlugin {
         id: String,
         up: bool,
@@ -638,6 +640,7 @@ impl Control {
                 return self.add(&candidate.path, candidate.class_id.as_deref())
             }
             Command::RemovePlugin(ref id) => return self.remove(id),
+            Command::ReloadMissing => return self.reload_missing(),
             Command::MovePlugin { ref id, up } => return self.shift(id, up),
             Command::SetPluginEnabled { ref id, enabled } => {
                 return self.edit(
