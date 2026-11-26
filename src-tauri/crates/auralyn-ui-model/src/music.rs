@@ -8,14 +8,13 @@ use crate::meter::State;
 /// 届かない状態がこの時間続いたときだけ出す（曲の合間の無音では出さない）。
 pub const SOURCE_HINT_AFTER: Duration = Duration::from_secs(5);
 
-/// 名前の末尾の「 [48 kHz]」のような周波数の札を除く。
+/// 名前の末尾の「 [48 kHz]」のような周波数の札を除く（札のあとに空白があれば除かない。Tauri 版と同じ）。
 fn without_rate(name: &str) -> &str {
-    let trimmed = name.trim_end();
-    let Some(body) = trimmed
+    let Some(body) = name
         .len()
         .checked_sub(4)
-        .filter(|&end| trimmed.is_char_boundary(end) && trimmed[end..].eq_ignore_ascii_case("kHz]"))
-        .map(|end| &trimmed[..end])
+        .filter(|&end| name.is_char_boundary(end) && name[end..].eq_ignore_ascii_case("kHz]"))
+        .map(|end| &name[..end])
     else {
         return name;
     };
@@ -97,6 +96,11 @@ mod tests {
             Some("CABLE-B Input")
         );
         assert_eq!(cable_playback_name("CABLE Input"), None);
+        assert_eq!(cable_playback_name("CABLE Output [48 kHz] "), None);
+        assert_eq!(
+            cable_playback_name(" CABLE Output ").as_deref(),
+            Some("CABLE Input")
+        );
         assert_eq!(cable_playback_name("CABLEOutput"), None);
         assert_eq!(cable_playback_name("Voicemeeter Out B1"), None);
         assert_eq!(cable_playback_name("CABLE Output (a) (b)"), None);
