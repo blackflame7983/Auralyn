@@ -235,8 +235,10 @@ impl Control {
     }
 
     /// `before` が `None`（起動時の読み直しなど）なら、両方の区画を送る。分からない種類は送らない。
-    /// 残響は変わったときだけ送る（送らなければエンジンは今の残響を保つ）。
+    /// 何を送るかは `Sound::effects_request`。断られなければ、送った値を「最後の値」として持つ
+    /// （エンジンが持たない値＝歌向けでないときの歌向けの値・OFF の歯擦音の量は、次に読むときこの値を使う）。
     pub(super) fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
+        let mut accepted = true;
         // 種類が分からない（エンジンが知らない名前を返した）ときは送らない。種類を「弱」に書き換えないため。
         if let Some(mode) = next
             .noise_mode
@@ -248,52 +250,48 @@ impl Control {
                 next.strength,
                 next.voice_guard,
             ) {
+                accepted = false;
                 self.fail("set_noise_control_config", e);
             }
         }
-        if before.is_none_or(|before| next.effects_differ(&before)) {
-            let preset = next.preset.map(|p| p.key().to_owned());
-            let singing = (next.preset == Some(Preset::Singing)).then_some(SingingParams {
-                low_cut_hz: next.singing.low_cut_hz,
-                dynamics: next.singing.dynamics,
-                brightness_db: next.singing.brightness_db,
+        if let Some(request) = next.effects_request(before) {
+            let preset = request.preset.map(|p| p.key().to_owned());
+            let singing = request.singing.map(|s| SingingParams {
+                low_cut_hz: s.low_cut_hz,
+                dynamics: s.dynamics,
+                brightness_db: s.brightness_db,
             });
-            let reverb = before
-                .is_none_or(|before| before.reverb != next.reverb)
-                .then_some(ReverbParams {
-                    enabled: next.reverb.enabled,
-                    mix: next.reverb.mix,
-                    decay_seconds: next.reverb.decay_seconds,
-                    damping: next.reverb.damping,
-                });
-            // 歯擦音の抑制は、変わったときだけ置き換える（置き換えなければエンジンは今の値を保つ）。
-            let result = if before.is_none_or(|before| before.deesser != next.deesser) {
-                let deesser = next.deesser.on.then_some(DeEsserParams {
-                    amount: next.deesser.amount,
-                });
-                self.host.set_built_in_effects_from_profile(
-                    next.effects_on,
+            let reverb = request.reverb.map(|r| ReverbParams {
+                enabled: r.enabled,
+                mix: r.mix,
+                decay_seconds: r.decay_seconds,
+                damping: r.damping,
+            });
+            let result = match request.deesser {
+                Some(deesser) => self.host.set_built_in_effects_from_profile(
+                    request.active,
                     preset,
-                    next.amount,
+                    request.amount,
                     singing,
                     reverb,
-                    deesser,
-                )
-            } else {
-                self.host.set_built_in_effects_with_reverb(
-                    next.effects_on,
+                    deesser.map(|amount| DeEsserParams { amount }),
+                ),
+                None => self.host.set_built_in_effects_with_reverb(
+                    request.active,
                     preset,
-                    next.amount,
+                    request.amount,
                     singing,
                     reverb,
-                )
+                ),
             };
             if let Err(e) = result {
+                accepted = false;
                 self.fail("set_built_in_effects", e);
             }
         }
-        // エンジンが持たない値（歌向けでないときの歌向けの値、OFF の歯擦音の量）は、次に読むときこの値を使う。
-        self.sound = Some(next);
+        if accepted {
+            self.sound = Some(next);
+        }
     }
 
     /// 起動したら、音を始める前に、保存した音づくりをエンジンへ送る。
@@ -438,6 +436,29 @@ fn limit_command(limit: Limit) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn defaults_match_the_engine() {
+        let singing = SingingParams::default();
+        assert_eq!(
+            Singing::default(),
+            Singing {
+                low_cut_hz: singing.low_cut_hz,
+                dynamics: singing.dynamics,
+                brightness_db: singing.brightness_db,
+            }
+        );
+        let reverb = ReverbParams::default();
+        assert_eq!(
+            Reverb::default(),
+            Reverb {
+                enabled: reverb.enabled,
+                mix: reverb.mix,
+                decay_seconds: reverb.decay_seconds,
+                damping: reverb.damping,
+            }
+        );
+    }
 
     #[test]
     fn sound_survives_the_save_file() {

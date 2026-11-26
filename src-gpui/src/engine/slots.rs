@@ -93,13 +93,11 @@ impl Control {
         format!("missing-{}", self.placeholders)
     }
 
-    /// 1つ読む（音量は画面に出せる 0〜200% にそろえる）。返すのは ID・名前・種類。
+    /// 1つ読む。返すのは ID・名前・種類。音量は並びに入れるとき（`restore`）にそろえてある。
     fn reload(
         &mut self,
-        mut request: RestorePluginRequest,
+        request: RestorePluginRequest,
     ) -> anyhow::Result<(String, String, Option<String>)> {
-        // 手で書き換えた保存でも、画面に出せる範囲で鳴らす。
-        request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
         let class_id = request.class_id.clone();
         let plugin = self.host.restore_plugin(request)?;
         Ok((plugin.id, plugin.name, plugin.class_id.or(class_id)))
@@ -152,6 +150,7 @@ impl Control {
 
     /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
     pub(super) fn restore(&mut self, mut request: RestorePluginRequest) {
+        // 手で書き換えた保存でも、画面に出せる範囲（0〜200%）で鳴らす。
         request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
         let (id, name, loaded, class_id) = match self.reload(request.clone()) {
             Ok((id, name, class_id)) => (id, name, true, class_id),

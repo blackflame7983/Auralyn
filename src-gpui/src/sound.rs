@@ -3,7 +3,7 @@
 //! 「大きな音を抑える」と「配信用 true-peak 制限」は `limiter`。周囲の音の測定は `measure`。
 
 use auralyn_ui_model::peak::Limit;
-use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
+use auralyn_ui_model::sound::{self, Change, Knob, NoiseMode, Preset, Sound};
 use gpui_kit::component::button::{Button, ButtonGroup};
 use gpui_kit::component::slider::{Slider, SliderState};
 use gpui_kit::component::switch::Switch;
@@ -40,15 +40,8 @@ pub struct SoundPage {
     pub amount: Entity<SliderState>,
     /// 抑制の強さ（25〜125）。離したときに送る。
     pub strength: Entity<SliderState>,
-    /// 歌向けの3つの値と残響の3つの値（画面の単位は `sound` の範囲の定数）。離したときに送る。
-    pub low_cut: Entity<SliderState>,
-    pub dynamics: Entity<SliderState>,
-    pub brightness: Entity<SliderState>,
-    pub reverb_mix: Entity<SliderState>,
-    pub reverb_decay: Entity<SliderState>,
-    pub reverb_damping: Entity<SliderState>,
-    /// 歯擦音を抑える量（0〜100）。
-    pub deesser: Entity<SliderState>,
+    /// 歌向け・残響・歯擦音のスライダー（`Knob::ALL` の順）。離したときに送る。
+    pub knobs: [Entity<SliderState>; 7],
     /// 大きな音を抑える（ピーク保護）と、配信用 true-peak 制限。
     pub peak: LimiterPanel,
     pub true_peak: LimiterPanel,
@@ -62,13 +55,7 @@ impl SoundPage {
             current: None,
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
             strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
-            low_cut: range(cx, sound::LOW_CUT_HZ),
-            dynamics: range(cx, sound::DYNAMICS_PERCENT),
-            brightness: range(cx, sound::BRIGHTNESS_DB),
-            reverb_mix: range(cx, sound::MIX_PERCENT),
-            reverb_decay: range(cx, sound::DECAY_SECONDS),
-            reverb_damping: range(cx, sound::DAMPING_PERCENT),
-            deesser: range(cx, (0.0, 100.0, 1.0)),
+            knobs: Knob::ALL.map(|knob| range(cx, knob.range())),
             peak: LimiterPanel::new(Limit::Sample, cx),
             true_peak: LimiterPanel::new(Limit::TruePeak, cx),
             measure: MeasurePanel::default(),
@@ -83,17 +70,39 @@ impl SoundPage {
         self.strength.update(cx, |state, cx| {
             state.set_value(sound::strength_percent(sound.strength), window, cx)
         });
-        for (slider, value) in [
-            (&self.low_cut, sound.singing.low_cut_hz),
-            (&self.dynamics, sound.singing.dynamics * 100.0),
-            (&self.brightness, sound.singing.brightness_db),
-            (&self.reverb_mix, sound.reverb.mix * 100.0),
-            (&self.reverb_decay, sound.reverb.decay_seconds),
-            (&self.reverb_damping, sound.reverb.damping * 100.0),
-            (&self.deesser, sound::percent(sound.deesser.amount)),
-        ] {
-            slider.update(cx, |state, cx| state.set_value(value, window, cx));
+        for (knob, slider) in Knob::ALL.iter().zip(&self.knobs) {
+            slider.update(cx, |state, cx| {
+                state.set_value(knob.shown(&sound), window, cx)
+            });
         }
+    }
+
+    /// つまみの1行。
+    fn knob(&self, knob: Knob, lang: Lang, cx: &App) -> impl IntoElement {
+        let (label, named, show): (&'static str, Option<&'static str>, fn(f32) -> String) =
+            match knob {
+                Knob::LowCut => (keys::SINGING_LOW_CUT, None, whole),
+                Knob::Dynamics => (keys::SINGING_DYNAMICS, None, whole),
+                Knob::Brightness => (keys::SINGING_BRIGHTNESS, None, tenth),
+                Knob::ReverbMix => (keys::REVERB_MIX, None, whole),
+                Knob::ReverbDecay => (keys::REVERB_DECAY, None, tenth),
+                Knob::ReverbDamping => (keys::REVERB_DAMPING, None, whole),
+                Knob::DeEsser => (keys::DEESSER_AMOUNT, Some(keys::DEESSER), percent),
+            };
+        let name = match named {
+            Some(card) => format!("{} {}", core(lang, card), core(lang, label)),
+            None => core(lang, label).to_owned(),
+        };
+        // `knobs` は `Knob::ALL` の順（宣言の順と同じ）。
+        slider_row(
+            lang,
+            label,
+            name,
+            &self.knobs[knob as usize],
+            show,
+            false,
+            cx,
+        )
     }
 
     pub fn limiter(&mut self, limit: Limit) -> &mut LimiterPanel {
@@ -269,26 +278,8 @@ impl SoundPage {
                     .map(|this| {
                         if current.preset == Some(Preset::Singing) {
                             this.children(
-                                [
-                                    (
-                                        keys::SINGING_LOW_CUT,
-                                        &self.low_cut,
-                                        whole as fn(f32) -> String,
-                                    ),
-                                    (keys::SINGING_DYNAMICS, &self.dynamics, whole),
-                                    (keys::SINGING_BRIGHTNESS, &self.brightness, tenth),
-                                ]
-                                .map(|(label, slider, show)| {
-                                    slider_row(
-                                        lang,
-                                        label,
-                                        core(lang, label),
-                                        slider,
-                                        show,
-                                        false,
-                                        cx,
-                                    )
-                                }),
+                                [Knob::LowCut, Knob::Dynamics, Knob::Brightness]
+                                    .map(|knob| self.knob(knob, lang, cx)),
                             )
                         } else {
                             this.child(slider_row(
@@ -316,18 +307,8 @@ impl SoundPage {
                         move |on, _, cx| set(Change::ReverbOn(*on), cx)
                     }),
                 div().flex().flex_col().gap_2().children(
-                    [
-                        (
-                            keys::REVERB_MIX,
-                            &self.reverb_mix,
-                            whole as fn(f32) -> String,
-                        ),
-                        (keys::REVERB_DECAY, &self.reverb_decay, tenth),
-                        (keys::REVERB_DAMPING, &self.reverb_damping, whole),
-                    ]
-                    .map(|(label, slider, show)| {
-                        slider_row(lang, label, core(lang, label), slider, show, false, cx)
-                    }),
+                    [Knob::ReverbMix, Knob::ReverbDecay, Knob::ReverbDamping]
+                        .map(|knob| self.knob(knob, lang, cx)),
                 ),
             ))
             .child(section(
@@ -338,19 +319,7 @@ impl SoundPage {
                     .checked(current.deesser.on)
                     .accessibility_label(core(lang, keys::DEESSER))
                     .on_click(move |on, _, cx| set(Change::DeEsserOn(*on), cx)),
-                slider_row(
-                    lang,
-                    keys::DEESSER_AMOUNT,
-                    format!(
-                        "{} {}",
-                        core(lang, keys::DEESSER),
-                        core(lang, keys::DEESSER_AMOUNT)
-                    ),
-                    &self.deesser,
-                    percent,
-                    false,
-                    cx,
-                ),
+                self.knob(Knob::DeEsser, lang, cx),
             ))
             .child(self.peak.render(lang, locked, cx, send.clone()))
             .child(self.true_peak.render(lang, locked, cx, send))
