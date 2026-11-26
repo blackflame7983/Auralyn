@@ -12,6 +12,7 @@ use vst_host_lib::obs::{self, ObsState, ReachReceipt, ReachTone, ReachValue};
 
 use crate::engine::{Command, ToneStep};
 use vst_host_lib::obs_credentials::{self, Endpoint};
+use vst_host_lib::obs_setup::{self, History, Plan};
 
 /// パスワードを含むので Debug は付けない（ログへ出さない）。
 #[derive(Clone)]
@@ -26,9 +27,31 @@ pub enum Order {
     CheckReach,
     /// 前の確認がまだ今の条件のものかを聞く（番号は `Reach::operation`）。
     ReachCurrent(String),
+    /// OBS の変更確認（`obs_setup`）。
+    Setup(Setup),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+pub enum Setup {
+    /// 変更予定を作る。`Some` は、ミュートを提案するほかのマイクのソース。
+    Preview(Option<String>),
+    Apply(u64),
+    History,
+    Restore(u64),
+    Forget(u64),
+    /// 変更予定を捨てる。画面の中だけで済ませ、このスレッドには送らない。
+    Discard,
+}
+
+/// 変更確認の結果。`Err` はホストの原文。
+pub enum SetupDone {
+    Plan(Result<Plan, String>),
+    Applied(Result<History, String>),
+    History(Vec<History>),
+    Restored(Result<History, String>),
+    Forgot(Result<u64, String>),
+}
+
 pub enum Reply {
     /// `saved` は保存した接続先。`Err` は保存したものを読めない（消して入れ直してもらう）。
     /// `after_connect` は接続の命令の結果か。
@@ -51,6 +74,7 @@ pub enum Reply {
         operation: String,
         current: bool,
     },
+    Setup(Box<SetupDone>),
     /// OBS を扱うスレッドを動かせない。以後の命令には返事が来ない。
     Unavailable(String),
 }
@@ -120,6 +144,24 @@ fn run(
                             Reach::new(reached, result.peak_db, operation)
                         });
                     let _ = outbox.send(Reply::Reach(reach));
+                    continue;
+                }
+                Order::Setup(setup) => {
+                    let done = match setup {
+                        Setup::Discard => continue,
+                        Setup::Preview(mute) => {
+                            SetupDone::Plan(obs_setup::preview(&state, mute).await)
+                        }
+                        Setup::Apply(id) => SetupDone::Applied(obs_setup::apply(&state, id).await),
+                        Setup::History => SetupDone::History(obs_setup::history(&state).await),
+                        Setup::Restore(id) => {
+                            SetupDone::Restored(obs_setup::restore(&state, id).await)
+                        }
+                        Setup::Forget(id) => SetupDone::Forgot(
+                            obs_setup::forget_history(&state, id).await.map(|()| id),
+                        ),
+                    };
+                    let _ = outbox.send(Reply::Setup(Box::new(done)));
                     continue;
                 }
                 Order::ReachCurrent(operation) => {
