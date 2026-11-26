@@ -748,12 +748,16 @@ impl Render for MainView {
                                     .when(self.first_run, |this| {
                                         this.child(div().max_w(px(560.)).child(self.setup.render(
                                             lang,
+                                            matches!(
+                                                self.phase,
+                                                Phase::Stopped | Phase::Unconfigured
+                                            ),
                                             cx,
                                             {
                                                 let entity = entity.clone();
-                                                move |_, window, cx| {
+                                                move |goal, window, cx| {
                                                     entity.update(cx, |this, cx| {
-                                                        this.setup.goal_changed(window, cx);
+                                                        this.setup.set_goal(goal, window, cx);
                                                         cx.notify();
                                                     })
                                                 }

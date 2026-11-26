@@ -324,7 +324,7 @@ pub mod keys {
     pub const SETUP_GOAL: &str = "wizard.chooseGoal";
     pub const SETUP_GOAL_OBS: &str = "wizard.obs";
     pub const SETUP_GOAL_CHAT: &str = "wizard.chat";
-    pub const SETUP_GOAL_LISTEN: &str = "wizard.music";
+    pub const SETUP_GOAL_LISTEN: &str = "prep.local";
     pub const SETUP_MICROPHONE: &str = "wizard.microphone";
     pub const SETUP_OUTPUT: &str = "wizard.destination";
     pub const SETUP_CABLE_BEFORE: &str = "wizard.cableBefore";

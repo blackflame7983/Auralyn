@@ -1,7 +1,6 @@
 //! ホームの「はじめての設定」：まだ一度も開始していないときだけ出す。使い道を選ぶと、マイクと出力先を勧めて、そのまま開始できる。
 //! 勧め方は `auralyn-ui-model` の `setup`（Tauri 版のセットアップと同じ）。ここでは WASAPI だけを扱い、ASIO などは接続の画面へ案内する。
 
-use std::cell::Cell;
 use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
@@ -18,7 +17,7 @@ use crate::part::{card, note};
 type Names = SelectState<Vec<SharedString>>;
 
 pub struct SetupPanel {
-    goal: Rc<Cell<Goal>>,
+    goal: Goal,
     microphones: Vec<Device>,
     outputs: Vec<Device>,
     /// 選び直したら開始のボタンを描き直す（`MainView` が購読する）。
@@ -31,7 +30,7 @@ impl SetupPanel {
         let mut select =
             |cx: &mut Context<V>| cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
         Self {
-            goal: Rc::new(Cell::new(Goal::Obs)),
+            goal: Goal::Obs,
             microphones: Vec::new(),
             outputs: Vec::new(),
             microphone: select(cx),
@@ -39,33 +38,23 @@ impl SetupPanel {
         }
     }
 
-    /// 機器の一覧が届いた。候補を入れ直し、勧めるものを選ぶ。
+    /// 機器の一覧が届いた（ホームや接続の画面を開くたび）。選んでいた機器が残っていれば保ち、無ければ勧めるものを選ぶ。
     pub fn set_devices(&mut self, devices: &[Device], window: &mut Window, cx: &mut App) {
         let microphones = setup::microphones(devices);
         let outputs = setup::outputs(devices);
-        let names = |choices: &[&Device]| -> Vec<SharedString> {
-            connect::labels(choices)
-                .into_iter()
-                .map(Into::into)
-                .collect()
-        };
-        let (mic_names, out_names) = (names(&microphones), names(&outputs));
         let mic = setup::recommend_microphone(&microphones);
+        let out = setup::recommend_output(self.goal, &outputs);
+        fill(&self.microphone, &microphones, mic, window, cx);
+        fill(&self.output, &outputs, out, window, cx);
         self.microphones = microphones.into_iter().cloned().collect();
         self.outputs = outputs.into_iter().cloned().collect();
-        self.microphone.update(cx, |state, cx| {
-            state.set_items(mic_names, window, cx);
-            state.set_selected_index(mic.map(IndexPath::new), window, cx);
-        });
-        self.output
-            .update(cx, |state, cx| state.set_items(out_names, window, cx));
-        self.recommend_output(window, cx);
     }
 
-    /// 使い道に合わせて、勧める出力先を選び直す（勧められなければ選択を外す）。
-    fn recommend_output(&self, window: &mut Window, cx: &mut App) {
+    /// 使い道を選んだ。出力先は勧め直す（勧められなければ選択を外す）。
+    pub fn set_goal(&mut self, goal: Goal, window: &mut Window, cx: &mut App) {
+        self.goal = goal;
         let outputs: Vec<&Device> = self.outputs.iter().collect();
-        let row = setup::recommend_output(self.goal.get(), &outputs);
+        let row = setup::recommend_output(goal, &outputs);
         self.output.update(cx, |state, cx| {
             state.set_selected_index(row.map(IndexPath::new), window, cx)
         });
@@ -73,26 +62,33 @@ impl SetupPanel {
 
     /// 選んでいるマイクと出力先。
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
-        let mic = self.microphone.read(cx).selected_index(cx)?.row;
-        let out = self.output.read(cx).selected_index(cx)?.row;
+        let pick = |state: &Entity<Names>, devices: &[Device]| {
+            let label = state.read(cx).selected_value()?.clone();
+            let choices: Vec<&Device> = devices.iter().collect();
+            let row = connect::labels(&choices)
+                .iter()
+                .position(|l| l.as_str() == label.as_ref())?;
+            devices.get(row).cloned()
+        };
         Some((
-            self.microphones.get(mic)?.clone(),
-            self.outputs.get(out)?.clone(),
+            pick(&self.microphone, &self.microphones)?,
+            pick(&self.output, &self.outputs)?,
         ))
     }
 
-    /// `on_goal` は使い道を選び直したとき（出力先を勧め直す）、`on_start` は開始、`on_connect` は接続の画面を開く。
+    /// `stopped` は開始できる状態か。`on_goal` は使い道を選んだとき、`on_start` は開始、`on_connect` は接続の画面を開く。
     pub fn render(
         &self,
         lang: Lang,
+        stopped: bool,
         cx: &App,
         on_goal: impl Fn(Goal, &mut Window, &mut App) + 'static,
         on_start: impl Fn(&mut Window, &mut App) + 'static,
         on_connect: impl Fn(&mut Window, &mut App) + 'static,
     ) -> impl IntoElement {
-        let goal = self.goal.get();
+        let goal = self.goal;
         let on_goal = Rc::new(on_goal);
-        let ready = self.chosen(cx).is_some();
+        let ready = stopped && self.chosen(cx).is_some();
         card(
             core(lang, keys::SETUP_TITLE),
             div(),
@@ -110,16 +106,12 @@ impl SetupPanel {
                         .gap_2()
                         .children(Goal::ALL.map(|choice| {
                             let on_goal = on_goal.clone();
-                            let state = self.goal.clone();
                             Button::new(SharedString::from(format!("setup-goal-{choice:?}")))
                                 .label(core(lang, goal_label(choice)))
                                 .outline()
                                 .small()
                                 .selected(goal == choice)
-                                .on_click(move |_, window, cx| {
-                                    state.set(choice);
-                                    on_goal(choice, window, cx);
-                                })
+                                .on_click(move |_, window, cx| on_goal(choice, window, cx))
                         })),
                 ))
                 .child(field(
@@ -165,11 +157,6 @@ impl SetupPanel {
                 ),
         )
     }
-
-    /// 使い道を選び直した（`render` の `on_goal` から呼ぶ）。
-    pub fn goal_changed(&self, window: &mut Window, cx: &mut App) {
-        self.recommend_output(window, cx);
-    }
 }
 
 fn goal_label(goal: Goal) -> &'static str {
@@ -187,4 +174,22 @@ fn field(lang: Lang, label: &'static str, control: impl IntoElement) -> impl Int
         .gap_1()
         .child(div().text_sm().child(core(lang, label)))
         .child(control)
+}
+
+/// 一覧を入れ直す。選んでいた機器が残っていれば保ち、無ければ `recommended` を選ぶ。
+fn fill(
+    state: &Entity<Names>,
+    devices: &[&Device],
+    recommended: Option<usize>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let labels = connect::labels(devices);
+    let kept = state.read(cx).selected_value().map(|v| v.to_string());
+    let row = setup::keep_or(kept.as_deref(), &labels, recommended);
+    let names = labels.into_iter().map(SharedString::from).collect();
+    state.update(cx, |state, cx| {
+        state.set_items(names, window, cx);
+        state.set_selected_index(row.map(IndexPath::new), window, cx);
+    });
 }

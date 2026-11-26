@@ -81,7 +81,7 @@ pub fn recommend_microphone(microphones: &[&Device]) -> Option<usize> {
             ) || microphones[i]
                 .name
                 .to_lowercase()
-                .split(|c: char| !c.is_alphanumeric())
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                 .any(|word| word == "mic")
         })
         .collect();
@@ -108,6 +108,12 @@ pub fn recommend_output(goal: Goal, outputs: &[&Device]) -> Option<usize> {
         [only] => Some(*only),
         _ => None,
     }
+}
+
+/// 一覧を入れ直したときに選ぶ行。前に選んでいたもの（`kept`）が残っていればそれ、無ければ勧め。
+pub fn keep_or(kept: Option<&str>, labels: &[String], recommended: Option<usize>) -> Option<usize> {
+    kept.and_then(|kept| labels.iter().position(|l| l == kept))
+        .or(recommended)
 }
 
 #[cfg(test)]
@@ -168,5 +174,23 @@ mod tests {
         assert_eq!(recommend_output(Goal::Chat, &[&cable, &vm]), None);
         let default_cable = device("CABLE Input", false, true);
         assert_eq!(recommend_output(Goal::Listen, &[&default_cable]), None);
+    }
+
+    #[test]
+    fn mic_is_a_whole_word_as_in_the_tauri_version() {
+        let devices = [
+            device("Mic_In", true, false),
+            device("USB Mic", true, false),
+        ];
+        let refs: Vec<&Device> = devices.iter().collect();
+        assert_eq!(recommend_microphone(&refs), Some(1));
+    }
+
+    #[test]
+    fn keeps_a_choice_that_is_still_listed() {
+        let labels = vec!["A".to_owned(), "B".to_owned()];
+        assert_eq!(keep_or(Some("B"), &labels, Some(0)), Some(1));
+        assert_eq!(keep_or(Some("C"), &labels, Some(0)), Some(0));
+        assert_eq!(keep_or(None, &labels, None), None);
     }
 }
