@@ -191,6 +191,13 @@ pub mod keys {
     pub const PEAK_UNKNOWN: &str = "peak.unknown";
     pub const PEAK_PENDING: &str = "peak.pending";
     pub const PEAK_STOPPED: &str = "peak.stopped";
+    pub const TRUE_PEAK_TITLE: &str = "truePeak.title";
+    pub const TRUE_PEAK_LEAD: &str = "truePeak.lead";
+    pub const TRUE_PEAK_SCOPE: &str = "truePeak.scope";
+    pub const TRUE_PEAK_REDUCTION: &str = "truePeak.reduction";
+    pub const TRUE_PEAK_LATENCY: &str = "truePeak.latency";
+    pub const TRUE_PEAK_NOT_APPLIED: &str = "truePeak.notApplied";
+    pub const TRUE_PEAK_LIMITS: &str = "truePeak.limits";
     pub const NOISE_MODE_FIRST: &str = "gpuiShell.noiseModeFirst";
     pub const NOISE_DETAILS: &str = "settings.noiseDetails";
     pub const STRENGTH: &str = "settings.AudioSettingsModal.119";
@@ -449,7 +456,7 @@ pub mod keys {
     pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
 
     #[cfg(test)]
-    pub const ALL: [&str; 436] = [
+    pub const ALL: [&str; 443] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -631,6 +638,13 @@ pub mod keys {
         PEAK_UNKNOWN,
         PEAK_PENDING,
         PEAK_STOPPED,
+        TRUE_PEAK_TITLE,
+        TRUE_PEAK_LEAD,
+        TRUE_PEAK_SCOPE,
+        TRUE_PEAK_REDUCTION,
+        TRUE_PEAK_LATENCY,
+        TRUE_PEAK_NOT_APPLIED,
+        TRUE_PEAK_LIMITS,
         NOISE_MODE_FIRST,
         NOISE_DETAILS,
         STRENGTH,

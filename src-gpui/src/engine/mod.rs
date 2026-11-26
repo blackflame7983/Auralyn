@@ -13,7 +13,7 @@ use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::diagnostics::{Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
-use auralyn_ui_model::peak::Peak;
+use auralyn_ui_model::peak::{Limit, Lookahead, Peak};
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::recovery::Hold;
@@ -25,6 +25,7 @@ use auralyn_ui_model::voice_check::{
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
+use vst_host_lib::audio_engine::true_peak_limiter::Config as TruePeakConfig;
 use vst_host_lib::input;
 use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};
 use vst_host_lib::vst_host::{presets, scanner};
@@ -39,6 +40,7 @@ mod post_mix;
 mod profile;
 mod slots;
 mod sound;
+use sound::Values;
 mod voice;
 
 use events::on_event;
@@ -92,8 +94,8 @@ pub enum Command {
     SetSound(Change),
     /// ノイズ低減の ON/OFF を、いまのエンジンの値から反転する（ショートカット）。
     ToggleNoise,
-    /// 大きな音を抑える（ピーク保護）の今の状態を読む。
-    ReadPeak,
+    /// 大きな音を抑える（ピーク保護）か、配信用 true-peak 制限の今の状態を読む。
+    ReadPeak(Limit),
     /// 周囲の音の測定を読む・始める・止める・採用する。結果は `Notice::Measurement`。
     Measure(measurement::Action),
     /// 保存した構成（Tauri 版と同じ `presets/`）の一覧を読む。結果は `Notice::Profiles`。
@@ -137,10 +139,11 @@ pub enum Command {
     },
     /// ファイルの構成を、ファイルの中の名前で取り込む。同じ名前があれば上書きせず、取り込まない。結果は `Notice::ProfileFile`。
     ImportProfile(PathBuf),
-    /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
-    SetPeak(bool),
-    /// ピーク保護の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
+    /// 制限の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
+    SetPeak(Limit, bool),
+    /// 制限の天井（dBFS）と復帰時間（ms）。ON/OFF は今のまま。音声が動いているときだけ受け付けられる。
     SetPeakLimits {
+        limit: Limit,
         ceiling_db: f32,
         release_ms: f32,
     },
@@ -161,8 +164,10 @@ impl Command {
             (Command::SetPluginGain { id, .. }, Command::SetPluginGain { id: other, .. }) if id == other
         ) || matches!(
             (self, earlier),
-            (Command::SetPeakLimits { .. }, Command::SetPeakLimits { .. })
-                | (
+            (Command::SetPeakLimits { limit, .. }, Command::SetPeakLimits { limit: other, .. }) if limit == other
+        ) || matches!(
+            (self, earlier),
+            (
                     Command::Measure(measurement::Action::Read),
                     Command::Measure(measurement::Action::Read)
                 )
@@ -251,8 +256,8 @@ pub enum Notice {
     Rack(Vec<Slot>),
     /// 音づくりの今の設定（エンジンが受け付けた結果）。
     Sound(Sound),
-    /// ピーク保護の状態。`None` は読めない（音声が止まっているときも読めない）。
-    Peak(Option<Peak>),
+    /// 制限の状態。`None` は読めない（音声が止まっているときも読めない）。
+    Peak(Limit, Option<Peak>),
     /// 周囲の音の測定。`None` は読めない（音声が止まっているときも読めない）。
     Measurement(Option<Measurement>),
     /// 保存した構成の一覧。
@@ -671,7 +676,7 @@ impl Control {
                 None => return,
             },
             Command::ReadSound => return self.read_sound(),
-            Command::ReadPeak => return self.peak(None),
+            Command::ReadPeak(limit) => return self.peak(limit, None),
             Command::Measure(ref action) => return self.measure(action),
             Command::ListProfiles => return self.list_profiles(),
             Command::SaveProfile(ref name) => return self.save_profile(name),
@@ -724,17 +729,18 @@ impl Control {
                 return self.export_profile(name, path)
             }
             Command::ImportProfile(ref path) => return self.import_profile(path),
-            Command::SetPeak(enabled) => {
-                return self.set_peak(|config| PeakConfig { enabled, ..config })
+            Command::SetPeak(limit, enabled) => {
+                return self.set_peak(limit, |values| Values { enabled, ..values })
             }
             Command::SetPeakLimits {
+                limit,
                 ceiling_db,
                 release_ms,
             } => {
-                return self.set_peak(|config| PeakConfig {
+                return self.set_peak(limit, |values| Values {
                     ceiling_db,
                     release_ms,
-                    ..config
+                    ..values
                 })
             }
             Command::SetSound(change) => return self.set_sound(change),
@@ -903,10 +909,17 @@ mod tests {
         assert!(gain("a").supersedes(&gain("a")));
         assert!(!gain("a").supersedes(&gain("b")));
         let limits = |ceiling_db| Command::SetPeakLimits {
+            limit: Limit::Sample,
             ceiling_db,
             release_ms: 100.0,
         };
         assert!(limits(-1.0).supersedes(&limits(-2.0)));
+        let true_peak = Command::SetPeakLimits {
+            limit: Limit::TruePeak,
+            ceiling_db: -1.0,
+            release_ms: 100.0,
+        };
+        assert!(!true_peak.supersedes(&limits(-2.0)));
     }
 
     #[test]

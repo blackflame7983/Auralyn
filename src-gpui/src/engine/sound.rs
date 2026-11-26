@@ -34,28 +34,64 @@ impl Control {
         }
     }
 
-    /// ピーク保護を読む（`config` があれば変えてから読む）。読めなければ `None` を送る。
+    /// 制限を読む（`values` があれば変えてから読む）。読めなければ `None` を送る。
     /// 止まっているときは読めないのが普通なので、読むだけの失敗は帯に出さない。
-    pub(super) fn peak(&mut self, config: Option<PeakConfig>) {
-        let peak = match self.host.peak_protection(config) {
-            Ok(snapshot) => Some(Peak {
-                enabled: snapshot.config.enabled,
-                ceiling_db: snapshot.config.ceiling_db,
-                release_ms: snapshot.config.release_ms,
-                running: snapshot.running,
-                pending: snapshot.pending,
-            }),
-            Err(e) if config.is_some() => {
+    pub(super) fn peak(&mut self, limit: Limit, values: Option<Values>) {
+        let peak = match self.limit(limit, values) {
+            Ok(peak) => Some(peak),
+            Err(e) if values.is_some() => {
                 // 断られても状態は読めることがある（読めないなら、読み直しが `None` を送る）。
-                self.fail("peak_protection", e);
-                return self.peak(None);
+                self.fail(limit_command(limit), e);
+                return self.peak(limit, None);
             }
             Err(e) => {
-                log::info!("ピーク保護の状態を読めません: {e}");
+                log::info!("{} の状態を読めません: {e}", limit_command(limit));
                 None
             }
         };
-        let _ = self.notices.send(Notice::Peak(peak));
+        let _ = self.notices.send(Notice::Peak(limit, peak));
+    }
+
+    /// ホストの制限を読む（`values` があれば変えてから）。2つの制限は設定の形が同じ。
+    fn limit(&mut self, limit: Limit, values: Option<Values>) -> anyhow::Result<Peak> {
+        Ok(match limit {
+            Limit::Sample => {
+                let config = values.map(|v| PeakConfig {
+                    enabled: v.enabled,
+                    ceiling_db: v.ceiling_db,
+                    release_ms: v.release_ms,
+                });
+                let snapshot = self.host.peak_protection(config)?;
+                Peak {
+                    enabled: snapshot.config.enabled,
+                    ceiling_db: snapshot.config.ceiling_db,
+                    release_ms: snapshot.config.release_ms,
+                    running: snapshot.running,
+                    pending: snapshot.pending,
+                    lookahead: None,
+                }
+            }
+            Limit::TruePeak => {
+                let config = values.map(|v| TruePeakConfig {
+                    enabled: v.enabled,
+                    ceiling_db: v.ceiling_db,
+                    release_ms: v.release_ms,
+                });
+                let snapshot = self.host.broadcast_true_peak(config)?;
+                Peak {
+                    enabled: snapshot.config.enabled,
+                    ceiling_db: snapshot.config.ceiling_db,
+                    release_ms: snapshot.config.release_ms,
+                    running: snapshot.running,
+                    pending: snapshot.pending,
+                    lookahead: Some(Lookahead {
+                        applied: snapshot.applied,
+                        reduction_db: snapshot.reduction_db.max(0.0),
+                        samples: snapshot.added_latency_samples,
+                    }),
+                }
+            }
+        })
     }
 
     /// 測定を頼み、そのあとの状態を読んで送る。読むだけの失敗は、止まっているときの普通のことなので帯に出さない。
@@ -94,12 +130,19 @@ impl Control {
     }
 
     /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。
-    pub(super) fn set_peak(&mut self, change: impl FnOnce(PeakConfig) -> PeakConfig) {
-        match self.host.peak_protection(None) {
-            Ok(snapshot) => self.peak(Some(change(snapshot.config))),
+    pub(super) fn set_peak(&mut self, limit: Limit, change: impl FnOnce(Values) -> Values) {
+        match self.limit(limit, None) {
+            Ok(peak) => self.peak(
+                limit,
+                Some(change(Values {
+                    enabled: peak.enabled,
+                    ceiling_db: peak.ceiling_db,
+                    release_ms: peak.release_ms,
+                })),
+            ),
             Err(e) => {
-                self.fail("peak_protection", e);
-                self.peak(None);
+                self.fail(limit_command(limit), e);
+                self.peak(limit, None);
             }
         }
     }
@@ -258,5 +301,21 @@ mod tests {
         };
         assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));
         assert_eq!(sound_from_json(&serde_json::json!({"noiseOn": true})), None);
+    }
+}
+
+/// 制限に送る値（2つの制限で同じ形）。
+#[derive(Clone, Copy)]
+pub(super) struct Values {
+    pub enabled: bool,
+    pub ceiling_db: f32,
+    pub release_ms: f32,
+}
+
+/// 失敗を帯に出すときの命令の名前（ホストの命令と同じ）。
+fn limit_command(limit: Limit) -> &'static str {
+    match limit {
+        Limit::Sample => "peak_protection",
+        Limit::TruePeak => "broadcast_true_peak",
     }
 }
