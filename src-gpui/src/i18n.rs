@@ -337,6 +337,8 @@ pub mod keys {
     pub const HELP_DOCS: &str = "help.readMore";
     pub const HELP_MORE: &str = "help.learnMore";
     pub const HELP_TERMS: &str = "help.section.terms";
+    pub const GUIDE_OBS: &str = "header.obs";
+    pub const GUIDE_DISCORD: &str = "header.discord";
     pub const HELP_SILENT: &str = "help.trouble.silent";
     pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
     pub const HELP_RECEIVER: &str = "help.trouble.receiver";
@@ -347,7 +349,7 @@ pub mod keys {
     pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
 
     #[cfg(test)]
-    pub const ALL: [&str; 334] = [
+    pub const ALL: [&str; 336] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -674,6 +676,8 @@ pub mod keys {
         HELP_DOCS,
         HELP_MORE,
         HELP_TERMS,
+        GUIDE_OBS,
+        GUIDE_DISCORD,
         HELP_SILENT,
         HELP_SILENT_BODY,
         HELP_RECEIVER,

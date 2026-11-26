@@ -29,6 +29,9 @@ impl Trouble {
     }
 }
 
+/// 送り先ごとのつなぎ方（OBS・通話）。相手に届かないときに出す。
+pub const GUIDES: [&str; 2] = ["obs#connect", "discord#connect"];
+
 /// ドキュメントの入口（はじめに）。
 pub const INDEX: &str = "index";
 
@@ -114,6 +117,9 @@ mod tests {
         let links = include_str!("../../../../user-docs/links.json");
         for trouble in Trouble::ALL {
             let target = trouble.target();
+            assert!(links.contains(&format!(": \"{target}\"")), "{target}");
+        }
+        for target in GUIDES {
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
         for term in glossary(include_str!("../../../../user-docs/ja/glossary.md")) {

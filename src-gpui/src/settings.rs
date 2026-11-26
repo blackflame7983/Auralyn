@@ -321,18 +321,43 @@ pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
                         .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
                         .child(note(body))
                         .child(
-                            div().child(
-                                Button::new(SharedString::from(format!("help-{trouble:?}")))
-                                    .label(core(lang, keys::HELP_MORE))
-                                    .link()
-                                    .on_click(move |_, _, cx| {
-                                        cx.open_url(&docs::url(target, english))
-                                    }),
-                            ),
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .gap_3()
+                                .child(doc_link(
+                                    format!("help-{trouble:?}"),
+                                    core(lang, keys::HELP_MORE),
+                                    target,
+                                    english,
+                                ))
+                                .when(trouble == Trouble::NotReceived, |this| {
+                                    this.children(
+                                        docs::GUIDES
+                                            .into_iter()
+                                            .zip([keys::GUIDE_OBS, keys::GUIDE_DISCORD])
+                                            .map(|(target, label)| {
+                                                doc_link(
+                                                    format!("help-{target}"),
+                                                    core(lang, label),
+                                                    target,
+                                                    english,
+                                                )
+                                            }),
+                                    )
+                                }),
                         )
                 }),
         ),
     )
+}
+
+/// 公式サイトのドキュメントを開くリンク。
+fn doc_link(id: String, label: &'static str, target: &'static str, english: bool) -> Button {
+    Button::new(SharedString::from(id))
+        .label(label)
+        .link()
+        .on_click(move |_, _, cx| cx.open_url(&docs::url(target, english)))
 }
 
 fn trouble_text(lang: Lang, trouble: Trouble) -> (&'static str, String) {
