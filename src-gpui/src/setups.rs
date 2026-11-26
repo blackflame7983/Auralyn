@@ -13,8 +13,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::OnCommand;
-use crate::part::{card, note};
+use crate::part::{card, note, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 

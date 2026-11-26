@@ -934,8 +934,8 @@ impl Control {
     }
 
     /// エンジンが受け付けた音づくりを読み、次の起動のために保存する。
+    /// 読む前に `sound` を消さない（子が落ちていたら、読み直しで前の設定を送り直すのに使う）。
     fn reread_and_save_sound(&mut self) {
-        self.sound = None;
         self.read_sound();
         if let Some(sound) = self.sound {
             self.save_sound(sound);

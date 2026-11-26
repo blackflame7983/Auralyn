@@ -15,8 +15,7 @@ use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::measure::MeasurePanel;
-use crate::part::OnCommand;
-use crate::part::{card, note};
+use crate::part::{card, note, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
