@@ -288,6 +288,19 @@ pub mod keys {
     pub const MIX_MUSIC_MUTE: &str = "gpuiShell.mixMusicMute";
     pub const MIX_MONITOR: &str = "mixing.monitor";
     pub const MIX_RELOAD: &str = "mixing.reload";
+    pub const MIX_OFFSET: &str = "mixing.offset";
+    pub const MIX_OFFSET_APPLY: &str = "mixing.applyLevels";
+    pub const MIX_OFFSET_INVALID: &str = "mixingUi.invalidLevels";
+    pub const MIX_OFFSET_HELP: &str = "mixing.offsetHelp";
+    pub const MIX_OFFSET_UNCONFIRMED: &str = "mixing.offsetUnconfirmed";
+    pub const MIX_OFFSET_CHANGED: &str = "mixing.offsetChanged";
+    pub const MIX_OFFSET_LEGACY: &str = "mixing.offsetLegacy";
+    pub const MIX_OFFSET_UNKNOWN: &str = "mixing.offsetUnknown";
+    pub const MIX_OFFSET_CONFIRM: &str = "mixing.offsetConfirm";
+    pub const MIX_OFFSET_VOICE_INPUT: &str = "mixing.offsetVoiceInput";
+    pub const MIX_OFFSET_CHANNELS: &str = "mixing.offsetChannels";
+    pub const MIX_OFFSET_OUTPUT: &str = "mixing.offsetOutput";
+    pub const MIX_OFFSET_BROADCAST: &str = "mixing.offsetBroadcast";
     pub const POST_TITLE: &str = "postMix.title";
     pub const POST_SCOPE: &str = "mixingUi.postScope";
     pub const POST_SAVED: &str = "postMix.saved";
@@ -308,7 +321,7 @@ pub mod keys {
     pub const POST_RELOAD: &str = "postMix.reload";
 
     #[cfg(test)]
-    pub const ALL: [&str; 295] = [
+    pub const ALL: [&str; 308] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -586,6 +599,19 @@ pub mod keys {
         MIX_MUSIC_MUTE,
         MIX_MONITOR,
         MIX_RELOAD,
+        MIX_OFFSET,
+        MIX_OFFSET_APPLY,
+        MIX_OFFSET_INVALID,
+        MIX_OFFSET_HELP,
+        MIX_OFFSET_UNCONFIRMED,
+        MIX_OFFSET_CHANGED,
+        MIX_OFFSET_LEGACY,
+        MIX_OFFSET_UNKNOWN,
+        MIX_OFFSET_CONFIRM,
+        MIX_OFFSET_VOICE_INPUT,
+        MIX_OFFSET_CHANNELS,
+        MIX_OFFSET_OUTPUT,
+        MIX_OFFSET_BROADCAST,
         POST_TITLE,
         POST_SCOPE,
         POST_SAVED,
