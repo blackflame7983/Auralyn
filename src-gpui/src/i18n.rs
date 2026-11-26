@@ -203,7 +203,6 @@ pub mod keys {
     pub const SHORTCUTS_TITLE: &str = "settings.ShortcutsPanel.378";
     pub const SHORTCUTS_EMPTY: &str = "shortcuts.captureEmpty";
     pub const SHORTCUTS_UNREADABLE: &str = "gpuiShell.shortcutsUnreadable";
-    pub const SHORTCUT_UNSUPPORTED: &str = "gpuiShell.shortcutUnsupported";
     pub const SHORTCUTS_EDIT_IN_TAURI: &str = "gpuiShell.shortcutsEditInTauri";
     pub const SHORTCUT_MUTE_TOGGLE: &str = "settings.ShortcutsPanel.363";
     pub const SHORTCUT_MUTE_ON: &str = "settings.ShortcutsPanel.364";
@@ -380,7 +379,7 @@ pub mod keys {
     pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
 
     #[cfg(test)]
-    pub const ALL: [&str; 367] = [
+    pub const ALL: [&str; 366] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -574,7 +573,6 @@ pub mod keys {
         SHORTCUTS_TITLE,
         SHORTCUTS_EMPTY,
         SHORTCUTS_UNREADABLE,
-        SHORTCUT_UNSUPPORTED,
         SHORTCUTS_EDIT_IN_TAURI,
         SHORTCUT_MUTE_TOGGLE,
         SHORTCUT_MUTE_ON,

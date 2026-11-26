@@ -38,6 +38,7 @@ use crate::vst::VstPage;
 use auralyn_ui_model::connect::Device;
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
+use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
@@ -668,7 +669,13 @@ impl MainView {
                 self.engine.send(Command::SetOutputGain(next));
             }
             A::NoiseToggle => self.engine.send(Command::ToggleNoise),
-            A::SingingOn | A::TalkOn => {}
+            // 選べるかはエンジンが読み直した状態で決め、断られたら上の帯に出す。
+            A::SingingOn => self
+                .engine
+                .send(Command::Modes(ModeAction::Shortcut(LiveMode::Singing))),
+            A::TalkOn => self
+                .engine
+                .send(Command::Modes(ModeAction::Shortcut(LiveMode::Talk))),
         }
     }
 

@@ -28,7 +28,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/color.rs` | 色。`design/tokens.json` から名前で取る |
 | `src/part.rs` | 画面どうしで同じ形の部品（見出しつきの区画・補足の文） |
 | `src/store.rs` | 設定のファイルを、一時ファイルに書いてから置き換える |
-| `src/desktop.rs` | トレイ（tray-icon）と、Tauri 版と同じ `shortcuts.json` のグローバルショートカット（global-hotkey。読むだけで、無ければ Alt+M・Alt+P。歌・雑談は GPUI 版に無いので登録しない）と、窓の × でトレイへ隠す（Win32 の ShowWindow）。Windows だけ |
+| `src/desktop.rs` | トレイ（tray-icon）と、Tauri 版と同じ `shortcuts.json` のグローバルショートカット（global-hotkey。読むだけで、無ければ Alt+M・Alt+P。歌・雑談の切り替えも登録する）と、窓の × でトレイへ隠す（Win32 の ShowWindow）。Windows だけ |
 | `src/i18n.rs` | 日英の文言（正本は `src-tauri/crates/auralyn-core/locales/` の JSON。キーは `keys` の定数で渡す） |
 | `src/main.rs` | 引数を読み、エンジンと窓を起動する |
 
