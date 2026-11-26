@@ -179,7 +179,16 @@ pub mod keys {
     pub const PRESET_BRIGHT: &str = "settings.AudioSettingsModal.100";
     pub const EFFECTS_AMOUNT: &str = "settings.AudioSettingsModal.104";
     pub const EFFECTS_AMOUNT_MEANS: &str = "sound.amountMeans";
-    pub const SINGING_NOT_YET: &str = "gpuiShell.singingNotYet";
+    pub const SINGING_PRESET: &str = "settings.SingingControls.403";
+    pub const SINGING_LOW_CUT: &str = "settings.SingingControls.407";
+    pub const SINGING_DYNAMICS: &str = "settings.SingingControls.408";
+    pub const SINGING_BRIGHTNESS: &str = "settings.SingingControls.409";
+    pub const REVERB: &str = "gpuiShell.reverb";
+    pub const REVERB_ON: &str = "settings.SingingControls.414";
+    pub const REVERB_LEAD: &str = "settings.SingingControls.415";
+    pub const REVERB_MIX: &str = "settings.SingingControls.416";
+    pub const REVERB_DECAY: &str = "settings.SingingControls.417";
+    pub const REVERB_DAMPING: &str = "settings.SingingControls.418";
     pub const QUIT_HELP: &str = "band.quitHelp";
     pub const PEAK_TITLE: &str = "peak.title";
     pub const PEAK_LEAD: &str = "peak.lead";
@@ -476,7 +485,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 463] = [
+    pub const ALL: [&str; 472] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -646,7 +655,16 @@ pub mod keys {
         PRESET_BRIGHT,
         EFFECTS_AMOUNT,
         EFFECTS_AMOUNT_MEANS,
-        SINGING_NOT_YET,
+        SINGING_PRESET,
+        SINGING_LOW_CUT,
+        SINGING_DYNAMICS,
+        SINGING_BRIGHTNESS,
+        REVERB,
+        REVERB_ON,
+        REVERB_LEAD,
+        REVERB_MIX,
+        REVERB_DECAY,
+        REVERB_DAMPING,
         QUIT_HELP,
         PEAK_TITLE,
         PEAK_LEAD,

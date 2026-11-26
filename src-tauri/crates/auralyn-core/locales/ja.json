@@ -3656,7 +3656,7 @@
   "gpuiShell.stopToChange": "機器を変えるときは、先に音を止めてください。",
   "gpuiShell.removeVst": "このVSTを並びから外します。VSTの中の設定も消え、元に戻せません。",
   "gpuiShell.notLoaded": "読み込めません",
-  "gpuiShell.singingNotYet": "歌向けの設定は、今までの版で調整してください。",
+  "gpuiShell.reverb": "残響",
   "gpuiShell.soundUnread": "音声処理の今の設定を読めていません。音づくりの画面を開き直してください。",
   "gpuiShell.offUntilOn": "OFFのままでも種類と整え具合を選べます。ONにするまで音には反映されません。",
   "gpuiShell.desktop": "Windows との連携",

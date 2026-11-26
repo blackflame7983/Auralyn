@@ -17,14 +17,17 @@ use auralyn_ui_model::peak::{Limit, Lookahead, Peak};
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::recovery::Hold;
-use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
+use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Reverb, Singing, Sound};
 use auralyn_ui_model::voice_check::{
     Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
     State as VoiceState, MAX_MS,
 };
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
+use vst_host_lib::audio_engine::builtin::Request as BuiltinRequest;
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
+use vst_host_lib::audio_engine::reverb::ReverbParams;
+use vst_host_lib::audio_engine::singing::SingingParams;
 use vst_host_lib::audio_engine::true_peak_limiter::Config as TruePeakConfig;
 use vst_host_lib::input;
 use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};

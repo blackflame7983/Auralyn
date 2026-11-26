@@ -4,7 +4,6 @@
 
 use super::*;
 use auralyn_ui_model::live_modes::{LiveModes, Mode, Transaction};
-use vst_host_lib::audio_engine::builtin::Request as BuiltinRequest;
 use vst_host_lib::audio_engine::live_modes::{
     Intent, Mode as HostMode, Request as ModesRequest, Snapshot as ModesSnapshot,
 };

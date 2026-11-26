@@ -1,6 +1,6 @@
-//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）。
+//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合、歌向けは3つの値）と残響。
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
-//! 「大きな音を抑える」と「配信用 true-peak 制限」は `limiter`。周囲の音の測定は `measure`。歯擦音・歌向け・本番モードは、まだこの画面に無い。
+//! 「大きな音を抑える」と「配信用 true-peak 制限」は `limiter`。周囲の音の測定は `measure`。歯擦音は、まだこの画面に無い。
 
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
@@ -26,10 +26,11 @@ const ADAPTIVE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Measured, keys::NOISE_MEASURED),
     (NoiseMode::Venue, keys::NOISE_VENUE),
 ];
-const PRESETS: [(Preset, &str); 3] = [
+const PRESETS: [(Preset, &str); 4] = [
     (Preset::Broadcast, keys::PRESET_BROADCAST),
     (Preset::Warm, keys::PRESET_WARM),
     (Preset::Bright, keys::PRESET_BRIGHT),
+    (Preset::Singing, keys::SINGING_PRESET),
 ];
 
 pub struct SoundPage {
@@ -39,6 +40,13 @@ pub struct SoundPage {
     pub amount: Entity<SliderState>,
     /// 抑制の強さ（25〜125）。離したときに送る。
     pub strength: Entity<SliderState>,
+    /// 歌向けの3つの値と残響の3つの値（画面の単位は `sound` の範囲の定数）。離したときに送る。
+    pub low_cut: Entity<SliderState>,
+    pub dynamics: Entity<SliderState>,
+    pub brightness: Entity<SliderState>,
+    pub reverb_mix: Entity<SliderState>,
+    pub reverb_decay: Entity<SliderState>,
+    pub reverb_damping: Entity<SliderState>,
     /// 大きな音を抑える（ピーク保護）と、配信用 true-peak 制限。
     pub peak: LimiterPanel,
     pub true_peak: LimiterPanel,
@@ -52,6 +60,12 @@ impl SoundPage {
             current: None,
             amount: cx.new(|_| SliderState::new().min(0.).max(100.).step(1.)),
             strength: cx.new(|_| SliderState::new().min(25.).max(125.).step(5.)),
+            low_cut: range(cx, sound::LOW_CUT_HZ),
+            dynamics: range(cx, sound::DYNAMICS_PERCENT),
+            brightness: range(cx, sound::BRIGHTNESS_DB),
+            reverb_mix: range(cx, sound::MIX_PERCENT),
+            reverb_decay: range(cx, sound::DECAY_SECONDS),
+            reverb_damping: range(cx, sound::DAMPING_PERCENT),
             peak: LimiterPanel::new(Limit::Sample, cx),
             true_peak: LimiterPanel::new(Limit::TruePeak, cx),
             measure: MeasurePanel::default(),
@@ -66,6 +80,16 @@ impl SoundPage {
         self.strength.update(cx, |state, cx| {
             state.set_value(sound::strength_percent(sound.strength), window, cx)
         });
+        for (slider, value) in [
+            (&self.low_cut, sound.singing.low_cut_hz),
+            (&self.dynamics, sound.singing.dynamics * 100.0),
+            (&self.brightness, sound.singing.brightness_db),
+            (&self.reverb_mix, sound.reverb.mix * 100.0),
+            (&self.reverb_decay, sound.reverb.decay_seconds),
+            (&self.reverb_damping, sound.reverb.damping * 100.0),
+        ] {
+            slider.update(cx, |state, cx| state.set_value(value, window, cx));
+        }
     }
 
     pub fn limiter(&mut self, limit: Limit) -> &mut LimiterPanel {
@@ -226,36 +250,78 @@ impl SoundPage {
                 Switch::new("effects-on")
                     .checked(current.effects_on)
                     .accessibility_label(core(lang, keys::EFFECTS))
-                    .disabled(!current.effects_editable())
                     .on_click({
                         let set = set.clone();
                         move |on, _, cx| set(Change::EffectsOn(*on), cx)
                     }),
-                if current.effects_editable() {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .child(choices(
-                            "effects-preset",
-                            lang,
-                            &PRESETS,
-                            current.preset,
-                            move |preset, cx| set(Change::Preset(preset), cx),
-                        ))
-                        .child(slider_row(
-                            lang,
-                            keys::EFFECTS_AMOUNT,
-                            core(lang, keys::EFFECTS_AMOUNT),
-                            &self.amount,
-                            percent,
-                            false,
-                            cx,
-                        ))
-                        .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
-                } else {
-                    div().child(note(core(lang, keys::SINGING_NOT_YET)))
-                },
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(choices("effects-preset", lang, &PRESETS, current.preset, {
+                        let set = set.clone();
+                        move |preset, cx| set(Change::Preset(preset), cx)
+                    }))
+                    .map(|this| {
+                        if current.preset == Some(Preset::Singing) {
+                            this.children(
+                                [
+                                    (
+                                        keys::SINGING_LOW_CUT,
+                                        &self.low_cut,
+                                        whole as fn(f32) -> String,
+                                    ),
+                                    (keys::SINGING_DYNAMICS, &self.dynamics, whole),
+                                    (keys::SINGING_BRIGHTNESS, &self.brightness, tenth),
+                                ]
+                                .map(|(label, slider, show)| {
+                                    slider_row(
+                                        lang,
+                                        label,
+                                        core(lang, label),
+                                        slider,
+                                        show,
+                                        false,
+                                        cx,
+                                    )
+                                }),
+                            )
+                        } else {
+                            this.child(slider_row(
+                                lang,
+                                keys::EFFECTS_AMOUNT,
+                                core(lang, keys::EFFECTS_AMOUNT),
+                                &self.amount,
+                                percent,
+                                false,
+                                cx,
+                            ))
+                            .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
+                        }
+                    }),
+            ))
+            .child(section(
+                lang,
+                keys::REVERB,
+                keys::REVERB_LEAD,
+                Switch::new("reverb-on")
+                    .checked(current.reverb.enabled)
+                    .accessibility_label(core(lang, keys::REVERB_ON))
+                    .on_click(move |on, _, cx| set(Change::ReverbOn(*on), cx)),
+                div().flex().flex_col().gap_2().children(
+                    [
+                        (
+                            keys::REVERB_MIX,
+                            &self.reverb_mix,
+                            whole as fn(f32) -> String,
+                        ),
+                        (keys::REVERB_DECAY, &self.reverb_decay, tenth),
+                        (keys::REVERB_DAMPING, &self.reverb_damping, whole),
+                    ]
+                    .map(|(label, slider, show)| {
+                        slider_row(lang, label, core(lang, label), slider, show, false, cx)
+                    }),
+                ),
             ))
             .child(self.peak.render(lang, locked, cx, send.clone()))
             .child(self.true_peak.render(lang, locked, cx, send))
@@ -297,6 +363,15 @@ pub(crate) fn unknown(_: f32) -> String {
 
 fn percent(value: f32) -> String {
     format!("{value:.0}%")
+}
+
+/// 単位は名前に書いてあるので、数だけ出す。
+fn whole(value: f32) -> String {
+    format!("{value:.0}")
+}
+
+fn tenth(value: f32) -> String {
+    format!("{value:.1}")
 }
 
 /// 名前・スライダー・値の1行。値はスライダーのもので、動かしている間もついてくる。`named` は読み上げの名前。
