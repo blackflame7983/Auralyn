@@ -765,6 +765,15 @@ impl MainView {
         }
     }
 
+    /// 設定のタブを移るとき。システムのタブは、開いた時点の統計と VST のリセットの結果を読み直す。
+    fn open_section(&mut self, section: Section) {
+        self.settings_section = section;
+        if section == Section::System {
+            self.cleared = None;
+            self.engine.send(Command::ReadStats);
+        }
+    }
+
     /// 音づくりの画面を離れるとき。この画面で始めた測定は中止する（見ていない間に測り終えて置き去りにしない）。
     fn leave_sound(&mut self) {
         let leaving = self
@@ -1159,7 +1168,7 @@ impl Render for MainView {
                                         let entity = entity.clone();
                                         move |section, _, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.settings_section = section;
+                                                this.open_section(section);
                                                 cx.notify();
                                             })
                                         }
