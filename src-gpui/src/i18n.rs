@@ -333,9 +333,20 @@ pub mod keys {
     pub const SETUP_LISTEN_HINT: &str = "wizard.listeningHint";
     pub const SETUP_START: &str = "wizard.saveStart";
     pub const SETUP_OTHER: &str = "gpuiShell.setupOther";
+    pub const HELP_TROUBLE: &str = "help.section.trouble";
+    pub const HELP_DOCS: &str = "help.readMore";
+    pub const HELP_MORE: &str = "help.learnMore";
+    pub const HELP_SILENT: &str = "help.trouble.silent";
+    pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
+    pub const HELP_RECEIVER: &str = "help.trouble.receiver";
+    pub const HELP_RECEIVER_BODY: &str = "gpuiShell.helpReceiverBody";
+    pub const HELP_DROPOUTS: &str = "help.trouble.dropouts";
+    pub const HELP_DROPOUTS_BODY: &str = "gpuiShell.helpDropoutsBody";
+    pub const HELP_KEEPS_RUNNING: &str = "help.trouble.keepsRunning";
+    pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
 
     #[cfg(test)]
-    pub const ALL: [&str; 322] = [
+    pub const ALL: [&str; 333] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -658,6 +669,17 @@ pub mod keys {
         SETUP_LISTEN_HINT,
         SETUP_START,
         SETUP_OTHER,
+        HELP_TROUBLE,
+        HELP_DOCS,
+        HELP_MORE,
+        HELP_SILENT,
+        HELP_SILENT_BODY,
+        HELP_RECEIVER,
+        HELP_RECEIVER_BODY,
+        HELP_DROPOUTS,
+        HELP_DROPOUTS_BODY,
+        HELP_KEEPS_RUNNING,
+        HELP_KEEPS_RUNNING_BODY,
     ];
 }
 

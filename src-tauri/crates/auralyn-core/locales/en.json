@@ -3683,5 +3683,9 @@
   "gpuiShell.mixVoiceMute": "Mute voice",
   "gpuiShell.mixMusicMute": "Mute backing track",
   "gpuiShell.setupLead": "Choose what it is for, and a likely microphone and output are picked for you. Change them if they are wrong.",
-  "gpuiShell.setupOther": "Choose ASIO and others on the Connect page"
+  "gpuiShell.setupOther": "Choose ASIO and others on the Connect page",
+  "gpuiShell.helpSilentBody": "Check that audio is running on the top band, that “{emergency}” is off in the right column, and that “{gain}” is not 0.",
+  "gpuiShell.helpDropoutsBody": "Check processing delays and dropouts under “{diagnostics}” on this page. A larger buffer on the Connect page may be more stable, but adds delay.",
+  "gpuiShell.helpKeepsRunningBody": "Closing the window with × hides it in the notification area, and the audio keeps running. To stop it, choose “{stop}” on the top band. To quit, choose “{quit}” from the notification area icon.",
+  "gpuiShell.helpReceiverBody": "Set the input of the destination app (OBS, Discord and so on) to the device that Auralyn’s output reaches. “Learn more” explains how to connect a virtual cable."
 }

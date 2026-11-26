@@ -3,6 +3,7 @@
 //! このクレートは GPUI・Tauri・音声エンジンのどれにも依存しない。部品（GPUI）はここの結果を描くだけにする。
 pub mod connect;
 pub mod diagnostics;
+pub mod docs;
 pub mod flow;
 pub mod live_output;
 pub mod measurement;

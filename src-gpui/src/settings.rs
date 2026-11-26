@@ -1,7 +1,9 @@
 //! 設定の画面：表示言語と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
+//! 困ったとき（症状ごとの次の1手と、公式サイトのドキュメントへのリンク）。
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
 use auralyn_ui_model::diagnostics::Stats;
+use auralyn_ui_model::docs::{self, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
@@ -291,4 +293,81 @@ fn row(lang: Lang, name: &'static str, value: String) -> impl IntoElement {
         .text_sm()
         .child(div().text_color(color::muted()).child(core(lang, name)))
         .child(div().min_w_0().child(value))
+}
+
+/// 困ったとき：症状ごとに次の1手と、ドキュメントの該当箇所へのリンク（Tauri 版の使い方の「困ったとき」）。
+/// `tray` は通知領域のアイコンがあるか。無ければ × で終わるので「閉じても音が続く」は出さない。
+pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
+    let english = lang == Lang::En;
+    card(
+        core(lang, keys::HELP_TROUBLE),
+        Button::new("help-docs")
+            .label(core(lang, keys::HELP_DOCS))
+            .outline()
+            .on_click(move |_, _, cx| cx.open_url(&docs::url(docs::INDEX, english))),
+        div().flex().flex_col().gap_3().children(
+            Trouble::ALL
+                .into_iter()
+                .filter(move |&t| tray || t != Trouble::KeepsRunning)
+                .map(|trouble| {
+                    let (title, body) = trouble_text(lang, trouble);
+                    let target = trouble.target();
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
+                        .child(note(body))
+                        .child(
+                            div().child(
+                                Button::new(SharedString::from(format!("help-{trouble:?}")))
+                                    .label(core(lang, keys::HELP_MORE))
+                                    .link()
+                                    .on_click(move |_, _, cx| {
+                                        cx.open_url(&docs::url(target, english))
+                                    }),
+                            ),
+                        )
+                }),
+        ),
+    )
+}
+
+fn trouble_text(lang: Lang, trouble: Trouble) -> (&'static str, String) {
+    match trouble {
+        Trouble::Silent => (
+            core(lang, keys::HELP_SILENT),
+            core_with(
+                lang,
+                keys::HELP_SILENT_BODY,
+                &[
+                    ("emergency", &core(lang, keys::EMERGENCY)),
+                    ("gain", &core(lang, keys::OUTPUT_VOLUME)),
+                ],
+            ),
+        ),
+        Trouble::NotReceived => (
+            core(lang, keys::HELP_RECEIVER),
+            core(lang, keys::HELP_RECEIVER_BODY).to_owned(),
+        ),
+        Trouble::Dropouts => (
+            core(lang, keys::HELP_DROPOUTS),
+            core_with(
+                lang,
+                keys::HELP_DROPOUTS_BODY,
+                &[("diagnostics", &core(lang, keys::DIAG_TITLE))],
+            ),
+        ),
+        Trouble::KeepsRunning => (
+            core(lang, keys::HELP_KEEPS_RUNNING),
+            core_with(
+                lang,
+                keys::HELP_KEEPS_RUNNING_BODY,
+                &[
+                    ("stop", &core(lang, keys::STOP)),
+                    ("quit", &core(lang, keys::TRAY_QUIT)),
+                ],
+            ),
+        ),
+    }
 }
