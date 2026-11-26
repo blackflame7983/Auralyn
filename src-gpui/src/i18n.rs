@@ -659,6 +659,9 @@ pub mod keys {
     pub const MUSIC_SOUND_HINT: &str = "music.soundHint";
     pub const MUSIC_SOURCE_HINT: &str = "music.sourceHint";
     pub const MUSIC_SOURCE_HINT_GENERIC: &str = "music.sourceHintGeneric";
+    pub const SETTINGS_OBS: &str = "settings.obs";
+    pub const SETTINGS_SHORTCUTS: &str = "settings.shortcuts";
+    pub const SETTINGS_SYSTEM: &str = "settings.system";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -680,7 +683,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 667] = [
+    pub const ALL: [&str; 670] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1329,6 +1332,9 @@ pub mod keys {
         MUSIC_SOUND_HINT,
         MUSIC_SOURCE_HINT,
         MUSIC_SOURCE_HINT_GENERIC,
+        SETTINGS_OBS,
+        SETTINGS_SHORTCUTS,
+        SETTINGS_SYSTEM,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,

@@ -32,7 +32,8 @@ pub type OnGoto = Rc<dyn Fn(Goto, &mut Window, &mut App)>;
 pub enum Goto {
     Connect,
     Sound,
-    Settings,
+    /// 設定の OBS連携 のタブ。
+    Obs,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -363,7 +364,7 @@ impl PrepPanel {
                     }
                     Stage::Receiver => (
                         keys::PREP_CHECK_RECEIVER,
-                        Goto::Settings,
+                        Goto::Obs,
                         keys::PREP_ACK_RECEIVER,
                     ),
                 };
