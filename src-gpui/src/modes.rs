@@ -43,13 +43,27 @@ impl ModesPanel {
         self.current().is_some_and(|m| m.armed)
     }
 
-    /// 上の帯に出す札：かかっているモードと、操作ロック中か。
+    /// 上の帯に出す札：かかっている（切り替え中なら切り替え先の）モードと、操作ロック中か。停止中もロックは出す。
     pub fn badges(&self, lang: Lang) -> Vec<SharedString> {
         let Some(modes) = self.current() else {
             return Vec::new();
         };
-        let mode = modes.selected().map(|mode| core(lang, mode_name(mode)));
-        let lock = modes.armed.then(|| core(lang, keys::MODES_PROTECTING));
+        let mode = if modes.switching() {
+            modes.target.map(|mode| {
+                core_with(
+                    lang,
+                    keys::MODES_SWITCHING,
+                    &[("mode", &core(lang, mode_name(mode)))],
+                )
+            })
+        } else {
+            modes
+                .selected()
+                .map(|mode| core(lang, mode_name(mode)).to_string())
+        };
+        let lock = modes
+            .armed
+            .then(|| core(lang, keys::MODES_PROTECTING).to_string());
         mode.into_iter()
             .chain(lock)
             .map(SharedString::from)
