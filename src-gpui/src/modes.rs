@@ -26,12 +26,13 @@ pub struct ModesPanel {
 }
 
 impl ModesPanel {
-    /// 状態を入れ替える。切り替えが終わった（かかったモードが変わった）なら `true`：音づくりを読み直す合図。
+    /// 状態を入れ替える。切り替えが終わって別のモードがかかったなら `true`：音づくりを読み直す合図。
+    /// 手で変えて「いまの調整」になったときは、画面の値がもう新しいので読み直さない。
     pub fn set(&mut self, state: Result<LiveModes, String>) -> bool {
         let before = self.current().map(|m| (m.switching(), m.selected()));
         self.state = Some(state);
         let after = self.current().map(|m| (m.switching(), m.selected()));
-        matches!((before, after), (Some(b), Some(a)) if b != a && !a.0)
+        matches!((before, after), (Some(b), Some(a)) if b != a && !a.0 && a.1.is_some())
     }
 
     fn current(&self) -> Option<&LiveModes> {
@@ -79,11 +80,6 @@ impl ModesPanel {
     pub fn keeps_reverb(&mut self) {
         self.failed = None;
         self.keeps_reverb.set(true);
-    }
-
-    /// 切り替え中で、読み直しを続けたいか。
-    pub fn switching(&self) -> bool {
-        self.current().is_some_and(LiveModes::switching)
     }
 
     pub fn render(&self, lang: Lang, send: OnCommand) -> impl IntoElement {

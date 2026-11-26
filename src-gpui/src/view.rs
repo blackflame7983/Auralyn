@@ -75,7 +75,7 @@ pub struct MainView {
     level_seq: u64,
     /// ピーク保護の反映待ちを最後に読み直した時刻。
     peak_polled: Instant,
-    /// 歌・雑談の切り替え中に最後に読み直した時刻（上の帯に出すので、どの画面でも読む）。
+    /// 歌・雑談の状態を最後に読み直した時刻（上の帯に出すので、どの画面でも読む）。
     modes_polled: Instant,
     /// 配信用の出力を最後に読み直した時刻。
     live_polled: Instant,
@@ -317,7 +317,9 @@ impl MainView {
             self.live_polled = Instant::now();
             self.engine.send(Command::LiveOutput(None));
         }
-        if self.modes.switching() && self.modes_polled.elapsed() >= PEAK_POLL {
+        // 歌・雑談と操作ロックは上の帯に出すので、窓が見えている間は Tauri 版と同じ 500ms ごとに読み直す
+        // （手で音を変えていまの調整になったときや、ショートカットでの切り替えも追う）。
+        if !self.hidden.get() && self.modes_polled.elapsed() >= PEAK_POLL {
             self.modes_polled = Instant::now();
             self.engine.send(Command::Modes(ModeAction::Read));
         }
