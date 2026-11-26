@@ -17,7 +17,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Slot};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{with_hint, OnCommand};
+use crate::part::{note, OnCommand};
 
 /// 追加の候補の1行。検索は [`Candidate::matches`] に任せる。
 #[derive(Clone)]
@@ -296,16 +296,14 @@ impl VstPage {
                         .flex_col()
                         .items_start()
                         .gap_1p5()
-                        .child(with_hint(
-                            "vst-reload-missing-hint",
-                            lang,
-                            core(lang, keys::VST_RELOAD_MISSING_HINT),
+                        .child(
                             Button::new("vst-reload-missing")
                                 .label(core(lang, keys::VST_RELOAD_MISSING))
                                 .outline()
                                 .small()
                                 .on_click(move |_, _, cx| send(Command::ReloadMissing, cx)),
-                        )),
+                        )
+                        .child(note(core(lang, keys::VST_RELOAD_MISSING_HINT))),
                 )
             })
     }

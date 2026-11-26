@@ -19,7 +19,7 @@ use vst_host_lib::obs_setup::{TimingMetadata, TimingTargets};
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, Timing};
-use crate::part::{choices, note};
+use crate::part::{choices, note, paragraphs, with_hint};
 
 /// ボタンで選ぶもの。入力欄の文字は `InputState` が持つ。
 #[derive(Default)]
@@ -166,7 +166,19 @@ impl TimingPanel {
             .pt_3()
             .border_t_1()
             .border_color(crate::color::border())
-            .child(div().child(toggle))
+            .child(with_hint(
+                "obs-timing-hint",
+                lang,
+                paragraphs(
+                    lang,
+                    &[
+                        keys::OBS_TIMING_LEAD,
+                        keys::OBS_TIMING_SCOPE,
+                        keys::OBS_TIMING_FOOTER,
+                    ],
+                ),
+                toggle,
+            ))
             .when(open, |this| {
                 this.child(self.render_form(lang, cx, connected, busy, on))
             })
@@ -307,8 +319,6 @@ impl TimingPanel {
             .flex()
             .flex_col()
             .gap_2()
-            .child(note(core(lang, keys::OBS_TIMING_LEAD)))
-            .child(note(core(lang, keys::OBS_TIMING_SCOPE)))
             .child(
                 div()
                     .text_sm()
@@ -341,8 +351,22 @@ impl TimingPanel {
                             .child(field(keys::OBS_TIMING_TRACK, &self.track)),
                     ),
             )
-            .child(field(keys::OBS_TIMING_NOTE, &self.note))
-            .child(note(core(lang, keys::OBS_TIMING_NOTE_HINT)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        with_hint(
+                            "obs-timing-note-hint",
+                            lang,
+                            core(lang, keys::OBS_TIMING_NOTE_HINT),
+                            core(lang, keys::OBS_TIMING_NOTE),
+                        )
+                        .text_sm(),
+                    )
+                    .child(Input::new(&self.note).aria_label(core(lang, keys::OBS_TIMING_NOTE))),
+            )
             .map(|this| {
                 let count = form.note.chars().count();
                 this.when(count > MAX_NOTE_CHARS, |this| {
@@ -389,7 +413,6 @@ impl TimingPanel {
                         }
                     })
             }))
-            .child(note(core(lang, keys::OBS_TIMING_FOOTER)))
     }
 
     fn render_targets(

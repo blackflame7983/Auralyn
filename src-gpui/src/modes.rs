@@ -210,10 +210,11 @@ impl ModesPanel {
                     "modes-register-hint",
                     lang,
                     core(lang, keys::MODES_REGISTER_NOTE),
-                    core(lang, keys::MODES_REGISTER),
+                    div()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(core(lang, keys::MODES_REGISTER)),
                 )
-                .text_sm()
-                .font_weight(FontWeight::MEDIUM),
+                .text_sm(),
             )
             .child(
                 div()

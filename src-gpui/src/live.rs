@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::{paragraphs, with_hint, Card, OnCommand};
+use crate::part::{note, with_hint, Card, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -283,13 +283,16 @@ impl LivePanel {
                     .child(with_hint(
                         "live-split-hint",
                         lang,
-                        paragraphs(lang, &[keys::LIVE_SPLIT_SCOPE, keys::LIVE_SPLIT_KEPT]),
+                        core(lang, keys::LIVE_SPLIT_KEPT),
                         Checkbox::new("live-split")
                             .checked(draft.split)
                             .disabled(saving || draft.device_id.is_none())
                             .label(core(lang, keys::LIVE_SPLIT))
                             .on_click(self.on_change(Change::Split)),
                     ))
+                    .when(draft.split, |this| {
+                        this.child(note(core(lang, keys::LIVE_SPLIT_SCOPE)))
+                    })
                     .child(trim_row(
                         lang,
                         keys::LIVE_MONITOR_TRIM,

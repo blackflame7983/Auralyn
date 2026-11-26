@@ -152,7 +152,10 @@ impl LimiterPanel {
                     },
                     disabled,
                     cx,
-                )),
+                ))
+                .when(true_peak, |this| {
+                    this.child(note(core(lang, keys::TRUE_PEAK_LIMITS)))
+                }),
         )
         .icon(if true_peak {
             IconName::ShieldCheck
@@ -164,11 +167,7 @@ impl LimiterPanel {
             paragraphs(
                 lang,
                 if true_peak {
-                    &[
-                        keys::TRUE_PEAK_LEAD,
-                        keys::TRUE_PEAK_SCOPE,
-                        keys::TRUE_PEAK_LIMITS,
-                    ]
+                    &[keys::TRUE_PEAK_LEAD, keys::TRUE_PEAK_SCOPE]
                 } else {
                     &[keys::PEAK_LEAD, keys::PEAK_SCOPE, keys::PEAK_RESETS]
                 },

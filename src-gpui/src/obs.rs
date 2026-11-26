@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use auralyn_ui_model::obs::{
     self, Reach, State, Target, Verdict, DEFAULT_HOST, DEFAULT_PORT, RECHECK_MS,
 };
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
@@ -21,7 +22,7 @@ use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs_changes::Changes;
 use crate::obs_link::{ObsLink, Order, Reply, Setup, SetupDone};
 use crate::obs_timing::TimingPanel;
-use crate::part::{card, note};
+use crate::part::{card, note, paragraphs, with_hint};
 
 /// 画面からの OBS の命令の送り口（`MainView` が受けて描き直す）。
 pub type OnOrder = Rc<dyn Fn(Order, &mut App)>;
@@ -343,8 +344,7 @@ impl ObsPanel {
                                         }
                                     }),
                             )
-                        })
-                        .child(note(core(lang, keys::OBS_PASSWORD_SCOPE))),
+                        }),
                 )
                 .when(self.saved.is_err(), |this| {
                     this.child(note(core(lang, keys::OBS_SAVED_UNREADABLE)))
@@ -416,9 +416,15 @@ impl ObsPanel {
                 .child(
                     self.changes
                         .render(lang, state == State::Connected, self.reaching, on),
-                )
-                .child(note(core(lang, keys::OBS_NEEDS)))
-                .child(note(core(lang, keys::OBS_SERVER))),
+                ),
+        )
+        .icon(IconName::Cast)
+        .hint(
+            lang,
+            paragraphs(
+                lang,
+                &[keys::OBS_NEEDS, keys::OBS_SERVER, keys::OBS_PASSWORD_SCOPE],
+            ),
         )
     }
 
@@ -446,11 +452,14 @@ impl ObsPanel {
             .pt_3()
             .border_t_1()
             .border_color(crate::color::border())
-            .child(
+            .child(with_hint(
+                "obs-reach-hint",
+                lang,
+                core(lang, keys::OBS_REACH_SCOPE),
                 div()
                     .font_weight(FontWeight::MEDIUM)
                     .child(core(lang, keys::OBS_REACH_TITLE)),
-            )
+            ))
             .child(
                 div().child(
                     Button::new("obs-reach")
@@ -491,9 +500,6 @@ impl ObsPanel {
                     core(lang, keys::OBS_REACH_FAILED),
                     crate::obs_text::original(lang, message)
                 )))
-            })
-            .when(self.reach.is_some(), |this| {
-                this.child(note(core(lang, keys::OBS_REACH_SCOPE)))
             })
     }
 }

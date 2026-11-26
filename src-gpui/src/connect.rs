@@ -506,6 +506,7 @@ impl ConnectPage {
         let shared = connect::shares_device(&host);
         let app = self.uses_app(cx);
         let stopped = phase.can_start();
+        let unchosen = self.start_choice(cx).is_none();
         let empty = core(lang, keys::NO_DEVICES);
         div()
             .flex()
@@ -516,12 +517,10 @@ impl ConnectPage {
                 core(lang, keys::CONNECTION_METHOD),
                 Select::new(&self.host).placeholder(empty),
             ))
-            .child(field_hint(
-                lang,
-                core(lang, keys::SOURCE),
-                shared.then_some(keys::SOURCE_ASIO),
-                Select::new(&self.source),
-            ))
+            .child(field(core(lang, keys::SOURCE), Select::new(&self.source)))
+            .when(shared, |this| {
+                this.child(note(core(lang, keys::SOURCE_ASIO)))
+            })
             .child(field(core(lang, keys::PURPOSE), Select::new(&self.purpose)))
             .when_some(self.other_usage(cx), |this, other| {
                 let input = other
@@ -593,19 +592,22 @@ impl ConnectPage {
                     .flex()
                     .flex_col()
                     .gap_1p5()
-                    .child(with_hint(
-                        "connect-start-hint",
-                        lang,
-                        core(lang, keys::FIRST_START_HINT),
+                    .child(
                         Button::new("connect-start")
                             .label(core(lang, keys::START))
                             .icon(IconName::Play)
                             .outline()
-                            .disabled(!stopped || self.start_choice(cx).is_none())
+                            .disabled(!stopped || unchosen)
                             .on_click(move |_, window, cx| on_start(window, cx)),
-                    ))
-                    .when(!stopped, |this| {
-                        this.child(note(core(lang, keys::STOP_TO_CHANGE)))
+                    )
+                    .map(|this| {
+                        if !stopped {
+                            this.child(note(core(lang, keys::STOP_TO_CHANGE)))
+                        } else if unchosen {
+                            this.child(note(core(lang, keys::FIRST_START_HINT)))
+                        } else {
+                            this
+                        }
                     }),
             )
     }
@@ -670,19 +672,19 @@ impl ConnectPage {
                     Select::new(&self.input_pair),
                 ))
             })
-            .child(field_hint(
-                lang,
+            .child(field(
                 core(lang, keys::ROUTING_MODE),
-                Some(hint),
                 Select::new(&self.output_mode),
             ))
+            .child(note(core(lang, hint)))
             .when(mode == Some(0), |this| {
-                this.child(field_hint(
-                    lang,
+                this.child(field(
                     core(lang, keys::ROUTING_CHANNELS),
-                    (self.channels[1] == 0).then_some(keys::ROUTING_UNVERIFIED),
                     Select::new(&self.output_pair),
                 ))
+            })
+            .when(self.channels[1] == 0 && mode == Some(0), |this| {
+                this.child(note(core(lang, keys::ROUTING_UNVERIFIED)))
             })
     }
 }
@@ -754,9 +756,13 @@ fn field_hint(
         .flex_col()
         .gap_1p5()
         .child(
-            with_hint(format!("{label}-hint"), lang, core(lang, hint), label)
-                .text_sm()
-                .font_weight(FontWeight::MEDIUM),
+            with_hint(
+                format!("{label}-hint"),
+                lang,
+                core(lang, hint),
+                div().font_weight(FontWeight::MEDIUM).child(label),
+            )
+            .text_sm(),
         )
         .child(select.accessibility_label(label))
 }
