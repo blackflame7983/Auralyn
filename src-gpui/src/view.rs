@@ -36,7 +36,7 @@ use crate::post_mix::PostMixPanel;
 use crate::prep::{Goto, PrepPanel};
 use crate::recovery;
 use crate::scenes::ScenePanel;
-use crate::settings;
+use crate::settings::{self, Section};
 use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
@@ -73,6 +73,8 @@ pub struct MainView {
     desktop: Desktop,
     lang: Lang,
     page: Page,
+    /// 設定の画面で開いているタブ。
+    settings_section: Section,
     phase: Phase,
     muted: bool,
     bypassed: bool,
@@ -352,6 +354,7 @@ impl MainView {
             desktop,
             lang,
             page: Page::Home,
+            settings_section: Section::default(),
             phase: Phase::LAUNCH,
             muted: false,
             bypassed: false,
@@ -1116,10 +1119,14 @@ impl Render for MainView {
                                                     let entity = entity.clone();
                                                     Rc::new(move |goto, _, cx| {
                                                         entity.update(cx, |this, cx| {
+                                                            if goto == Goto::Obs {
+                                                                this.settings_section =
+                                                                    Section::Obs;
+                                                            }
                                                             this.open(match goto {
                                                                 Goto::Connect => Page::Connect,
                                                                 Goto::Sound => Page::Sound,
-                                                                Goto::Settings => Page::Settings,
+                                                                Goto::Obs => Page::Settings,
                                                             });
                                                             cx.notify();
                                                         })
@@ -1147,68 +1154,100 @@ impl Render for MainView {
                                     )),
                                 Page::Settings => this.child(settings::render(
                                     lang,
-                                    self.desktop.tray_error.as_deref(),
+                                    self.settings_section,
                                     {
                                         let entity = entity.clone();
-                                        move |lang, window, cx| {
+                                        move |section, _, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.set_lang(lang, window, cx);
+                                                this.settings_section = section;
                                                 cx.notify();
                                             })
                                         }
                                     },
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_6()
-                                        .child(settings::appearance(lang, color::theme(), {
-                                            let entity = entity.clone();
-                                            move |theme, _, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.set_theme(theme, cx);
-                                                    cx.notify();
+                                    match self.settings_section {
+                                        Section::Appearance => div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_6()
+                                            .child(settings::language(lang, {
+                                                let entity = entity.clone();
+                                                move |lang, window, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.set_lang(lang, window, cx);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            }))
+                                            .child(settings::appearance(lang, color::theme(), {
+                                                let entity = entity.clone();
+                                                move |theme, _, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.set_theme(theme, cx);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            }))
+                                            .into_any_element(),
+                                        Section::Obs => div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_6()
+                                            .child(self.obs.render(lang, cx, {
+                                                let entity = entity.clone();
+                                                Rc::new(move |order, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.obs.order(order);
+                                                        cx.notify();
+                                                    })
                                                 })
-                                            }
-                                        }))
-                                        .child(self.obs.render(lang, cx, {
-                                            let entity = entity.clone();
-                                            Rc::new(move |order, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.obs.order(order);
-                                                    cx.notify();
+                                            }))
+                                            .child(self.scenes.render(lang, {
+                                                let entity = entity.clone();
+                                                Rc::new(move |edit, window, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.scenes.edit(edit, window, cx);
+                                                        cx.notify();
+                                                    })
                                                 })
-                                            })
-                                        }))
-                                        .child(self.scenes.render(lang, {
-                                            let entity = entity.clone();
-                                            Rc::new(move |edit, window, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.scenes.edit(edit, window, cx);
-                                                    cx.notify();
-                                                })
-                                            })
-                                        }))
-                                        .child(settings::trouble(
-                                            lang,
-                                            self.desktop.tray_error.is_none(),
-                                        ))
-                                        .child(settings::glossary(lang))
-                                        .child(settings::shortcuts(
+                                            }))
+                                            .into_any_element(),
+                                        Section::Shortcuts => settings::shortcuts(
                                             lang,
                                             &self.desktop.shortcuts,
                                             self.desktop.shortcuts_error.as_deref(),
-                                        ))
-                                        .child(settings::diagnostics(
-                                            lang,
-                                            self.stats.as_ref(),
-                                            send.clone(),
-                                        ))
-                                        .child(settings::mix_diagnostics(lang, &self.mix_stats))
-                                        .child(settings::plugins(
-                                            lang,
-                                            self.cleared.as_ref(),
-                                            send,
-                                        )),
+                                        )
+                                        .into_any_element(),
+                                        Section::System => div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_6()
+                                            .child(settings::desktop(
+                                                lang,
+                                                self.desktop.tray_error.as_deref(),
+                                            ))
+                                            .child(settings::diagnostics(
+                                                lang,
+                                                self.stats.as_ref(),
+                                                send.clone(),
+                                            ))
+                                            .child(settings::mix_diagnostics(lang, &self.mix_stats))
+                                            .child(settings::plugins(
+                                                lang,
+                                                self.cleared.as_ref(),
+                                                send,
+                                            ))
+                                            .into_any_element(),
+                                        Section::Help => div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_6()
+                                            .child(settings::trouble(
+                                                lang,
+                                                self.desktop.tray_error.is_none(),
+                                            ))
+                                            .child(settings::glossary(lang))
+                                            .into_any_element(),
+                                    },
                                 )),
                                 Page::Vst => this.child(crate::part::columns(
                                     self.vst.render(lang, cx, send.clone()),

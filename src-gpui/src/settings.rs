@@ -1,4 +1,4 @@
-//! 設定の画面：表示言語・外観（テーマ）と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
+//! 設定の画面（外観・OBS連携・ホットキー・システム・困ったときのタブ）：表示言語・外観（テーマ）と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
 //! 困ったとき（症状ごとの次の1手と、公式サイトのドキュメントへのリンク）と、言葉の意味（user-docs の用語集から）。
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
+use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -21,57 +22,114 @@ use crate::part::{card, note, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
-/// `tray` は、使えないときの理由。
+/// 設定の画面の区切り（Tauri 版の設定と同じ名前を使う）。
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum Section {
+    #[default]
+    Appearance,
+    Obs,
+    Shortcuts,
+    System,
+    Help,
+}
+
+impl Section {
+    const ALL: [Section; 5] = [
+        Section::Appearance,
+        Section::Obs,
+        Section::Shortcuts,
+        Section::System,
+        Section::Help,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Section::Appearance => keys::APPEARANCE,
+            Section::Obs => keys::SETTINGS_OBS,
+            Section::Shortcuts => keys::SETTINGS_SHORTCUTS,
+            Section::System => keys::SETTINGS_SYSTEM,
+            Section::Help => keys::HELP_TROUBLE,
+        }
+    }
+}
+
+/// 区切りのタブと、選んだ区切りの中身と、版。
 pub fn render(
     lang: Lang,
-    tray: Option<&str>,
-    on_lang: impl Fn(Lang, &mut Window, &mut App) + 'static,
-    more: impl IntoElement,
+    section: Section,
+    on_section: impl Fn(Section, &mut Window, &mut App) + 'static,
+    body: impl IntoElement,
 ) -> impl IntoElement {
+    let selected = Section::ALL.iter().position(|s| *s == section).unwrap_or(0);
     div()
         .flex()
         .flex_col()
         .gap_6()
         .max_w(px(560.))
-        .child(card(
-            core(lang, keys::LANGUAGE),
-            div(),
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(
-                    ButtonGroup::new("language")
-                        .outline()
-                        .children(LANGS.iter().map(|(value, label)| {
-                            Button::new(*label).label(*label).selected(*value == lang)
-                        }))
-                        .on_click(move |clicked, window, cx| {
-                            if let Some((value, _)) = clicked.first().and_then(|i| LANGS.get(*i)) {
-                                on_lang(*value, window, cx);
-                            }
-                        }),
+        .child(
+            TabBar::new("settings-sections")
+                .underline()
+                .selected_index(selected)
+                .children(
+                    Section::ALL
+                        .iter()
+                        .map(|s| Tab::new().label(core(lang, s.label()))),
                 )
-                .child(note(core(lang, keys::LANGUAGE_PARTIAL))),
-        ))
-        .child(card(
-            core(lang, keys::DESKTOP),
-            div(),
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(status(lang, keys::TRAY, tray))
-                .when(tray.is_none(), |this| {
-                    this.child(note(core(lang, keys::QUIT_HELP)))
+                .on_click(move |index, window, cx| {
+                    if let Some(section) = Section::ALL.get(*index) {
+                        on_section(*section, window, cx);
+                    }
                 }),
-        ))
-        .child(more)
+        )
+        .child(body)
         .child(note(format!(
             "{} {}",
             core(lang, keys::VERSION).trim(),
             env!("CARGO_PKG_VERSION")
         )))
+}
+
+pub fn language(
+    lang: Lang,
+    on_lang: impl Fn(Lang, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    card(
+        core(lang, keys::LANGUAGE),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                ButtonGroup::new("language")
+                    .outline()
+                    .children(LANGS.iter().map(|(value, label)| {
+                        Button::new(*label).label(*label).selected(*value == lang)
+                    }))
+                    .on_click(move |clicked, window, cx| {
+                        if let Some((value, _)) = clicked.first().and_then(|i| LANGS.get(*i)) {
+                            on_lang(*value, window, cx);
+                        }
+                    }),
+            )
+            .child(note(core(lang, keys::LANGUAGE_PARTIAL))),
+    )
+}
+
+/// `tray` は、使えないときの理由。
+pub fn desktop(lang: Lang, tray: Option<&str>) -> impl IntoElement {
+    card(
+        core(lang, keys::DESKTOP),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(status(lang, keys::TRAY, tray))
+            .when(tray.is_none(), |this| {
+                this.child(note(core(lang, keys::QUIT_HELP)))
+            }),
+    )
 }
 
 const THEMES: [(Theme, &str, &str); 3] = [
