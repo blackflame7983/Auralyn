@@ -377,9 +377,22 @@ pub mod keys {
     pub const HELP_DROPOUTS_BODY: &str = "gpuiShell.helpDropoutsBody";
     pub const HELP_KEEPS_RUNNING: &str = "help.trouble.keepsRunning";
     pub const HELP_KEEPS_RUNNING_BODY: &str = "gpuiShell.helpKeepsRunningBody";
+    pub const ROUTING_INDEPENDENT: &str = "settings.routing.independent";
+    pub const ROUTING_INSERT: &str = "settings.routing.insert";
+    pub const ROUTING_LEGACY: &str = "settings.routing.legacy";
+    pub const ROUTING_INDEPENDENT_HINT: &str = "settings.routing.independentHint";
+    pub const ROUTING_INSERT_HINT: &str = "settings.routing.insertHint";
+    pub const ROUTING_LEGACY_HINT: &str = "settings.routing.legacyHint";
+    pub const ROUTING_MODE: &str = "settings.routing.mode";
+    pub const ROUTING_CHANNELS: &str = "settings.routing.channels";
+    pub const ROUTING_PAIR: &str = "settings.routing.pair";
+    pub const ROUTING_UNVERIFIED: &str = "settings.routing.unverified";
+    pub const CHANNEL_INPUT: &str = "settings.channel.input";
+    pub const CHANNEL_TITLE: &str = "settings.InputChannelSelector.205";
+    pub const CHANNEL_UNVERIFIED: &str = "settings.InputChannelSelector.unverified";
 
     #[cfg(test)]
-    pub const ALL: [&str; 366] = [
+    pub const ALL: [&str; 379] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -746,6 +759,19 @@ pub mod keys {
         HELP_DROPOUTS_BODY,
         HELP_KEEPS_RUNNING,
         HELP_KEEPS_RUNNING_BODY,
+        ROUTING_INDEPENDENT,
+        ROUTING_INSERT,
+        ROUTING_LEGACY,
+        ROUTING_INDEPENDENT_HINT,
+        ROUTING_INSERT_HINT,
+        ROUTING_LEGACY_HINT,
+        ROUTING_MODE,
+        ROUTING_CHANNELS,
+        ROUTING_PAIR,
+        ROUTING_UNVERIFIED,
+        CHANNEL_INPUT,
+        CHANNEL_TITLE,
+        CHANNEL_UNVERIFIED,
     ];
 }
 

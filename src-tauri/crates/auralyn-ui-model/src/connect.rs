@@ -29,6 +29,73 @@ pub struct Saved {
     pub output_id: Option<String>,
     pub sample_rate: Option<u32>,
     pub buffer_size: Option<u32>,
+    /// ASIO のチャンネルの割り当て。
+    pub routing: Option<Routing>,
+}
+
+/// ASIO の出力の返し方（Tauri 版 `OutputRouting` と同じ3つ）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Output {
+    /// 保存済みの接続を維持する。同じ番号の出力があればそこへ、なければ出力 1/2。
+    #[default]
+    Legacy,
+    /// 指定した出力のペアへ送る。
+    Independent([usize; 2]),
+    /// 選んだ入力と同じ番号の出力へ返す（Voicemeeter Insert など）。
+    Insert,
+}
+
+/// ASIO のチャンネルの割り当て。`input` が `None` なら入力のペアはホストに任せる。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Routing {
+    pub input: Option<[usize; 2]>,
+    pub output: Output,
+}
+
+/// 入力・出力のペアの候補（Tauri 版と同じ）。端数の最後は左右同じ（モノラル）。`keep` が候補に無ければ足す
+/// （チャンネル数が分からなくても、保存した番号を消さない）。
+pub fn pairs(channels: u16, keep: Option<[usize; 2]>) -> Vec<[usize; 2]> {
+    let count = usize::from(channels);
+    let mut pairs: Vec<[usize; 2]> = (0..count)
+        .step_by(2)
+        .map(|left| [left, (left + 1).min(count - 1)])
+        .collect();
+    if let Some(keep) = keep.filter(|keep| !pairs.contains(keep)) {
+        pairs.push(keep);
+    }
+    pairs
+}
+
+/// ASIO 以外で送る割り当て（Tauri 版と同じ。入力 1/2 を出力 1/2 へ）。
+pub const SYSTEM_ROUTING: Routing = Routing {
+    input: Some([0, 1]),
+    output: Output::Independent([0, 1]),
+};
+
+/// 最初のペア。モノラルの機器なら左右とも 1 番。
+pub fn first_pair(channels: u16) -> [usize; 2] {
+    [0, usize::from(channels != 1)]
+}
+
+/// 機器を選んだときに最初に入れておく割り当て（Tauri 版と同じ）。
+/// 保存した同じドライバーなら保存した割り当て（返し方が無ければ従来の返し方）、違う機器なら最初のペアを同じ番号の出力へ。
+pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
+    let first = first_pair(input.channels);
+    let same = saved.filter(|saved| {
+        saved.host == input.host
+            && (saved.input_id.is_some() && saved.input_id == input.id
+                || saved.input.as_deref() == Some(input.name.as_str()))
+    });
+    match same {
+        Some(saved) => saved.routing.unwrap_or(Routing {
+            input: Some(first),
+            output: Output::Legacy,
+        }),
+        None => Routing {
+            input: Some(first),
+            output: Output::Independent(first),
+        },
+    }
 }
 
 const ASIO: &str = "ASIO";
@@ -346,5 +413,48 @@ mod tests {
         assert_eq!(value_at(&values, 2), Some(512));
         assert_eq!(value_at(&values, 3), None);
         assert!(uses_system_rate("WASAPI") && !uses_system_rate("ASIO"));
+    }
+
+    #[test]
+    fn pairs_end_with_a_mono_pair_and_keep_the_saved_one() {
+        assert_eq!(pairs(4, None), [[0, 1], [2, 3]]);
+        assert_eq!(pairs(3, None), [[0, 1], [2, 2]]);
+        assert_eq!(pairs(0, Some([4, 5])), [[4, 5]]);
+        assert_eq!(pairs(2, Some([0, 1])), [[0, 1]]);
+    }
+
+    #[test]
+    fn routing_is_taken_only_from_the_same_driver() {
+        let interface = device("ASIO", "Interface", true, false);
+        let routing = Routing {
+            input: Some([2, 3]),
+            output: Output::Independent([4, 5]),
+        };
+        let saved = Saved {
+            host: "ASIO".into(),
+            input: Some("Interface".into()),
+            routing: Some(routing),
+            ..Saved::default()
+        };
+        assert_eq!(initial_routing(Some(&saved), &interface), routing);
+        let other = device("ASIO", "Other", true, false);
+        let fresh = |pair| Routing {
+            input: Some(pair),
+            output: Output::Independent(pair),
+        };
+        assert_eq!(initial_routing(Some(&saved), &other), fresh([0, 1]));
+        let mono = Device {
+            channels: 1,
+            ..device("ASIO", "Mono", true, false)
+        };
+        assert_eq!(initial_routing(None, &mono), fresh([0, 0]));
+        let unrouted = Saved {
+            routing: None,
+            ..saved
+        };
+        assert_eq!(
+            initial_routing(Some(&unrouted), &interface).output,
+            Output::Legacy
+        );
     }
 }
