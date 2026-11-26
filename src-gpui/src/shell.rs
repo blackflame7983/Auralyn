@@ -99,6 +99,8 @@ pub fn rail(
         .flex()
         .flex_col()
         .py_2()
+        .px_1()
+        .gap_1()
         .border_r_1()
         .border_color(color::border())
         .bg(color::card())
@@ -114,14 +116,6 @@ pub fn rail(
                 })
                 .w_full()
                 .h(px(RAIL_ITEM_HEIGHT))
-                .rounded_none()
-                // 今の行き先は左の縦線でも示す（選択の色だけで伝えない）。
-                .border_l_2()
-                .border_color(if active {
-                    color::primary()
-                } else {
-                    gpui_kit::transparent_black()
-                })
                 .child(
                     div()
                         .flex()
@@ -135,7 +129,12 @@ pub fn rail(
                         } else {
                             color::muted()
                         })
-                        .child(Icon::new(page.icon()).size_6())
+                        // 今の行き先は塗り・太字・アイコンの色で示す（色だけで伝えない）。
+                        .child(
+                            Icon::new(page.icon())
+                                .size_6()
+                                .when(active, |this| this.text_color(color::primary())),
+                        )
                         .child(page.label(lang)),
                 )
                 .on_click(move |_, window, cx| on_select(page, window, cx))

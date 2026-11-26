@@ -4,6 +4,7 @@
 use std::rc::Rc;
 
 use auralyn_ui_model::recovery::{Choice, Exit, Summary, VstOp};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::Disableable as _;
 use gpui_kit::*;
@@ -64,6 +65,7 @@ pub fn render(
             .child(div().flex().flex_wrap().gap_2().children(buttons))
             .child(note(core(lang, keys::RECOVERY_SAFETY))),
     )
+    .icon(IconName::TriangleAlert)
 }
 
 fn label(choice: &Choice, device: bool) -> &'static str {

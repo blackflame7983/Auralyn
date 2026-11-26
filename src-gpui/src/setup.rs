@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
 use auralyn_ui_model::setup::{self, Goal};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::component::{Disableable as _, IndexPath, Selectable as _, Sizable as _};
@@ -100,7 +101,6 @@ impl SetupPanel {
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::SETUP_LEAD)))
                 .child(field(
                     lang,
                     keys::SETUP_GOAL,
@@ -160,6 +160,8 @@ impl SetupPanel {
                         ),
                 ),
         )
+        .icon(IconName::Sparkles)
+        .hint(lang, core(lang, keys::SETUP_LEAD))
     }
 }
 

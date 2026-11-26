@@ -6,6 +6,7 @@
 
 use auralyn_ui_model::post_mix::{Block, PostMix};
 use auralyn_ui_model::rack::Candidate;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::select::Select;
 use gpui_kit::component::switch::Switch;
@@ -105,13 +106,10 @@ impl PostMixPanel {
             return card(
                 core(lang, keys::POST_TITLE),
                 div(),
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(note(core(lang, keys::POST_SCOPE)))
-                    .children(warnings),
+                div().flex().flex_col().gap_2().children(warnings),
             )
+            .icon(IconName::SlidersHorizontal)
+            .hint(lang, core(lang, keys::POST_SCOPE))
             .into_any_element();
         };
         let block = post.enable_block(mix_active, audio_running);
@@ -137,7 +135,6 @@ impl PostMixPanel {
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::POST_SCOPE)))
                 .child(
                     div()
                         .flex()
@@ -266,6 +263,8 @@ impl PostMixPanel {
                         )),
                 ),
         )
+        .icon(IconName::SlidersHorizontal)
+        .hint(lang, core(lang, keys::POST_SCOPE))
         .into_any_element()
     }
 }

@@ -3,50 +3,128 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use gpui_kit::component::button::Button;
-use gpui_kit::component::Selectable as _;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::popover::Popover;
+use gpui_kit::component::{Icon, Selectable as _, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
 use crate::engine::Command;
-use crate::i18n::{core, Lang};
+use crate::i18n::{core, keys, Lang};
 
 /// 画面の操作は、エンジンへの命令としてそのまま送る。
 pub type OnCommand = Rc<dyn Fn(Command, &mut App)>;
 
 /// 見出し（と右の部品）・中身の区画。`title` は訳した文言。右に何も置かないときは `div()` を渡す。
-pub fn card(
-    title: &'static str,
-    trailing: impl IntoElement,
-    body: impl IntoElement,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .p_4()
-        .rounded(px(8.))
-        .border_1()
-        .border_color(color::border())
-        .bg(color::card())
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap_3()
-                .child(
-                    div()
-                        .id(SharedString::new_static(title))
-                        .role(Role::Heading)
-                        .aria_level(2)
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(title),
-                )
-                .child(trailing),
-        )
-        .child(body)
+pub fn card(title: &'static str, trailing: impl IntoElement, body: impl IntoElement) -> Card {
+    Card::new(title, body).trailing(trailing)
 }
+
+/// 見出しつきの区画。見出しの前にアイコン、後ろに補足（ⓘ）を置ける。
+#[derive(IntoElement)]
+pub struct Card {
+    icon: Option<IconName>,
+    title: &'static str,
+    hint: Option<(Lang, SharedString)>,
+    trailing: Option<AnyElement>,
+    body: AnyElement,
+}
+
+impl Card {
+    pub fn new(title: &'static str, body: impl IntoElement) -> Self {
+        Self {
+            icon: None,
+            title,
+            hint: None,
+            trailing: None,
+            body: body.into_any_element(),
+        }
+    }
+
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// 見出しの横の ⓘ に出す説明（画面には文を並べない）。
+    pub fn hint(mut self, lang: Lang, text: impl Into<SharedString>) -> Self {
+        self.hint = Some((lang, text.into()));
+        self
+    }
+
+    pub fn trailing(mut self, trailing: impl IntoElement) -> Self {
+        self.trailing = Some(trailing.into_any_element());
+        self
+    }
+}
+
+impl RenderOnce for Card {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let title = self.title;
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .p_4()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(color::border())
+            .bg(color::card())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .when_some(self.icon, |this, icon| {
+                                this.child(Icon::new(icon).text_color(color::primary()))
+                            })
+                            .child(
+                                div()
+                                    .id(SharedString::new_static(title))
+                                    .role(Role::Heading)
+                                    .aria_level(2)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(title),
+                            )
+                            .when_some(self.hint, |this, (lang, text)| {
+                                this.child(hint(format!("{title}-hint"), lang, text))
+                            }),
+                    )
+                    .children(self.trailing),
+            )
+            .child(self.body)
+    }
+}
+
+/// 補足の説明。文を画面に並べず、ⓘ を押す（Enter・Space でも）と小さな窓に出す。
+pub fn hint(
+    id: impl Into<SharedString>,
+    lang: Lang,
+    text: impl Into<SharedString>,
+) -> impl IntoElement {
+    let id = id.into();
+    let text = text.into();
+    Popover::new(id.clone())
+        .trigger(
+            Button::new(SharedString::from(format!("{id}-button")))
+                .ghost()
+                .xsmall()
+                .icon(IconName::Info)
+                .accessibility_label(core(lang, keys::HELP_MORE)),
+        )
+        .child(div().max_w(px(HINT_WIDTH)).text_sm().child(text))
+}
+
+/// ⓘ の窓の幅の上限。長い説明も窓に収まるよう折り返す。
+const HINT_WIDTH: f32 = 320.;
 
 /// 広い窓では2列、狭くなると1列に折り返す（各列は 320〜560px）。左に主な情報、右に補助を置く。
 pub fn columns(left: impl IntoElement, right: impl IntoElement) -> impl IntoElement {
