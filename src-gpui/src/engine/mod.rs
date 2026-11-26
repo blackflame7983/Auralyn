@@ -17,7 +17,8 @@ use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue}
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use auralyn_ui_model::voice_check::{
-    Recording, Source as VoiceSource, State as VoiceState, MAX_MS,
+    Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
+    State as VoiceState, MAX_MS,
 };
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
@@ -31,6 +32,7 @@ mod events;
 mod profile;
 mod slots;
 mod sound;
+mod voice;
 
 use events::on_event;
 
@@ -102,6 +104,8 @@ pub enum Command {
         source: VoiceSource,
         path: PathBuf,
     },
+    /// 試聴（配信に乗らない別の出力先での再生）。結果は `Notice::Listening`。
+    Listen(Listen),
     /// 構成のファイルを消す。
     DeleteProfile(String),
     /// 構成をファイルへ書き出す。接続は含めない（Tauri 版の書き出しの既定と同じ）。結果は `Notice::ProfileFile`。
@@ -140,8 +144,34 @@ impl Command {
                     Command::Measure(measurement::Action::Read),
                     Command::Measure(measurement::Action::Read)
                 )
+                | (
+                    Command::Listen(Listen::Status),
+                    Command::Listen(Listen::Status)
+                )
         )
     }
+}
+
+/// 試聴の操作。
+#[derive(Debug, Clone)]
+pub enum Listen {
+    /// 試聴を用意し、出力先の一覧を読む。前のセッションは閉じたものとして扱う。
+    Open,
+    Devices,
+    Status,
+    Play {
+        recording_id: u64,
+        device_id: String,
+        source: VoiceSource,
+        looped: bool,
+    },
+    /// 鳴らしている音（加工前・加工後）とループを替える。
+    Change {
+        source: VoiceSource,
+        looped: bool,
+    },
+    Stop,
+    Close,
 }
 
 /// 構成の書き出し・読み込みの結果。名前は構成の名前。
@@ -176,6 +206,8 @@ pub enum Notice {
     /// ボイスチェックの録音の状態。
     Recording(Recording),
     RecordingSaved,
+    /// 試聴の様子。失敗したときは理由。
+    Listening(Result<Listening, String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
@@ -276,6 +308,7 @@ impl Engine {
                     config_dir,
                     rack: Vec::new(),
                     renamed: Vec::new(),
+                    listen: voice::Session::default(),
                     sound: None,
                     read_only: false,
                     exited,
@@ -348,6 +381,8 @@ struct Control {
     /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
     input_gain: Option<f32>,
     output_gain: Option<f32>,
+    /// 試聴のセッション（`voice.rs`）。
+    listen: voice::Session,
 }
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
@@ -537,6 +572,7 @@ impl Control {
                 }
                 ("export_voice_check", saved)
             }
+            Command::Listen(ref listen) => return self.listen(listen.clone()),
             Command::DeleteProfile(ref name) => return self.delete_profile(name),
             Command::ExportProfile { ref name, ref path } => {
                 return self.export_profile(name, path)
