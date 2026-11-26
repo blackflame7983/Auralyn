@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::InputEvent;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -1011,7 +1012,6 @@ impl Render for MainView {
                             .flex_col()
                             .gap_3()
                             .p_4()
-                            .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this
                                     .when_some(self.recovery.as_ref(), |this, exit| {
@@ -1330,7 +1330,8 @@ impl Render for MainView {
                                     ),
                                     self.live.render(lang, send),
                                 )),
-                            }),
+                            })
+                            .overflow_y_scrollbar(),
                     ),
             )
             .child(self.render_safety_column(cx))

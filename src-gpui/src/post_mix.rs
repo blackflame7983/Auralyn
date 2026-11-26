@@ -17,7 +17,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, PostAction, Slot, Witness};
 use crate::i18n::{core, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, Fold, OnCommand};
 use crate::vst::{self, Choices, Gains, Look, Ops};
 
 const OPS: Ops = Ops {
@@ -40,6 +40,8 @@ pub struct PostMixPanel {
     failed: Option<String>,
     gains: Gains,
     catalog: Entity<Choices>,
+    /// 普段は畳んでおき、配信 VST を有効にしたら開く。
+    fold: Fold,
 }
 
 impl PostMixPanel {
@@ -51,6 +53,7 @@ impl PostMixPanel {
             failed: None,
             gains: Gains::default(),
             catalog: vst::new_catalog(window, cx),
+            fold: Fold::default(),
         }
     }
 
@@ -66,6 +69,9 @@ impl PostMixPanel {
             Ok((post, rack)) => {
                 self.read_failed = None;
                 self.gains.sync(&rack, OPS, window, cx, send);
+                if post.enabled && !self.post.as_ref().is_some_and(|p| p.enabled) {
+                    self.fold.set(true);
+                }
                 self.post = Some(post);
                 self.rack = rack;
             }
@@ -130,7 +136,15 @@ impl PostMixPanel {
         };
         card(
             core(lang, keys::POST_TITLE),
-            div(),
+            // 畳んでいても、掛けているかは見出しの横で分かる。
+            div().text_sm().text_color(color::muted()).child(core(
+                lang,
+                if post.enabled {
+                    keys::POST_ON
+                } else {
+                    keys::POST_OFF
+                },
+            )),
             div()
                 .flex()
                 .flex_col()
@@ -265,6 +279,14 @@ impl PostMixPanel {
         )
         .icon(IconName::SlidersHorizontal)
         .hint(lang, core(lang, keys::POST_SCOPE))
+        // 失敗の間は畳まない（見えないと気づけない）。
+        .fold(
+            &self.fold,
+            self.read_failed.is_some()
+                || self.failed.is_some()
+                || post.failed
+                || post.error.is_some(),
+        )
         .into_any_element()
     }
 }

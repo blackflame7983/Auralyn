@@ -1,5 +1,6 @@
 //! 画面どうしで同じ形の部品：見出しつきの区画と、補足の文、ファイルの窓。画面からエンジンへの命令の送り口。
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -29,7 +30,22 @@ pub struct Card {
     title: &'static str,
     hint: Option<(Lang, SharedString)>,
     trailing: Option<AnyElement>,
+    fold: Option<Fold>,
     body: AnyElement,
+}
+
+/// 区画を畳んでいるか。区画を持つ画面が覚え、見出しの ∨/∧ で切り替える。
+#[derive(Clone, Default)]
+pub struct Fold(Rc<Cell<bool>>);
+
+impl Fold {
+    pub fn is_open(&self) -> bool {
+        self.0.get()
+    }
+
+    pub fn set(&self, open: bool) {
+        self.0.set(open);
+    }
 }
 
 impl Card {
@@ -39,6 +55,7 @@ impl Card {
             title,
             hint: None,
             trailing: None,
+            fold: None,
             body: body.into_any_element(),
         }
     }
@@ -51,6 +68,13 @@ impl Card {
     /// 見出しの横の ⓘ に出す説明（画面には文を並べない）。
     pub fn hint(mut self, lang: Lang, text: impl Into<SharedString>) -> Self {
         self.hint = Some((lang, text.into()));
+        self
+    }
+
+    /// 見出しの ∨/∧ で中身を畳めるようにする。畳んでいる間も見出しと右の部品は出す。
+    /// `attention`（注意・失敗が出ている）の間は畳まずに開いたままにし、∨/∧ も出さない。
+    pub fn fold(mut self, fold: &Fold, attention: bool) -> Self {
+        self.fold = (!attention).then(|| fold.clone());
         self
     }
 
@@ -81,6 +105,7 @@ impl RenderOnce for Card {
                     .child(
                         div()
                             .flex()
+                            .flex_none()
                             .items_center()
                             .gap_2()
                             .when_some(self.icon, |this, icon| {
@@ -98,9 +123,37 @@ impl RenderOnce for Card {
                                 this.child(hint(format!("{title}-hint"), lang, text))
                             }),
                     )
-                    .children(self.trailing),
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .children(self.trailing)
+                            .min_w_0()
+                            .when_some(self.fold.clone(), |this, fold| {
+                                let open = fold.is_open();
+                                this.child(
+                                    Button::new(SharedString::from(format!("{title}-fold")))
+                                        .ghost()
+                                        .xsmall()
+                                        .icon(if open {
+                                            IconName::ChevronUp
+                                        } else {
+                                            IconName::ChevronDown
+                                        })
+                                        .accessibility_label(title)
+                                        .aria_expanded(open)
+                                        .on_click(move |_, window, _| {
+                                            fold.0.set(!fold.0.get());
+                                            window.refresh();
+                                        }),
+                                )
+                            }),
+                    ),
             )
-            .child(self.body)
+            .when(self.fold.as_ref().is_none_or(Fold::is_open), |this| {
+                this.child(self.body)
+            })
     }
 }
 

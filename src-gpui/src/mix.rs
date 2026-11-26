@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, MixAction};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, Fold, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -70,6 +70,8 @@ pub struct MixPanel {
     /// 時間差（ms）の入力欄と、最後に欄に入れた・送った値。届いた値がこれと同じなら、入力中の文字を消さない。
     offset: Entity<InputState>,
     shown_offset: Rc<Cell<Option<i32>>>,
+    /// 普段は畳んでおき、オケを適用したら開く（音量をホームで動かせるように）。注意・失敗の間は畳まない。
+    fold: Fold,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -139,6 +141,7 @@ impl MixPanel {
             source,
             pair,
             confirmed,
+            fold: Fold::default(),
             voice_gain,
             music_gain,
             offset,
@@ -228,6 +231,9 @@ impl MixPanel {
                     }
                 }
                 let first = self.mix.is_none();
+                if mix.active.is_some() && !self.mix.as_ref().is_some_and(|m| m.active.is_some()) {
+                    self.fold.set(true);
+                }
                 self.mix = Some(mix);
                 if first {
                     self.fill(None, lang, window, cx);
@@ -446,9 +452,31 @@ impl MixPanel {
             None => core(lang, keys::MIX_NONE).to_owned(),
         };
         let warning = |text: String| div().text_sm().text_color(color::warning()).child(text);
+        // 畳んでいても、いまオケに何を使っているかだけは見出しの横で分かる（使っていなければ OFF）。
+        let summary = match &mix.active {
+            Some(Source::Device { input_id, .. }) => self
+                .devices
+                .iter()
+                .find(|d| d.id == *input_id)
+                .map_or(input_id.clone(), |d| d.label.clone()),
+            Some(Source::App { name, .. }) => name.clone(),
+            None => core(lang, keys::POST_OFF).to_owned(),
+        };
+        // 注意・失敗が出ている間は畳まない（見えないと気づけない）。
+        let attention = self.read_failed.is_some()
+            || self.failed.is_some()
+            || self.apps_failed.is_some()
+            || mix.error.is_some()
+            || mix.failed
+            || output_ready == Some(false)
+            || route_unmuted;
         card(
             core(lang, keys::MIX_TITLE),
-            div(),
+            div()
+                .text_sm()
+                .text_color(color::muted())
+                .truncate()
+                .child(summary),
             div()
                 .flex()
                 .flex_col()
@@ -624,6 +652,7 @@ impl MixPanel {
         )
         .icon(IconName::Music)
         .hint(lang, core(lang, keys::MIX_LEAD))
+        .fold(&self.fold, attention)
         .into_any_element()
     }
 }
