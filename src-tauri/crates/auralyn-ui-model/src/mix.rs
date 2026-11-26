@@ -1,4 +1,5 @@
 //! 配信ミックス：声に、別の入力（オケ）を混ぜる。オケの取り込み口は WASAPI の入力機器（仮想ケーブルなど）の2チャンネル。
+//! アプリの音も取り込める（そのアプリが音を出す出力先を選び、Windows でその出力先をミュートしておく）。
 //! 選び方と値の範囲は Tauri 版（`MixingPanel.tsx`・`audio_engine/mixing`）に揃える。
 
 use crate::connect::Device;
@@ -45,8 +46,42 @@ pub enum Source {
         input_id: String,
         channels: [usize; 2],
     },
-    /// アプリの音。GPUI 版ではまだ選べない（表示だけ）。
-    App { name: String },
+    /// アプリの音。`route` はそのアプリが音を出している出力先。
+    App {
+        key: String,
+        name: String,
+        route: String,
+    },
+}
+
+/// オケに選べる起動中のアプリ。`id` は一覧を読み直すまで有効。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct App {
+    pub id: String,
+    pub key: String,
+    pub name: String,
+    pub routes: Vec<Route>,
+}
+
+/// アプリが音を出している出力先。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Route {
+    pub id: String,
+    pub name: String,
+    pub muted: bool,
+}
+
+impl Route {
+    /// オケに使えるのは、Windows でその出力先をミュートしてあるときだけ（原音がそのまま聞こえて二重にならないように。Tauri 版と同じ）。
+    pub fn usable(&self) -> bool {
+        self.muted
+    }
+}
+
+/// 保存・適用中のアプリを一覧から探す：同じアプリ（キー）で、同じ出力先に音を出しているもの。
+pub fn find_app<'a>(apps: &'a [App], key: &str, route: &str) -> Option<&'a App> {
+    apps.iter()
+        .find(|a| a.key == key && a.routes.iter().any(|r| r.id == route))
 }
 
 /// 画面で変えられる音量。オフセット（時間合わせ）は GPUI 版ではまだ変えず、エンジンが持つ値を保つ。
@@ -167,6 +202,32 @@ mod tests {
         assert_eq!(pairs(0), Vec::<[usize; 2]>::new());
         assert_eq!(pair_label([0, 1]), "1-2");
         assert_eq!(pair_label([2, 2]), "3");
+    }
+
+    #[test]
+    fn saved_app_is_found_by_key_and_route() {
+        let route = |id: &str, muted| Route {
+            id: id.into(),
+            name: id.into(),
+            muted,
+        };
+        let app = |id: &str, key: &str, routes| App {
+            id: id.into(),
+            key: key.into(),
+            name: key.into(),
+            routes,
+        };
+        let apps = [
+            app("app-1", "player", vec![route("speaker", false)]),
+            app("app-2", "player", vec![route("cable", true)]),
+        ];
+        assert_eq!(
+            find_app(&apps, "player", "cable").map(|a| a.id.as_str()),
+            Some("app-2")
+        );
+        assert_eq!(find_app(&apps, "browser", "cable"), None);
+        assert!(!apps[0].routes[0].usable());
+        assert!(apps[1].routes[0].usable());
     }
 
     #[test]

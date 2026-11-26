@@ -1,5 +1,5 @@
-//! ホームの「配信ミックス」：声に、別の入力機器（仮想ケーブルなど）の音（オケ）を混ぜて、配信用の出力へ送る。
-//! 規則は `auralyn-ui-model` の `mix`、エンジン側は `engine/mix.rs`。アプリの音・時間合わせ・ミックス後の VST はまだ無い。
+//! ホームの「配信ミックス」：声に、別の入力機器（仮想ケーブルなど）かアプリの音（オケ）を混ぜて、配信用の出力へ送る。
+//! 規則は `auralyn-ui-model` の `mix`、エンジン側は `engine/mix.rs`。時間合わせ・ミックス後の VST はまだ無い。
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -10,7 +10,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::{Disableable as _, IndexPath};
+use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -22,10 +22,28 @@ use crate::part::{card, note, OnCommand};
 type Names = SelectState<Vec<SharedString>>;
 
 /// オケに選べる機器（ID・表示名・チャンネル数）。
-struct Choice {
+struct DeviceChoice {
     id: String,
     label: String,
     channels: u16,
+}
+
+/// 入力元の一覧の1行。機器のあとにアプリが並ぶ。
+enum Choice<'a> {
+    Device(&'a DeviceChoice),
+    App(&'a mix::App),
+}
+
+/// 一覧を入れ直しても残したい選択。
+enum Pick {
+    Device {
+        id: String,
+        channels: Option<[usize; 2]>,
+    },
+    App {
+        key: String,
+        route: Option<String>,
+    },
 }
 
 pub struct MixPanel {
@@ -35,10 +53,14 @@ pub struct MixPanel {
     read_failed: Option<String>,
     /// 最後の操作が断られた理由（次の操作が通るまで残す）。
     failed: Option<String>,
-    choices: Vec<Choice>,
+    devices: Vec<DeviceChoice>,
+    apps: Vec<mix::App>,
+    /// アプリの一覧が読めなかった理由（次に読めたら消す）。
+    apps_failed: Option<String>,
     source: Entity<Names>,
+    /// 機器ならチャンネルの組、アプリなら音を出している出力先。
     pair: Entity<Names>,
-    /// 「二重再生や循環が起きないよう設定した」。機器かチャンネルを選び直すと外れる。
+    /// 「二重再生や循環が起きないよう設定した」。入力元か2つ目の選択を選び直すと外れる。
     confirmed: Rc<Cell<bool>>,
     voice_gain: Entity<SliderState>,
     music_gain: Entity<SliderState>,
@@ -89,7 +111,9 @@ impl MixPanel {
             mix: None,
             read_failed: None,
             failed: None,
-            choices: Vec::new(),
+            devices: Vec::new(),
+            apps: Vec::new(),
+            apps_failed: None,
             source,
             pair,
             confirmed,
@@ -104,23 +128,44 @@ impl MixPanel {
         &mut self,
         devices: &[Device],
         voice_input: Option<&str>,
+        lang: Lang,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let pick = self.picked(cx);
         let sources = mix::sources(devices, voice_input);
         let labels = connect::labels(&sources);
-        self.choices = sources
+        self.devices = sources
             .iter()
             .zip(labels)
             .filter_map(|(d, label)| {
-                Some(Choice {
+                Some(DeviceChoice {
                     id: d.id.clone()?,
                     label,
                     channels: d.channels,
                 })
             })
             .collect();
-        self.fill(window, cx);
+        self.fill(pick, lang, window, cx);
+    }
+
+    /// アプリの一覧が届いた。
+    pub fn set_apps(
+        &mut self,
+        result: Result<Vec<mix::App>, String>,
+        lang: Lang,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        match result {
+            Ok(apps) => {
+                let pick = self.picked(cx);
+                self.apps_failed = None;
+                self.apps = apps;
+                self.fill(pick, lang, window, cx);
+            }
+            Err(message) => self.apps_failed = Some(message),
+        }
     }
 
     /// 変える操作の結果。
@@ -129,7 +174,13 @@ impl MixPanel {
     }
 
     /// 読めた状態・読めなかった理由。
-    pub fn set(&mut self, result: Result<Mix, String>, window: &mut Window, cx: &mut App) {
+    pub fn set(
+        &mut self,
+        result: Result<Mix, String>,
+        lang: Lang,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         match result {
             Ok(mix) => {
                 self.read_failed = None;
@@ -144,78 +195,166 @@ impl MixPanel {
                 let first = self.mix.is_none();
                 self.mix = Some(mix);
                 if first {
-                    self.fill(window, cx);
+                    self.fill(None, lang, window, cx);
                 }
             }
             Err(message) => self.read_failed = Some(message),
         }
     }
 
-    /// 機器の選択肢を入れ、適用中（無ければ保存）の機器とチャンネルを選ぶ。
-    fn fill(&mut self, window: &mut Window, cx: &mut App) {
-        let current = self
-            .mix
-            .as_ref()
-            .and_then(|m| m.active.clone().or(m.saved.clone()));
-        let (id, channels) = match current {
-            Some(Source::Device { input_id, channels }) => (Some(input_id), Some(channels)),
-            _ => (None, None),
-        };
+    /// 入力元の行。
+    fn choice(&self, row: usize) -> Option<Choice<'_>> {
+        match self.devices.get(row) {
+            Some(device) => Some(Choice::Device(device)),
+            None => self.apps.get(row - self.devices.len()).map(Choice::App),
+        }
+    }
+
+    fn selected(&self, cx: &App) -> Option<Choice<'_>> {
+        self.choice(self.source.read(cx).selected_index(cx)?.row)
+    }
+
+    /// 今の選択（一覧を入れ直すときに残す）。
+    fn picked(&self, cx: &App) -> Option<Pick> {
+        let detail = self.pair.read(cx).selected_index(cx).map(|ix| ix.row);
+        Some(match self.selected(cx)? {
+            Choice::Device(device) => Pick::Device {
+                id: device.id.clone(),
+                channels: detail.and_then(|row| mix::pairs(device.channels).get(row).copied()),
+            },
+            Choice::App(app) => Pick::App {
+                key: app.key.clone(),
+                route: detail.and_then(|row| Some(app.routes.get(row)?.id.clone())),
+            },
+        })
+    }
+
+    /// 入力元の選択肢を入れ、`pick`（無ければ適用中、それも無ければ保存）を選ぶ。
+    fn fill(&mut self, pick: Option<Pick>, lang: Lang, window: &mut Window, cx: &mut App) {
+        let pick = pick.or_else(|| {
+            let mix = self.mix.as_ref()?;
+            Some(match mix.active.clone().or(mix.saved.clone())? {
+                Source::Device { input_id, channels } => Pick::Device {
+                    id: input_id,
+                    channels: Some(channels),
+                },
+                Source::App { key, route, .. } => Pick::App {
+                    key,
+                    route: Some(route),
+                },
+            })
+        });
         let names = self
-            .choices
+            .devices
             .iter()
-            .map(|c| SharedString::from(c.label.clone()))
+            .map(|d| SharedString::from(d.label.clone()))
+            .chain(
+                self.apps
+                    .iter()
+                    .map(|a| SharedString::from(app_label(lang, &a.name))),
+            )
             .collect();
-        let row = id.and_then(|id| self.choices.iter().position(|c| c.id == id));
-        // 選び直した機器は、確かめ直すまで適用させない（選択を入れ直してもイベントは出ない）。
+        let row = match &pick {
+            Some(Pick::Device { id, .. }) => self.devices.iter().position(|d| d.id == *id),
+            Some(Pick::App { key, route }) => {
+                let app = match route {
+                    Some(route) => mix::find_app(&self.apps, key, route),
+                    None => self.apps.iter().find(|a| a.key == *key),
+                };
+                app.and_then(|app| self.apps.iter().position(|a| a.id == app.id))
+                    .map(|row| row + self.devices.len())
+            }
+            None => None,
+        };
+        // 選び直した入力元は、確かめ直すまで適用させない（選択を入れ直してもイベントは出ない）。
         self.confirmed.set(false);
         self.source.update(cx, |state, cx| {
             state.set_items(names, window, cx);
             state.set_selected_index(row.map(IndexPath::new), window, cx);
         });
-        self.fill_pairs(row, channels, window, cx);
+        self.fill_detail(row, pick, lang, window, cx);
     }
 
-    fn fill_pairs(
+    /// 2つ目の選択（機器ならチャンネルの組、アプリなら出力先）を入れ、`chosen`（無ければ先頭、アプリならミュート済みの先頭）を選ぶ。
+    fn fill_detail(
         &self,
         row: Option<usize>,
-        chosen: Option<[usize; 2]>,
+        chosen: Option<Pick>,
+        lang: Lang,
         window: &mut Window,
         cx: &mut App,
     ) {
-        let pairs = row
-            .and_then(|row| self.choices.get(row))
-            .map(|c| mix::pairs(c.channels))
-            .unwrap_or_default();
-        let names = pairs
-            .iter()
-            .map(|p| SharedString::from(mix::pair_label(*p)))
-            .collect();
-        let selected = chosen
-            .and_then(|c| pairs.iter().position(|p| *p == c))
-            .or((!pairs.is_empty()).then_some(0));
+        let (names, selected): (Vec<SharedString>, Option<usize>) =
+            match row.and_then(|row| self.choice(row)) {
+                Some(Choice::Device(device)) => {
+                    let pairs = mix::pairs(device.channels);
+                    let selected = match chosen {
+                        Some(Pick::Device {
+                            channels: Some(c), ..
+                        }) => pairs.iter().position(|p| *p == c),
+                        _ => None,
+                    }
+                    .or((!pairs.is_empty()).then_some(0));
+                    let names = pairs.iter().map(|p| mix::pair_label(*p).into()).collect();
+                    (names, selected)
+                }
+                Some(Choice::App(app)) => {
+                    let selected = match chosen {
+                        Some(Pick::App { route: Some(r), .. }) => {
+                            app.routes.iter().position(|route| route.id == r)
+                        }
+                        _ => None,
+                    }
+                    .or_else(|| app.routes.iter().position(mix::Route::usable));
+                    let names = app
+                        .routes
+                        .iter()
+                        .map(|r| route_label(lang, r).into())
+                        .collect();
+                    (names, selected)
+                }
+                None => (Vec::new(), None),
+            };
         self.pair.update(cx, |state, cx| {
             state.set_items(names, window, cx);
             state.set_selected_index(selected.map(IndexPath::new), window, cx);
         });
     }
 
-    /// 機器を選び直したら、チャンネルの組を入れ直す（描画の前に呼ぶ）。
-    pub fn source_changed(&self, window: &mut Window, cx: &mut App) {
+    /// 入力元を選び直したら、2つ目の選択を入れ直す（描画の前に呼ぶ）。
+    pub fn source_changed(&self, lang: Lang, window: &mut Window, cx: &mut App) {
         let row = self.source.read(cx).selected_index(cx).map(|ix| ix.row);
-        self.fill_pairs(row, None, window, cx);
+        self.fill_detail(row, None, lang, window, cx);
     }
 
     pub fn source_state(&self) -> &Entity<Names> {
         &self.source
     }
 
-    /// 選んでいる機器とチャンネル。
-    fn chosen(&self, cx: &App) -> Option<(String, [usize; 2])> {
-        let row = self.source.read(cx).selected_index(cx)?.row;
-        let choice = self.choices.get(row)?;
-        let pair = self.pair.read(cx).selected_index(cx)?.row;
-        Some((choice.id.clone(), *mix::pairs(choice.channels).get(pair)?))
+    /// 選んでいるものを適用する操作と、そのまま適用できるか（アプリは出力先をミュートしてあること）。
+    fn chosen(&self, cx: &App) -> Option<(MixAction, bool)> {
+        let detail = self.pair.read(cx).selected_index(cx)?.row;
+        Some(match self.selected(cx)? {
+            Choice::Device(device) => (
+                MixAction::Apply {
+                    input_id: device.id.clone(),
+                    channels: *mix::pairs(device.channels).get(detail)?,
+                },
+                true,
+            ),
+            Choice::App(app) => {
+                let route = app.routes.get(detail)?;
+                (
+                    MixAction::ApplyApp {
+                        candidate_id: app.id.clone(),
+                        key: app.key.clone(),
+                        name: app.name.clone(),
+                        route: route.id.clone(),
+                    },
+                    route.usable(),
+                )
+            }
+        })
     }
 
     /// `output_ready` は配信用の出力を選び、処理を分けてあること（`None` はまだ読めていない）。
@@ -242,20 +381,25 @@ impl MixPanel {
             .into_any_element();
         };
         let chosen = self.chosen(cx);
+        let app_chosen = matches!(self.selected(cx), Some(Choice::App(_)));
+        let route_unmuted = matches!(chosen, Some((_, false)));
         let confirmed = self.confirmed.get();
         let ready = output_ready == Some(true);
-        let can_apply =
-            ready && !mix.running && mix.error.is_none() && chosen.is_some() && confirmed;
+        let can_apply = ready
+            && !mix.running
+            && mix.error.is_none()
+            && matches!(chosen, Some((_, true)))
+            && confirmed;
         let current = |source: &Option<Source>| match source {
             Some(Source::Device { input_id, channels }) => format!(
                 "{} ({})",
-                self.choices
+                self.devices
                     .iter()
-                    .find(|c| c.id == *input_id)
-                    .map_or(input_id.as_str(), |c| c.label.as_str()),
+                    .find(|d| d.id == *input_id)
+                    .map_or(input_id.as_str(), |d| d.label.as_str()),
                 mix::pair_label(*channels)
             ),
-            Some(Source::App { name }) => name.clone(),
+            Some(Source::App { name, .. }) => app_label(lang, name),
             None => core(lang, keys::MIX_NONE).to_owned(),
         };
         let warning = |text: String| div().text_sm().text_color(color::warning()).child(text);
@@ -274,9 +418,6 @@ impl MixPanel {
                 .when(mix.active.is_none() && mix.saved.is_some(), |this| {
                     this.child(row(lang, keys::MIX_SAVED, current(&mix.saved)))
                 })
-                .when(matches!(mix.saved, Some(Source::App { .. })), |this| {
-                    this.child(note(core(lang, keys::MIX_APP_LATER)))
-                })
                 .when(mix.failed, |this| {
                     this.child(warning(core(lang, keys::MIX_INPUT_FAILED).to_owned()))
                 })
@@ -285,6 +426,7 @@ impl MixPanel {
                         self.read_failed.clone(),
                         self.failed.clone(),
                         mix.error.clone(),
+                        self.apps_failed.clone(),
                     ]
                     .into_iter()
                     .flatten()
@@ -311,11 +453,34 @@ impl MixPanel {
                             keys::MIX_SOURCE,
                             Select::new(&self.source).disabled(mix.running),
                         ))
+                        .child({
+                            let send = send.clone();
+                            div().child(
+                                Button::new("mix-apps")
+                                    .label(core(lang, keys::MIX_REFRESH_APPS))
+                                    .outline()
+                                    .small()
+                                    .disabled(mix.running)
+                                    .on_click(move |_, _, cx| {
+                                        send(Command::Mix(MixAction::Apps), cx)
+                                    }),
+                            )
+                        })
                         .child(field(
                             lang,
-                            keys::MIX_CHANNELS,
+                            if app_chosen {
+                                keys::MIX_ROUTE
+                            } else {
+                                keys::MIX_CHANNELS
+                            },
                             Select::new(&self.pair).disabled(mix.running),
                         ))
+                        .when(app_chosen, |this| {
+                            this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
+                        })
+                        .when(route_unmuted, |this| {
+                            this.child(warning(core(lang, keys::MIX_ROUTE_UNMUTED).to_owned()))
+                        })
                         .when(mix.running, |this| {
                             this.child(note(core(lang, keys::MIX_STOP_FIRST)))
                         })
@@ -344,14 +509,8 @@ impl MixPanel {
                                         .on_click({
                                             let send = send.clone();
                                             move |_, _, cx| {
-                                                if let Some((input_id, channels)) = chosen.clone() {
-                                                    send(
-                                                        Command::Mix(MixAction::Apply {
-                                                            input_id,
-                                                            channels,
-                                                        }),
-                                                        cx,
-                                                    );
+                                                if let Some((action, true)) = chosen.clone() {
+                                                    send(Command::Mix(action), cx);
                                                 }
                                             }
                                         }),
@@ -468,4 +627,19 @@ fn gain_row(
                 .text_sm()
                 .child(format!("{value:.0}%")),
         )
+}
+
+/// アプリの行の表記：`名前 (アプリ)`。
+fn app_label(lang: Lang, name: &str) -> String {
+    format!("{name} ({})", core(lang, keys::MIX_APP))
+}
+
+/// 出力先の行の表記：`名前 (ミュート済み)`・`名前 (ミュートが必要)`。
+fn route_label(lang: Lang, route: &mix::Route) -> String {
+    let state = if route.usable() {
+        keys::MIX_ROUTE_MUTED
+    } else {
+        keys::MIX_ROUTE_NEEDS_MUTE
+    };
+    format!("{} ({})", route.name, core(lang, state))
 }

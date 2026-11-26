@@ -246,6 +246,8 @@ pub enum Notice {
     Mix(Result<auralyn_ui_model::mix::Mix, String>),
     /// 配信ミックスを変える操作の結果（`Err` は断られた理由）。このあと状態が `Mix` で届く。
     MixDone(Result<(), String>),
+    /// オケに選べる起動中のアプリ。
+    MixApps(Result<Vec<auralyn_ui_model::mix::App>, String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。

@@ -187,16 +187,17 @@ impl MainView {
             mix.source_state(),
             window,
             |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
-                this.mix.source_changed(window, cx);
+                this.mix.source_changed(this.lang, window, cx);
                 cx.notify();
             },
         )
         .detach();
-        // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスの状態）を読んでおく。
+        // 最初はホームを出すので、配信ミックスに要るもの（機器・アプリ・配信用の出力・ミックスの状態）を読んでおく。
         for command in [
             Command::ListDevices,
             Command::LiveOutput(None),
             Command::Mix(MixAction::Read),
+            Command::Mix(MixAction::Apps),
         ] {
             engine.send(command);
         }
@@ -424,10 +425,12 @@ impl MainView {
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
-                self.mix.set_devices(&devices, voice.as_deref(), window, cx);
+                self.mix
+                    .set_devices(&devices, voice.as_deref(), self.lang, window, cx);
             }
-            Notice::Mix(result) => self.mix.set(result, window, cx),
+            Notice::Mix(result) => self.mix.set(result, self.lang, window, cx),
             Notice::MixDone(result) => self.mix.done(result),
+            Notice::MixApps(result) => self.mix.set_apps(result, self.lang, window, cx),
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
             Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
@@ -487,6 +490,7 @@ impl MainView {
             self.engine.send(Command::ListDevices);
             self.engine.send(Command::LiveOutput(None));
             self.engine.send(Command::Mix(MixAction::Read));
+            self.engine.send(Command::Mix(MixAction::Apps));
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);

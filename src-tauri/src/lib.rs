@@ -11,6 +11,31 @@ pub mod audio_engine;
 /// GPUI 版から配信ミックスを呼ぶための公開口（`audio::mixing` 自体は crate 内に閉じる）。
 pub mod mixing {
     pub use crate::audio::mixing::{Request, Snapshot};
+
+    /// オケに選べる起動中のアプリ（Tauri 版の `get_process_input_sources` が画面へ返すものと同じ形）。
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct App {
+        /// 適用のときに `Request::Configure` の `candidate_id` として渡す。一覧を読み直すまで有効。
+        pub id: String,
+        pub app_key: String,
+        pub name: String,
+        pub routes: Vec<Route>,
+    }
+
+    /// アプリが音を出している出力先。
+    #[derive(serde::Deserialize)]
+    pub struct Route {
+        pub id: String,
+        pub name: String,
+        pub muted: bool,
+    }
+
+    /// 一覧を読む。候補の中身は crate の外へ出さず、Tauri 版の画面と同じく直列化した形で受け取る。
+    pub fn apps(host: &mut crate::audio::AudioHost) -> anyhow::Result<Vec<App>> {
+        let listed = serde_json::to_value(host.process_input_sources()?)?;
+        Ok(serde_json::from_value(listed)?)
+    }
 }
 pub mod autostart;
 pub mod bundle;
