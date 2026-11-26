@@ -292,6 +292,8 @@ impl Control {
                 self.fail("set_built_in_effects", e);
             }
         }
+        // エンジンが持たない値（歌向けでないときの歌向けの値、OFF の歯擦音の量）は、次に読むときこの値を使う。
+        self.sound = Some(next);
     }
 
     /// 起動したら、音を始める前に、保存した音づくりをエンジンへ送る。
@@ -305,11 +307,7 @@ impl Control {
             .ok()
             .and_then(|value| sound_from_json(&value))
         {
-            Some(sound) => {
-                self.apply_sound(sound, None);
-                // 歌向けでないときエンジンは歌向けの値を持たないので、保存の値を次に読むときの「最後の値」にする。
-                self.sound = Some(sound);
-            }
+            Some(sound) => self.apply_sound(sound, None),
             None => self.fail("read_sound", anyhow::anyhow!("{SOUND_FILE} を読めません")),
         }
     }
