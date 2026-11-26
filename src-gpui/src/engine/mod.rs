@@ -213,7 +213,7 @@ pub enum Notice {
     RecordingSaved,
     /// 試聴の様子。失敗したときは理由。
     Listening(Result<Listening, String>),
-    /// 稼働統計。`None` は読めない（音声が止まっているときも）。
+    /// 稼働統計。`None` は読めなかった（音声が止まっているときは、すべて 0 で届く）。
     Stats(Option<Stats>),
     ExclusionsCleared(Result<(), String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。

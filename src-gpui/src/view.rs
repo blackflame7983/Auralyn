@@ -75,10 +75,10 @@ pub struct MainView {
     vst: VstPage,
     setups: SetupsPanel,
     voice: VoicePanel,
-    /// 設定の画面の稼働統計。`None` は読めていない。
+    /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
-    /// 読み込みを止めた VST のリセットの直前の結果。
-    cleared: Option<bool>,
+    /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
+    cleared: Option<Result<(), String>>,
     sound: SoundPage,
     _ticker: Task<()>,
 }
@@ -362,7 +362,7 @@ impl MainView {
                 if let Err(e) = &result {
                     log::warn!("読み込みを止めた VST をリセットできません: {e}");
                 }
-                self.cleared = Some(result.is_ok());
+                self.cleared = Some(result);
             }
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -391,7 +391,11 @@ impl MainView {
             (true, false) => [&mut self.input, &mut self.output, &mut self.processed]
                 .into_iter()
                 .for_each(Meter::stop),
-            _ => {}
+            _ => return,
+        }
+        // 音が流れ始めた・止まったら、見えている統計を読み直す（前の値を出し続けない）。
+        if self.page == Page::Settings {
+            self.engine.send(Command::ReadStats);
         }
     }
 
@@ -588,33 +592,34 @@ impl Render for MainView {
                             .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
-                                Page::Settings => this.child(
+                                Page::Settings => this.child(settings::render(
+                                    lang,
+                                    self.desktop.tray_error.as_deref(),
+                                    self.desktop.hotkey_error.as_deref(),
+                                    {
+                                        let entity = entity.clone();
+                                        move |lang, _, cx| {
+                                            entity.update(cx, |this, cx| {
+                                                this.set_lang(lang);
+                                                cx.notify();
+                                            })
+                                        }
+                                    },
                                     div()
                                         .flex()
                                         .flex_col()
                                         .gap_6()
-                                        .max_w(px(560.))
-                                        .child(settings::render(
-                                            lang,
-                                            self.desktop.tray_error.as_deref(),
-                                            self.desktop.hotkey_error.as_deref(),
-                                            {
-                                                let entity = entity.clone();
-                                                move |lang, _, cx| {
-                                                    entity.update(cx, |this, cx| {
-                                                        this.set_lang(lang);
-                                                        cx.notify();
-                                                    })
-                                                }
-                                            },
-                                        ))
                                         .child(settings::diagnostics(
                                             lang,
                                             self.stats.as_ref(),
                                             send.clone(),
                                         ))
-                                        .child(settings::plugins(lang, self.cleared, send)),
-                                ),
+                                        .child(settings::plugins(
+                                            lang,
+                                            self.cleared.as_ref(),
+                                            send,
+                                        )),
+                                )),
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),

@@ -20,6 +20,7 @@ pub fn render(
     tray: Option<&str>,
     hotkey: Option<&str>,
     on_lang: impl Fn(Lang, &mut Window, &mut App) + 'static,
+    more: impl IntoElement,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -60,6 +61,7 @@ pub fn render(
                 })
                 .child(status(lang, keys::HOTKEY, hotkey)),
         ))
+        .child(more)
         .child(note(format!(
             "{} {}",
             core(lang, keys::VERSION).trim(),
@@ -86,7 +88,7 @@ fn status(lang: Lang, name: &'static str, error: Option<&str>) -> impl IntoEleme
         )
 }
 
-/// 診断：稼働統計。`stats` が `None` なら読めていない（音声が止まっているときも読めない）。
+/// 診断：稼働統計。`stats` が `None` なら読めなかった（音声が止まっているときは、すべて 0 として読める）。
 pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl IntoElement {
     let value = |read: fn(&Stats) -> String| stats.map_or_else(|| "-".to_owned(), read);
     let health = stats.and_then(|s| s.health);
@@ -158,8 +160,12 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
     )
 }
 
-/// 読み込みを止めた VST のリセット。`cleared` は直前の結果。
-pub fn plugins(lang: Lang, cleared: Option<bool>, send: OnCommand) -> impl IntoElement {
+/// 読み込みを止めた VST のリセット。`cleared` は直前の結果（失敗なら理由）。
+pub fn plugins(
+    lang: Lang,
+    cleared: Option<&Result<(), String>>,
+    send: OnCommand,
+) -> impl IntoElement {
     card(
         core(lang, keys::PLUGINS_TITLE),
         div(),
@@ -199,14 +205,10 @@ pub fn plugins(lang: Lang, cleared: Option<bool>, send: OnCommand) -> impl IntoE
                 ),
             )
             .when_some(cleared, |this, done| {
-                this.child(note(core(
-                    lang,
-                    if done {
-                        keys::EXCL_DONE
-                    } else {
-                        keys::EXCL_FAILED
-                    },
-                )))
+                this.child(note(match done {
+                    Ok(()) => core(lang, keys::EXCL_DONE).to_owned(),
+                    Err(e) => format!("{} {e}", core(lang, keys::EXCL_FAILED)),
+                }))
             }),
     )
 }
