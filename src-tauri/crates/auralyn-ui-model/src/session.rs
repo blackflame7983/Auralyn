@@ -57,6 +57,11 @@ impl Phase {
         matches!(self, Phase::Starting | Phase::Stopping)
     }
 
+    /// 止まっていて、始められる。
+    pub fn can_start(self) -> bool {
+        matches!(self, Phase::Stopped | Phase::Unconfigured)
+    }
+
     /// 音が流れている（または止める途中で、まだ流れている）。
     pub fn running(self) -> bool {
         matches!(self, Phase::Running | Phase::Stopping)
@@ -115,5 +120,6 @@ mod tests {
         assert!(Phase::Running.running());
         assert!(Phase::Stopping.running());
         assert!(!Phase::Starting.running());
+        assert!(Phase::Unconfigured.can_start() && !Phase::Starting.can_start());
     }
 }

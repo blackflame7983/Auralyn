@@ -68,6 +68,13 @@ pub fn polls(peak: Option<Peak>) -> bool {
     peak.is_some_and(|peak| peak.pending || (peak.enabled && peak.lookahead.is_some()))
 }
 
+/// 読んだ値にスライダーを合わせるか。変えた命令への返事（断られたときを含む）なら合わせる。
+/// 読み直しだけなら、天井か復帰時間が変わったときだけ動かす（動かしている途中のつまみを戻さない）。
+pub fn moves_sliders(before: Option<Peak>, after: Peak, answered: bool) -> bool {
+    let limits = |peak: Peak| (peak.ceiling_db, peak.release_ms);
+    answered || before.map(limits) != Some(limits(after))
+}
+
 /// `None` は状態を読めていない（音声が止まっているときも読めない）。
 pub fn notes(peak: Option<Peak>) -> Vec<Note> {
     match peak {
@@ -122,6 +129,19 @@ mod tests {
         assert_eq!(notes(unsplit(false)), []);
         assert!(polls(unsplit(true)) && !polls(unsplit(false)));
         assert!(polls(peak(true, true)) && !polls(peak(true, false)) && !polls(None));
+    }
+
+    #[test]
+    fn rereads_move_sliders_only_when_the_limits_changed() {
+        let read = peak(true, false).unwrap();
+        let moved = Peak {
+            ceiling_db: -2.0,
+            ..read
+        };
+        assert!(moves_sliders(None, read, false));
+        assert!(!moves_sliders(Some(read), read, false));
+        assert!(moves_sliders(Some(read), moved, false));
+        assert!(moves_sliders(Some(read), read, true));
     }
 
     #[test]

@@ -40,7 +40,6 @@ mod post_mix;
 mod profile;
 mod slots;
 mod sound;
-use sound::Values;
 mod voice;
 
 use events::on_event;
@@ -257,7 +256,12 @@ pub enum Notice {
     /// 音づくりの今の設定（エンジンが受け付けた結果）。
     Sound(Sound),
     /// 制限の状態。`None` は読めない（音声が止まっているときも読めない）。
-    Peak(Limit, Option<Peak>),
+    /// `answered` は変えた命令への返事（断られたときを含む）。読み直しだけなら `false`。
+    Peak {
+        limit: Limit,
+        peak: Option<Peak>,
+        answered: bool,
+    },
     /// 周囲の音の測定。`None` は読めない（音声が止まっているときも読めない）。
     Measurement(Option<Measurement>),
     /// 保存した構成の一覧。
@@ -402,6 +406,7 @@ impl Engine {
                     read_only: false,
                     exited,
                     hold: None,
+                    placeholders: 0,
                     input_gain: None,
                     output_gain: None,
                 }
@@ -470,6 +475,8 @@ struct Control {
     exited: Arc<AtomicBool>,
     /// 子が落ちたあとの読み直しで、読まずに残す VST（`Command::Recover` の間だけ）。
     hold: Option<Hold>,
+    /// 「読めていない」枠に付けた仮の ID の数。仮の ID が本物や前の仮の ID と重ならないよう、数え続ける。
+    placeholders: u64,
     /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
     input_gain: Option<f32>,
     output_gain: Option<f32>,
@@ -730,17 +737,17 @@ impl Control {
             }
             Command::ImportProfile(ref path) => return self.import_profile(path),
             Command::SetPeak(limit, enabled) => {
-                return self.set_peak(limit, |values| Values { enabled, ..values })
+                return self.set_peak(limit, |config| PeakConfig { enabled, ..config })
             }
             Command::SetPeakLimits {
                 limit,
                 ceiling_db,
                 release_ms,
             } => {
-                return self.set_peak(limit, |values| Values {
+                return self.set_peak(limit, |config| PeakConfig {
                     ceiling_db,
                     release_ms,
-                    ..values
+                    ..config
                 })
             }
             Command::SetSound(change) => return self.set_sound(change),

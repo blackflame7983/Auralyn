@@ -35,13 +35,10 @@ impl LimiterPanel {
         }
     }
 
-    pub fn set(&mut self, peak: Option<Peak>, window: &mut Window, cx: &mut App) {
-        let before = self.peak.map(|peak| (peak.ceiling_db, peak.release_ms));
-        // 反映待ちの間の読み直し（500ms ごと）では、値が変わったときだけ動かす（動かしている途中のつまみを戻さない）。
-        // それ以外の返事（断られたときを含む）では、エンジンの値に合わせる。
-        if let Some(peak) =
-            peak.filter(|peak| !peak.pending || before != Some((peak.ceiling_db, peak.release_ms)))
-        {
+    /// `answered` は変えた命令への返事（`peak::moves_sliders`）。
+    pub fn set(&mut self, peak: Option<Peak>, answered: bool, window: &mut Window, cx: &mut App) {
+        let before = self.peak;
+        if let Some(peak) = peak.filter(|&peak| peak::moves_sliders(before, peak, answered)) {
             self.ceiling
                 .update(cx, |state, cx| state.set_value(peak.ceiling_db, window, cx));
             self.release
