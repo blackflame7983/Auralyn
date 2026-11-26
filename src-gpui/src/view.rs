@@ -19,13 +19,14 @@ use gpui_kit::*;
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
-use crate::engine::{Command, Engine, Listen, MixAction, Notice};
+use crate::engine::{Command, Engine, Listen, MixAction, Notice, PostAction};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::live::LivePanel;
 use crate::locale_file;
 use crate::mix::MixPanel;
 use crate::part::OnCommand;
+use crate::post_mix::PostMixPanel;
 use crate::settings;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
@@ -84,6 +85,7 @@ pub struct MainView {
     voice: VoicePanel,
     live: LivePanel,
     mix: MixPanel,
+    post: PostMixPanel,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
@@ -183,6 +185,7 @@ impl MainView {
             .detach();
         }
         let mix = MixPanel::new(window, cx, Self::send);
+        let post = PostMixPanel::new(window, cx);
         cx.subscribe_in(
             mix.source_state(),
             window,
@@ -192,11 +195,12 @@ impl MainView {
             },
         )
         .detach();
-        // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスの状態）を読んでおく。
+        // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスとミックス後の VST の状態）を読んでおく。
         for command in [
             Command::ListDevices,
             Command::LiveOutput(None),
             Command::Mix(MixAction::Read),
+            Command::PostMix(PostAction::Read, None),
         ] {
             engine.send(command);
         }
@@ -269,6 +273,7 @@ impl MainView {
             voice: VoicePanel::new(window, cx),
             live: LivePanel::new(window, cx),
             mix,
+            post,
             stats: None,
             cleared: None,
             sound,
@@ -381,11 +386,14 @@ impl MainView {
                 self.reread_mix();
                 self.message = Some(message);
             }
+            // 開始・停止に失敗したときも、ホストがミックス後の VST を止めて捨てていることがあるので読み直す。
             Notice::NotStarted(message) => {
-                self.fail(SessionEvent::StartFailed, keys::START_FAILED, message)
+                self.fail(SessionEvent::StartFailed, keys::START_FAILED, message);
+                self.reread_mix();
             }
             Notice::StopFailed(message) => {
-                self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message)
+                self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message);
+                self.reread_mix();
             }
             Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
             Notice::Muted(muted) => self.muted = muted,
@@ -394,7 +402,10 @@ impl MainView {
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
             Notice::Peak(peak) => self.sound.set_peak(peak, window, cx),
             Notice::Measurement(reading) => self.sound.measure.set(reading),
-            Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
+            Notice::Catalog(Ok(candidates)) => {
+                self.vst.set_catalog(&candidates, window, cx);
+                self.post.set_catalog(&candidates, window, cx);
+            }
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
             Notice::ProfileFile(done) => self.setups.set_done(done, window, cx),
             Notice::Recording(recording) => self.voice.set(recording),
@@ -429,6 +440,8 @@ impl MainView {
             }
             Notice::Mix(result) => self.mix.set(result, self.lang, window, cx),
             Notice::MixDone(result) => self.mix.done(result),
+            Notice::PostMix(result) => self.post.set(result, window, cx, Self::send),
+            Notice::PostMixDone(result) => self.post.done(result),
             Notice::MixApps(result) => self.mix.set_apps(result, self.lang, window, cx),
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
             Notice::LiveSaved(result) => self.live.saved(result),
@@ -489,6 +502,7 @@ impl MainView {
             self.engine.send(Command::ListDevices);
             self.engine.send(Command::LiveOutput(None));
             self.engine.send(Command::Mix(MixAction::Read));
+            self.engine.send(Command::PostMix(PostAction::Read, None));
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
@@ -519,10 +533,11 @@ impl MainView {
         }
     }
 
-    /// ホームを出しているなら、配信ミックスの状態を読み直す（音声の開始・停止で、流れているかが変わる）。
+    /// ホームを出しているなら、配信ミックスとミックス後の VST の状態を読み直す（音声の開始・停止で、流れているかが変わる）。
     fn reread_mix(&mut self) {
         if self.page == Page::Home {
             self.engine.send(Command::Mix(MixAction::Read));
+            self.engine.send(Command::PostMix(PostAction::Read, None));
         }
     }
 
@@ -531,6 +546,11 @@ impl MainView {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
         }
+        // ミックス後の VST を変える操作には、画面が見た世代を付ける（見た後に変わっていればホストが断る）。
+        let command = match command {
+            Command::PostMix(action, None) => Command::PostMix(action, self.post.seen()),
+            other => other,
+        };
         self.engine.send(command);
     }
 
@@ -699,6 +719,14 @@ impl Render for MainView {
                                     .child(div().max_w(px(560.)).child(self.mix.render(
                                         lang,
                                         self.live.ready(),
+                                        cx,
+                                        send.clone(),
+                                    )))
+                                    .child(div().max_w(px(560.)).child(self.post.render(
+                                        lang,
+                                        self.mix.active(),
+                                        !matches!(self.phase, Phase::Stopped | Phase::Unconfigured),
+                                        self.vst.scanning(),
                                         cx,
                                         send,
                                     ))),

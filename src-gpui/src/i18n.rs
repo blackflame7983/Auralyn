@@ -288,9 +288,27 @@ pub mod keys {
     pub const MIX_MUSIC_MUTE: &str = "gpuiShell.mixMusicMute";
     pub const MIX_MONITOR: &str = "mixing.monitor";
     pub const MIX_RELOAD: &str = "mixing.reload";
+    pub const POST_TITLE: &str = "postMix.title";
+    pub const POST_SCOPE: &str = "mixingUi.postScope";
+    pub const POST_SAVED: &str = "postMix.saved";
+    pub const POST_NONE: &str = "postMix.none";
+    pub const POST_ERROR: &str = "postMix.error";
+    pub const POST_RESTORE_NEEDED: &str = "postMix.restoreNeeded";
+    pub const POST_RESTORE: &str = "postMix.restore";
+    pub const POST_STOP: &str = "postMix.stop";
+    pub const POST_ENABLED: &str = "postMix.enabled";
+    pub const POST_NEEDS_MIX: &str = "mixingUi.postNeedsMix";
+    pub const POST_CHOOSE: &str = "postMix.choose";
+    pub const POST_ADD: &str = "postMix.add";
+    pub const POST_SCAN: &str = "postMix.scan";
+    pub const POST_RECOVERY: &str = "postMix.recovery";
+    pub const POST_RECOVERY_HELP: &str = "postMix.recoveryHelp";
+    pub const POST_RESET: &str = "postMix.reset";
+    pub const POST_SAVE: &str = "postMix.save";
+    pub const POST_RELOAD: &str = "postMix.reload";
 
     #[cfg(test)]
-    pub const ALL: [&str; 277] = [
+    pub const ALL: [&str; 295] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -568,6 +586,24 @@ pub mod keys {
         MIX_MUSIC_MUTE,
         MIX_MONITOR,
         MIX_RELOAD,
+        POST_TITLE,
+        POST_SCOPE,
+        POST_SAVED,
+        POST_NONE,
+        POST_ERROR,
+        POST_RESTORE_NEEDED,
+        POST_RESTORE,
+        POST_STOP,
+        POST_ENABLED,
+        POST_NEEDS_MIX,
+        POST_CHOOSE,
+        POST_ADD,
+        POST_SCAN,
+        POST_RECOVERY,
+        POST_RECOVERY_HELP,
+        POST_RESET,
+        POST_SAVE,
+        POST_RELOAD,
     ];
 }
 

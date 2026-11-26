@@ -9,6 +9,7 @@ pub mod measurement;
 pub mod meter;
 pub mod mix;
 pub mod peak;
+pub mod post_mix;
 pub mod profile;
 pub mod rack;
 pub mod session;

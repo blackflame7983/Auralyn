@@ -25,16 +25,16 @@ struct Exec {
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SavedPlugin {
-    path: String,
-    name: String,
-    vendor: String,
-    version: String,
-    enabled: bool,
-    muted: bool,
-    gain: f32,
+pub struct SavedPlugin {
+    pub path: String,
+    pub name: String,
+    pub vendor: String,
+    pub version: String,
+    pub enabled: bool,
+    pub muted: bool,
+    pub gain: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    class_id: Option<String>,
+    pub class_id: Option<String>,
 }
 impl From<&PresetPlugin> for SavedPlugin {
     fn from(p: &PresetPlugin) -> Self {
@@ -52,22 +52,22 @@ impl From<&PresetPlugin> for SavedPlugin {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Snapshot {
-    epoch: String,
-    revision: String,
-    enabled: bool,
-    running: bool,
-    saved_plugins: Vec<SavedPlugin>,
-    plugins: Vec<RackPlugin>,
-    restored: bool,
-    error: Option<String>,
-    transport_latency_frames: u32,
-    declared_plugin_latency_frames: Option<u32>,
-    attached: Option<bool>,
-    ready: Option<bool>,
-    failed: Option<bool>,
-    processed_packets: Option<u64>,
-    sample_rate: Option<u32>,
+pub struct Snapshot {
+    pub epoch: String,
+    pub revision: String,
+    pub enabled: bool,
+    pub running: bool,
+    pub saved_plugins: Vec<SavedPlugin>,
+    pub plugins: Vec<RackPlugin>,
+    pub restored: bool,
+    pub error: Option<String>,
+    pub transport_latency_frames: u32,
+    pub declared_plugin_latency_frames: Option<u32>,
+    pub attached: Option<bool>,
+    pub ready: Option<bool>,
+    pub failed: Option<bool>,
+    pub processed_packets: Option<u64>,
+    pub sample_rate: Option<u32>,
 }
 impl Snapshot {
     fn apply_status(&mut self, response: IpcResponse) {
@@ -101,7 +101,7 @@ impl Snapshot {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub(crate) enum Request {
+pub enum Request {
     Snapshot,
     Enable {
         expected_epoch: String,
@@ -983,7 +983,7 @@ impl AudioHost {
         }
         Ok(())
     }
-    pub(crate) fn post_mix(&mut self, request: Request) -> Result<Snapshot> {
+    pub fn post_mix(&mut self, request: Request) -> Result<Snapshot> {
         if let Some((epoch, revision)) = request.witness() {
             anyhow::ensure!(
                 epoch == self.post_mix.epoch && revision == self.post_mix.revision.to_string(),
