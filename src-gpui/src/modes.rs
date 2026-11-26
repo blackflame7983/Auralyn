@@ -4,7 +4,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use auralyn_ui_model::live_modes::{LiveModes, Mode};
+use auralyn_ui_model::live_modes::{self, LiveModes, Mode};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -28,8 +28,7 @@ pub struct ModesPanel {
 }
 
 impl ModesPanel {
-    /// 状態を入れ替える。切り替えが終わって別のモードがかかったなら `true`：音づくりを読み直す合図。
-    /// 手で変えて「いまの調整」になったときは、画面の値がもう新しいので読み直さない。
+    /// 状態を入れ替える。`true` なら音づくりを読み直す（`live_modes::reload_after`）。
     pub fn set(&mut self, state: Result<LiveModes, String>) -> bool {
         let state = match state {
             Ok(state) => state,
@@ -39,24 +38,18 @@ impl ModesPanel {
             }
         };
         self.read_error = None;
-        let before = self.current().map(|m| (m.switching(), m.selected()));
-        let after = (state.switching(), state.selected());
+        let reload = live_modes::reload_after(self.state.as_ref(), &state);
         self.state = Some(state);
-        matches!(before, Some(b) if b != after && !after.0 && after.1.is_some())
+        reload
     }
 
     fn current(&self) -> Option<&LiveModes> {
         self.state.as_ref()
     }
 
-    /// 定期的に読み直すか（Tauri 版と同じ：登録があるか、切り替えの途中。まだ読めていなければ読めるまで）。
+    /// 定期的に読み直すか。まだ読めていなければ読めるまで。
     pub fn polls(&self) -> bool {
-        self.current().is_none_or(|m| {
-            m.saved(Mode::Singing)
-                || m.saved(Mode::Talk)
-                || m.switching()
-                || m.transaction.is_some()
-        })
+        self.current().is_none_or(LiveModes::polls)
     }
 
     /// 操作ロック中（最後に読んだ状態で）。
@@ -69,19 +62,14 @@ impl ModesPanel {
         let Some(modes) = self.current() else {
             return Vec::new();
         };
-        let mode = if modes.switching() {
-            modes.target.map(|mode| {
-                core_with(
-                    lang,
-                    keys::MODES_SWITCHING,
-                    &[("mode", &core(lang, mode_name(mode)))],
-                )
-            })
-        } else {
-            modes
-                .selected()
-                .map(|mode| core(lang, mode_name(mode)).to_string())
-        };
+        let mode = modes.shown_mode().map(|(mode, switching)| {
+            let name = core(lang, mode_name(mode));
+            if switching {
+                core_with(lang, keys::MODES_SWITCHING, &[("mode", &name)])
+            } else {
+                name.to_string()
+            }
+        });
         let lock = modes
             .armed
             .then(|| core(lang, keys::MODES_PROTECTING).to_string());

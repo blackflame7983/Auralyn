@@ -50,17 +50,7 @@ pub enum Command {
     /// 保存した入出力の設定で開始する。
     Start,
     /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
-    /// 周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
-    StartWith {
-        /// マイク・仮想ケーブルか、アプリの音声。
-        input: Input,
-        purpose: Purpose,
-        output: Device,
-        sample_rate: Option<u32>,
-        buffer_size: Option<u32>,
-        /// チャンネルの割り当て。ASIO 以外は `connect::SYSTEM_ROUTING`。
-        routing: Routing,
-    },
+    StartWith(StartWith),
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
     Stop,
@@ -525,19 +515,9 @@ impl Control {
             Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
             _ => None,
         };
-        let source = config
-            .input_source
-            .clone()
-            .unwrap_or(input::Config::Device {
-                purpose: input::Purpose::Voice,
-            });
-        let request = input::Request {
-            source,
-            candidate_id: None,
-        };
         let input = app.clone().or(config.input.clone());
         let output = config.output.clone();
-        let result = input::start(&mut self.host, saved_start(config, request));
+        let result = input::start(&mut self.host, config, None);
         // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する（Tauri 版と同じ）。
         // 起動し直したあとは候補が無いので、選び直してもらう（既定のマイクにも替えない）。
         if let (Some(name), Err(e)) = (app, &result) {
@@ -573,23 +553,18 @@ impl Control {
                 (None, name, source, Some(candidate_id))
             }
         };
-        let result = input::start(
-            &mut self.host,
-            input::Start {
-                host: start.output.host.clone(),
-                input: input.as_ref().map(|d| d.name.clone()),
-                input_id: input.and_then(|d| d.id),
-                output: Some(start.output.name.clone()),
-                output_id: start.output.id.clone(),
-                buffer_size: start.buffer_size,
-                sample_rate: start.sample_rate,
-                routing: Some(channel_routing(start.routing)),
-                request: input::Request {
-                    source,
-                    candidate_id,
-                },
-            },
-        );
+        let config = ActiveAudioConfig {
+            input_source: Some(source),
+            host: start.output.host.clone(),
+            input: input.as_ref().map(|d| d.name.clone()),
+            output: Some(start.output.name.clone()),
+            input_id: input.and_then(|d| d.id),
+            output_id: start.output.id.clone(),
+            buffer_size: start.buffer_size,
+            sample_rate: start.sample_rate,
+            routing: Some(channel_routing(start.routing)),
+        };
+        let result = input::start(&mut self.host, config, candidate_id);
         self.started(result, Some(input_name), Some(start.output.name));
     }
 
@@ -625,23 +600,7 @@ impl Control {
     fn execute(&mut self, command: &Command) {
         let (name, result) = match *command {
             Command::Start => return self.start_saved(),
-            Command::StartWith {
-                ref input,
-                purpose,
-                ref output,
-                sample_rate,
-                buffer_size,
-                routing,
-            } => {
-                return self.start_with(StartWith {
-                    input: input.clone(),
-                    purpose,
-                    output: output.clone(),
-                    sample_rate,
-                    buffer_size,
-                    routing,
-                })
-            }
+            Command::StartWith(ref start) => return self.start_with(start.clone()),
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
@@ -853,29 +812,17 @@ impl Control {
     }
 }
 
-/// 保存した設定で開始する値。入力の元は `request` で明示する。
-fn saved_start(config: ActiveAudioConfig, request: input::Request) -> input::Start {
-    input::Start {
-        host: config.host,
-        input: config.input,
-        input_id: config.input_id,
-        output: config.output,
-        output_id: config.output_id,
-        buffer_size: config.buffer_size,
-        sample_rate: config.sample_rate,
-        routing: config.routing,
-        request,
-    }
-}
-
-/// 開始に使う値（`Command::StartWith` の中身）。
-struct StartWith {
-    input: Input,
-    purpose: Purpose,
-    output: Device,
-    sample_rate: Option<u32>,
-    buffer_size: Option<u32>,
-    routing: Routing,
+/// 選んだ機器での開始。周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
+#[derive(Debug, Clone)]
+pub struct StartWith {
+    /// マイク・仮想ケーブルか、アプリの音声。
+    pub input: Input,
+    pub purpose: Purpose,
+    pub output: Device,
+    pub sample_rate: Option<u32>,
+    pub buffer_size: Option<u32>,
+    /// チャンネルの割り当て。ASIO 以外は `connect::SYSTEM_ROUTING`。
+    pub routing: Routing,
 }
 
 fn host_purpose(purpose: Purpose) -> input::Purpose {

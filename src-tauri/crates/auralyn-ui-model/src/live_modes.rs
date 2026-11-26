@@ -108,6 +108,28 @@ impl LiveModes {
         matches!(self.phase.as_str(), "queued" | "transitioning")
             || self.transaction.as_ref().is_some_and(Transaction::busy)
     }
+
+    /// 定期的に読み直すか（Tauri 版 `useLiveModes` と同じ：登録があるか、切り替えの途中）。
+    pub fn polls(&self) -> bool {
+        self.singing_saved || self.talk_saved || self.switching() || self.transaction.is_some()
+    }
+
+    /// 上の帯に出すモード。切り替え中なら切り替え先（`true`）、終わっていればかかっているモード。
+    pub fn shown_mode(&self) -> Option<(Mode, bool)> {
+        if self.switching() {
+            self.target.map(|mode| (mode, true))
+        } else {
+            self.selected().map(|mode| (mode, false))
+        }
+    }
+}
+
+/// 読み直したら音づくりも読み直すか：切り替えが終わって別のモードがかかったとき。
+/// 手で変えて「いまの調整」になったとき（かかったモードが無い）は、画面の値がもう新しいので読み直さない。
+pub fn reload_after(before: Option<&LiveModes>, after: &LiveModes) -> bool {
+    let seen = |m: &LiveModes| (m.switching(), m.selected());
+    let now = seen(after);
+    before.is_some_and(|b| seen(b) != now) && !now.0 && now.1.is_some()
 }
 
 #[cfg(test)]
@@ -128,6 +150,39 @@ mod tests {
             transaction: None,
             error: None,
         }
+    }
+
+    #[test]
+    fn sound_is_reread_only_when_a_switch_lands_on_a_mode() {
+        let settled = |mode| LiveModes {
+            phase: "settled".to_owned(),
+            applied: Some(mode),
+            ..modes()
+        };
+        let switching = LiveModes {
+            phase: "transitioning".to_owned(),
+            target: Some(Mode::Talk),
+            ..modes()
+        };
+        assert!(reload_after(Some(&switching), &settled(Mode::Talk)));
+        assert!(reload_after(
+            Some(&settled(Mode::Singing)),
+            &settled(Mode::Talk)
+        ));
+        assert!(!reload_after(Some(&settled(Mode::Talk)), &modes()));
+        assert!(!reload_after(None, &settled(Mode::Talk)));
+        assert!(!reload_after(Some(&settled(Mode::Talk)), &switching));
+        assert_eq!(switching.shown_mode(), Some((Mode::Talk, true)));
+        assert_eq!(
+            settled(Mode::Singing).shown_mode(),
+            Some((Mode::Singing, false))
+        );
+        assert_eq!(modes().shown_mode(), None);
+        let unregistered = LiveModes {
+            singing_saved: false,
+            ..modes()
+        };
+        assert!(modes().polls() && !unregistered.polls() && LiveModes { ..switching }.polls());
     }
 
     fn transaction(phase: &str, recovery_available: bool) -> Option<Transaction> {

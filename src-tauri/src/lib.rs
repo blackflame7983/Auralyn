@@ -45,31 +45,29 @@ pub mod mixing {
 pub mod input {
     pub use crate::input_source::{Config, ProcessConfig, Purpose, Request};
 
-    /// 開始に使う値。アプリの音声のときは入力の機器を渡さない。
-    pub struct Start {
-        pub host: String,
-        pub input: Option<String>,
-        pub input_id: Option<String>,
-        pub output: Option<String>,
-        pub output_id: Option<String>,
-        pub buffer_size: Option<u32>,
-        pub sample_rate: Option<u32>,
-        pub routing: Option<crate::ipc::ChannelRouting>,
-        pub request: Request,
-    }
-
-    /// 入力の元を確かめて（アプリの候補は一覧を読み直すまで有効）開始する。
-    pub fn start(host: &mut crate::audio::AudioHost, start: Start) -> anyhow::Result<()> {
-        let source = host.resolve_input_source(Some(start.request))?;
+    /// `config` の入出力で開始する。入力の元は `config.input_source`（無ければ声のマイク）。
+    /// アプリの音声は、`candidate_id`（一覧を読み直すまで有効）か、この起動で選んだ同じアプリで確かめる。
+    pub fn start(
+        host: &mut crate::audio::AudioHost,
+        config: crate::audio::ActiveAudioConfig,
+        candidate_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        let source = config.input_source.unwrap_or(Config::Device {
+            purpose: Purpose::Voice,
+        });
+        let source = host.resolve_input_source(Some(Request {
+            source,
+            candidate_id,
+        }))?;
         host.start_with_input_source(
-            Some(start.host),
-            start.input,
-            start.output,
-            start.buffer_size,
-            start.sample_rate,
-            start.input_id,
-            start.output_id,
-            start.routing,
+            Some(config.host),
+            config.input,
+            config.output,
+            config.buffer_size,
+            config.sample_rate,
+            config.input_id,
+            config.output_id,
+            config.routing,
             source,
         )?;
         Ok(())
