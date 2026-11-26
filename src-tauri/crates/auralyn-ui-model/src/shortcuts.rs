@@ -50,13 +50,27 @@ pub struct Binding {
     pub shortcut: String,
 }
 
-/// 読めなかった理由。どれでも、Tauri 版と同じく1つも登録しない。
+/// 読めなかった理由と、そのもとの値。どれでも、Tauri 版と同じく1つも登録しない。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Issue {
-    TooMany,
+    TooMany(usize),
     UnknownAction(String),
+    InvalidShortcut(String),
     ModifierRequired(String),
-    Duplicate,
+    Duplicate(String),
+}
+
+impl Issue {
+    /// 断った値（画面で理由のあとに添える）。
+    pub fn detail(&self) -> String {
+        match self {
+            Self::TooMany(count) => format!("{count} > {MAX}"),
+            Self::UnknownAction(text)
+            | Self::InvalidShortcut(text)
+            | Self::ModifierRequired(text)
+            | Self::Duplicate(text) => text.clone(),
+        }
+    }
 }
 
 /// ファイルが無いときの既定（Tauri 版と同じ）。
@@ -73,43 +87,32 @@ pub fn defaults() -> Vec<Binding> {
     ]
 }
 
-/// 保存から読んだ組（操作の名前・キー）を確かめる。キーの書式そのものはキーを登録する側で確かめる。
-pub fn check(pairs: Vec<(String, String)>) -> Result<Vec<Binding>, Issue> {
+/// 保存から読んだ組（操作の名前・キー）を確かめる（Tauri 版の `validate` と同じ）。
+/// `key` はキーを読み、同じ組合せなら同じ値を返す（書き方の違う `Alt+M` と `Alt+KeyM` も同じにする）。読めなければ `None`。
+/// GPUI 版で使わない操作のキーも確かめる。
+pub fn check<K: PartialEq>(
+    pairs: Vec<(String, String)>,
+    key: impl Fn(&str) -> Option<K>,
+) -> Result<Vec<Binding>, Issue> {
     if pairs.len() > MAX {
-        return Err(Issue::TooMany);
+        return Err(Issue::TooMany(pairs.len()));
     }
-    let mut bindings: Vec<Binding> = Vec::new();
+    let mut bindings: Vec<(Binding, K)> = Vec::new();
     for (name, shortcut) in pairs {
         let action = Action::parse(&name).ok_or(Issue::UnknownAction(name))?;
+        let id = key(&shortcut).ok_or_else(|| Issue::InvalidShortcut(shortcut.clone()))?;
         if shortcut.len() > 80 || !shortcut.contains('+') {
             return Err(Issue::ModifierRequired(shortcut));
         }
         if bindings
             .iter()
-            .any(|b| b.action == action || normalized(&b.shortcut) == normalized(&shortcut))
+            .any(|(b, other)| b.action == action || *other == id)
         {
-            return Err(Issue::Duplicate);
+            return Err(Issue::Duplicate(shortcut));
         }
-        bindings.push(Binding { action, shortcut });
+        bindings.push((Binding { action, shortcut }, id));
     }
-    Ok(bindings)
-}
-
-/// 修飾キーの順や表記（Ctrl/Control、Meta/Super）が違っても同じ組合せにする。
-fn normalized(shortcut: &str) -> String {
-    let lower = shortcut.to_lowercase();
-    let mut parts: Vec<&str> = lower.split('+').collect();
-    let key = parts.pop().unwrap_or_default();
-    let mut modifiers: Vec<&str> = parts
-        .into_iter()
-        .map(|part| match part {
-            "ctrl" => "control",
-            "meta" => "super",
-            other => other,
-        })
-        .collect();
-    modifiers.sort_unstable();
-    format!("{}+{key}", modifiers.join("+"))
+    Ok(bindings.into_iter().map(|(binding, _)| binding).collect())
 }
 
 /// 保存値（`Control+Alt+KeyM`）を、キーボードの刻印に近い表記（`Ctrl + Alt + M`）にする（Tauri 版の `formatShortcut` と同じ）。
@@ -155,41 +158,71 @@ mod tests {
         (action.into(), shortcut.into())
     }
 
+    /// 試験用のキーの読み方：`Ctrl` を `Control` と同じにし、修飾キーの順を問わない。`?` を含むと読めない。
+    fn key(shortcut: &str) -> Option<Vec<String>> {
+        if shortcut.contains('?') {
+            return None;
+        }
+        let mut parts: Vec<String> = shortcut
+            .to_lowercase()
+            .replace("ctrl", "control")
+            .split('+')
+            .map(str::to_owned)
+            .collect();
+        parts.sort();
+        Some(parts)
+    }
+
     #[test]
     fn saved_bindings_are_checked_like_tauri() {
         assert_eq!(
-            check(vec![pair("muteOn", "Control+Alt+KeyM")]),
+            check(vec![pair("muteOn", "Control+Alt+KeyM")], key),
             Ok(vec![Binding {
                 action: Action::MuteOn,
                 shortcut: "Control+Alt+KeyM".into()
             }])
         );
         assert_eq!(
-            check(vec![pair("x", "Alt+KeyM")]),
+            check(vec![pair("x", "Alt+KeyM")], key),
             Err(Issue::UnknownAction("x".into()))
         );
         assert_eq!(
-            check(vec![pair("muteOn", "KeyM")]),
+            check(vec![pair("muteOn", "KeyM")], key),
             Err(Issue::ModifierRequired("KeyM".into()))
         );
         assert_eq!(
-            check(vec![
-                pair("muteOn", "Ctrl+Alt+KeyM"),
-                pair("muteOff", "Alt+Control+KeyM")
-            ]),
-            Err(Issue::Duplicate)
+            check(
+                vec![
+                    pair("muteOn", "Ctrl+Alt+KeyM"),
+                    pair("muteOff", "Alt+Control+KeyM")
+                ],
+                key
+            ),
+            Err(Issue::Duplicate("Alt+Control+KeyM".into()))
         );
         assert_eq!(
-            check(vec![pair("muteOn", "Alt+KeyA"), pair("muteOn", "Alt+KeyB")]),
-            Err(Issue::Duplicate)
+            check(
+                vec![pair("muteOn", "Alt+KeyA"), pair("muteOn", "Alt+KeyB")],
+                key
+            ),
+            Err(Issue::Duplicate("Alt+KeyB".into()))
+        );
+        // GPUI 版で使わない操作でも、読めないキーがあれば全部断る。
+        assert_eq!(
+            check(
+                vec![pair("muteOn", "Alt+KeyM"), pair("talkOn", "Alt+?")],
+                key
+            ),
+            Err(Issue::InvalidShortcut("Alt+?".into()))
         );
         assert_eq!(
             check(
                 (0..9)
                     .map(|i| pair("muteOn", &format!("Alt+Digit{i}")))
-                    .collect()
+                    .collect(),
+                key
             ),
-            Err(Issue::TooMany)
+            Err(Issue::TooMany(9))
         );
     }
 

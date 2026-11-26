@@ -206,9 +206,15 @@ impl MainView {
                 log::warn!("{} を登録できません: {error}", failed.binding.shortcut);
             }
         }
-        let message = desktop
-            .shortcut_failed()
-            .then(|| core(lang, keys::HOTKEY_FAILED).to_owned());
+        let message = match &desktop.shortcuts_error {
+            Some(error) => Some(format!(
+                "{}: {error}",
+                core(lang, keys::SHORTCUTS_UNREADABLE)
+            )),
+            None => desktop
+                .shortcut_failed()
+                .then(|| core(lang, keys::HOTKEY_FAILED).to_owned()),
+        };
         Self {
             engine,
             desktop,

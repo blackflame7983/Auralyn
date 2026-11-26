@@ -21,13 +21,17 @@ pub struct Registered {
 }
 
 /// Tauri 版と同じ `shortcuts.json` を読む。無ければ既定。書き換えは Tauri 版の設定で行う（GPUI 版は読むだけ）。
-fn load(config_dir: &Path) -> Result<Vec<Binding>, String> {
+/// `key` はキーを読む（[`shortcuts::check`]）。余分な項目がある組は、Tauri 版と同じく読めないものとする。
+fn load<K: PartialEq>(
+    config_dir: &Path,
+    key: impl Fn(&str) -> Option<K>,
+) -> Result<Vec<Binding>, String> {
     let bytes = match std::fs::read(config_dir.join("shortcuts.json")) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(shortcuts::defaults()),
         Err(e) => return Err(e.to_string()),
     };
-    let entries: Vec<serde_json::Value> =
+    let entries: Vec<serde_json::Map<String, serde_json::Value>> =
         serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
     let pairs = entries
         .iter()
@@ -35,10 +39,11 @@ fn load(config_dir: &Path) -> Result<Vec<Binding>, String> {
             let field = |name| entry.get(name).and_then(|v| v.as_str()).map(str::to_owned);
             field("action")
                 .zip(field("shortcut"))
-                .ok_or_else(|| entry.to_string())
+                .filter(|_| entry.len() == 2)
+                .ok_or_else(|| serde_json::Value::Object(entry.clone()).to_string())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    shortcuts::check(pairs).map_err(|issue| format!("{issue:?}"))
+    shortcuts::check(pairs, key).map_err(|issue| issue.detail())
 }
 
 #[cfg(windows)]
@@ -81,7 +86,7 @@ mod imp {
         /// 登録したキーの ID と操作。
         hotkeys: Vec<(u32, shortcuts::Action)>,
         pub shortcuts: Vec<Registered>,
-        /// 保存を読めなかった・登録の仕組みを作れなかった理由。このときは1つも登録しない。
+        /// 保存を読めなかった理由。このときは1つも登録しない。
         pub shortcuts_error: Option<String>,
         pub tray_error: Option<String>,
     }
@@ -105,18 +110,19 @@ mod imp {
                         .map_err(|e| e.to_string())
                 });
             let (tray, tray_error) = split(tray);
-            let loaded = load(config_dir).and_then(|bindings| {
-                GlobalHotKeyManager::new()
-                    .map(|manager| (manager, bindings))
-                    .map_err(|e| e.to_string())
-            });
+            let loaded = load(config_dir, |s| s.parse::<HotKey>().ok().map(|k| k.id()));
+            // 登録の仕組みを作れなければ、どの組も同じ理由で登録できない。
+            let manager = GlobalHotKeyManager::new().map_err(|e| e.to_string());
             let mut hotkeys = Vec::new();
             let mut registered = Vec::new();
-            let (manager, shortcuts_error) = match loaded {
-                Ok((manager, bindings)) => {
+            let shortcuts_error = match loaded {
+                Ok(bindings) => {
                     for binding in bindings {
                         let error = if binding.action.supported() {
-                            register(&manager, &binding.shortcut)
+                            manager
+                                .as_ref()
+                                .map_err(Clone::clone)
+                                .and_then(|manager| register(manager, &binding.shortcut))
                                 .map(|id| hotkeys.push((id, binding.action)))
                                 .err()
                         } else {
@@ -124,16 +130,16 @@ mod imp {
                         };
                         registered.push(Registered { binding, error });
                     }
-                    (Some(manager), None)
+                    None
                 }
-                Err(e) => (None, Some(e)),
+                Err(e) => Some(e),
             };
             Self {
                 _tray: tray,
                 show,
                 mute,
                 quit,
-                _manager: manager,
+                _manager: manager.ok(),
                 hotkeys,
                 shortcuts: registered,
                 shortcuts_error,
@@ -228,7 +234,7 @@ mod imp {
 
     impl Desktop {
         pub fn new(_lang: Lang, config_dir: &Path) -> Self {
-            let (shortcuts, shortcuts_error) = match load(config_dir) {
+            let (shortcuts, shortcuts_error) = match load(config_dir, |s| Some(s.to_owned())) {
                 Ok(bindings) => (
                     bindings
                         .into_iter()
@@ -261,8 +267,8 @@ mod imp {
 pub use imp::{set_shown, Desktop};
 
 impl Desktop {
-    /// 登録できなかったショートカットがあるか（読めなかったときも）。
+    /// 登録できなかったショートカットがあるか。
     pub fn shortcut_failed(&self) -> bool {
-        self.shortcuts_error.is_some() || self.shortcuts.iter().any(|s| s.error.is_some())
+        self.shortcuts.iter().any(|s| s.error.is_some())
     }
 }

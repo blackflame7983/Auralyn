@@ -5,6 +5,11 @@ use super::*;
 impl Control {
     /// エンジンの統計から音づくりの設定を読み、画面へ送る。子が落ちていたら、先に読み直す（落ちた子の既定値を読まない）。
     pub(super) fn read_sound(&mut self) {
+        self.current_sound();
+    }
+
+    /// [`Self::read_sound`] と同じく読んで送り、読めた値と、ノイズ低減の種類がまだ無い（空）かを返す。読めなければ `None`。
+    fn current_sound(&mut self) -> Option<(Sound, bool)> {
         self.recover();
         match self.host.get_engine_runtime_stats() {
             Ok(stats) => {
@@ -20,8 +25,12 @@ impl Control {
                 .normalized();
                 self.sound = Some(sound);
                 let _ = self.notices.send(Notice::Sound(sound));
+                Some((sound, stats.noise_reduction_mode.is_empty()))
             }
-            Err(e) => self.fail("get_engine_runtime_stats", e),
+            Err(e) => {
+                self.fail("get_engine_runtime_stats", e);
+                None
+            }
         }
     }
 
@@ -108,11 +117,23 @@ impl Control {
     }
 
     /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める（Tauri 版のショートカットと同じ）。
+    /// 種類がまだ無ければ「弱」で入れる（Tauri 版と同じ）。分からない種類は書き換えないので、切り替えずに断る。
     pub(super) fn toggle_noise(&mut self) {
-        self.read_sound();
-        if let Some(sound) = self.sound {
-            self.set_sound(Change::NoiseOn(!sound.noise_on));
+        let Some((before, unset)) = self.current_sound() else {
+            return;
+        };
+        let mut next = before.with(Change::NoiseOn(!before.noise_on));
+        if next.noise_mode.is_none() {
+            if !unset {
+                return self.fail(
+                    "set_noise_control_config",
+                    anyhow::anyhow!("unknown noise reduction mode"),
+                );
+            }
+            next.noise_mode = Some(NoiseMode::Low);
         }
+        self.apply_sound(next, Some(before));
+        self.reread_and_save_sound();
     }
 
     /// エンジンが受け付けた音づくりを読み、次の起動のために保存する。
