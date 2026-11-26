@@ -42,7 +42,7 @@ use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
 use auralyn_ui_model::connect::{Input, Purpose, SYSTEM_ROUTING};
-use auralyn_ui_model::diagnostics::Stats;
+use auralyn_ui_model::diagnostics::{self, Stats};
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
@@ -108,6 +108,7 @@ pub struct MainView {
     recovery: Option<Exit>,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
+    mix_stats: diagnostics::Mix,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
     cleared: Option<Result<(), String>>,
     sound: SoundPage,
@@ -335,6 +336,7 @@ impl MainView {
             setup,
             recovery: None,
             stats: None,
+            mix_stats: diagnostics::Mix::default(),
             cleared: None,
             sound,
             _ticker: ticker,
@@ -507,7 +509,10 @@ impl MainView {
                 }
             }
             Notice::RecordingSaved => self.voice.saved(),
-            Notice::Stats(stats) => self.stats = stats,
+            Notice::Stats { stats, mix } => {
+                self.stats = stats;
+                self.mix_stats = mix;
+            }
             Notice::ExclusionsCleared(result) => {
                 if let Err(e) = &result {
                     log::warn!("読み込みを止めた VST をリセットできません: {e}");
@@ -996,6 +1001,7 @@ impl Render for MainView {
                                             self.stats.as_ref(),
                                             send.clone(),
                                         ))
+                                        .child(settings::mix_diagnostics(lang, &self.mix_stats))
                                         .child(settings::plugins(
                                             lang,
                                             self.cleared.as_ref(),

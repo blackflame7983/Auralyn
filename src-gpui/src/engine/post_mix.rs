@@ -68,6 +68,39 @@ impl Control {
         };
         let _ = self.notices.send(Notice::PostMix(notice));
     }
+
+    /// 診断に出す配信ミックスの値（Tauri 版の「オケ・配信VSTの診断」と同じ項目）。読めない部分は空のまま。
+    pub(super) fn mix_stats(&mut self) -> diagnostics::Mix {
+        let mut stats = diagnostics::Mix::default();
+        if let Ok(snapshot) = self.host.mixing(vst_host_lib::mixing::Request::Snapshot) {
+            let engine = snapshot.engine;
+            if let Some(a) = engine.accompaniment {
+                stats.captured = Some((a.captured_frames, a.nonzero_frames));
+                stats.queued = Some(a.queued_frames);
+                stats.correction_ppm = Some(a.correction_ppm);
+                stats.discontinuities = Some(a.discontinuities);
+                stats.timestamp_errors = Some(a.timestamp_errors);
+                stats.nonfinite = Some(a.nonfinite_samples);
+                stats.discarded = Some(a.waiting_discarded_frames);
+            }
+            if let Some(clock) = engine.primary_clock {
+                stats.primary_queued = Some(clock.queued_frames);
+                stats.primary_correction_ppm = Some(clock.correction_ppm);
+                stats.underruns = clock.underruns;
+            }
+            stats.voice_frames = engine.known_voice_processing_frames;
+        }
+        if let Ok(post) = self.host.post_mix(PostRequest::Snapshot) {
+            stats.attached = post.attached;
+            stats.ready = post.ready;
+            stats.failed = post.failed;
+            stats.packets = post.processed_packets;
+            stats.sample_rate = post.sample_rate;
+            stats.transport_frames = Some(post.transport_latency_frames);
+            stats.declared_frames = post.declared_plugin_latency_frames;
+        }
+        stats
+    }
 }
 
 /// 画面が見た世代を付けた頼みごと。読むだけ・動かせない（端）なら `None`。

@@ -455,9 +455,28 @@ pub mod keys {
     pub const VST_OP_RESUME: &str = "audioNotices.vstOp.resume";
     pub const VST_OP_PROCESSING_SETUP: &str = "audioNotices.vstOp.processingSetup";
     pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
+    pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
+    pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
+    pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
+    pub const MIX_DIAG_CORRECTION: &str = "mixingDiagnostics.correction";
+    pub const MIX_DIAG_DISCONTINUITIES: &str = "mixingDiagnostics.discontinuities";
+    pub const MIX_DIAG_TIMESTAMPS: &str = "mixingDiagnostics.timestamps";
+    pub const MIX_DIAG_NONFINITE: &str = "mixingDiagnostics.nonfinite";
+    pub const MIX_DIAG_DISCARDED: &str = "mixingDiagnostics.discarded";
+    pub const MIX_DIAG_PRIMARY_QUEUE: &str = "mixingDiagnostics.primaryQueue";
+    pub const MIX_DIAG_PRIMARY_CORRECTION: &str = "mixingDiagnostics.primaryCorrection";
+    pub const MIX_DIAG_UNDERRUNS: &str = "mixingDiagnostics.underruns";
+    pub const MIX_DIAG_VOICE_FRAMES: &str = "mixingDiagnostics.voiceFrames";
+    pub const MIX_DIAG_ATTACHED: &str = "mixingDiagnostics.attached";
+    pub const MIX_DIAG_READY: &str = "mixingDiagnostics.ready";
+    pub const MIX_DIAG_FAILED: &str = "mixingDiagnostics.failed";
+    pub const MIX_DIAG_PACKETS: &str = "mixingDiagnostics.packets";
+    pub const MIX_DIAG_RATE: &str = "mixingDiagnostics.rate";
+    pub const MIX_DIAG_TRANSPORT: &str = "mixingDiagnostics.transport";
+    pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 444] = [
+    pub const ALL: [&str; 463] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -902,6 +921,25 @@ pub mod keys {
         VST_OP_RESUME,
         VST_OP_PROCESSING_SETUP,
         VST_OP_OTHER,
+        MIX_DIAG_TITLE,
+        MIX_DIAG_CAPTURE,
+        MIX_DIAG_QUEUE,
+        MIX_DIAG_CORRECTION,
+        MIX_DIAG_DISCONTINUITIES,
+        MIX_DIAG_TIMESTAMPS,
+        MIX_DIAG_NONFINITE,
+        MIX_DIAG_DISCARDED,
+        MIX_DIAG_PRIMARY_QUEUE,
+        MIX_DIAG_PRIMARY_CORRECTION,
+        MIX_DIAG_UNDERRUNS,
+        MIX_DIAG_VOICE_FRAMES,
+        MIX_DIAG_ATTACHED,
+        MIX_DIAG_READY,
+        MIX_DIAG_FAILED,
+        MIX_DIAG_PACKETS,
+        MIX_DIAG_RATE,
+        MIX_DIAG_TRANSPORT,
+        MIX_DIAG_DECLARED,
     ];
 }
 

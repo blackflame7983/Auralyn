@@ -36,6 +36,31 @@ impl Stats {
     }
 }
 
+/// 配信ミックス（オケ・配信音を仕上げる VST）の診断。Tauri 版の「オケ・配信VSTの診断」と同じ項目。
+/// 読めなかった項目（止まっている・使っていない）は `None`。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mix {
+    /// オケを取得したフレーム数と、そのうち信号があったフレーム数。
+    pub captured: Option<(u64, u64)>,
+    pub queued: Option<u64>,
+    pub correction_ppm: Option<i32>,
+    pub discontinuities: Option<u64>,
+    pub timestamp_errors: Option<u64>,
+    pub nonfinite: Option<u64>,
+    pub discarded: Option<u64>,
+    pub primary_queued: Option<u64>,
+    pub primary_correction_ppm: Option<i32>,
+    pub underruns: Option<u64>,
+    pub voice_frames: Option<u32>,
+    pub attached: Option<bool>,
+    pub ready: Option<bool>,
+    pub failed: Option<bool>,
+    pub packets: Option<u64>,
+    pub sample_rate: Option<u32>,
+    pub transport_frames: Option<u32>,
+    pub declared_frames: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

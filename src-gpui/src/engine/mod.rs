@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{AppSource, Device, Input, Output, Purpose, Routing, Saved};
-use auralyn_ui_model::diagnostics::{Health, Stats};
+use auralyn_ui_model::diagnostics::{self, Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::{Limit, Lookahead, Peak};
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
@@ -271,8 +271,12 @@ pub enum Notice {
     RecordingSaved,
     /// 試聴の様子。失敗したときは理由。
     Listening(Result<Listening, String>),
-    /// 稼働統計。`None` は読めなかった（音声が止まっているときは、すべて 0 で届く）。
-    Stats(Option<Stats>),
+    /// 稼働統計。`stats` が `None` は読めなかった（音声が止まっているときは、すべて 0 で届く）。
+    /// `mix` は配信ミックスの診断で、読めた項目だけ入る。
+    Stats {
+        stats: Option<Stats>,
+        mix: diagnostics::Mix,
+    },
     ExclusionsCleared(Result<(), String>),
     /// 配信用の出力の状態。`Err` は読めない・断られた理由。
     Live(Result<auralyn_ui_model::live_output::Live, String>),
@@ -723,7 +727,8 @@ impl Control {
                         window_secs: h.window_secs,
                     }),
                 });
-                let _ = self.notices.send(Notice::Stats(stats));
+                let mix = self.mix_stats();
+                let _ = self.notices.send(Notice::Stats { stats, mix });
                 return;
             }
             Command::ClearExclusions => {
