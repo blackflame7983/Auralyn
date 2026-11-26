@@ -152,7 +152,7 @@ impl ConnectPage {
         let routing = self.routing(cx);
         let (rate, buffer) = self.values(cx);
         self.fill_values(rate, buffer, window, cx);
-        self.fill_routing(routing, window, cx);
+        self.fill_routing(Some(routing), window, cx);
     }
 
     /// ASIO の割り当ての選択肢を入れる。`keep` が無ければ、保存した同じドライバーの割り当てか既定から選ぶ。
@@ -170,11 +170,7 @@ impl ConnectPage {
             Output::Independent(pair) => Some(pair),
             _ => None,
         };
-        self.input_pairs = if input.channels == 0 {
-            Vec::new()
-        } else {
-            connect::pairs(input.channels, routing.input)
-        };
+        self.input_pairs = connect::pairs(input.channels, routing.input);
         self.output_pairs = connect::pairs(output.channels, independent);
         let lang = self.lang;
         let pair_names = |pairs: &[[usize; 2]], key| {
@@ -221,10 +217,10 @@ impl ConnectPage {
         );
     }
 
-    /// 選んでいる ASIO の割り当て。ASIO 以外は `None`（エンジンが同じ機器なら保存した割り当てを引き継ぐ）。
-    pub fn routing(&self, cx: &App) -> Option<Routing> {
+    /// 選んでいる割り当て。ASIO 以外は決まった割り当て（前に ASIO で選んだ番号を持ち越さない）。
+    pub fn routing(&self, cx: &App) -> Routing {
         if !connect::shares_device(&self.host_name(cx)) {
-            return None;
+            return connect::SYSTEM_ROUTING;
         }
         let row = |state: &Entity<Choices>| Some(state.read(cx).selected_index(cx)?.row);
         let pick = |state, pairs: &[[usize; 2]]| row(state).and_then(|r| pairs.get(r).copied());
@@ -235,10 +231,10 @@ impl ConnectPage {
             Some(1) => Output::Insert,
             _ => Output::Legacy,
         };
-        Some(Routing {
+        Routing {
             input: pick(&self.input_pair, &self.input_pairs),
             output,
-        })
+        }
     }
 
     /// 選んでいる周波数とバッファ。`None` は「自動」。

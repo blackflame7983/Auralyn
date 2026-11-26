@@ -35,7 +35,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
-use auralyn_ui_model::connect::{Device, Routing};
+use auralyn_ui_model::connect::{Device, Routing, SYSTEM_ROUTING};
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
@@ -612,7 +612,7 @@ impl MainView {
         output: Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
-        routing: Option<Routing>,
+        routing: Routing,
     ) {
         if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
             return;
@@ -802,7 +802,11 @@ impl Render for MainView {
                                                             this.setup.chosen(cx)
                                                         {
                                                             this.start_with(
-                                                                input, output, None, None, None,
+                                                                input,
+                                                                output,
+                                                                None,
+                                                                None,
+                                                                SYSTEM_ROUTING,
                                                             );
                                                         }
                                                         cx.notify();

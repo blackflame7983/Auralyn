@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
-use auralyn_ui_model::connect::{Device, Output, Saved};
+use auralyn_ui_model::connect::{Device, Output, Routing, Saved};
 use auralyn_ui_model::diagnostics::{Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
@@ -55,8 +55,8 @@ pub enum Command {
         output: Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
-        /// ASIO のチャンネルの割り当て。`None` は WASAPI など（同じ機器なら保存した割り当てを引き継ぐ）。
-        routing: Option<auralyn_ui_model::connect::Routing>,
+        /// チャンネルの割り当て。ASIO 以外は `connect::SYSTEM_ROUTING`。
+        routing: Routing,
     },
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
@@ -522,19 +522,15 @@ impl Control {
         self.start(config);
     }
 
-    /// 選んだ機器・周波数・バッファで開始する。チャンネルの割り当ては、画面が選んだもの（ASIO）か、同じ機器のときだけ引き継ぐ。
+    /// 選んだ機器・周波数・バッファ・チャンネルの割り当てで開始する。
     fn start_with(
         &mut self,
         input: &Device,
         output: &Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
-        routing: Option<auralyn_ui_model::connect::Routing>,
+        routing: Routing,
     ) {
-        let saved = self.host.read_saved_audio_config().ok().flatten();
-        let same_devices = saved
-            .as_ref()
-            .filter(|s| s.host == input.host && s.input_id == input.id && s.output_id == output.id);
         self.start(ActiveAudioConfig {
             input_source: None,
             host: input.host.clone(),
@@ -544,9 +540,7 @@ impl Control {
             output_id: output.id.clone(),
             buffer_size,
             sample_rate,
-            routing: routing
-                .map(channel_routing)
-                .or_else(|| same_devices.and_then(|s| s.routing)),
+            routing: Some(channel_routing(routing)),
         });
     }
 
@@ -759,7 +753,7 @@ impl Control {
                 output_id: c.output_id,
                 sample_rate: c.sample_rate,
                 buffer_size: c.buffer_size,
-                routing: c.routing.map(|r| auralyn_ui_model::connect::Routing {
+                routing: c.routing.map(|r| Routing {
                     input: r.input_channels,
                     output: match r.output_routing {
                         OutputRouting::Legacy => Output::Legacy,
@@ -791,7 +785,7 @@ impl Control {
 }
 
 /// 画面が選んだ割り当てを、ホストの形にする。
-fn channel_routing(routing: auralyn_ui_model::connect::Routing) -> ChannelRouting {
+fn channel_routing(routing: Routing) -> ChannelRouting {
     ChannelRouting {
         input_channels: routing.input,
         output_routing: match routing.output {

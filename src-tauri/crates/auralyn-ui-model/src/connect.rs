@@ -66,19 +66,36 @@ pub fn pairs(channels: u16, keep: Option<[usize; 2]>) -> Vec<[usize; 2]> {
     pairs
 }
 
-/// 機器を選んだときに最初に入れておく割り当て。同じドライバーを保存していればそれ、無ければ入力 1/2・従来の返し方。
+/// ASIO 以外で送る割り当て（Tauri 版と同じ。入力 1/2 を出力 1/2 へ）。
+pub const SYSTEM_ROUTING: Routing = Routing {
+    input: Some([0, 1]),
+    output: Output::Independent([0, 1]),
+};
+
+/// 最初のペア。モノラルの機器なら左右とも 1 番。
+pub fn first_pair(channels: u16) -> [usize; 2] {
+    [0, usize::from(channels != 1)]
+}
+
+/// 機器を選んだときに最初に入れておく割り当て（Tauri 版と同じ）。
+/// 保存した同じドライバーなら保存した割り当て（返し方が無ければ従来の返し方）、違う機器なら最初のペアを同じ番号の出力へ。
 pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
-    saved
-        .filter(|saved| {
-            saved.host == input.host
-                && (saved.input_id.is_some() && saved.input_id == input.id
-                    || saved.input.as_deref() == Some(input.name.as_str()))
-        })
-        .and_then(|saved| saved.routing)
-        .unwrap_or(Routing {
-            input: Some([0, 1]),
+    let first = first_pair(input.channels);
+    let same = saved.filter(|saved| {
+        saved.host == input.host
+            && (saved.input_id.is_some() && saved.input_id == input.id
+                || saved.input.as_deref() == Some(input.name.as_str()))
+    });
+    match same {
+        Some(saved) => saved.routing.unwrap_or(Routing {
+            input: Some(first),
             output: Output::Legacy,
-        })
+        }),
+        None => Routing {
+            input: Some(first),
+            output: Output::Independent(first),
+        },
+    }
 }
 
 const ASIO: &str = "ASIO";
@@ -421,12 +438,23 @@ mod tests {
         };
         assert_eq!(initial_routing(Some(&saved), &interface), routing);
         let other = device("ASIO", "Other", true, false);
+        let fresh = |pair| Routing {
+            input: Some(pair),
+            output: Output::Independent(pair),
+        };
+        assert_eq!(initial_routing(Some(&saved), &other), fresh([0, 1]));
+        let mono = Device {
+            channels: 1,
+            ..device("ASIO", "Mono", true, false)
+        };
+        assert_eq!(initial_routing(None, &mono), fresh([0, 0]));
+        let unrouted = Saved {
+            routing: None,
+            ..saved
+        };
         assert_eq!(
-            initial_routing(Some(&saved), &other),
-            Routing {
-                input: Some([0, 1]),
-                output: Output::Legacy
-            }
+            initial_routing(Some(&unrouted), &interface).output,
+            Output::Legacy
         );
     }
 }
