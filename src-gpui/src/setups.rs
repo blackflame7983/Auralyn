@@ -79,6 +79,55 @@ impl SetupsPanel {
             .map(Command::SaveProfile)
     }
 
+    /// 音楽鑑賞のホームに置く、構成の切り替えだけの区画（Tauri 版の `MusicHomeDesk`）。構成が無ければ出さない。
+    /// 選択は VST の画面の区画と同じものを使う。
+    pub fn render_music(&self, lang: Lang, cx: &App, send: OnCommand) -> Option<impl IntoElement> {
+        if profile::choices(&self.entries).is_empty() {
+            return None;
+        }
+        let chosen = self.chosen.read(cx).selected_value().cloned();
+        Some(card(
+            core(lang, keys::MUSIC_PLAYBACK),
+            div(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(note(core(lang, keys::MUSIC_SOUND_HINT)))
+                .child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div().flex_1().min_w(px(200.)).child(
+                                Select::new(&self.chosen)
+                                    .placeholder(core(lang, keys::MUSIC_PRESET_CHOOSE))
+                                    .accessibility_label(core(lang, keys::MUSIC_PRESET_LABEL)),
+                            ),
+                        )
+                        .child(
+                            Button::new("music-setup-apply")
+                                .label(core(lang, keys::SETUPS_APPLY))
+                                .outline()
+                                .disabled(chosen.is_none())
+                                .on_click(move |_, _, cx| {
+                                    if let Some(name) = chosen.clone() {
+                                        send(
+                                            Command::ApplyProfile {
+                                                name: name.to_string(),
+                                                restore: false,
+                                            },
+                                            cx,
+                                        );
+                                    }
+                                }),
+                        ),
+                ),
+        ))
+    }
+
     pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
         let chosen = self.chosen.read(cx).selected_value().cloned();
         let backup = profile::backup_name(&self.entries).map(str::to_owned);
