@@ -651,6 +651,8 @@ pub mod keys {
     pub const SCAN_FOLDER_EMPTY: &str = "pluginBrowser.scanFolderEmpty";
     pub const SCAN_FOLDER_SAVE_FAILED: &str = "pluginBrowser.scanFolderSaveFailed";
     pub const SCAN_FOLDER_FULL: &str = "pluginBrowser.scanFolderFull";
+    pub const USAGE_SWITCH: &str = "purpose.switch";
+    pub const USAGE_SWITCH_DEVICES: &str = "purpose.switchDevices";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -672,7 +674,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 659] = [
+    pub const ALL: [&str; 661] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1313,6 +1315,8 @@ pub mod keys {
         SCAN_FOLDER_EMPTY,
         SCAN_FOLDER_SAVE_FAILED,
         SCAN_FOLDER_FULL,
+        USAGE_SWITCH,
+        USAGE_SWITCH_DEVICES,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,

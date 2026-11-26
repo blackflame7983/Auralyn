@@ -592,9 +592,14 @@ impl MainView {
                 self.scan_folders.set_skipped(Vec::new());
                 self.message = Some(format!("scan_plugins: {message}"));
             }
-            Notice::Devices { devices, saved } => {
+            Notice::Devices {
+                devices,
+                saved,
+                remembered,
+            } => {
                 self.setup.set_devices(&devices, window, cx);
                 self.live.set_devices(&devices, self.lang, window, cx);
+                self.connect.remembered = remembered;
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
@@ -1173,9 +1178,18 @@ impl Render for MainView {
                                                 })
                                             }
                                         },
-                                        move |_, cx| {
+                                        {
+                                            let entity = entity.clone();
+                                            move |_, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.send(Command::Mix(MixAction::Apps));
+                                                    cx.notify();
+                                                })
+                                            }
+                                        },
+                                        move |window, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.send(Command::Mix(MixAction::Apps));
+                                                this.connect.switch_purpose(window, cx);
                                                 cx.notify();
                                             })
                                         },
