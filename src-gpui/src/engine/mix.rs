@@ -19,6 +19,8 @@ pub enum MixAction {
     },
     /// 混ぜるのをやめる（保存も消える。Tauri 版と同じ）。
     Disable,
+    /// 保存を読み直す（保存が読めない・書き換えられたあと。音声を止めているときだけ）。
+    Reload,
     Levels(MixChange),
 }
 
@@ -53,6 +55,10 @@ impl Control {
                 expected_revision: revision,
                 config: None,
                 candidate_id: None,
+            }),
+            MixAction::Reload => self.mix_request(|epoch, revision| MixRequest::Reload {
+                expected_epoch: epoch,
+                expected_revision: revision,
             }),
             MixAction::Levels(change) => match self.mix_engine_levels() {
                 Some(levels) => {

@@ -167,6 +167,8 @@ impl MixPanel {
             .map(|c| SharedString::from(c.label.clone()))
             .collect();
         let row = id.and_then(|id| self.choices.iter().position(|c| c.id == id));
+        // 選び直した機器は、確かめ直すまで適用させない（選択を入れ直してもイベントは出ない）。
+        self.confirmed.set(false);
         self.source.update(cx, |state, cx| {
             state.set_items(names, window, cx);
             state.set_selected_index(row.map(IndexPath::new), window, cx);
@@ -242,7 +244,8 @@ impl MixPanel {
         let chosen = self.chosen(cx);
         let confirmed = self.confirmed.get();
         let ready = output_ready == Some(true);
-        let can_apply = ready && !mix.running && chosen.is_some() && confirmed;
+        let can_apply =
+            ready && !mix.running && mix.error.is_none() && chosen.is_some() && confirmed;
         let current = |source: &Option<Source>| match source {
             Some(Source::Device { input_id, channels }) => format!(
                 "{} ({})",
@@ -287,6 +290,17 @@ impl MixPanel {
                     .flatten()
                     .map(warning),
                 )
+                // 保存が読めない・書き換えられたときは、読み直すまで変えられない（Tauri 版の「読み直す」）。
+                .when(mix.error.is_some(), |this| {
+                    let send = send.clone();
+                    this.child(
+                        Button::new("mix-reload")
+                            .label(core(lang, keys::MIX_RELOAD))
+                            .outline()
+                            .disabled(mix.running)
+                            .on_click(move |_, _, cx| send(Command::Mix(MixAction::Reload), cx)),
+                    )
+                })
                 .child(
                     div()
                         .flex()

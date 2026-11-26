@@ -378,6 +378,7 @@ impl MainView {
                 self.advance(SessionEvent::Stopped);
                 self.voice.audio_stopped();
                 self.reread_peak();
+                self.reread_mix();
                 self.message = Some(message);
             }
             Notice::NotStarted(message) => {
@@ -516,7 +517,6 @@ impl MainView {
         }
     }
 
-    /// 画面からの命令。候補を探し始めたら、終わるまで探し直しのボタンを止める。
     /// ホームを出しているなら、配信ミックスの状態を読み直す（音声の開始・停止で、流れているかが変わる）。
     fn reread_mix(&mut self) {
         if self.page == Page::Home {
@@ -524,6 +524,7 @@ impl MainView {
         }
     }
 
+    /// 画面からの命令。候補を探し始めたら、終わるまで探し直しのボタンを止める。
     fn send(&mut self, command: Command) {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();

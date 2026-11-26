@@ -281,9 +281,10 @@ pub mod keys {
     pub const MIX_VOICE_MUTE: &str = "gpuiShell.mixVoiceMute";
     pub const MIX_MUSIC_MUTE: &str = "gpuiShell.mixMusicMute";
     pub const MIX_MONITOR: &str = "mixing.monitor";
+    pub const MIX_RELOAD: &str = "mixing.reload";
 
     #[cfg(test)]
-    pub const ALL: [&str; 270] = [
+    pub const ALL: [&str; 271] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -554,6 +555,7 @@ pub mod keys {
         MIX_VOICE_MUTE,
         MIX_MUSIC_MUTE,
         MIX_MONITOR,
+        MIX_RELOAD,
     ];
 }
 
