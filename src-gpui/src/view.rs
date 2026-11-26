@@ -328,6 +328,7 @@ impl MainView {
             Notice::Failed { command, message } => {
                 // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
                 // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
+                self.setups.forget_done();
                 self.message = Some(format!("{command}: {message}"));
             }
         }

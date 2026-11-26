@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use auralyn_ui_model::profile::{self, Entry, NameIssue};
+use auralyn_ui_model::profile::{self, Entry, ImportIssue, NameIssue};
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectState};
@@ -39,8 +39,10 @@ impl SetupsPanel {
         }
     }
 
-    /// 一覧を替える。保存した名前が一覧に入ったら、名前の欄を空にする。
+    /// 一覧を替える。保存した名前が一覧に入ったら、名前の欄を空にする。前の書き出し・読み込みの結果は消す
+    /// （読み込みの結果は、このあとに届く）。
     pub fn set(&mut self, entries: Vec<Entry>, window: &mut Window, cx: &mut App) {
+        self.done = None;
         let names: Vec<SharedString> = profile::choices(&entries)
             .into_iter()
             .map(SharedString::from)
@@ -64,6 +66,11 @@ impl SetupsPanel {
                 .update(cx, |state, cx| state.set_selected_value(&name, window, cx));
         }
         self.done = Some(done);
+    }
+
+    /// 命令が失敗したら、前の結果は出さない（成功したように読めるので）。
+    pub fn forget_done(&mut self) {
+        self.done = None;
     }
 
     /// 保存の命令。名前が空か、同じ名前があれば作らない。
@@ -228,13 +235,22 @@ fn done_text(done: &ProfileFile, lang: Lang) -> String {
     match done {
         ProfileFile::Exported(name) => core_with(lang, keys::SETUPS_EXPORTED, &[("arg0", name)]),
         ProfileFile::Imported(name) => core_with(lang, keys::SETUPS_IMPORTED, &[("arg0", name)]),
-        ProfileFile::Exists(_) => core(lang, keys::SETUPS_EXISTS).to_owned(),
+        ProfileFile::NotImported(ImportIssue::Exists(name)) => {
+            core_with(lang, keys::SETUPS_IMPORT_EXISTS, &[("arg0", name)])
+        }
+        ProfileFile::NotImported(ImportIssue::NothingToApply) => {
+            core(lang, keys::SETUPS_IMPORT_NOTHING).to_owned()
+        }
+        ProfileFile::NotImported(ImportIssue::Invalid) => {
+            core(lang, keys::SETUPS_IMPORT_INVALID).to_owned()
+        }
     }
 }
 
 /// 保存先を聞いてから書き出す。やめたときは何もしない。
 fn export(name: String, send: OnCommand, cx: &mut App) {
-    let chosen = cx.prompt_for_new_path(Path::new(""), Some(&profile::export_file_name(&name)));
+    let chosen =
+        cx.prompt_for_new_path(Path::new(""), Some(&format!("{name}.auralyn-preset.json")));
     cx.spawn(async move |cx| {
         if let Some(path) = picked(chosen.await) {
             cx.update(|cx| send(Command::ExportProfile { name, path }, cx));

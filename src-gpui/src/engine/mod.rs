@@ -13,7 +13,7 @@ use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
-use auralyn_ui_model::profile::{save_name, Entry as ProfileEntry, NameIssue};
+use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
@@ -98,7 +98,7 @@ pub enum Command {
         name: String,
         path: PathBuf,
     },
-    /// ファイルの構成を、ファイルの中の名前で取り込む。同じ名前があれば取り込まない。結果は `Notice::ProfileFile`。
+    /// ファイルの構成を、ファイルの中の名前で取り込む。同じ名前があれば上書きせず、取り込まない。結果は `Notice::ProfileFile`。
     ImportProfile(PathBuf),
     /// ピーク保護の ON/OFF。天井と復帰時間は今の値のまま。音声が動いているときだけ受け付けられる。
     SetPeak(bool),
@@ -138,8 +138,7 @@ impl Command {
 pub enum ProfileFile {
     Exported(String),
     Imported(String),
-    /// 同じ名前の構成があるので、取り込まなかった。
-    Exists(String),
+    NotImported(ImportIssue),
 }
 
 #[derive(Debug, Clone)]

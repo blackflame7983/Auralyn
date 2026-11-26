@@ -64,6 +64,9 @@ pub mod keys {
     pub const SETUPS_EXPORTED: &str = "presets.copy.041";
     pub const SETUPS_IMPORT: &str = "presets.copy.065";
     pub const SETUPS_IMPORTED: &str = "presets.copy.043";
+    pub const SETUPS_IMPORT_EXISTS: &str = "gpuiShell.setupImportExists";
+    pub const SETUPS_IMPORT_NOTHING: &str = "gpuiShell.setupImportNothing";
+    pub const SETUPS_IMPORT_INVALID: &str = "gpuiShell.setupImportInvalid";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -185,7 +188,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 172] = [
+    pub const ALL: [&str; 175] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -240,6 +243,9 @@ pub mod keys {
         SETUPS_EXPORTED,
         SETUPS_IMPORT,
         SETUPS_IMPORTED,
+        SETUPS_IMPORT_EXISTS,
+        SETUPS_IMPORT_NOTHING,
+        SETUPS_IMPORT_INVALID,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,

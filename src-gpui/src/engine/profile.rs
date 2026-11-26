@@ -5,16 +5,7 @@ use super::*;
 impl Control {
     fn profile_entries(&self) -> anyhow::Result<Vec<ProfileEntry>> {
         let list = presets::list_profile_meta(&self.config_dir).map_err(anyhow::Error::msg)?;
-        Ok(list
-            .into_iter()
-            .map(|meta| ProfileEntry {
-                name: meta.name,
-                has_plugins: meta.has_plugins,
-                has_noise: meta.has_noise_control,
-                has_effects: meta.has_builtin_fx,
-                is_backup: meta.is_backup,
-            })
-            .collect())
+        Ok(list.into_iter().map(entry).collect())
     }
 
     pub(super) fn list_profiles(&mut self) {
@@ -58,12 +49,13 @@ impl Control {
     }
 
     fn import_parts(&mut self, path: &Path) -> anyhow::Result<ProfileFile> {
-        let mut preset: presets::Preset = serde_json::from_str(&std::fs::read_to_string(path)?)?;
-        let entries = self.profile_entries()?;
-        let name = match save_name(&preset.name, &entries) {
+        let text = std::fs::read_to_string(path)?;
+        let Ok(mut preset) = serde_json::from_str::<presets::Preset>(&text) else {
+            return Ok(ProfileFile::NotImported(ImportIssue::Invalid));
+        };
+        let name = match import_name(&entry(preset.to_meta()), &self.profile_entries()?) {
             Ok(name) => name,
-            Err(NameIssue::Exists) => return Ok(ProfileFile::Exists(preset.name)),
-            Err(NameIssue::Empty) => anyhow::bail!("構成の名前がありません"),
+            Err(issue) => return Ok(ProfileFile::NotImported(issue)),
         };
         preset.name = name.clone();
         presets::save_preset(&self.config_dir, &name, &preset).map_err(anyhow::Error::msg)?;
@@ -186,5 +178,28 @@ impl Control {
             self.changed();
         }
         Ok(())
+    }
+}
+
+fn entry(meta: presets::ProfileMeta) -> ProfileEntry {
+    ProfileEntry {
+        name: meta.name,
+        has_plugins: meta.has_plugins,
+        has_noise: meta.has_noise_control,
+        has_effects: meta.has_builtin_fx,
+        is_backup: meta.is_backup,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_backup_name_matches_the_core() {
+        assert_eq!(
+            auralyn_ui_model::profile::BACKUP_NAME,
+            presets::BACKUP_PROFILE_NAME
+        );
     }
 }
