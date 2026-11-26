@@ -2,11 +2,12 @@
 //! 周波数とバッファは、選んだ機器が受け付ける値と「自動」から選ぶ。
 //! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。ASIO では入力のペアと出力の返し方も選ぶ（チャンネルの信号の監視は、まだ無い）。
 
-use auralyn_ui_model::connect::{self, Device, Output, Routing, Saved};
+use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
+use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::select::{Select, SelectState};
-use gpui_kit::component::{Disableable as _, IndexPath};
+use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -36,6 +37,15 @@ pub struct ConnectPage {
     output_pair: Entity<Choices>,
     input_pairs: Vec<[usize; 2]>,
     output_pairs: Vec<[usize; 2]>,
+    /// 入力元（マイク・仮想ケーブルか、アプリの音声か）。選び直したら描き直す（`MainView` が購読する）。
+    pub source: Entity<Choices>,
+    purpose: Entity<Choices>,
+    /// 入力にするアプリと、その原音の出力先。アプリを選び直したら出力先を入れ直す（`MainView` が購読する）。
+    pub app: Entity<Choices>,
+    route: Entity<Choices>,
+    /// 最後に読んだ起動中のアプリ（配信ミックスのオケと同じ一覧）。
+    apps: Vec<mix::App>,
+    apps_failed: Option<String>,
 }
 
 /// 出力の返し方の並び（Tauri 版と同じ順）。
@@ -65,6 +75,12 @@ impl ConnectPage {
             output_pair: choices(cx),
             input_pairs: Vec::new(),
             output_pairs: Vec::new(),
+            source: choices(cx),
+            purpose: choices(cx),
+            app: choices(cx),
+            route: choices(cx),
+            apps: Vec::new(),
+            apps_failed: None,
         }
     }
 
@@ -101,8 +117,173 @@ impl ConnectPage {
         let saved = self.saved.as_ref();
         let rate = connect::saved_value(saved, &host, |s| s.sample_rate);
         let buffer = connect::saved_value(saved, &host, |s| s.buffer_size);
+        self.fill_source(
+            connect::starts_with_app(saved, &host),
+            saved.map(|s| s.purpose).unwrap_or_default(),
+            window,
+            cx,
+        );
         self.fill_values(rate, buffer, window, cx);
         self.fill_routing(None, window, cx);
+    }
+
+    /// 入力元と使い道の選択肢を入れる。アプリの音声は WASAPI のときだけ選べる。
+    fn fill_source(&mut self, app: bool, purpose: Purpose, window: &mut Window, cx: &mut App) {
+        let lang = self.lang;
+        let mut sources = vec![SharedString::from(core(lang, keys::SOURCE_DEVICE))];
+        if connect::allows_app(&self.host_name(cx)) {
+            sources.push(core(lang, keys::SOURCE_APP).into());
+        }
+        let row = usize::from(app && sources.len() > 1);
+        set(&self.source, sources, Some(row), window, cx);
+        let purposes = Purpose::ALL
+            .iter()
+            .map(|p| SharedString::from(core(lang, purpose_label(*p))))
+            .collect();
+        let row = Purpose::ALL.iter().position(|p| *p == purpose);
+        set(&self.purpose, purposes, row, window, cx);
+        self.fill_apps(window, cx);
+    }
+
+    /// 入力にアプリの音声を選んでいるか。
+    pub fn uses_app(&self, cx: &App) -> bool {
+        self.source.read(cx).selected_index(cx).map(|i| i.row) == Some(1)
+    }
+
+    fn chosen_purpose(&self, cx: &App) -> Purpose {
+        self.purpose
+            .read(cx)
+            .selected_index(cx)
+            .and_then(|i| Purpose::ALL.get(i.row).copied())
+            .unwrap_or_default()
+    }
+
+    /// 起動中のアプリを読んだ。前に選んでいたアプリ（無ければ保存したアプリ）を選び直す。
+    pub fn set_apps(
+        &mut self,
+        result: Result<Vec<mix::App>, String>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        match result {
+            Ok(apps) => {
+                self.apps = apps;
+                self.apps_failed = None;
+            }
+            Err(message) => self.apps_failed = Some(message),
+        }
+        self.fill_apps(window, cx);
+    }
+
+    /// アプリの選択肢を入れる。選んでいたアプリ（無ければ保存したアプリ）がまだあれば選ぶ。
+    fn fill_apps(&mut self, window: &mut Window, cx: &mut App) {
+        let current = self.app_source(cx);
+        let saved = self.saved.as_ref().and_then(|s| s.app.clone());
+        let keep = current
+            .as_ref()
+            .map(|(id, s)| (Some(id.as_str()), s))
+            .or(saved.as_ref().map(|s| (None, s)));
+        let row = keep.and_then(|(id, s)| mix::find_app(&self.apps, id, &s.key, Some(&s.route)));
+        let lang = self.lang;
+        let names = self
+            .apps
+            .iter()
+            .enumerate()
+            .map(|(i, app)| {
+                let twins = self.apps.iter().filter(|a| a.name == app.name).count();
+                SharedString::from(if twins > 1 {
+                    format!(
+                        "{}{}",
+                        app.name,
+                        core_with(lang, keys::APP_CANDIDATE, &[("number", &(i + 1))])
+                    )
+                } else {
+                    app.name.clone()
+                })
+            })
+            .collect();
+        set(&self.app, names, row, window, cx);
+        let route = keep.map(|(_, s)| s.route.clone());
+        self.fill_route(route, window, cx);
+    }
+
+    /// 選んだアプリの原音の出力先を入れる。`keep` があれば選び、無ければ先頭。
+    fn fill_route(&mut self, keep: Option<String>, window: &mut Window, cx: &mut App) {
+        let lang = self.lang;
+        let routes = self
+            .chosen_app(cx)
+            .map(|a| a.routes.clone())
+            .unwrap_or_default();
+        let names = routes
+            .iter()
+            .map(|r| {
+                let state = if r.muted {
+                    keys::APP_MUTED
+                } else {
+                    keys::APP_MUTE_NEEDED
+                };
+                SharedString::from(format!("{}（{}）", r.name, core(lang, state)))
+            })
+            .collect();
+        let row = keep
+            .and_then(|k| routes.iter().position(|r| r.id == k))
+            .or((!routes.is_empty()).then_some(0));
+        set(&self.route, names, row, window, cx);
+    }
+
+    /// アプリを選び直したとき。
+    pub fn app_changed(&mut self, window: &mut Window, cx: &mut App) {
+        self.fill_route(None, window, cx);
+    }
+
+    fn chosen_app(&self, cx: &App) -> Option<&mix::App> {
+        self.apps.get(self.app.read(cx).selected_index(cx)?.row)
+    }
+
+    /// 選んでいるアプリの候補と、入力にする音の元。
+    fn app_source(&self, cx: &App) -> Option<(String, AppSource)> {
+        let app = self.chosen_app(cx)?;
+        let route = app
+            .routes
+            .get(self.route.read(cx).selected_index(cx)?.row)?;
+        Some((
+            app.id.clone(),
+            AppSource {
+                key: app.key.clone(),
+                name: app.name.clone(),
+                route: route.id.clone(),
+            },
+        ))
+    }
+
+    /// 開始に使う入力・使い道・出力先。選び終わっていなければ `None`。
+    pub fn start_choice(&self, cx: &App) -> Option<(Input, Purpose, Device)> {
+        let purpose = self.chosen_purpose(cx);
+        if self.uses_app(cx) {
+            let (candidate_id, source) = self.app_source(cx)?;
+            let output = self.chosen_output(cx)?;
+            return Some((
+                Input::App {
+                    candidate_id,
+                    source,
+                },
+                purpose,
+                output,
+            ));
+        }
+        let (input, output) = self.chosen(cx)?;
+        Some((Input::Device(input), purpose, output))
+    }
+
+    /// 選んでいる出力先（アプリの音声のときに使う。WASAPI だけ）。
+    fn chosen_output(&self, cx: &App) -> Option<Device> {
+        let host = self.host_name(cx);
+        let label = self.output.read(cx).selected_value()?.clone();
+        let choices = connect::of_host(&self.devices, &host, false);
+        let row = connect::labels(&choices)
+            .iter()
+            .position(|l| l.as_str() == label.as_ref())?;
+        choices.get(row).map(|d| (*d).clone())
     }
 
     /// 選んでいる機器が受け付ける周波数とバッファを選択肢に入れる。`rate`・`buffer` が候補にあれば選び、無ければ「自動」。
@@ -113,7 +294,13 @@ impl ConnectPage {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let (rates, buffers) = match self.chosen(cx) {
+        // アプリの音声のときは、出力先が受け付ける値から選ぶ。
+        let devices = if self.uses_app(cx) {
+            self.chosen_output(cx).map(|o| (o.clone(), o))
+        } else {
+            self.chosen(cx)
+        };
+        let (rates, buffers) = match devices {
             Some((input, output)) => {
                 let asio = connect::shares_device(&input.host);
                 (
@@ -151,6 +338,8 @@ impl ConnectPage {
         self.lang = lang;
         let routing = self.routing(cx);
         let (rate, buffer) = self.values(cx);
+        let (app, purpose) = (self.uses_app(cx), self.chosen_purpose(cx));
+        self.fill_source(app, purpose, window, cx);
         self.fill_values(rate, buffer, window, cx);
         self.fill_routing(Some(routing), window, cx);
     }
@@ -283,9 +472,11 @@ impl ConnectPage {
         lang: Lang,
         cx: &App,
         on_start: impl Fn(&mut Window, &mut App) + 'static,
+        on_apps: impl Fn(&mut Window, &mut App) + 'static,
     ) -> impl IntoElement {
         let host = self.host_name(cx);
         let shared = connect::shares_device(&host);
+        let app = self.uses_app(cx);
         let stopped = matches!(phase, Phase::Stopped | Phase::Unconfigured);
         let empty = core(lang, keys::NO_DEVICES);
         div()
@@ -297,17 +488,28 @@ impl ConnectPage {
                 core(lang, keys::CONNECTION_METHOD),
                 Select::new(&self.host).placeholder(empty),
             ))
-            .child(field(
-                core(
-                    lang,
-                    if shared {
-                        keys::DEVICE
-                    } else {
-                        keys::MICROPHONE
-                    },
-                ),
-                Select::new(&self.input).placeholder(empty),
-            ))
+            .child(field(core(lang, keys::SOURCE), Select::new(&self.source)))
+            .when(shared, |this| {
+                this.child(muted(core(lang, keys::SOURCE_ASIO)))
+            })
+            .child(field(core(lang, keys::PURPOSE), Select::new(&self.purpose)))
+            .map(|this| {
+                if app {
+                    this.child(self.render_app(lang, on_apps))
+                } else {
+                    this.child(field(
+                        core(
+                            lang,
+                            if shared {
+                                keys::DEVICE
+                            } else {
+                                keys::MICROPHONE
+                            },
+                        ),
+                        Select::new(&self.input).placeholder(empty),
+                    ))
+                }
+            })
             .map(|this| {
                 if shared {
                     this.child(
@@ -349,7 +551,7 @@ impl ConnectPage {
                         Button::new("connect-start")
                             .label(core(lang, keys::START))
                             .outline()
-                            .disabled(!stopped || self.chosen(cx).is_none())
+                            .disabled(!stopped || self.start_choice(cx).is_none())
                             .on_click(move |_, window, cx| on_start(window, cx)),
                     )
                     .child(div().text_sm().text_color(color::muted()).child(core(
@@ -365,6 +567,45 @@ impl ConnectPage {
 }
 
 impl ConnectPage {
+    /// アプリの音声：アプリと原音の出力先を選ぶ。一覧は「更新」で読む（音を出しているアプリだけが出る）。
+    fn render_app(
+        &self,
+        lang: Lang,
+        on_apps: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> impl IntoElement {
+        let saved = self.saved.as_ref().and_then(|s| s.app.as_ref());
+        let placeholder = match saved {
+            Some(app) => core_with(lang, keys::APP_RESELECT, &[("name", &app.name)]),
+            None => core(lang, keys::APP_CHOOSE).to_owned(),
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(muted(core(lang, keys::APP_ROUTE_HELP)))
+            .child(field(
+                core(lang, keys::APP),
+                Select::new(&self.app).placeholder(placeholder),
+            ))
+            .child(
+                div().child(
+                    Button::new("connect-apps")
+                        .label(core(lang, keys::APP_REFRESH))
+                        .outline()
+                        .small()
+                        .on_click(move |_, window, cx| on_apps(window, cx)),
+                ),
+            )
+            .child(muted(core(lang, keys::APP_REFRESH_HELP)))
+            .when_some(self.apps_failed.clone(), |this, error| {
+                this.child(div().text_sm().text_color(color::warning()).child(error))
+            })
+            .child(field(
+                core(lang, keys::APP_RAW),
+                Select::new(&self.route).placeholder(core(lang, keys::APP_CHOOSE_RAW)),
+            ))
+    }
+
     /// ASIO の入力のペアと、出力の返し方。チャンネル数が分からなければ入力のペアは選ばせない（ホストに任せる）。
     fn render_routing(&self, lang: Lang, cx: &App) -> impl IntoElement {
         let mode = self.output_mode.read(cx).selected_index(cx).map(|i| i.row);
@@ -453,6 +694,20 @@ fn set_values(
 fn khz(rate: u32) -> String {
     let text = format!("{:.3}", f64::from(rate) / 1000.0);
     format!("{} kHz", text.trim_end_matches('0').trim_end_matches('.'))
+}
+
+fn muted(text: impl Into<SharedString>) -> impl IntoElement {
+    div()
+        .text_sm()
+        .text_color(color::muted())
+        .child(text.into())
+}
+
+fn purpose_label(purpose: Purpose) -> &'static str {
+    match purpose {
+        Purpose::Voice => keys::PURPOSE_VOICE,
+        Purpose::Music => keys::PURPOSE_MUSIC,
+    }
 }
 
 fn field(label: &'static str, select: Select<Vec<SharedString>>) -> impl IntoElement {

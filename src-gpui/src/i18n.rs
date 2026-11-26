@@ -400,9 +400,28 @@ pub mod keys {
     pub const THEME_GAMING_BODY: &str = "settings.AudioSettingsModal.133";
     pub const THEME_NOTE: &str = "gpuiShell.themeNote";
     pub const THEME_SAVE_FAILED: &str = "gpuiShell.themeSaveFailed";
+    pub const SOURCE: &str = "processInput.source";
+    pub const SOURCE_DEVICE: &str = "processInput.device";
+    pub const SOURCE_APP: &str = "processInput.process";
+    pub const SOURCE_ASIO: &str = "processInput.asioUnavailable";
+    pub const PURPOSE: &str = "processInput.purpose";
+    pub const PURPOSE_VOICE: &str = "processInput.voice";
+    pub const PURPOSE_MUSIC: &str = "processInput.music";
+    pub const APP: &str = "processInput.app";
+    pub const APP_CHOOSE: &str = "processInput.choose";
+    pub const APP_RESELECT: &str = "processInput.reselect";
+    pub const APP_RESELECT_HELP: &str = "processInput.reselectHelp";
+    pub const APP_CANDIDATE: &str = "processInput.candidate";
+    pub const APP_REFRESH: &str = "processInput.refresh";
+    pub const APP_REFRESH_HELP: &str = "processInput.refreshHelp";
+    pub const APP_ROUTE_HELP: &str = "processInput.routeHelp";
+    pub const APP_RAW: &str = "processInput.raw";
+    pub const APP_CHOOSE_RAW: &str = "processInput.chooseRaw";
+    pub const APP_MUTED: &str = "processInput.muted";
+    pub const APP_MUTE_NEEDED: &str = "processInput.muteNeeded";
 
     #[cfg(test)]
-    pub const ALL: [&str; 389] = [
+    pub const ALL: [&str; 408] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -792,6 +811,25 @@ pub mod keys {
         THEME_GAMING_BODY,
         THEME_NOTE,
         THEME_SAVE_FAILED,
+        SOURCE,
+        SOURCE_DEVICE,
+        SOURCE_APP,
+        SOURCE_ASIO,
+        PURPOSE,
+        PURPOSE_VOICE,
+        PURPOSE_MUSIC,
+        APP,
+        APP_CHOOSE,
+        APP_RESELECT,
+        APP_RESELECT_HELP,
+        APP_CANDIDATE,
+        APP_REFRESH,
+        APP_REFRESH_HELP,
+        APP_ROUTE_HELP,
+        APP_RAW,
+        APP_CHOOSE_RAW,
+        APP_MUTED,
+        APP_MUTE_NEEDED,
     ];
 }
 

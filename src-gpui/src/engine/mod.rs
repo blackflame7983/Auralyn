@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
-use auralyn_ui_model::connect::{Device, Output, Routing, Saved};
+use auralyn_ui_model::connect::{AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::diagnostics::{Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
@@ -21,9 +21,10 @@ use auralyn_ui_model::voice_check::{
     Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
     State as VoiceState, MAX_MS,
 };
-use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
+use vst_host_lib::audio::AudioHost;
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
+use vst_host_lib::input;
 use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};
 use vst_host_lib::vst_host::{presets, scanner};
 
@@ -51,7 +52,9 @@ pub enum Command {
     /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
     /// 周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
     StartWith {
-        input: Device,
+        /// マイク・仮想ケーブルか、アプリの音声。
+        input: Input,
+        purpose: Purpose,
         output: Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
@@ -298,6 +301,8 @@ pub enum Notice {
     },
     /// 開始に失敗した。
     NotStarted(String),
+    /// 保存した入力がアプリの音声なので、自動では開始しなかった（アプリの名前）。
+    AppNotResumed(String),
     /// 保存した入出力の設定がない。
     Unconfigured,
     /// 停止に失敗した。音声は流れたまま。
@@ -516,55 +521,94 @@ impl Control {
                 return;
             }
         };
-        if config.input_source.is_some() {
-            log::warn!("入力の元（アプリの音声など）はまだ復元しない。機器の入力で開始する");
-        }
-        self.start(config);
-    }
-
-    /// 選んだ機器・周波数・バッファ・チャンネルの割り当てで開始する。
-    fn start_with(
-        &mut self,
-        input: &Device,
-        output: &Device,
-        sample_rate: Option<u32>,
-        buffer_size: Option<u32>,
-        routing: Routing,
-    ) {
-        self.start(ActiveAudioConfig {
-            input_source: None,
-            host: input.host.clone(),
-            input: Some(input.name.clone()),
-            output: Some(output.name.clone()),
-            input_id: input.id.clone(),
-            output_id: output.id.clone(),
-            buffer_size,
-            sample_rate,
-            routing: Some(channel_routing(routing)),
-        });
-    }
-
-    fn start(&mut self, config: ActiveAudioConfig) {
-        let result = self.host.start_with_device_ids(
-            Some(config.host.clone()),
-            config.input.clone(),
-            config.output.clone(),
-            config.buffer_size,
-            config.sample_rate,
-            config.input_id.clone(),
-            config.output_id.clone(),
-            config.routing,
+        let purpose = match config.input_source {
+            Some(input::Config::ProcessLoopback(app)) => {
+                // アプリの候補は起動のたびに変わるので、自動では再開しない（既定のマイクにも替えない）。
+                let _ = self.notices.send(Notice::AppNotResumed(app.app_name));
+                return;
+            }
+            Some(input::Config::Device { purpose }) => purpose,
+            None => input::Purpose::Voice,
+        };
+        let result = input::start(
+            &mut self.host,
+            input::Start {
+                host: config.host,
+                input: config.input.clone(),
+                input_id: config.input_id,
+                output: config.output.clone(),
+                output_id: config.output_id,
+                buffer_size: config.buffer_size,
+                sample_rate: config.sample_rate,
+                routing: config.routing,
+                request: input::Request {
+                    source: input::Config::Device { purpose },
+                    candidate_id: None,
+                },
+            },
         );
+        self.started(result, config.input, config.output);
+    }
+
+    /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する（Tauri 版の開始と同じく入力の元を明示する）。
+    fn start_with(&mut self, start: StartWith) {
+        let (input, input_name, source, candidate_id) = match start.input {
+            Input::Device(device) => {
+                let purpose = start.purpose;
+                let name = device.name.clone();
+                let source = input::Config::Device {
+                    purpose: host_purpose(purpose),
+                };
+                (Some(device), name, source, None)
+            }
+            Input::App {
+                candidate_id,
+                source,
+            } => {
+                let name = source.name.clone();
+                let source = input::Config::ProcessLoopback(input::ProcessConfig {
+                    app_key: source.key,
+                    app_name: source.name,
+                    raw_endpoint_id: source.route,
+                    purpose: host_purpose(start.purpose),
+                });
+                (None, name, source, Some(candidate_id))
+            }
+        };
+        let result = input::start(
+            &mut self.host,
+            input::Start {
+                host: start.output.host.clone(),
+                input: input.as_ref().map(|d| d.name.clone()),
+                input_id: input.and_then(|d| d.id),
+                output: Some(start.output.name.clone()),
+                output_id: start.output.id.clone(),
+                buffer_size: start.buffer_size,
+                sample_rate: start.sample_rate,
+                routing: Some(channel_routing(start.routing)),
+                request: input::Request {
+                    source,
+                    candidate_id,
+                },
+            },
+        );
+        self.started(result, Some(input_name), Some(start.output.name));
+    }
+
+    /// 開始の結果を画面へ送り、始まったら子に並びと音量を送り直す。
+    fn started(
+        &mut self,
+        result: anyhow::Result<()>,
+        input: Option<String>,
+        output: Option<String>,
+    ) {
         if let Err(e) = result {
             let _ = self.notices.send(Notice::NotStarted(
                 vst_host_lib::audio::localize_audio_error(e.to_string()),
             ));
             return;
         }
-        let _ = self.notices.send(Notice::Started {
-            input: config.input,
-            output: config.output,
-        });
+        let _ = self.notices.send(Notice::Started { input, output });
         self.recover();
         // 子が替わっていると音量は 100% に戻っているので、画面のスライダーの値を送り直す（同じ子なら同じ値を送るだけ）。
         // 出力音量は反映を待つので、始めた直後は確かめきれずに失敗を返すことがある。音は始まっているので、帯の警告にせずログに残す。
@@ -585,11 +629,21 @@ impl Control {
             Command::Start => return self.start_saved(),
             Command::StartWith {
                 ref input,
+                purpose,
                 ref output,
                 sample_rate,
                 buffer_size,
                 routing,
-            } => return self.start_with(input, output, sample_rate, buffer_size, routing),
+            } => {
+                return self.start_with(StartWith {
+                    input: input.clone(),
+                    purpose,
+                    output: output.clone(),
+                    sample_rate,
+                    buffer_size,
+                    routing,
+                })
+            }
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
@@ -761,6 +815,23 @@ impl Control {
                         OutputRouting::Insert => Output::Insert,
                     },
                 }),
+                purpose: c
+                    .input_source
+                    .as_ref()
+                    .map(|s| match s {
+                        input::Config::Device { purpose } => *purpose,
+                        input::Config::ProcessLoopback(app) => app.purpose,
+                    })
+                    .map(ui_purpose)
+                    .unwrap_or_default(),
+                app: match c.input_source {
+                    Some(input::Config::ProcessLoopback(app)) => Some(AppSource {
+                        key: app.app_key,
+                        name: app.app_name,
+                        route: app.raw_endpoint_id,
+                    }),
+                    _ => None,
+                },
             });
         let _ = self.notices.send(Notice::Devices { devices, saved });
     }
@@ -781,6 +852,30 @@ impl Control {
             command,
             message: error.to_string(),
         });
+    }
+}
+
+/// 開始に使う値（`Command::StartWith` の中身）。
+struct StartWith {
+    input: Input,
+    purpose: Purpose,
+    output: Device,
+    sample_rate: Option<u32>,
+    buffer_size: Option<u32>,
+    routing: Routing,
+}
+
+fn host_purpose(purpose: Purpose) -> input::Purpose {
+    match purpose {
+        Purpose::Voice => input::Purpose::Voice,
+        Purpose::Music => input::Purpose::Music,
+    }
+}
+
+fn ui_purpose(purpose: input::Purpose) -> Purpose {
+    match purpose {
+        input::Purpose::Voice => Purpose::Voice,
+        input::Purpose::Music => Purpose::Music,
     }
 }
 
