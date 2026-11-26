@@ -819,7 +819,10 @@ impl Render for MainView {
                                         .flex()
                                         .flex_col()
                                         .gap_6()
-                                        .child(settings::trouble(lang))
+                                        .child(settings::trouble(
+                                            lang,
+                                            self.desktop.tray_error.is_none(),
+                                        ))
                                         .child(settings::shortcuts(
                                             lang,
                                             &self.desktop.shortcuts,

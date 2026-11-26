@@ -339,7 +339,7 @@ pub mod keys {
     pub const HELP_SILENT: &str = "help.trouble.silent";
     pub const HELP_SILENT_BODY: &str = "gpuiShell.helpSilentBody";
     pub const HELP_RECEIVER: &str = "help.trouble.receiver";
-    pub const HELP_RECEIVER_BODY: &str = "help.trouble.receiverBody";
+    pub const HELP_RECEIVER_BODY: &str = "gpuiShell.helpReceiverBody";
     pub const HELP_DROPOUTS: &str = "help.trouble.dropouts";
     pub const HELP_DROPOUTS_BODY: &str = "gpuiShell.helpDropoutsBody";
     pub const HELP_KEEPS_RUNNING: &str = "help.trouble.keepsRunning";

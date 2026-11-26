@@ -296,7 +296,8 @@ fn row(lang: Lang, name: &'static str, value: String) -> impl IntoElement {
 }
 
 /// 困ったとき：症状ごとに次の1手と、ドキュメントの該当箇所へのリンク（Tauri 版の使い方の「困ったとき」）。
-pub fn trouble(lang: Lang) -> impl IntoElement {
+/// `tray` は通知領域のアイコンがあるか。無ければ × で終わるので「閉じても音が続く」は出さない。
+pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
     let english = lang == Lang::En;
     card(
         core(lang, keys::HELP_TROUBLE),
@@ -304,28 +305,31 @@ pub fn trouble(lang: Lang) -> impl IntoElement {
             .label(core(lang, keys::HELP_DOCS))
             .outline()
             .on_click(move |_, _, cx| cx.open_url(&docs::url(docs::INDEX, english))),
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .children(Trouble::ALL.map(|trouble| {
-                let (title, body) = trouble_text(lang, trouble);
-                let (_, target) = trouble.link();
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
-                    .child(note(body))
-                    .child(
-                        div().child(
-                            Button::new(SharedString::from(format!("help-{trouble:?}")))
-                                .label(core(lang, keys::HELP_MORE))
-                                .link()
-                                .on_click(move |_, _, cx| cx.open_url(&docs::url(target, english))),
-                        ),
-                    )
-            })),
+        div().flex().flex_col().gap_3().children(
+            Trouble::ALL
+                .into_iter()
+                .filter(move |&t| tray || t != Trouble::KeepsRunning)
+                .map(|trouble| {
+                    let (title, body) = trouble_text(lang, trouble);
+                    let target = trouble.target();
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
+                        .child(note(body))
+                        .child(
+                            div().child(
+                                Button::new(SharedString::from(format!("help-{trouble:?}")))
+                                    .label(core(lang, keys::HELP_MORE))
+                                    .link()
+                                    .on_click(move |_, _, cx| {
+                                        cx.open_url(&docs::url(target, english))
+                                    }),
+                            ),
+                        )
+                }),
+        ),
     )
 }
 

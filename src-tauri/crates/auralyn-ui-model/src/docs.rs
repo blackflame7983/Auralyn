@@ -1,5 +1,5 @@
 //! 公式サイトの利用者向けドキュメントへのリンク（`docs/USER_DOCS.md` の約束。Tauri 版 `src/lib/userDocs.ts` と同じ URL）。
-//! 名前と行き先は `user-docs/links.json` と同じ組にし、試験で確かめる。
+//! 行き先は `user-docs/links.json` にあるものだけを使い、試験で確かめる。
 
 /// 困ったときの症状。順は Tauri 版の使い方と同じ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,19 +18,13 @@ impl Trouble {
         Trouble::KeepsRunning,
     ];
 
-    /// `links.json` の名前と、その行き先（ページ名#印）。
-    pub fn link(self) -> (&'static str, &'static str) {
+    /// 行き先（ページ名#印）。`links.json` の troubleshooting.* と同じ。
+    pub fn target(self) -> &'static str {
         match self {
-            Trouble::Silent => ("troubleshooting.no-sound", "troubleshooting#no-sound"),
-            Trouble::NotReceived => (
-                "troubleshooting.not-received",
-                "troubleshooting#not-received",
-            ),
-            Trouble::Dropouts => ("troubleshooting.dropouts", "troubleshooting#dropouts"),
-            Trouble::KeepsRunning => (
-                "troubleshooting.still-running",
-                "troubleshooting#still-running",
-            ),
+            Trouble::Silent => "troubleshooting#no-sound",
+            Trouble::NotReceived => "troubleshooting#not-received",
+            Trouble::Dropouts => "troubleshooting#dropouts",
+            Trouble::KeepsRunning => "troubleshooting#still-running",
         }
     }
 }
@@ -61,7 +55,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn urls_match_the_tauri_version() {
+    fn urls_have_the_documented_shape() {
         assert_eq!(
             url("troubleshooting#no-sound", false),
             "https://www.kuro7983.com/apps/auralyn/docs/troubleshooting#no-sound"
@@ -76,11 +70,8 @@ mod tests {
     fn links_are_listed_in_links_json() {
         let links = include_str!("../../../../user-docs/links.json");
         for trouble in Trouble::ALL {
-            let (name, target) = trouble.link();
-            assert!(
-                links.contains(&format!("\"{name}\": \"{target}\"")),
-                "{name} → {target}"
-            );
+            let target = trouble.target();
+            assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
     }
 }
