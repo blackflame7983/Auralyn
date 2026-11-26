@@ -7,6 +7,7 @@ pub mod flow;
 pub mod live_output;
 pub mod measurement;
 pub mod meter;
+pub mod mix;
 pub mod peak;
 pub mod profile;
 pub mod rack;

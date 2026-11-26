@@ -25,6 +25,8 @@ pub struct Draft {
     pub broadcast_trim: f32,
     /// 自分だけ聴かない（配信は続ける）。
     pub monitor_muted: bool,
+    /// 自分用と配信用で処理を分ける（伴奏を混ぜるのに要る）。配信用の出力が無ければ分けない。
+    pub split: bool,
 }
 
 /// 1つの変更。どれを変えても、保存の前の確認はやり直す（Tauri 版と同じ）。
@@ -34,6 +36,7 @@ pub enum Change {
     MonitorTrim(f32),
     BroadcastTrim(f32),
     MonitorMuted(bool),
+    Split(bool),
 }
 
 impl Draft {
@@ -46,7 +49,12 @@ impl Draft {
             }
         };
         match change {
-            Change::Device(device_id) => Self { device_id, ..self },
+            // 出力を外したら、分けるのもやめる（Tauri 版と同じ）。
+            Change::Device(device_id) => Self {
+                split: self.split && device_id.is_some(),
+                device_id,
+                ..self
+            },
             Change::MonitorTrim(value) => Self {
                 monitor_trim: trim(value),
                 ..self
@@ -59,6 +67,10 @@ impl Draft {
                 monitor_muted,
                 ..self
             },
+            Change::Split(split) => Self {
+                split: split && self.device_id.is_some(),
+                ..self
+            },
         }
     }
 }
@@ -68,8 +80,6 @@ impl Draft {
 pub struct Live {
     /// 保存・反映されている構成。
     pub saved: Draft,
-    /// 自分用と配信用で処理を分けている（GPUI 版ではまだ変えない。保存しても保つ）。
-    pub split: bool,
     /// 配信用の出力が音を受け取っている。
     pub active: bool,
     /// 配信用の出力が止まった。
@@ -131,6 +141,7 @@ mod tests {
             monitor_trim: 1.0,
             broadcast_trim: 1.0,
             monitor_muted: false,
+            split: false,
         }
     }
 
@@ -155,6 +166,13 @@ mod tests {
         assert!(!can_save(&changed, &saved, false));
         assert!(can_save(&changed, &saved, true));
         assert!(!can_save(&saved, &saved, true));
+        // 出力が無ければ分けられず、出力を外すと分けるのもやめる。
+        assert!(!saved.clone().with(Change::Split(true)).split);
+        let split = saved
+            .with(Change::Device(Some("cable".into())))
+            .with(Change::Split(true));
+        assert!(split.split);
+        assert!(!split.with(Change::Device(None)).split);
     }
 
     #[test]
@@ -164,7 +182,6 @@ mod tests {
                 device_id: device.map(str::to_owned),
                 ..draft()
             },
-            split: false,
             active,
             failed,
             error: None,

@@ -1,5 +1,5 @@
 //! 接続の画面の「自分用と配信用に分ける」：加工後の声を、自分用の出力とは別の WASAPI 出力へも送る（OBS はその出力を取り込む）。
-//! 規則は `auralyn-ui-model` の `live_output`。自分用の歌・雑談の加工（処理を分ける）は、まだこの画面で変えない。
+//! 規則は `auralyn-ui-model` の `live_output`。処理を分けるときの自分用の歌・雑談の加工の値は、まだこの画面で変えない（無ければ既定で入れる）。
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -145,6 +145,13 @@ impl LivePanel {
         }
     }
 
+    /// 伴奏を混ぜられる構成か（配信用の出力を選び、処理を分けてある）。`None` はまだ読めていない。
+    pub fn ready(&self) -> Option<bool> {
+        self.live
+            .as_ref()
+            .map(|l| l.saved.device_id.is_some() && l.saved.split)
+    }
+
     /// 保存の結果。
     pub fn saved(&mut self, result: Result<(), String>) {
         self.saving.set(false);
@@ -193,6 +200,23 @@ impl LivePanel {
             state.set_items(names, window, cx);
             state.set_selected_index(row.map(IndexPath::new), window, cx);
         });
+    }
+
+    /// 印のボックスで下書きを変える。変えたら確認の印は外れる。
+    fn on_change(
+        &self,
+        change: fn(bool) -> Change,
+    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+        let draft = self.draft.clone();
+        let confirmed = self.confirmed.clone();
+        move |checked, window, _| {
+            let mut draft = draft.borrow_mut();
+            if let Some(current) = draft.take() {
+                *draft = Some(current.with(change(*checked)));
+                confirmed.set(false);
+            }
+            window.refresh();
+        }
     }
 
     pub fn render(&self, lang: Lang, send: OnCommand) -> impl IntoElement {
@@ -254,8 +278,16 @@ impl LivePanel {
                             .child(div().text_sm().child(core(lang, keys::LIVE_DEVICE)))
                             .child(Select::new(&self.device).disabled(saving)),
                     )
-                    .when(self.live.as_ref().is_some_and(|l| l.split), |this| {
-                        this.child(note(core(lang, keys::LIVE_SPLIT_KEPT)))
+                    .child(
+                        Checkbox::new("live-split")
+                            .checked(draft.split)
+                            .disabled(saving || draft.device_id.is_none())
+                            .label(core(lang, keys::LIVE_SPLIT))
+                            .on_click(self.on_change(Change::Split)),
+                    )
+                    .when(draft.split, |this| {
+                        this.child(note(core(lang, keys::LIVE_SPLIT_SCOPE)))
+                            .child(note(core(lang, keys::LIVE_SPLIT_KEPT)))
                     })
                     .child(trim_row(
                         lang,
@@ -276,18 +308,7 @@ impl LivePanel {
                             .checked(monitor_muted)
                             .disabled(saving)
                             .label(core(lang, keys::LIVE_MONITOR_MUTED))
-                            .on_click({
-                                let draft = self.draft.clone();
-                                let confirmed = self.confirmed.clone();
-                                move |checked, window, _| {
-                                    let mut draft = draft.borrow_mut();
-                                    if let Some(current) = draft.take() {
-                                        *draft = Some(current.with(Change::MonitorMuted(*checked)));
-                                        confirmed.set(false);
-                                    }
-                                    window.refresh();
-                                }
-                            }),
+                            .on_click(self.on_change(Change::MonitorMuted)),
                     )
                     .child(
                         Checkbox::new("live-confirm")

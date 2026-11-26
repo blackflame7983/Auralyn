@@ -31,12 +31,14 @@ use crate::store;
 
 mod events;
 mod live;
+mod mix;
 mod profile;
 mod slots;
 mod sound;
 mod voice;
 
 use events::on_event;
+pub use mix::MixAction;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -114,6 +116,8 @@ pub enum Command {
     ReadStats,
     /// 配信用の出力（`live.rs`）。`None` は読むだけ、`Some` は保存・反映。
     LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
+    /// 配信ミックス（`mix.rs`）。
+    Mix(MixAction),
     /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
     ClearExclusions,
     /// 構成のファイルを消す。
@@ -159,7 +163,19 @@ impl Command {
                     Command::Listen(Listen::Status)
                 )
                 | (Command::LiveOutput(None), Command::LiveOutput(None))
-        )
+        ) || {
+            use auralyn_ui_model::mix::Change::{MusicGain, VoiceGain};
+            matches!(
+                (self, earlier),
+                (
+                    Command::Mix(MixAction::Levels(VoiceGain(_))),
+                    Command::Mix(MixAction::Levels(VoiceGain(_)))
+                ) | (
+                    Command::Mix(MixAction::Levels(MusicGain(_))),
+                    Command::Mix(MixAction::Levels(MusicGain(_)))
+                )
+            )
+        }
     }
 }
 
@@ -226,6 +242,10 @@ pub enum Notice {
     Live(Result<auralyn_ui_model::live_output::Live, String>),
     /// 配信用の出力の保存の結果（`Err` は断られた理由）。このあと読んだ状態が `Live` で届く。
     LiveSaved(Result<(), String>),
+    /// 配信ミックスの状態。`Err` は読めなかった理由。
+    Mix(Result<auralyn_ui_model::mix::Mix, String>),
+    /// 配信ミックスを変える操作の結果（`Err` は断られた理由）。このあと状態が `Mix` で届く。
+    MixDone(Result<(), String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
@@ -327,6 +347,7 @@ impl Engine {
                     rack: Vec::new(),
                     renamed: Vec::new(),
                     listen: voice::Session::default(),
+                    mixed: None,
                     sound: None,
                     read_only: false,
                     exited,
@@ -401,6 +422,8 @@ struct Control {
     output_gain: Option<f32>,
     /// 試聴のセッション（`voice.rs`）。
     listen: voice::Session,
+    /// 最後に読んだ配信ミックスの状態（世代と音量）。
+    mixed: Option<vst_host_lib::mixing::Snapshot>,
 }
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
@@ -592,6 +615,7 @@ impl Control {
             }
             Command::Listen(ref listen) => return self.listen(listen.clone()),
             Command::LiveOutput(ref draft) => return self.live_output(draft.clone()),
+            Command::Mix(ref action) => return self.mix(action.clone()),
             Command::ReadStats => {
                 let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
                     loaded: s.active_plugin_count,

@@ -102,7 +102,7 @@ fn read_raw(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub(crate) enum Request {
+pub enum Request {
     Snapshot,
     Configure {
         expected_epoch: String,
@@ -126,11 +126,12 @@ pub(crate) enum Request {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Snapshot {
+pub struct Snapshot {
     #[serde(flatten)]
-    engine: model::Snapshot,
-    saved_config: Option<Config>,
-    error: Option<String>,
+    pub engine: model::Snapshot,
+    /// 保存してある設定（適用中でなくても読める）。
+    pub saved_config: Option<Config>,
+    pub error: Option<String>,
 }
 
 impl AudioHost {
@@ -143,7 +144,7 @@ impl AudioHost {
             _ => Err(anyhow!("ミックスに対応するEngineを起動し直してください")),
         }
     }
-    pub(crate) fn mixing(&mut self, request: Request) -> Result<Snapshot> {
+    pub fn mixing(&mut self, request: Request) -> Result<Snapshot> {
         let expected = match &request {
             Request::Snapshot => None,
             Request::Configure {

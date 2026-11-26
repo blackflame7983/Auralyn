@@ -6,4 +6,6 @@ mod model;
 pub(crate) mod runtime;
 
 pub(crate) use alignment::{AlignedMixer, Delays};
-pub use model::{ClockSnapshot, Config, Levels, Request, Snapshot, Source, Start, Track};
+pub use model::{
+    ClockSnapshot, Config, Device, Levels, OffsetContext, Request, Snapshot, Source, Start, Track,
+};
