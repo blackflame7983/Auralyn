@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
-use crate::engine::{Command, Engine, Notice};
+use crate::engine::{Command, Engine, Listen, Notice};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::locale_file;
@@ -223,7 +223,7 @@ impl MainView {
             connect,
             vst,
             setups,
-            voice: VoicePanel::default(),
+            voice: VoicePanel::new(window, cx),
             sound,
             _ticker: ticker,
         }
@@ -240,6 +240,16 @@ impl MainView {
             if self.sound.peak_pending() {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::ReadPeak);
+            }
+            let open = self
+                .voice
+                .open(self.phase == Phase::Running && !self.hidden.get());
+            if let Some(command) = open {
+                self.engine.send(command);
+            }
+            if self.voice.polls() {
+                self.peak_polled = Instant::now();
+                self.engine.send(Command::Listen(Listen::Status));
             }
             if self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
@@ -261,7 +271,7 @@ impl MainView {
         }
         // 隠れている間は録らない（Tauri 版と同じ）。
         if self.hidden.get() {
-            if let Some(command) = self.voice.leave() {
+            for command in self.voice.leave() {
                 self.engine.send(command);
             }
         }
@@ -304,10 +314,12 @@ impl MainView {
             }
             Notice::Stopped => {
                 self.advance(SessionEvent::Stopped);
+                self.voice.audio_stopped();
                 self.reread_peak();
             }
             Notice::StreamError(message) => {
                 self.advance(SessionEvent::Stopped);
+                self.voice.audio_stopped();
                 self.reread_peak();
                 self.message = Some(message);
             }
@@ -328,6 +340,15 @@ impl MainView {
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
             Notice::ProfileFile(done) => self.setups.set_done(done, window, cx),
             Notice::Recording(recording) => self.voice.set(recording),
+            Notice::Listening(result) => {
+                self.voice.set_listening(result, window, cx);
+                // 開くのを待つ間に画面を離れた・窓を隠したなら、開いたものをすぐ閉じる。
+                if self.page != Page::Sound || self.hidden.get() {
+                    for command in self.voice.leave() {
+                        self.engine.send(command);
+                    }
+                }
+            }
             Notice::RecordingSaved => self.voice.saved(),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
@@ -397,8 +418,13 @@ impl MainView {
 
     /// 音づくりの画面を離れるとき。この画面で始めた測定は中止する（見ていない間に測り終えて置き去りにしない）。
     fn leave_sound(&mut self) {
-        let leaving = [self.sound.measure.leave(), self.voice.leave()];
-        for command in leaving.into_iter().flatten() {
+        let leaving = self
+            .sound
+            .measure
+            .leave()
+            .into_iter()
+            .chain(self.voice.leave());
+        for command in leaving {
             self.engine.send(command);
         }
     }
@@ -561,11 +587,14 @@ impl Render for MainView {
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),
-                                Page::Sound => {
-                                    this.child(self.sound.render(lang, cx, send.clone())).child(
-                                        self.voice.render(lang, self.phase == Phase::Running, send),
-                                    )
-                                }
+                                Page::Sound => this
+                                    .child(self.sound.render(lang, cx, send.clone()))
+                                    .child(self.voice.render(
+                                        lang,
+                                        self.phase == Phase::Running,
+                                        cx,
+                                        send,
+                                    )),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,

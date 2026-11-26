@@ -78,6 +78,18 @@ pub mod keys {
     pub const VOICE_BEFORE: &str = "voice.copy.056";
     pub const VOICE_AFTER: &str = "voice.copy.057";
     pub const VOICE_SAVED: &str = "voice.copy.121";
+    pub const LISTEN_TITLE: &str = "voice.copy.036";
+    pub const LISTEN_LEAD: &str = "voice.copy.038";
+    pub const LISTEN_REFRESH: &str = "voice.copy.040";
+    pub const LISTEN_DEVICE: &str = "voice.copy.041";
+    pub const LISTEN_CHOOSE: &str = "voice.copy.042";
+    pub const LISTEN_SAFE: &str = "voice.copy.045";
+    pub const LISTEN_PLAYING: &str = "voice.copy.049";
+    pub const LISTEN_STOPPED: &str = "voice.copy.051";
+    pub const LISTEN_PLAY: &str = "voice.copy.059";
+    pub const LISTEN_STOP: &str = "voice.copy.060";
+    pub const LISTEN_LOOP: &str = "voice.copy.061";
+    pub const LISTEN_RETRY: &str = "voice.copy.039";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -199,7 +211,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 186] = [
+    pub const ALL: [&str; 198] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -268,6 +280,18 @@ pub mod keys {
         VOICE_BEFORE,
         VOICE_AFTER,
         VOICE_SAVED,
+        LISTEN_TITLE,
+        LISTEN_LEAD,
+        LISTEN_REFRESH,
+        LISTEN_DEVICE,
+        LISTEN_CHOOSE,
+        LISTEN_SAFE,
+        LISTEN_PLAYING,
+        LISTEN_STOPPED,
+        LISTEN_PLAY,
+        LISTEN_STOP,
+        LISTEN_LOOP,
+        LISTEN_RETRY,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,
