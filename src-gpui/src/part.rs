@@ -1,8 +1,14 @@
-//! 画面どうしで同じ形の部品：見出しつきの区画と、補足の文。
+//! 画面どうしで同じ形の部品：見出しつきの区画と、補足の文。画面からエンジンへの命令の送り口。
+
+use std::rc::Rc;
 
 use gpui_kit::*;
 
 use crate::color;
+use crate::engine::Command;
+
+/// 画面の操作は、エンジンへの命令としてそのまま送る。
+pub type OnCommand = Rc<dyn Fn(Command, &mut App)>;
 
 /// 見出し（と右の部品）・中身の区画。`title` は訳した文言。右に何も置かないときは `div()` を渡す。
 pub fn card(

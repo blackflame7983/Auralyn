@@ -13,8 +13,8 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
+use crate::part::OnCommand;
 use crate::part::{card, note};
-use crate::vst::Send;
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -59,7 +59,7 @@ impl SetupsPanel {
             .map(Command::SaveProfile)
     }
 
-    pub fn render(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
+    pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
         let chosen = self.chosen.read(cx).selected_value().cloned();
         let backup = profile::backup_name(&self.entries).map(str::to_owned);
         let typed = self.name.read(cx).value();

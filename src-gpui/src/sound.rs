@@ -15,8 +15,8 @@ use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::measure::MeasurePanel;
+use crate::part::OnCommand;
 use crate::part::{card, note};
-use crate::vst::Send;
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -115,7 +115,7 @@ impl SoundPage {
         self.peak.is_some_and(|peak| peak.pending)
     }
 
-    pub fn render(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
+    pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
         let Some(current) = self.current else {
             return div()
                 .text_sm()
@@ -289,7 +289,7 @@ impl SoundPage {
     }
 
     /// 大きな音を抑える。ON/OFF と、詳しい設定（天井・復帰時間）。読めない（止まっている）間は操作させない。
-    fn render_peak(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
+    fn render_peak(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
         let unread = self.peak.is_none();
         let notes: Vec<&str> = peak::notes(self.peak)
             .into_iter()
