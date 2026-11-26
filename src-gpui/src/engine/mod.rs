@@ -154,6 +154,8 @@ pub enum Command {
     /// 並びと各 VST の中の設定を保存する。VST の窓を閉じたときはエンジンが自分で送る。
     /// 終了の前は、保存し終えたことを返事で受ける。
     SaveRack(Option<flume::Sender<()>>),
+    /// OBS のシーン連動：同じ名前の構成があれば読む（無ければ何もしない）。
+    SceneProfile(String),
     /// OBS への到達確認のテスト音（`obs_link`）。結果は `Notice` でなく、渡された口へ返す。
     ReachTone(ToneStep, flume::Sender<Result<ReachReceipt, String>>),
 }
@@ -196,6 +198,11 @@ impl Command {
                 | (
                     Command::Modes(ModeAction::Shortcut(_)),
                     Command::Modes(ModeAction::Shortcut(_))
+                )
+                // OBS のシーンが続けて替わったら、最後のシーンの分だけ（途中のシーンの VST を読み込まない）。
+                | (
+                    Command::SceneProfile(_) | Command::Modes(ModeAction::Scene(_)),
+                    Command::SceneProfile(_) | Command::Modes(ModeAction::Scene(_))
                 )
                 | (
                     Command::PostMix(PostAction::Read, _),
@@ -717,6 +724,7 @@ impl Control {
             Command::Measure(ref action) => return self.measure(action),
             Command::ListProfiles => return self.list_profiles(),
             Command::SaveProfile(ref name) => return self.save_profile(name),
+            Command::SceneProfile(ref name) => return self.scene_profile(name),
             Command::ApplyProfile { ref name, restore } => {
                 return self.apply_profile(name, restore)
             }
@@ -958,6 +966,12 @@ mod tests {
             release_ms: 100.0,
         };
         assert!(!true_peak.supersedes(&limits(-2.0)));
+        let scene = Command::SceneProfile("B".into());
+        assert!(scene.supersedes(&Command::SceneProfile("A".into())));
+        assert!(!scene.supersedes(&Command::ApplyProfile {
+            name: "A".into(),
+            restore: false
+        }));
     }
 
     #[test]

@@ -23,6 +23,8 @@ mod obs_link;
 mod part;
 mod post_mix;
 mod recovery;
+mod scene_file;
+mod scenes;
 mod settings;
 mod setup;
 mod setups;

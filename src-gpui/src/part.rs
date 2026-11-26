@@ -3,10 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use gpui_kit::component::button::{Button, ButtonGroup};
+use gpui_kit::component::Selectable as _;
 use gpui_kit::*;
 
 use crate::color;
 use crate::engine::Command;
+use crate::i18n::{core, Lang};
 
 /// 画面の操作は、エンジンへの命令としてそのまま送る。
 pub type OnCommand = Rc<dyn Fn(Command, &mut App)>;
@@ -91,4 +94,28 @@ fn picked<T, E>(answer: Result<anyhow::Result<Option<T>>, E>) -> Option<T> {
         }
         Err(_) => None,
     }
+}
+
+/// どれか1つを選ぶボタンの組。今の値が無い（分からない）ときは、どれも選ばない。
+pub fn choices<T: Copy + PartialEq + 'static>(
+    id: impl Into<SharedString>,
+    lang: Lang,
+    options: &[(T, &'static str)],
+    current: Option<T>,
+    on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let id: SharedString = id.into();
+    let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
+    ButtonGroup::new(id.clone())
+        .outline()
+        .children(options.iter().enumerate().map(|(index, (value, label))| {
+            Button::new(SharedString::from(format!("{id}-{index}")))
+                .label(core(lang, label))
+                .selected(current == Some(*value))
+        }))
+        .on_click(move |clicked, window, cx| {
+            if let Some(value) = clicked.first().and_then(|index| values.get(*index)) {
+                on_pick(*value, window, cx);
+            }
+        })
 }

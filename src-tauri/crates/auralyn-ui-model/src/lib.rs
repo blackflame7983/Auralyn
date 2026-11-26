@@ -16,6 +16,7 @@ pub mod post_mix;
 pub mod profile;
 pub mod rack;
 pub mod recovery;
+pub mod scene_routing;
 pub mod session;
 pub mod setup;
 pub mod shortcuts;

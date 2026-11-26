@@ -15,6 +15,8 @@ pub enum ModeAction {
     Select(Mode),
     /// ショートカットからの切り替え。断られたら上の帯にも出す（隠れていても音づくりの画面を見ていなくても分かるように）。
     Shortcut(Mode),
+    /// OBS のシーン連動からの切り替え。断られたらショートカットと同じく上の帯に出す。
+    Scene(Mode),
     /// 本番保護を付ける・外す。
     Protect(bool),
     /// 今の音づくりを、そのモードとして保存する。`drop_reverb` は雑談で残響を切って保存する（Tauri 版と同じ確認のあと）。
@@ -34,10 +36,15 @@ impl Control {
                 return self.send_modes(result);
             }
             ModeAction::Select(mode) => self.select_mode(mode),
-            ModeAction::Shortcut(mode) => {
+            ModeAction::Shortcut(mode) | ModeAction::Scene(mode) => {
                 let result = self.select_mode(mode);
                 if let Err(e) = &result {
-                    self.fail("shortcut", anyhow::anyhow!("{e}"));
+                    let source = if matches!(action, ModeAction::Scene(_)) {
+                        "obs_scene"
+                    } else {
+                        "shortcut"
+                    };
+                    self.fail(source, anyhow::anyhow!("{e}"));
                 }
                 result
             }

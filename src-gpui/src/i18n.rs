@@ -500,6 +500,22 @@ pub mod keys {
     pub const OBS_REACH_PLAY: &str = "settings.ObsConnectionSettings.273";
     pub const OBS_REACH_FAILED: &str = "settings.ObsConnectionSettings.279";
     pub const OBS_REACH_SCOPE: &str = "obsReach.scope";
+    pub const SCENE_TITLE: &str = "structure.sceneRouting";
+    pub const SCENE_LEAD: &str = "settings.apply.sceneDraft";
+    pub const SCENE_NONE: &str = "settings.ObsModeRoutingSettings.317";
+    pub const SCENE_PROFILE: &str = "settings.ObsModeRoutingSettings.318";
+    pub const SCENE_MODE: &str = "settings.ObsModeRoutingSettings.319";
+    pub const SCENE_ENABLE: &str = "settings.ObsModeRoutingSettings.320";
+    pub const SCENE_MODE_LEAD: &str = "settings.ObsModeRoutingSettings.321";
+    pub const SCENE_NAME_N: &str = "settings.ObsModeRoutingSettings.323";
+    pub const SCENE_SINGING: &str = "settings.ObsModeRoutingSettings.326";
+    pub const SCENE_TALK: &str = "settings.ObsModeRoutingSettings.327";
+    pub const SCENE_REMOVE: &str = "settings.ObsModeRoutingSettings.328";
+    pub const SCENE_ADD: &str = "settings.ObsModeRoutingSettings.329";
+    pub const SCENE_SAVE: &str = "settings.ObsModeRoutingSettings.330";
+    pub const SCENE_SAVED: &str = "settings.ObsModeRoutingSettings.309";
+    pub const SCENE_NAMES: &str = "settings.ObsModeRoutingSettings.308";
+    pub const SCENE_SAVE_FAILED: &str = "settings.ObsModeRoutingSettings.310";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -521,7 +537,23 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 508] = [
+    pub const ALL: [&str; 524] = [
+        SCENE_TITLE,
+        SCENE_LEAD,
+        SCENE_NONE,
+        SCENE_PROFILE,
+        SCENE_MODE,
+        SCENE_ENABLE,
+        SCENE_MODE_LEAD,
+        SCENE_NAME_N,
+        SCENE_SINGING,
+        SCENE_TALK,
+        SCENE_REMOVE,
+        SCENE_ADD,
+        SCENE_SAVE,
+        SCENE_SAVED,
+        SCENE_NAMES,
+        SCENE_SAVE_FAILED,
         OBS_PEAK,
         OBS_REACHED,
         OBS_NOT_REACHED,

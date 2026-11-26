@@ -110,6 +110,29 @@ impl Control {
 
     /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
     /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
+    /// OBS のシーンと同じ名前の構成の VST の並びだけを読む（Tauri 版の連動のプリセット読み込みと同じく、
+    /// 退避は作らず音づくりも変えない）。無い名前・退避の名前は読まない。
+    pub(super) fn scene_profile(&mut self, name: &str) {
+        let known = name != presets::BACKUP_PROFILE_NAME
+            && presets::list_presets(&self.config_dir)
+                .is_ok_and(|names| names.iter().any(|known| known == name));
+        if !known {
+            return;
+        }
+        self.recover();
+        let result = self.host.preflight_live_changes().and_then(|()| {
+            let profile =
+                presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
+            if profile.includes_plugin_category() {
+                self.replace_rack(profile.plugins)?;
+            }
+            Ok(())
+        });
+        if let Err(e) = result {
+            self.fail("scene_profile", e);
+        }
+    }
+
     pub(super) fn apply_profile(&mut self, name: &str, restore: bool) {
         // 子が落ちていたら先に読み直す（あとで読み直すと、落ちる前の音づくりで構成の値を上書きしてしまう）。
         self.recover();
@@ -151,34 +174,40 @@ impl Control {
             )?;
         }
         if profile.includes_plugin_category() {
-            // 位置がずれるので、古い ID では当てない。
-            self.renamed.clear();
-            let loaded: Vec<String> = self
-                .rack
-                .iter()
-                .filter(|s| s.loaded)
-                .map(|s| s.id.clone())
-                .collect();
-            for id in loaded {
-                if let Err(e) = self.host.remove_plugin(&id) {
-                    self.changed();
-                    return Err(e);
-                }
-                self.rack.retain(|slot| slot.id != id);
-            }
-            self.rack.clear();
-            for plugin in profile.plugins {
-                self.restore(RestorePluginRequest {
-                    path: plugin.path,
-                    state: plugin.state,
-                    bypassed: !plugin.enabled,
-                    muted: plugin.muted,
-                    gain: plugin.gain,
-                    class_id: plugin.class_id,
-                });
-            }
-            self.changed();
+            self.replace_rack(profile.plugins)?;
         }
+        Ok(())
+    }
+
+    /// 並びを構成の VST に入れ替える。外せない VST があればそこで止める（画面から消えたまま鳴り続けないように）。
+    fn replace_rack(&mut self, plugins: Vec<presets::PresetPlugin>) -> anyhow::Result<()> {
+        // 位置がずれるので、古い ID では当てない。
+        self.renamed.clear();
+        let loaded: Vec<String> = self
+            .rack
+            .iter()
+            .filter(|s| s.loaded)
+            .map(|s| s.id.clone())
+            .collect();
+        for id in loaded {
+            if let Err(e) = self.host.remove_plugin(&id) {
+                self.changed();
+                return Err(e);
+            }
+            self.rack.retain(|slot| slot.id != id);
+        }
+        self.rack.clear();
+        for plugin in plugins {
+            self.restore(RestorePluginRequest {
+                path: plugin.path,
+                state: plugin.state,
+                bypassed: !plugin.enabled,
+                muted: plugin.muted,
+                gain: plugin.gain,
+                class_id: plugin.class_id,
+            });
+        }
+        self.changed();
         Ok(())
     }
 }

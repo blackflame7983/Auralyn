@@ -44,6 +44,8 @@ pub enum Reply {
     },
     /// OBS 側から接続が切れた（OBS を閉じたときなど）。
     Lost,
+    /// OBS でシーンが替わった（接続したときの今のシーンは送らない）。
+    Scene(String),
     Reach(Result<Reach, String>),
     ReachCurrent {
         operation: String,
@@ -177,10 +179,16 @@ async fn connect(
 
 fn notify(outbox: &flume::Sender<Reply>) -> impl obs::Notify {
     let outbox = outbox.clone();
-    move |name, _| {
-        if name == "obs://live-scene-invalidated" {
+    move |name, payload| match name {
+        "obs://live-scene-invalidated" => {
             let _ = outbox.send(Reply::Lost);
         }
+        "obs://live-scene-changed" => {
+            if let Some(scene) = payload.get("sceneName").and_then(|v| v.as_str()) {
+                let _ = outbox.send(Reply::Scene(scene.to_string()));
+            }
+        }
+        _ => {}
     }
 }
 
