@@ -189,6 +189,9 @@ pub mod keys {
     pub const REVERB_MIX: &str = "settings.SingingControls.416";
     pub const REVERB_DECAY: &str = "settings.SingingControls.417";
     pub const REVERB_DAMPING: &str = "settings.SingingControls.418";
+    pub const DEESSER: &str = "settings.deesser";
+    pub const DEESSER_HINT: &str = "settings.deesserHint";
+    pub const DEESSER_AMOUNT: &str = "settings.deesserAmount";
     pub const QUIT_HELP: &str = "band.quitHelp";
     pub const PEAK_TITLE: &str = "peak.title";
     pub const PEAK_LEAD: &str = "peak.lead";
@@ -485,7 +488,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 472] = [
+    pub const ALL: [&str; 475] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -665,6 +668,9 @@ pub mod keys {
         REVERB_MIX,
         REVERB_DECAY,
         REVERB_DAMPING,
+        DEESSER,
+        DEESSER_HINT,
+        DEESSER_AMOUNT,
         QUIT_HELP,
         PEAK_TITLE,
         PEAK_LEAD,

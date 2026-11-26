@@ -8,11 +8,12 @@ impl Control {
         self.current_sound();
     }
 
-    /// 歌向けの値と残響。統計に無いので内蔵処理の状態から読む。止まっていて読めなければ、最後に読んだ値（無ければ既定）。
-    fn builtin_values(&mut self) -> (Singing, Reverb) {
+    /// 歌向けの値・残響・歯擦音の抑制。統計に無いので内蔵処理の状態から読む。
+    /// 止まっていて読めなければ、最後に読んだ値（無ければ既定）。
+    fn builtin_values(&mut self) -> (Singing, Reverb, DeEsser) {
         let last = self
             .sound
-            .map_or_else(Default::default, |s| (s.singing, s.reverb));
+            .map_or_else(Default::default, |s| (s.singing, s.reverb, s.deesser));
         match self.host.builtin_effects(BuiltinRequest::Snapshot) {
             Ok(snapshot) => (
                 snapshot.config.singing.map_or(last.0, |p| Singing {
@@ -26,6 +27,17 @@ impl Control {
                     decay_seconds: p.decay_seconds,
                     damping: p.damping,
                 }),
+                // OFF（`None`）でも量は最後の値を保つ。
+                snapshot.config.deesser.map_or(
+                    DeEsser {
+                        on: false,
+                        ..last.2
+                    },
+                    |p| DeEsser {
+                        on: true,
+                        amount: p.amount,
+                    },
+                ),
             ),
             Err(e) => {
                 log::info!("内蔵処理の状態を読めません: {e}");
@@ -39,7 +51,7 @@ impl Control {
         self.recover();
         match self.host.get_engine_runtime_stats() {
             Ok(stats) => {
-                let (singing, reverb) = self.builtin_values();
+                let (singing, reverb, deesser) = self.builtin_values();
                 let sound = Sound {
                     noise_on: stats.noise_reduction_enabled,
                     noise_mode: NoiseMode::parse(&stats.noise_reduction_mode),
@@ -50,6 +62,7 @@ impl Control {
                     amount: stats.built_in_effects_amount,
                     singing,
                     reverb,
+                    deesser,
                 }
                 .normalized();
                 self.sound = Some(sound);
@@ -253,16 +266,34 @@ impl Control {
                     decay_seconds: next.reverb.decay_seconds,
                     damping: next.reverb.damping,
                 });
-            if let Err(e) = self.host.set_built_in_effects_with_reverb(
-                next.effects_on,
-                preset,
-                next.amount,
-                singing,
-                reverb,
-            ) {
+            // 歯擦音の抑制は、変わったときだけ置き換える（置き換えなければエンジンは今の値を保つ）。
+            let result = if before.is_none_or(|before| before.deesser != next.deesser) {
+                let deesser = next.deesser.on.then_some(DeEsserParams {
+                    amount: next.deesser.amount,
+                });
+                self.host.set_built_in_effects_from_profile(
+                    next.effects_on,
+                    preset,
+                    next.amount,
+                    singing,
+                    reverb,
+                    deesser,
+                )
+            } else {
+                self.host.set_built_in_effects_with_reverb(
+                    next.effects_on,
+                    preset,
+                    next.amount,
+                    singing,
+                    reverb,
+                )
+            };
+            if let Err(e) = result {
                 self.fail("set_built_in_effects", e);
             }
         }
+        // エンジンが持たない値（歌向けでないときの歌向けの値、OFF の歯擦音の量）は、次に読むときこの値を使う。
+        self.sound = Some(next);
     }
 
     /// 起動したら、音を始める前に、保存した音づくりをエンジンへ送る。
@@ -276,11 +307,7 @@ impl Control {
             .ok()
             .and_then(|value| sound_from_json(&value))
         {
-            Some(sound) => {
-                self.apply_sound(sound, None);
-                // 歌向けでないときエンジンは歌向けの値を持たないので、保存の値を次に読むときの「最後の値」にする。
-                self.sound = Some(sound);
-            }
+            Some(sound) => self.apply_sound(sound, None),
             None => self.fail("read_sound", anyhow::anyhow!("{SOUND_FILE} を読めません")),
         }
     }
@@ -313,11 +340,15 @@ pub(super) fn sound_to_json(sound: Sound) -> serde_json::Value {
             "decaySeconds": sound.reverb.decay_seconds,
             "damping": sound.reverb.damping,
         },
+        "deesser": {
+            "on": sound.deesser.on,
+            "amount": sound.deesser.amount,
+        },
     })
 }
 
 /// 形の違う保存は `None`（読めないと知らせ、上書きは次に変えたときだけ）。
-/// 歌向けの値と残響は後から足したので、無ければ既定にする。
+/// 歌向けの値・残響・歯擦音の抑制は後から足したので、無ければ既定にする。
 pub(super) fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
     let text = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
     let flag = |key: &str| value.get(key).and_then(serde_json::Value::as_bool);
@@ -333,6 +364,16 @@ pub(super) fn sound_from_json(value: &serde_json::Value) -> Option<Sound> {
             amount: number("amount")? as f32,
             singing: singing_from_json(value),
             reverb: reverb_from_json(value),
+            deesser: DeEsser {
+                on: value
+                    .pointer("/deesser/on")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false),
+                amount: value
+                    .pointer("/deesser/amount")
+                    .and_then(serde_json::Value::as_f64)
+                    .map_or(DeEsser::default().amount, |n| n as f32),
+            },
         }
         .normalized(),
     )
@@ -418,6 +459,10 @@ mod tests {
                 mix: 0.1,
                 decay_seconds: 2.0,
                 damping: 0.25,
+            },
+            deesser: DeEsser {
+                on: true,
+                amount: 0.3,
             },
         };
         assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));

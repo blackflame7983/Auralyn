@@ -190,6 +190,7 @@ impl MainView {
             (&sound.reverb_mix, |v| Change::ReverbMix(v / 100.0)),
             (&sound.reverb_decay, Change::ReverbDecay),
             (&sound.reverb_damping, |v| Change::ReverbDamping(v / 100.0)),
+            (&sound.deesser, |v| Change::DeEsserAmount(v / 100.0)),
         ] {
             cx.subscribe(slider, move |this, _, event: &SliderEvent, _| {
                 if let SliderEvent::Release(value) = event {

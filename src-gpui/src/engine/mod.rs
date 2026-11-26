@@ -17,7 +17,7 @@ use auralyn_ui_model::peak::{Limit, Lookahead, Peak};
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::recovery::Hold;
-use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Reverb, Singing, Sound};
+use auralyn_ui_model::sound::{Change, DeEsser, NoiseMode, Preset, Reverb, Singing, Sound};
 use auralyn_ui_model::voice_check::{
     Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
     State as VoiceState, MAX_MS,
@@ -25,6 +25,7 @@ use auralyn_ui_model::voice_check::{
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::builtin::Request as BuiltinRequest;
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
+use vst_host_lib::audio_engine::deesser::DeEsserParams;
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::audio_engine::reverb::ReverbParams;
 use vst_host_lib::audio_engine::singing::SingingParams;

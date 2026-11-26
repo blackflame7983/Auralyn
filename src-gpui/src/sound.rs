@@ -1,6 +1,6 @@
-//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合、歌向けは3つの値）と残響。
+//! 音づくりの画面：ノイズ低減（ON/OFF・弱／強・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合、歌向けは3つの値）と残響と歯擦音の抑制。
 //! 値の読み方は `auralyn-ui-model` の `sound`。変えるたびにエンジンへ送り、エンジンが受け付けた結果で描き直す。
-//! 「大きな音を抑える」と「配信用 true-peak 制限」は `limiter`。周囲の音の測定は `measure`。歯擦音は、まだこの画面に無い。
+//! 「大きな音を抑える」と「配信用 true-peak 制限」は `limiter`。周囲の音の測定は `measure`。
 
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::sound::{self, Change, NoiseMode, Preset, Sound};
@@ -47,6 +47,8 @@ pub struct SoundPage {
     pub reverb_mix: Entity<SliderState>,
     pub reverb_decay: Entity<SliderState>,
     pub reverb_damping: Entity<SliderState>,
+    /// 歯擦音を抑える量（0〜100）。
+    pub deesser: Entity<SliderState>,
     /// 大きな音を抑える（ピーク保護）と、配信用 true-peak 制限。
     pub peak: LimiterPanel,
     pub true_peak: LimiterPanel,
@@ -66,6 +68,7 @@ impl SoundPage {
             reverb_mix: range(cx, sound::MIX_PERCENT),
             reverb_decay: range(cx, sound::DECAY_SECONDS),
             reverb_damping: range(cx, sound::DAMPING_PERCENT),
+            deesser: range(cx, (0.0, 100.0, 1.0)),
             peak: LimiterPanel::new(Limit::Sample, cx),
             true_peak: LimiterPanel::new(Limit::TruePeak, cx),
             measure: MeasurePanel::default(),
@@ -87,6 +90,7 @@ impl SoundPage {
             (&self.reverb_mix, sound.reverb.mix * 100.0),
             (&self.reverb_decay, sound.reverb.decay_seconds),
             (&self.reverb_damping, sound.reverb.damping * 100.0),
+            (&self.deesser, sound::percent(sound.deesser.amount)),
         ] {
             slider.update(cx, |state, cx| state.set_value(value, window, cx));
         }
@@ -307,7 +311,10 @@ impl SoundPage {
                 Switch::new("reverb-on")
                     .checked(current.reverb.enabled)
                     .accessibility_label(core(lang, keys::REVERB_ON))
-                    .on_click(move |on, _, cx| set(Change::ReverbOn(*on), cx)),
+                    .on_click({
+                        let set = set.clone();
+                        move |on, _, cx| set(Change::ReverbOn(*on), cx)
+                    }),
                 div().flex().flex_col().gap_2().children(
                     [
                         (
@@ -321,6 +328,28 @@ impl SoundPage {
                     .map(|(label, slider, show)| {
                         slider_row(lang, label, core(lang, label), slider, show, false, cx)
                     }),
+                ),
+            ))
+            .child(section(
+                lang,
+                keys::DEESSER,
+                keys::DEESSER_HINT,
+                Switch::new("deesser-on")
+                    .checked(current.deesser.on)
+                    .accessibility_label(core(lang, keys::DEESSER))
+                    .on_click(move |on, _, cx| set(Change::DeEsserOn(*on), cx)),
+                slider_row(
+                    lang,
+                    keys::DEESSER_AMOUNT,
+                    format!(
+                        "{} {}",
+                        core(lang, keys::DEESSER),
+                        core(lang, keys::DEESSER_AMOUNT)
+                    ),
+                    &self.deesser,
+                    percent,
+                    false,
+                    cx,
                 ),
             ))
             .child(self.peak.render(lang, locked, cx, send.clone()))
