@@ -727,7 +727,12 @@ impl Render for MainView {
             (true, Some(input), Some(output)) => Some(format!("{input} → {output}").into()),
             _ => None,
         };
-        let band = shell::band(self.phase, route, lang, {
+        let badges = if self.phase.running() {
+            self.modes.badges(lang)
+        } else {
+            Vec::new()
+        };
+        let band = shell::band(self.phase, badges, route, lang, {
             let entity = entity.clone();
             move |_, cx| {
                 entity.update(cx, |this, cx| {

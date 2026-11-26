@@ -43,6 +43,19 @@ impl ModesPanel {
         self.current().is_some_and(|m| m.armed)
     }
 
+    /// 上の帯に出す札：かかっているモードと、操作ロック中か。
+    pub fn badges(&self, lang: Lang) -> Vec<SharedString> {
+        let Some(modes) = self.current() else {
+            return Vec::new();
+        };
+        let mode = modes.selected().map(|mode| core(lang, mode_name(mode)));
+        let lock = modes.armed.then(|| core(lang, keys::MODES_PROTECTING));
+        mode.into_iter()
+            .chain(lock)
+            .map(SharedString::from)
+            .collect()
+    }
+
     /// 変える操作の結果。
     pub fn done(&mut self, result: Result<(), String>) {
         self.failed = result.err();
