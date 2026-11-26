@@ -21,7 +21,9 @@ use auralyn_core::design::Theme;
 use crate::color;
 use crate::connect::ConnectPage;
 use crate::desktop::{self, Action, Desktop};
-use crate::engine::{Command, Engine, Listen, MixAction, ModeAction, Notice, PostAction};
+use crate::engine::{
+    Command, Engine, Listen, MixAction, ModeAction, Notice, PostAction, StartWith,
+};
 use crate::home;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::live::LivePanel;
@@ -38,7 +40,7 @@ use crate::sound::SoundPage;
 use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
-use auralyn_ui_model::connect::{Device, Input, Purpose, Routing, SYSTEM_ROUTING};
+use auralyn_ui_model::connect::{Input, Purpose, SYSTEM_ROUTING};
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
@@ -643,33 +645,25 @@ impl MainView {
         let Some((input, purpose, output)) = self.connect.start_choice(cx) else {
             return;
         };
-        let values = self.connect.values(cx);
-        let routing = self.connect.routing(cx);
-        self.start_with(input, purpose, output, values, routing);
-    }
-
-    /// 選んだ入力・出力先で開始する。`values` は周波数とバッファ（`None` は自動）。押せるのは止まっているときだけ。
-    fn start_with(
-        &mut self,
-        input: Input,
-        purpose: Purpose,
-        output: Device,
-        (sample_rate, buffer_size): (Option<u32>, Option<u32>),
-        routing: Routing,
-    ) {
-        if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
-            return;
-        }
-        self.advance(SessionEvent::StartRequested);
-        self.message = None;
-        self.engine.send(Command::StartWith {
+        let (sample_rate, buffer_size) = self.connect.values(cx);
+        self.start_with(StartWith {
             input,
             purpose,
             output,
             sample_rate,
             buffer_size,
-            routing,
+            routing: self.connect.routing(cx),
         });
+    }
+
+    /// 選んだ入力・出力先で開始する。押せるのは止まっているときだけ。
+    fn start_with(&mut self, start: StartWith) {
+        if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
+            return;
+        }
+        self.advance(SessionEvent::StartRequested);
+        self.message = None;
+        self.engine.send(Command::StartWith(start));
     }
 
     /// 帯のボタン。押せるのは結果を待っていないときだけ（`Phase::busy`）。
@@ -732,20 +726,26 @@ impl MainView {
             return;
         }
         color::set_theme(theme, cx);
-        let failed = |lang| core(lang, keys::THEME_SAVE_FAILED);
-        match theme_file::save(&self.config_dir, theme) {
+        let result = theme_file::save(&self.config_dir, theme);
+        self.report_save(keys::THEME_SAVE_FAILED, result);
+    }
+
+    /// 保存の結果を帯に出す。失敗は `failed` の文言で出し、成功したら同じ保存の前の警告だけを消す（ほかの警告は残す）。
+    fn report_save(&mut self, failed: &'static str, result: std::io::Result<()>) {
+        match result {
             Ok(()) => {
-                if self.message.as_deref().is_some_and(|m| {
+                let earlier = |m: &String| {
                     [Lang::Ja, Lang::En]
                         .into_iter()
-                        .any(|l| m.starts_with(failed(l)))
-                }) {
+                        .any(|l| m.starts_with(core(l, failed)))
+                };
+                if self.message.as_ref().is_some_and(earlier) {
                     self.message = None;
                 }
             }
             Err(e) => {
-                log::warn!("テーマを保存できません: {e}");
-                self.message = Some(format!("{} {e}", failed(self.lang)));
+                log::warn!("{failed}: {e}");
+                self.message = Some(format!("{} {e}", core(self.lang, failed)));
             }
         }
     }
@@ -758,23 +758,8 @@ impl MainView {
         self.desktop.set_lang(lang);
         self.mix.relabel(lang, window, cx);
         self.connect.set_lang(lang, window, cx);
-        let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
-        match locale_file::save(&self.config_dir, lang) {
-            Ok(()) => {
-                // 前に失敗した警告だけを消す（ほかの警告は残す）。
-                if self.message.as_deref().is_some_and(|m| {
-                    [Lang::Ja, Lang::En]
-                        .into_iter()
-                        .any(|l| m.starts_with(failed(l)))
-                }) {
-                    self.message = None;
-                }
-            }
-            Err(e) => {
-                log::warn!("表示言語を保存できません: {e}");
-                self.message = Some(format!("{} {e}", failed(lang)));
-            }
-        }
+        let result = locale_file::save(&self.config_dir, lang);
+        self.report_save(keys::LANGUAGE_SAVE_FAILED, result);
     }
 }
 
@@ -869,13 +854,14 @@ impl Render for MainView {
                                                         if let Some((input, output)) =
                                                             this.setup.chosen(cx)
                                                         {
-                                                            this.start_with(
-                                                                Input::Device(input),
-                                                                Purpose::Voice,
+                                                            this.start_with(StartWith {
+                                                                input: Input::Device(input),
+                                                                purpose: Purpose::Voice,
                                                                 output,
-                                                                (None, None),
-                                                                SYSTEM_ROUTING,
-                                                            );
+                                                                sample_rate: None,
+                                                                buffer_size: None,
+                                                                routing: SYSTEM_ROUTING,
+                                                            });
                                                         }
                                                         cx.notify();
                                                     })

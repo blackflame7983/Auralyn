@@ -12,8 +12,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
-
 use crate::i18n::{core, core_with, keys, Lang};
+use crate::part::note;
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -37,6 +37,8 @@ pub struct ConnectPage {
     output_pair: Entity<Choices>,
     input_pairs: Vec<[usize; 2]>,
     output_pairs: Vec<[usize; 2]>,
+    /// 選んでいる入力・出力のチャンネル数。0 は分からない（保存したペアだけが候補に出る）。
+    channels: [u16; 2],
     /// 入力元（マイク・仮想ケーブルか、アプリの音声か）。選び直したら描き直す（`MainView` が購読する）。
     pub source: Entity<Choices>,
     purpose: Entity<Choices>,
@@ -48,11 +50,11 @@ pub struct ConnectPage {
     apps_failed: Option<String>,
 }
 
-/// 出力の返し方の並び（Tauri 版と同じ順）。
-const OUTPUT_MODES: [&str; 3] = [
-    keys::ROUTING_INDEPENDENT,
-    keys::ROUTING_INSERT,
-    keys::ROUTING_LEGACY,
+/// 出力の返し方の札と説明。並びは `Output::row`。
+const OUTPUT_MODES: [(&str, &str); 3] = [
+    (keys::ROUTING_INDEPENDENT, keys::ROUTING_INDEPENDENT_HINT),
+    (keys::ROUTING_INSERT, keys::ROUTING_INSERT_HINT),
+    (keys::ROUTING_LEGACY, keys::ROUTING_LEGACY_HINT),
 ];
 
 impl ConnectPage {
@@ -75,6 +77,7 @@ impl ConnectPage {
             output_pair: choices(cx),
             input_pairs: Vec::new(),
             output_pairs: Vec::new(),
+            channels: [0, 0],
             source: choices(cx),
             purpose: choices(cx),
             app: choices(cx),
@@ -289,12 +292,8 @@ impl ConnectPage {
     /// 選んでいる出力先（アプリの音声のときに使う。WASAPI だけ）。
     fn chosen_output(&self, cx: &App) -> Option<Device> {
         let host = self.host_name(cx);
-        let label = self.output.read(cx).selected_value()?.clone();
-        let choices = connect::of_host(&self.devices, &host, false);
-        let row = connect::labels(&choices)
-            .iter()
-            .position(|l| l.as_str() == label.as_ref())?;
-        choices.get(row).map(|d| (*d).clone())
+        let label = self.output.read(cx).selected_value()?;
+        connect::by_label(&self.devices, &host, false, label).cloned()
     }
 
     /// 選んでいる機器が受け付ける周波数とバッファを選択肢に入れる。`rate`・`buffer` が候補にあれば選び、無ければ「自動」。
@@ -363,6 +362,7 @@ impl ConnectPage {
         else {
             self.input_pairs.clear();
             self.output_pairs.clear();
+            self.channels = [0, 0];
             return;
         };
         let routing = keep.unwrap_or_else(|| connect::initial_routing(self.saved.as_ref(), &input));
@@ -370,6 +370,7 @@ impl ConnectPage {
             Output::Independent(pair) => Some(pair),
             _ => None,
         };
+        self.channels = [input.channels, output.channels];
         self.input_pairs = connect::pairs(input.channels, routing.input);
         self.output_pairs = connect::pairs(output.channels, independent);
         let lang = self.lang;
@@ -395,16 +396,17 @@ impl ConnectPage {
             window,
             cx,
         );
-        let mode = match routing.output {
-            Output::Independent(_) => 0,
-            Output::Insert => 1,
-            Output::Legacy => 2,
-        };
         let modes = OUTPUT_MODES
             .iter()
-            .map(|key| SharedString::from(core(lang, key)))
+            .map(|(key, _)| SharedString::from(core(lang, key)))
             .collect();
-        set(&self.output_mode, modes, Some(mode), window, cx);
+        set(
+            &self.output_mode,
+            modes,
+            Some(routing.output.row()),
+            window,
+            cx,
+        );
         let output_row = independent
             .and_then(|pair| self.output_pairs.iter().position(|p| *p == pair))
             .or((!self.output_pairs.is_empty()).then_some(0));
@@ -424,16 +426,12 @@ impl ConnectPage {
         }
         let row = |state: &Entity<Choices>| Some(state.read(cx).selected_index(cx)?.row);
         let pick = |state, pairs: &[[usize; 2]]| row(state).and_then(|r| pairs.get(r).copied());
-        let output = match row(&self.output_mode) {
-            Some(0) => {
-                Output::Independent(pick(&self.output_pair, &self.output_pairs).unwrap_or([0, 1]))
-            }
-            Some(1) => Output::Insert,
-            _ => Output::Legacy,
-        };
         Routing {
             input: pick(&self.input_pair, &self.input_pairs),
-            output,
+            output: Output::from_row(
+                row(&self.output_mode),
+                pick(&self.output_pair, &self.output_pairs),
+            ),
         }
     }
 
@@ -460,12 +458,8 @@ impl ConnectPage {
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let host = self.host_name(cx);
         let pick = |state: &Entity<Choices>, is_input: bool| {
-            let label = state.read(cx).selected_value()?.clone();
-            let choices = connect::of_host(&self.devices, &host, is_input);
-            let row = connect::labels(&choices)
-                .iter()
-                .position(|l| l.as_str() == label.as_ref())?;
-            choices.get(row).copied()
+            let label = state.read(cx).selected_value()?;
+            connect::by_label(&self.devices, &host, is_input, label)
         };
         let input = pick(&self.input, true)?;
         let output = if connect::shares_device(&host) {
@@ -501,7 +495,7 @@ impl ConnectPage {
             ))
             .child(field(core(lang, keys::SOURCE), Select::new(&self.source)))
             .when(shared, |this| {
-                this.child(muted(core(lang, keys::SOURCE_ASIO)))
+                this.child(note(core(lang, keys::SOURCE_ASIO)))
             })
             .child(field(core(lang, keys::PURPOSE), Select::new(&self.purpose)))
             .map(|this| {
@@ -523,12 +517,7 @@ impl ConnectPage {
             })
             .map(|this| {
                 if shared {
-                    this.child(
-                        div()
-                            .text_sm()
-                            .text_color(color::muted())
-                            .child(core(lang, keys::ASIO_SHARED)),
-                    )
+                    this.child(note(core(lang, keys::ASIO_SHARED)))
                 } else {
                     this.child(field(
                         core(lang, keys::OUTPUT),
@@ -541,12 +530,7 @@ impl ConnectPage {
                 Select::new(&self.rate),
             ))
             .when(connect::uses_system_rate(&host), |this| {
-                this.child(
-                    div()
-                        .text_sm()
-                        .text_color(color::muted())
-                        .child(core(lang, keys::WASAPI_RATE)),
-                )
+                this.child(note(core(lang, keys::WASAPI_RATE)))
             })
             .child(field(
                 core(lang, keys::BUFFER_SIZE),
@@ -565,7 +549,7 @@ impl ConnectPage {
                             .disabled(!stopped || self.start_choice(cx).is_none())
                             .on_click(move |_, window, cx| on_start(window, cx)),
                     )
-                    .child(div().text_sm().text_color(color::muted()).child(core(
+                    .child(note(core(
                         lang,
                         if stopped {
                             keys::FIRST_START_HINT
@@ -593,7 +577,7 @@ impl ConnectPage {
             .flex()
             .flex_col()
             .gap_2()
-            .child(muted(core(lang, keys::APP_ROUTE_HELP)))
+            .child(note(core(lang, keys::APP_ROUTE_HELP)))
             .child(field(
                 core(lang, keys::APP),
                 Select::new(&self.app).placeholder(placeholder),
@@ -607,7 +591,7 @@ impl ConnectPage {
                         .on_click(move |_, window, cx| on_apps(window, cx)),
                 ),
             )
-            .child(muted(core(lang, keys::APP_REFRESH_HELP)))
+            .child(note(core(lang, keys::APP_REFRESH_HELP)))
             .when_some(self.apps_failed.clone(), |this, error| {
                 this.child(div().text_sm().text_color(color::warning()).child(error))
             })
@@ -620,53 +604,33 @@ impl ConnectPage {
     /// ASIO の入力のペアと、出力の返し方。チャンネル数が分からなければ入力のペアは選ばせない（ホストに任せる）。
     fn render_routing(&self, lang: Lang, cx: &App) -> impl IntoElement {
         let mode = self.output_mode.read(cx).selected_index(cx).map(|i| i.row);
-        let hint = match mode {
-            Some(0) => keys::ROUTING_INDEPENDENT_HINT,
-            Some(1) => keys::ROUTING_INSERT_HINT,
-            _ => keys::ROUTING_LEGACY_HINT,
-        };
+        let hint = OUTPUT_MODES[mode.unwrap_or(Output::Legacy.row())].1;
         div()
             .flex()
             .flex_col()
             .gap_4()
-            .map(|this| {
-                if self.input_pairs.is_empty() {
-                    this.child(
-                        div()
-                            .text_sm()
-                            .text_color(color::muted())
-                            .child(core(lang, keys::CHANNEL_UNVERIFIED)),
-                    )
-                } else {
-                    this.child(field(
-                        core(lang, keys::CHANNEL_TITLE),
-                        Select::new(&self.input_pair),
-                    ))
-                }
+            .when(self.channels[0] == 0, |this| {
+                this.child(note(core(lang, keys::CHANNEL_UNVERIFIED)))
+            })
+            .when(!self.input_pairs.is_empty(), |this| {
+                this.child(field(
+                    core(lang, keys::CHANNEL_TITLE),
+                    Select::new(&self.input_pair),
+                ))
             })
             .child(field(
                 core(lang, keys::ROUTING_MODE),
                 Select::new(&self.output_mode),
             ))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(color::muted())
-                    .child(core(lang, hint)),
-            )
+            .child(note(core(lang, hint)))
             .when(mode == Some(0), |this| {
                 this.child(field(
                     core(lang, keys::ROUTING_CHANNELS),
                     Select::new(&self.output_pair),
                 ))
             })
-            .when(self.output_pairs.is_empty() && mode == Some(0), |this| {
-                this.child(
-                    div()
-                        .text_sm()
-                        .text_color(color::muted())
-                        .child(core(lang, keys::ROUTING_UNVERIFIED)),
-                )
+            .when(self.channels[1] == 0 && mode == Some(0), |this| {
+                this.child(note(core(lang, keys::ROUTING_UNVERIFIED)))
             })
     }
 }
@@ -705,13 +669,6 @@ fn set_values(
 fn khz(rate: u32) -> String {
     let text = format!("{:.3}", f64::from(rate) / 1000.0);
     format!("{} kHz", text.trim_end_matches('0').trim_end_matches('.'))
-}
-
-fn muted(text: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .text_sm()
-        .text_color(color::muted())
-        .child(text.into())
 }
 
 fn purpose_label(purpose: Purpose) -> &'static str {

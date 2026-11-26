@@ -96,14 +96,42 @@ pub struct Routing {
     pub output: Output,
 }
 
+impl Output {
+    /// 選択欄の並び（Tauri 版と同じ：指定・Insert・従来）での位置。
+    pub fn row(self) -> usize {
+        match self {
+            Output::Independent(_) => 0,
+            Output::Insert => 1,
+            Output::Legacy => 2,
+        }
+    }
+
+    /// 選択欄の位置から。「指定」で出力のペアが分からなければ 1/2。
+    pub fn from_row(row: Option<usize>, pair: Option<[usize; 2]>) -> Output {
+        match row {
+            Some(0) => Output::Independent(pair.unwrap_or([0, 1])),
+            Some(1) => Output::Insert,
+            _ => Output::Legacy,
+        }
+    }
+}
+
+/// 選択欄のラベル（`labels` の形）から機器を探す。
+pub fn by_label<'a>(
+    devices: &'a [Device],
+    host: &str,
+    is_input: bool,
+    label: &str,
+) -> Option<&'a Device> {
+    let choices = of_host(devices, host, is_input);
+    let row = labels(&choices).iter().position(|l| l == label)?;
+    choices.get(row).copied()
+}
+
 /// 入力・出力のペアの候補（Tauri 版と同じ）。端数の最後は左右同じ（モノラル）。`keep` が候補に無ければ足す
 /// （チャンネル数が分からなくても、保存した番号を消さない）。
 pub fn pairs(channels: u16, keep: Option<[usize; 2]>) -> Vec<[usize; 2]> {
-    let count = usize::from(channels);
-    let mut pairs: Vec<[usize; 2]> = (0..count)
-        .step_by(2)
-        .map(|left| [left, (left + 1).min(count - 1)])
-        .collect();
+    let mut pairs = crate::mix::pairs(channels);
     if let Some(keep) = keep.filter(|keep| !pairs.contains(keep)) {
         pairs.push(keep);
     }
@@ -457,6 +485,25 @@ mod tests {
         assert_eq!(value_at(&values, 2), Some(512));
         assert_eq!(value_at(&values, 3), None);
         assert!(uses_system_rate("WASAPI") && !uses_system_rate("ASIO"));
+    }
+
+    #[test]
+    fn output_rows_round_trip_and_same_names_are_told_apart() {
+        for output in [Output::Independent([2, 3]), Output::Insert, Output::Legacy] {
+            assert_eq!(Output::from_row(Some(output.row()), Some([2, 3])), output);
+        }
+        assert_eq!(Output::from_row(Some(0), None), Output::Independent([0, 1]));
+        let twins = [
+            device("WASAPI", "Mic", true, false),
+            Device {
+                id: Some("second".into()),
+                ..device("WASAPI", "Mic", true, false)
+            },
+        ];
+        let labels = labels(&of_host(&twins, "WASAPI", true));
+        let second = by_label(&twins, "WASAPI", true, &labels[1]).unwrap();
+        assert_eq!(second.id.as_deref(), Some("second"));
+        assert!(by_label(&twins, "WASAPI", false, &labels[1]).is_none());
     }
 
     #[test]

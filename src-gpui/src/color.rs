@@ -1,23 +1,19 @@
 //! 色は `design/tokens.json`（`auralyn-core` が埋め込んで読む）の、選んでいるテーマから取る。値をここで書かない。
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use auralyn_core::design::{tokens, Theme};
 use gpui_kit::{linear_color_stop, linear_gradient, rgb, App, Background, Hsla};
 
 /// 選んでいるテーマ（`Theme::ALL` の位置）。描くたびに読むので、変えたら窓を描き直す。
-static THEME: AtomicU8 = AtomicU8::new(1);
+static THEME: AtomicUsize = AtomicUsize::new(1);
 
 pub fn theme() -> Theme {
-    Theme::ALL[usize::from(THEME.load(Ordering::Relaxed))]
+    Theme::ALL[THEME.load(Ordering::Relaxed)]
 }
 
 fn store(theme: Theme) {
-    let index = match theme {
-        Theme::Light => 0,
-        Theme::Dark => 1,
-        Theme::Gaming => 2,
-    };
+    let index = Theme::ALL.iter().position(|t| *t == theme).unwrap_or(1);
     THEME.store(index, Ordering::Relaxed);
 }
 
