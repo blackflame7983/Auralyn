@@ -1,13 +1,14 @@
 //! ホームの「配信ミックス」：声に、別の入力機器（仮想ケーブルなど）かアプリの音（オケ）を混ぜて、配信用の出力へ送る。
-//! 規則は `auralyn-ui-model` の `mix`、エンジン側は `engine/mix.rs`。時間合わせ・ミックス後の VST はまだ無い。
+//! 規則は `auralyn-ui-model` の `mix`、エンジン側は `engine/mix.rs`。配信用の手動の時間差も変えられる（合わせたときの機材を一緒に記録する）。
 
 use std::cell::Cell;
 use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
-use auralyn_ui_model::mix::{self, Change, Mix, Source};
+use auralyn_ui_model::mix::{self, Change, Field, Mix, OffsetStatus, Source};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
@@ -16,7 +17,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::engine::{Command, MixAction};
-use crate::i18n::{core, keys, Lang};
+use crate::i18n::{core, core_with, keys, Lang};
 use crate::part::{card, note, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
@@ -65,6 +66,9 @@ pub struct MixPanel {
     confirmed: Rc<Cell<bool>>,
     voice_gain: Entity<SliderState>,
     music_gain: Entity<SliderState>,
+    /// 時間差（ms）の入力欄と、最後に欄に入れた・送った値。届いた値がこれと同じなら、入力中の文字を消さない。
+    offset: Entity<InputState>,
+    shown_offset: Rc<Cell<Option<i32>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -83,6 +87,8 @@ impl MixPanel {
         let gain = |cx: &mut Context<V>| cx.new(|_| SliderState::new().min(0.).max(200.).step(1.));
         let voice_gain = gain(cx);
         let music_gain = gain(cx);
+        let offset = cx.new(|cx| InputState::new(window, cx));
+        let shown_offset: Rc<Cell<Option<i32>>> = Rc::default();
         let on_gain = |change: fn(f32) -> Change| {
             move |this: &mut V, _: Entity<SliderState>, event: &SliderEvent, _: &mut Context<V>| {
                 if let SliderEvent::Release(value) = event {
@@ -107,6 +113,20 @@ impl MixPanel {
             cx.subscribe(&music_gain, on_gain(Change::MusicGain)),
             cx.subscribe(&source, unconfirm(confirmed.clone())),
             cx.subscribe(&pair, unconfirm(confirmed.clone())),
+            // 入力に合わせて「適用」を使えるかを描き直す。Enter でも適用する。
+            cx.subscribe(&offset, {
+                let shown = shown_offset.clone();
+                move |this, state, event: &InputEvent, cx| {
+                    if let InputEvent::PressEnter { .. } = event {
+                        let typed = mix::parse_offset(&state.read(cx).value());
+                        if let Some(ms) = typed.filter(|ms| Some(*ms) != shown.get()) {
+                            shown.set(Some(ms));
+                            send(this, Command::Mix(MixAction::Levels(Change::OffsetMs(ms))));
+                        }
+                    }
+                    cx.notify();
+                }
+            }),
         ];
         Self {
             mix: None,
@@ -120,6 +140,8 @@ impl MixPanel {
             confirmed,
             voice_gain,
             music_gain,
+            offset,
+            shown_offset,
             _subscriptions: subscriptions,
         }
     }
@@ -197,6 +219,12 @@ impl MixPanel {
                     self.music_gain.update(cx, |s, cx| {
                         s.set_value(levels.music_gain * 100., window, cx)
                     });
+                    if self.shown_offset.get() != Some(levels.offset_ms) {
+                        self.shown_offset.set(Some(levels.offset_ms));
+                        self.offset.update(cx, |s, cx| {
+                            s.set_value(levels.offset_ms.to_string(), window, cx)
+                        });
+                    }
                 }
                 let first = self.mix.is_none();
                 self.mix = Some(mix);
@@ -586,12 +614,114 @@ impl MixPanel {
                                     keys::MIX_MONITOR,
                                     levels.monitor_music,
                                     Change::MonitorMusic,
-                                )),
+                                ))
+                                .child(self.offset_row(lang, &mix.offset, cx, send.clone())),
                         )
                     },
                 ),
         )
         .into_any_element()
+    }
+}
+
+impl MixPanel {
+    /// 配信用の手動の時間差：入力欄と「適用」、説明、合わせたときと機材が違うときの知らせと「確認済みにする」。
+    fn offset_row(
+        &self,
+        lang: Lang,
+        status: &OffsetStatus,
+        cx: &App,
+        send: OnCommand,
+    ) -> impl IntoElement {
+        let text = self.offset.read(cx).value();
+        let typed = mix::parse_offset(&text);
+        let changed = typed.is_some_and(|ms| Some(ms) != self.shown_offset.get());
+        // 打ち始め（空・「-」だけ）では知らせない。
+        let invalid = typed.is_none() && !matches!(text.trim(), "" | "-");
+        let label = |field: &Field| {
+            core(
+                lang,
+                match field {
+                    Field::VoiceInput => keys::MIX_OFFSET_VOICE_INPUT,
+                    Field::VoiceChannels => keys::MIX_OFFSET_CHANNELS,
+                    Field::Accompaniment => keys::MIX_MUSIC,
+                    Field::Output => keys::MIX_OFFSET_OUTPUT,
+                    Field::Broadcast => keys::MIX_OFFSET_BROADCAST,
+                },
+            )
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(field(
+                lang,
+                keys::MIX_OFFSET,
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div().w(px(120.)).child(
+                            Input::new(&self.offset).aria_label(core(lang, keys::MIX_OFFSET)),
+                        ),
+                    )
+                    .child({
+                        let send = send.clone();
+                        let shown = self.shown_offset.clone();
+                        Button::new("mix-offset-apply")
+                            .label(core(lang, keys::MIX_OFFSET_APPLY))
+                            .outline()
+                            .small()
+                            .disabled(!changed)
+                            .on_click(move |_, _, cx| {
+                                if let Some(ms) = typed {
+                                    shown.set(Some(ms));
+                                    send(Command::Mix(MixAction::Levels(Change::OffsetMs(ms))), cx);
+                                }
+                            })
+                    }),
+            ))
+            .when(invalid, |this| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(color::warning())
+                        .child(core(lang, keys::MIX_OFFSET_INVALID)),
+                )
+            })
+            .child(note(core(lang, keys::MIX_OFFSET_HELP)))
+            .map(|this| match status {
+                OffsetStatus::Unconfirmed(fields) => {
+                    let detail = if fields.is_empty() {
+                        core(lang, keys::MIX_OFFSET_LEGACY).to_owned()
+                    } else {
+                        let names: Vec<&str> = fields.iter().map(label).collect();
+                        core_with(
+                            lang,
+                            keys::MIX_OFFSET_CHANGED,
+                            &[("fields", &names.join(" / "))],
+                        )
+                    };
+                    this.child(note(format!(
+                        "{} {detail}",
+                        core(lang, keys::MIX_OFFSET_UNCONFIRMED)
+                    )))
+                    .child(
+                        div().child(
+                            Button::new("mix-offset-confirm")
+                                .label(core(lang, keys::MIX_OFFSET_CONFIRM))
+                                .outline()
+                                .small()
+                                .on_click(move |_, _, cx| {
+                                    send(Command::Mix(MixAction::ConfirmOffset), cx)
+                                }),
+                        ),
+                    )
+                }
+                OffsetStatus::Unknown => this.child(note(core(lang, keys::MIX_OFFSET_UNKNOWN))),
+                OffsetStatus::None | OffsetStatus::Confirmed => this,
+            })
     }
 }
 

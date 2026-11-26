@@ -3,13 +3,14 @@
 
 use super::*;
 use auralyn_ui_model::mix::{
-    App as MixApp, Change as MixChange, Levels as MixLevels, Mix, Route as MixRoute,
+    self as rules, App as MixApp, Change as MixChange, Levels as MixLevels, Mix, Route as MixRoute,
     Source as MixSource,
 };
 use vst_host_lib::audio_engine::mixing::{
-    Config as MixConfig, Device as MixDevice, Levels as EngineLevels, Source as EngineSource, Track,
+    Config as MixConfig, Device as MixDevice, Levels as EngineLevels, OffsetContext,
+    Source as EngineSource, Track,
 };
-use vst_host_lib::input_source::{ProcessConfig, Purpose};
+use vst_host_lib::input_source::{Config as InputSource, ProcessConfig, Purpose};
 use vst_host_lib::mixing::{Request as MixRequest, Snapshot as MixSnapshot};
 
 /// 配信ミックスの操作。
@@ -34,7 +35,10 @@ pub enum MixAction {
     Disable,
     /// 保存を読み直す（保存が読めない・書き換えられたあと。音声を止めているときだけ）。
     Reload,
+    /// 音量・ミュート・返し・時間差。時間差を変えたら、今の機材の組み合わせを一緒に記録する。
     Levels(MixChange),
+    /// 今の時間差を、今の機材で確かめたものとして記録する。
+    ConfirmOffset,
 }
 
 impl Control {
@@ -85,17 +89,8 @@ impl Control {
                 expected_epoch: epoch,
                 expected_revision: revision,
             }),
-            MixAction::Levels(change) => match self.mix_engine_levels() {
-                Some(levels) => {
-                    let levels = with(levels, change);
-                    self.mix_request(|epoch, revision| MixRequest::Levels {
-                        expected_epoch: epoch,
-                        expected_revision: revision,
-                        levels,
-                    })
-                }
-                None => Err(anyhow::anyhow!("mixing is not active")),
-            },
+            MixAction::Levels(change) => self.set_levels(Some(change)),
+            MixAction::ConfirmOffset => self.set_levels(None),
         };
         let done = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
         let _ = self.notices.send(Notice::MixDone(done));
@@ -106,7 +101,12 @@ impl Control {
     fn send_mix(&mut self, result: anyhow::Result<MixSnapshot>) {
         let notice = match result {
             Ok(snapshot) => {
-                let view = view(&snapshot);
+                // 表示の「確認済みか」だけなので、今の組み合わせを読めなければ「分からない」と出す。
+                let current = match &snapshot.engine.config {
+                    Some(config) => self.offset_context(&config.source).ok().flatten(),
+                    None => None,
+                };
+                let view = view(&snapshot, current.as_ref());
                 self.mixed = Some(snapshot);
                 Ok(view)
             }
@@ -132,6 +132,78 @@ impl Control {
             }),
             candidate_id,
         })
+    }
+
+    /// 音量・ミュート・返し・時間差を変える。時間差を変えたら今の機材の組み合わせで記録を置き換え、
+    /// 変えなければ前の記録を保つ（Tauri 版と同じ）。`None` は何も変えずに、今の機材で記録し直す（確認済みにする）。
+    fn set_levels(&mut self, change: Option<MixChange>) -> anyhow::Result<MixSnapshot> {
+        let confirm = change.is_none();
+        let previous = self
+            .mix_engine_levels()
+            .ok_or_else(|| anyhow::anyhow!("mixing is not active"))?;
+        let source = self
+            .mixed
+            .as_ref()
+            .and_then(|s| s.engine.config.as_ref())
+            .map(|config| config.source.clone())
+            .ok_or_else(|| anyhow::anyhow!("mixing is not active"))?;
+        let mut levels = match change {
+            Some(change) => with(previous.clone(), change),
+            None => previous.clone(),
+        };
+        if confirm || levels.offset_ms != previous.offset_ms {
+            let context = self.offset_context(&source)?;
+            anyhow::ensure!(
+                context.is_some() || !confirm,
+                "the current audio devices are unknown"
+            );
+            levels.offset_context = context;
+        }
+        self.mix_request(|epoch, revision| MixRequest::Levels {
+            expected_epoch: epoch,
+            expected_revision: revision,
+            levels,
+        })
+    }
+
+    /// 今の機材の組み合わせ（Tauri 版 `currentOffsetContext` と同じ作り方）。`source` は適用中のオケの取り込み口。
+    /// 声にアプリの音を使っている・まだ開始していないときは `None`。配信用の出力を読めなければ `Err`（Tauri 版も止める）。
+    fn offset_context(&mut self, source: &EngineSource) -> anyhow::Result<Option<OffsetContext>> {
+        let Some(audio) = self.host.get_state().config else {
+            return Ok(None);
+        };
+        let broadcast_id = self.host.live_output(None)?.config.device_id;
+        if matches!(audio.input_source, Some(InputSource::ProcessLoopback(_))) {
+            return Ok(None);
+        }
+        let ids = (
+            rules::identity(audio.input_id.as_deref(), audio.input.as_deref()),
+            rules::identity(audio.output_id.as_deref(), audio.output.as_deref()),
+            audio.routing.and_then(|routing| routing.input_channels),
+        );
+        let (Some(voice_input_id), Some(output_id), Some(voice_channels)) = ids else {
+            return Ok(None);
+        };
+        // 区切り文字を含む ID でもぶつからないよう JSON の配列にする（Tauri 版と同じ文字列になる）。
+        let accompaniment = match source {
+            EngineSource::Device(device) => serde_json::json!([
+                "device",
+                device.input_id,
+                device.input_channels[0],
+                device.input_channels[1]
+            ]),
+            EngineSource::ProcessLoopback(app) => {
+                serde_json::json!(["process_loopback", app.app_key, app.raw_endpoint_id])
+            }
+        }
+        .to_string();
+        Ok(Some(OffsetContext {
+            voice_input_id,
+            voice_channels,
+            accompaniment,
+            output_id,
+            broadcast_id,
+        }))
     }
 
     /// 最後に読んだ世代を付けて頼む。まだ読んでいなければ先に読む。
@@ -174,6 +246,7 @@ fn with(levels: EngineLevels, change: MixChange) -> EngineLevels {
             muted: next.music_muted,
         },
         monitor_accompaniment: next.monitor_music,
+        offset_ms: next.offset_ms,
         ..levels
     }
 }
@@ -185,6 +258,17 @@ fn ui_levels(levels: &EngineLevels) -> MixLevels {
         music_gain: levels.accompaniment.gain,
         music_muted: levels.accompaniment.muted,
         monitor_music: levels.monitor_accompaniment,
+        offset_ms: levels.offset_ms,
+    }
+}
+
+fn ui_context(context: &OffsetContext) -> rules::OffsetContext {
+    rules::OffsetContext {
+        voice_input_id: context.voice_input_id.clone(),
+        voice_channels: context.voice_channels,
+        accompaniment: context.accompaniment.clone(),
+        output_id: context.output_id.clone(),
+        broadcast_id: context.broadcast_id.clone(),
     }
 }
 
@@ -219,9 +303,24 @@ fn app(app: vst_host_lib::mixing::App) -> MixApp {
     }
 }
 
-fn view(snapshot: &MixSnapshot) -> Mix {
+/// `current` は今の機材の組み合わせ（分からなければ `None`）。
+fn view(snapshot: &MixSnapshot, current: Option<&OffsetContext>) -> Mix {
     let active = snapshot.engine.config.as_ref();
+    let offset = match active {
+        Some(config) => rules::offset_status(
+            config.levels.offset_ms,
+            config
+                .levels
+                .offset_context
+                .as_ref()
+                .map(ui_context)
+                .as_ref(),
+            current.map(ui_context).as_ref(),
+        ),
+        None => rules::OffsetStatus::None,
+    };
     Mix {
+        offset,
         active: active.map(source),
         saved: snapshot.saved_config.as_ref().map(source),
         levels: active
