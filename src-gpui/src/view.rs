@@ -38,6 +38,7 @@ use crate::vst::VstPage;
 use auralyn_ui_model::connect::Device;
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
+use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
@@ -668,7 +669,17 @@ impl MainView {
                 self.engine.send(Command::SetOutputGain(next));
             }
             A::NoiseToggle => self.engine.send(Command::ToggleNoise),
-            A::SingingOn | A::TalkOn => {}
+            // Tauri 版と同じく、選べないとき（未登録・VST の組み合わせ付き・切り替えの途中）は何もしない。
+            A::SingingOn | A::TalkOn => {
+                let mode = if action == A::SingingOn {
+                    LiveMode::Singing
+                } else {
+                    LiveMode::Talk
+                };
+                if self.modes.can_select(mode) {
+                    self.engine.send(Command::Modes(ModeAction::Select(mode)));
+                }
+            }
         }
     }
 

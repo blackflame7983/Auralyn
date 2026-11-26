@@ -37,11 +37,6 @@ impl Action {
             _ => return None,
         })
     }
-
-    /// GPUI 版で動かせるか。歌・雑談の切り替えは GPUI 版にまだ無いので、登録しない（押しても何も起きないキーを奪わない）。
-    pub fn supported(self) -> bool {
-        !matches!(self, Self::SingingOn | Self::TalkOn)
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

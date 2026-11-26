@@ -118,16 +118,12 @@ mod imp {
             let shortcuts_error = match loaded {
                 Ok(bindings) => {
                     for binding in bindings {
-                        let error = if binding.action.supported() {
-                            manager
-                                .as_ref()
-                                .map_err(Clone::clone)
-                                .and_then(|manager| register(manager, &binding.shortcut))
-                                .map(|id| hotkeys.push((id, binding.action)))
-                                .err()
-                        } else {
-                            None
-                        };
+                        let error = manager
+                            .as_ref()
+                            .map_err(Clone::clone)
+                            .and_then(|manager| register(manager, &binding.shortcut))
+                            .map(|id| hotkeys.push((id, binding.action)))
+                            .err();
                         registered.push(Registered { binding, error });
                     }
                     None

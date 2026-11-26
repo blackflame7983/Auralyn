@@ -3675,7 +3675,6 @@
   "gpuiShell.setupImportInvalid": "This file could not be read as a setup.",
   "gpuiShell.voiceNeedsAudio": "Start audio first to record.",
   "gpuiShell.shortcutsUnreadable": "Could not read the saved shortcuts, so none are registered",
-  "gpuiShell.shortcutUnsupported": "Not available in the GPUI version yet",
   "gpuiShell.shortcutsEditInTauri": "For now, change keys in the Tauri version settings (they share the same file). Restart the GPUI version after changing them.",
   "gpuiShell.liveInactive": "The stream output is stopped. To change the output, stop audio, save, then start again.",
   "gpuiShell.liveSplitKept": "For now, fine-tune your own singing and talk shaping in the Tauri version. The first time you separate them, defaults are used; existing values are kept.",

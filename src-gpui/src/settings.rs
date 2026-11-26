@@ -111,14 +111,10 @@ pub fn shortcuts(lang: Lang, saved: &[Registered], error: Option<&str>) -> impl 
                 this.child(note(core(lang, keys::SHORTCUTS_EMPTY)))
             })
             .children(saved.iter().map(|saved| {
-                let state = if !saved.binding.action.supported() {
-                    Some(core(lang, keys::SHORTCUT_UNSUPPORTED).to_owned())
-                } else {
-                    saved
-                        .error
-                        .as_ref()
-                        .map(|e| format!("{}: {e}", core(lang, keys::UNAVAILABLE)))
-                };
+                let state = saved
+                    .error
+                    .as_ref()
+                    .map(|e| format!("{}: {e}", core(lang, keys::UNAVAILABLE)));
                 div()
                     .flex()
                     .justify_between()
