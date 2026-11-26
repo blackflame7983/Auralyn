@@ -27,10 +27,55 @@ struct Folders {
     open: Option<bool>,
 }
 
-pub struct ScanFolders {
-    config_dir: PathBuf,
+/// 一覧の状態と保存先。クリックと Enter の両方から使うので、まとめて渡す。
+#[derive(Clone)]
+struct Store {
+    config_dir: Rc<PathBuf>,
     folders: Rc<RefCell<Folders>>,
     draft: Entity<InputState>,
+}
+
+impl Store {
+    /// 保存できたら一覧を替えて `true`（このあと探し直す）。断られたら理由を残す。
+    fn commit(&self, next: Result<Vec<String>, Reject>) -> bool {
+        let mut folders = self.folders.borrow_mut();
+        let next = match next {
+            Ok(next) => next,
+            Err(reject) => {
+                folders.error = Some(reject_key(reject));
+                return false;
+            }
+        };
+        if let Err(error) = crate::scan_file::save(&self.config_dir, &next) {
+            log::warn!("探すフォルダーを保存できません: {error}");
+            folders.error = Some(keys::SCAN_FOLDER_SAVE_FAILED);
+            return false;
+        }
+        folders.list = next;
+        folders.error = None;
+        true
+    }
+
+    fn add(&self, window: &mut Window, cx: &mut App) -> bool {
+        let raw = self.draft.read(cx).value().to_string();
+        let next = scan_folders::add(&self.folders.borrow().list, &raw);
+        let added = self.commit(next);
+        if added {
+            self.draft
+                .update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        window.refresh();
+        added
+    }
+
+    fn remove(&self, path: &str) -> bool {
+        let next = scan_folders::remove(&self.folders.borrow().list, path);
+        self.commit(Ok(next))
+    }
+}
+
+pub struct ScanFolders {
+    store: Store,
     /// 前のスキャンで探さなかった追加のフォルダー。
     skipped: Vec<SkippedScanRoot>,
 }
@@ -38,14 +83,25 @@ pub struct ScanFolders {
 impl ScanFolders {
     pub fn new<V: 'static>(config_dir: &Path, window: &mut Window, cx: &mut Context<V>) -> Self {
         Self {
-            config_dir: config_dir.to_path_buf(),
-            folders: Rc::new(RefCell::new(Folders {
-                list: crate::scan_file::load(config_dir),
-                ..Folders::default()
-            })),
-            draft: cx.new(|cx| InputState::new(window, cx)),
+            store: Store {
+                config_dir: Rc::new(config_dir.to_path_buf()),
+                folders: Rc::new(RefCell::new(Folders {
+                    list: crate::scan_file::load(config_dir),
+                    ..Folders::default()
+                })),
+                draft: cx.new(|cx| InputState::new(window, cx)),
+            },
             skipped: Vec::new(),
         }
+    }
+
+    pub fn draft(&self) -> &Entity<InputState> {
+        &self.store.draft
+    }
+
+    /// 入力欄のフォルダーを足す。足せたら `true`（探し直す）。
+    pub fn add(&self, window: &mut Window, cx: &mut App) -> bool {
+        self.store.add(window, cx)
     }
 
     pub fn set_skipped(&mut self, skipped: Vec<SkippedScanRoot>) {
@@ -66,12 +122,12 @@ impl ScanFolders {
 
     /// `busy` はスキャン中（変えられない）。
     pub fn render(&self, lang: Lang, busy: bool, send: OnCommand) -> impl IntoElement {
-        let folders = self.folders.borrow();
+        let folders = self.store.folders.borrow();
         let has_issue = folders.list.iter().any(|path| self.issue(path).is_some());
         let open = folders.open.unwrap_or(has_issue);
         let count = STANDARD.len() + folders.list.len();
         let toggle = {
-            let state = self.folders.clone();
+            let state = self.store.folders.clone();
             move |_: &ClickEvent, window: &mut Window, _: &mut App| {
                 state.borrow_mut().open = Some(!open);
                 window.refresh();
@@ -101,46 +157,16 @@ impl ScanFolders {
         folders: &Folders,
         send: OnCommand,
     ) -> impl IntoElement {
-        let commit = {
-            let state = self.folders.clone();
-            let config_dir = self.config_dir.clone();
-            move |next: Result<Vec<String>, Reject>, cx: &mut App| -> bool {
-                let mut folders = state.borrow_mut();
-                let next = match next {
-                    Ok(next) => next,
-                    Err(reject) => {
-                        folders.error = Some(reject_key(reject));
-                        return false;
-                    }
-                };
-                if let Err(error) = crate::scan_file::save(&config_dir, &next) {
-                    log::warn!("探すフォルダーを保存できません: {error}");
-                    folders.error = Some(keys::SCAN_FOLDER_SAVE_FAILED);
-                    return false;
-                }
-                folders.list = next;
-                folders.error = None;
-                drop(folders);
-                send(Command::ScanPlugins, cx);
-                true
-            }
-        };
-        let commit = Rc::new(commit);
         let add = {
-            let commit = commit.clone();
-            let state = self.folders.clone();
-            let draft = self.draft.clone();
+            let store = self.store.clone();
+            let send = send.clone();
             move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-                let raw = draft.read(cx).value().to_string();
-                let next = scan_folders::add(&state.borrow().list, &raw);
-                if commit(next, cx) {
-                    draft.update(cx, |input, cx| input.set_value("", window, cx));
+                if store.add(window, cx) {
+                    send(Command::ScanPlugins, cx);
                 }
-                window.refresh();
             }
         };
         let path_label = core(lang, keys::SCAN_FOLDER_PATH);
-        let disabled = busy;
         div()
             .flex()
             .flex_col()
@@ -157,12 +183,13 @@ impl ScanFolders {
             }))
             .children(folders.list.iter().enumerate().map(|(index, path)| {
                 let remove = {
-                    let commit = commit.clone();
-                    let state = self.folders.clone();
+                    let store = self.store.clone();
+                    let send = send.clone();
                     let path = path.clone();
                     move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-                        let next = scan_folders::remove(&state.borrow().list, &path);
-                        commit(Ok(next), cx);
+                        if store.remove(&path) {
+                            send(Command::ScanPlugins, cx);
+                        }
                         window.refresh();
                     }
                 };
@@ -194,7 +221,7 @@ impl ScanFolders {
                             ))
                             .outline()
                             .small()
-                            .disabled(disabled)
+                            .disabled(busy)
                             .on_click(remove),
                     )
             }))
@@ -213,16 +240,16 @@ impl ScanFolders {
                             .gap_1()
                             .child(div().text_sm().child(path_label))
                             .child(
-                                Input::new(&self.draft)
+                                Input::new(&self.store.draft)
                                     .aria_label(path_label)
-                                    .disabled(disabled),
+                                    .disabled(busy),
                             ),
                     )
                     .child(
                         Button::new("scan-folder-add")
                             .label(core(lang, keys::SCAN_FOLDER_ADD))
                             .outline()
-                            .disabled(disabled)
+                            .disabled(busy)
                             .on_click(add),
                     ),
             )

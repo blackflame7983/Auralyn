@@ -167,6 +167,19 @@ impl MainView {
         }
         let vst = VstPage::new(window, cx);
         let scan_folders = crate::vst_folders::ScanFolders::new(&config_dir, window, cx);
+        cx.subscribe_in(
+            scan_folders.draft(),
+            window,
+            |this, _, event: &InputEvent, window, cx| {
+                if let InputEvent::PressEnter { .. } = event {
+                    if !this.vst.scanning() && this.scan_folders.add(window, cx) {
+                        this.send(Command::ScanPlugins);
+                    }
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
         let setups = SetupsPanel::new(window, cx);
         cx.subscribe(&setups.name, |this, _, event: &InputEvent, cx| {
             if let InputEvent::PressEnter { .. } = event {
@@ -576,6 +589,7 @@ impl MainView {
             }
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
+                self.scan_folders.set_skipped(Vec::new());
                 self.message = Some(format!("scan_plugins: {message}"));
             }
             Notice::Devices { devices, saved } => {
