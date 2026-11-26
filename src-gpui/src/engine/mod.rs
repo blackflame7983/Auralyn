@@ -30,10 +30,10 @@ use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
 use vst_host_lib::audio_engine::reverb::ReverbParams;
 use vst_host_lib::audio_engine::singing::SingingParams;
 use vst_host_lib::audio_engine::true_peak_limiter::Config as TruePeakConfig;
-use vst_host_lib::input;
 use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};
 use vst_host_lib::obs::{self, ReachReceipt};
 use vst_host_lib::vst_host::{presets, scanner};
+use vst_host_lib::{devices, input};
 
 use crate::store;
 
@@ -440,6 +440,8 @@ impl Engine {
                     mixed: None,
                     modes_sequence: 0,
                     posted: None,
+                    scan: None,
+                    devices_wanted: false,
                     sound: None,
                     read_only: false,
                     exited,
@@ -532,7 +534,21 @@ struct Control {
     modes_sequence: u64,
     /// 最後に読んだミックス後の VST の状態（世代）。
     posted: Option<vst_host_lib::post_mix::Snapshot>,
+    /// 走査中の機器の一覧。待つ間も命令は受け付ける。
+    scan: Option<Scan>,
+    /// 画面が一覧を待っている。子が替わって走査が途切れたら、次に始まったときに頼み直す。
+    devices_wanted: bool,
 }
+
+struct Scan {
+    ticket: devices::Scan,
+    deadline: Instant,
+    next_poll: Instant,
+}
+
+/// 機器の走査の様子を見に行く間隔と、あきらめるまでの時間（Tauri 版と同じ）。
+const SCAN_POLL: Duration = Duration::from_millis(100);
+const SCAN_LIMIT: Duration = Duration::from_secs(35);
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
 /// （同じまとまりの音量の反映待ちに、緊急ミュートを待たせない）。
@@ -556,12 +572,27 @@ impl Control {
         self.restore_saved();
         self.restore_sound();
         self.start_saved();
-        while let Ok(first) = commands.recv() {
-            let mut pending = vec![first];
-            pending.extend(commands.try_iter());
-            for command in order(&pending) {
-                self.execute(command);
+        loop {
+            let first = if self.scan.is_some() {
+                match commands.recv_timeout(SCAN_POLL) {
+                    Ok(command) => Some(command),
+                    Err(flume::RecvTimeoutError::Timeout) => None,
+                    Err(flume::RecvTimeoutError::Disconnected) => break,
+                }
+            } else {
+                match commands.recv() {
+                    Ok(command) => Some(command),
+                    Err(_) => break,
+                }
+            };
+            if let Some(first) = first {
+                let mut pending = vec![first];
+                pending.extend(commands.try_iter());
+                for command in order(&pending) {
+                    self.execute(command);
+                }
             }
+            self.poll_scan();
         }
     }
 
@@ -641,6 +672,9 @@ impl Control {
         input: Option<String>,
         output: Option<String>,
     ) {
+        // 開始で子が替わると走査の受付票は失効するので、捨てて（成功したら）頼み直す。
+        // 同じ子なら、頼み直しても同じ走査を待ち続ける。
+        self.scan = None;
         if let Err(e) = result {
             let _ = self.notices.send(Notice::NotStarted(
                 vst_host_lib::audio::localize_audio_error(e.to_string()),
@@ -648,6 +682,9 @@ impl Control {
             return;
         }
         let _ = self.notices.send(Notice::Started { input, output });
+        if self.devices_wanted {
+            self.list_devices();
+        }
         if let Some(config) = self.host.get_state().config {
             if let Err(e) = crate::usage_file::remember(&self.config_dir, &config) {
                 log::warn!("使い道の接続を残せません: {e}");
@@ -825,26 +862,75 @@ impl Control {
         }
     }
 
-    // shortcut: 一覧の取得（初回は子への GetDevices）を命令のスレッドで待つので、その間は緊急ミュートも待たされる。数秒を超えるなら Tauri 版の begin/poll の走査を pub にして使う。
+    /// 一覧が手元に無ければ子に走査を頼み、結果は `poll_scan` で受け取る（走査中に重ねて頼まない）。
     fn list_devices(&mut self) {
-        let devices = match self.host.enumerate_devices(false) {
-            Ok(list) => list
-                .inputs
-                .into_iter()
-                .chain(list.outputs)
-                .map(|d| Device {
-                    host: d.host,
-                    name: d.name,
-                    id: d.id,
-                    is_input: d.is_input,
-                    is_default: d.is_default,
-                    channels: d.channels,
-                    rates: d.sample_rate_ranges,
-                    buffers: d.buffer_size_range,
-                })
-                .collect(),
-            Err(e) => return self.fail("enumerate_devices", e),
+        self.devices_wanted = true;
+        if self.scan.is_some() {
+            return;
+        }
+        match devices::begin(&mut self.host) {
+            Ok(devices::Start::Ready(list)) => self.send_devices(list),
+            Ok(devices::Start::Pending(ticket)) => {
+                let now = Instant::now();
+                self.scan = Some(Scan {
+                    ticket,
+                    deadline: now + SCAN_LIMIT,
+                    next_poll: now + SCAN_POLL,
+                });
+            }
+            Err(e) => {
+                self.devices_wanted = false;
+                self.fail("enumerate_devices", e);
+            }
+        }
+    }
+
+    fn poll_scan(&mut self) {
+        let now = Instant::now();
+        let Some(mut scan) = self.scan.take_if(|scan| now >= scan.next_poll) else {
+            return;
         };
+        let error = match devices::poll(&mut self.host, &scan.ticket) {
+            Ok(Some(list)) => return self.send_devices(list),
+            Ok(None) if now < scan.deadline => {
+                scan.next_poll = now + SCAN_POLL;
+                self.scan = Some(scan);
+                return;
+            }
+            Ok(None) => {
+                anyhow::anyhow!("デバイス検出が時間切れになりました。再試行してください。")
+            }
+            Err(e) => e,
+        };
+        if let Err(cancel) = devices::cancel(&mut self.host, &scan.ticket) {
+            log::warn!("機器の走査を取り消せません: {cancel}");
+        }
+        // 子が落ちて途切れたなら、復旧の案内に任せ、次に始まったときに頼み直す。
+        if self.exited.load(Ordering::SeqCst) {
+            log::warn!("子が落ちて機器の走査が途切れました: {error}");
+            return;
+        }
+        self.devices_wanted = false;
+        self.fail("enumerate_devices", error);
+    }
+
+    fn send_devices(&mut self, list: vst_host_lib::audio::AudioDeviceList) {
+        self.devices_wanted = false;
+        let devices = list
+            .inputs
+            .into_iter()
+            .chain(list.outputs)
+            .map(|d| Device {
+                host: d.host,
+                name: d.name,
+                id: d.id,
+                is_input: d.is_input,
+                is_default: d.is_default,
+                channels: d.channels,
+                rates: d.sample_rate_ranges,
+                buffers: d.buffer_size_range,
+            })
+            .collect();
         let saved = self
             .host
             .read_saved_audio_config()
@@ -871,6 +957,10 @@ impl Control {
             Err(e) => Notice::StopFailed(e.to_string()),
         };
         let _ = self.notices.send(notice);
+        // 止めるときに子を終わらせていれば、走査は失効している。同じ子なら同じ走査を待ち続ける。
+        if self.scan.take().is_some() {
+            self.list_devices();
+        }
     }
 
     fn fail(&self, command: &'static str, error: anyhow::Error) {

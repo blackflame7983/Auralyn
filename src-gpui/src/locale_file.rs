@@ -23,7 +23,7 @@ pub fn save(config_dir: &Path, lang: Lang) -> std::io::Result<()> {
     crate::store::write_atomic(&config_dir.join(FILE), text.as_bytes())
 }
 
-fn code(lang: Lang) -> &'static str {
+pub fn code(lang: Lang) -> &'static str {
     match lang {
         Lang::Ja => "ja",
         Lang::En => "en",
