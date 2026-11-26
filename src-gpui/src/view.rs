@@ -823,6 +823,7 @@ impl Render for MainView {
                                             lang,
                                             self.desktop.tray_error.is_none(),
                                         ))
+                                        .child(settings::glossary(lang))
                                         .child(settings::shortcuts(
                                             lang,
                                             &self.desktop.shortcuts,

@@ -1,9 +1,11 @@
 //! 設定の画面：表示言語と、Windows との連携（トレイ・グローバルショートカット）の状態と、版。診断（稼働統計）と、読み込みを止めた VST のリセット。
-//! 困ったとき（症状ごとの次の1手と、公式サイトのドキュメントへのリンク）。
+//! 困ったとき（症状ごとの次の1手と、公式サイトのドキュメントへのリンク）と、言葉の意味（user-docs の用語集から）。
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
 use auralyn_ui_model::diagnostics::Stats;
-use auralyn_ui_model::docs::{self, Trouble};
+use std::sync::LazyLock;
+
+use auralyn_ui_model::docs::{self, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
@@ -370,4 +372,49 @@ fn trouble_text(lang: Lang, trouble: Trouble) -> (&'static str, String) {
             ),
         ),
     }
+}
+
+/// 用語集（`user-docs` の原稿から作る。アプリ側に別の説明を書かない）。
+static GLOSSARY: LazyLock<[Vec<Term>; 2]> = LazyLock::new(|| {
+    [
+        docs::glossary(include_str!("../../user-docs/ja/glossary.md")),
+        docs::glossary(include_str!("../../user-docs/en/glossary.md")),
+    ]
+});
+
+/// 言葉の意味：各用語の短い説明と、ドキュメントの該当箇所へのリンク。
+pub fn glossary(lang: Lang) -> impl IntoElement {
+    let english = lang == Lang::En;
+    card(
+        core(lang, keys::HELP_TERMS),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .children(GLOSSARY[usize::from(english)].iter().map(|term| {
+                let target = format!("glossary#{}", term.anchor);
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(term.title.clone()),
+                    )
+                    .child(note(term.summary.clone()))
+                    .child(
+                        div().child(
+                            Button::new(SharedString::from(format!("term-{}", term.anchor)))
+                                .label(core(lang, keys::HELP_MORE))
+                                .link()
+                                .on_click(move |_, _, cx| {
+                                    cx.open_url(&docs::url(&target, english))
+                                }),
+                        ),
+                    )
+            })),
+    )
 }
