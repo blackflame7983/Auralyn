@@ -222,12 +222,13 @@ fn heading(text: &'static str) -> impl IntoElement {
         .child(text)
 }
 
+/// 周波数の札（「 [44/48/96kHz]」）は欄に収まらず機器名が切れるので外す（上の帯と同じ）。
 fn device(name: String) -> impl IntoElement {
     div()
         .text_xs()
         .text_color(color::muted())
         .truncate()
-        .child(name)
+        .child(auralyn_ui_model::music::without_rate(&name).to_owned())
 }
 
 fn state_text(state: MeterState, lang: Lang) -> &'static str {
