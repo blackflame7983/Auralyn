@@ -30,6 +30,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
+use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
@@ -74,6 +75,10 @@ pub struct MainView {
     vst: VstPage,
     setups: SetupsPanel,
     voice: VoicePanel,
+    /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
+    stats: Option<Stats>,
+    /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
+    cleared: Option<Result<(), String>>,
     sound: SoundPage,
     _ticker: Task<()>,
 }
@@ -224,6 +229,8 @@ impl MainView {
             vst,
             setups,
             voice: VoicePanel::new(window, cx),
+            stats: None,
+            cleared: None,
             sound,
             _ticker: ticker,
         }
@@ -350,6 +357,13 @@ impl MainView {
                 }
             }
             Notice::RecordingSaved => self.voice.saved(),
+            Notice::Stats(stats) => self.stats = stats,
+            Notice::ExclusionsCleared(result) => {
+                if let Err(e) = &result {
+                    log::warn!("読み込みを止めた VST をリセットできません: {e}");
+                }
+                self.cleared = Some(result);
+            }
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
@@ -377,7 +391,11 @@ impl MainView {
             (true, false) => [&mut self.input, &mut self.output, &mut self.processed]
                 .into_iter()
                 .for_each(Meter::stop),
-            _ => {}
+            _ => return,
+        }
+        // 音が流れ始めた・止まったら、見えている統計を読み直す（前の値を出し続けない）。
+        if self.page == Page::Settings {
+            self.engine.send(Command::ReadStats);
         }
     }
 
@@ -410,6 +428,10 @@ impl MainView {
         }
         if page == Page::Vst {
             self.engine.send(Command::ListProfiles);
+        }
+        if page == Page::Settings {
+            self.cleared = None;
+            self.engine.send(Command::ReadStats);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);
@@ -583,6 +605,20 @@ impl Render for MainView {
                                             })
                                         }
                                     },
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_6()
+                                        .child(settings::diagnostics(
+                                            lang,
+                                            self.stats.as_ref(),
+                                            send.clone(),
+                                        ))
+                                        .child(settings::plugins(
+                                            lang,
+                                            self.cleared.as_ref(),
+                                            send,
+                                        )),
                                 )),
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
