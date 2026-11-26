@@ -22,6 +22,7 @@ use crate::desktop::{self, Action, Desktop};
 use crate::engine::{Command, Engine, Listen, Notice};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
+use crate::live::LivePanel;
 use crate::locale_file;
 use crate::part::OnCommand;
 use crate::settings;
@@ -44,6 +45,8 @@ mod safety;
 const FRAME: Duration = Duration::from_millis(16);
 /// ピーク保護の反映待ちを読み直す間隔（Tauri 版の `usePeakProtectionSync` と同じ）。
 const PEAK_POLL: Duration = Duration::from_millis(500);
+/// 配信用の出力の状態を読み直す間隔（Tauri 版の `LiveOutputPanel` と同じ）。
+const LIVE_POLL: Duration = Duration::from_secs(1);
 /// 右の列の幅（`src/index.css` の `--safety-column-width`）。
 const SAFETY_COLUMN_WIDTH: f32 = 212.;
 
@@ -66,6 +69,8 @@ pub struct MainView {
     level_seq: u64,
     /// ピーク保護の反映待ちを最後に読み直した時刻。
     peak_polled: Instant,
+    /// 配信用の出力を最後に読み直した時刻。
+    live_polled: Instant,
     /// 窓をトレイへ隠している。隠れている間はメーターを計算しない（DESIGN.md 10.6）。
     hidden: Rc<Cell<bool>>,
     input_gain: Entity<SliderState>,
@@ -76,6 +81,7 @@ pub struct MainView {
     vst: VstPage,
     setups: SetupsPanel,
     voice: VoicePanel,
+    live: LivePanel,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
@@ -232,6 +238,7 @@ impl MainView {
             flow: Flow::default(),
             level_seq: 0,
             peak_polled: now,
+            live_polled: now,
             hidden,
             input_gain,
             output_gain,
@@ -240,6 +247,7 @@ impl MainView {
             vst,
             setups,
             voice: VoicePanel::new(window, cx),
+            live: LivePanel::new(window, cx),
             stats: None,
             cleared: None,
             sound,
@@ -252,6 +260,14 @@ impl MainView {
         for notice in self.engine.notices.try_iter().collect::<Vec<_>>() {
             self.apply(notice, window, cx);
             changed = true;
+        }
+        // 接続の画面を出している間は、配信用の出力が届いているかを読み直す。
+        if self.page == Page::Connect
+            && !self.hidden.get()
+            && self.live_polled.elapsed() >= LIVE_POLL
+        {
+            self.live_polled = Instant::now();
+            self.engine.send(Command::LiveOutput(None));
         }
         // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
@@ -379,9 +395,13 @@ impl MainView {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
             }
-            Notice::Devices { devices, saved } => self
-                .connect
-                .set_devices(devices, saved, self.lang, window, cx),
+            Notice::Devices { devices, saved } => {
+                self.live.set_devices(&devices, self.lang, window, cx);
+                self.connect
+                    .set_devices(devices, saved, self.lang, window, cx)
+            }
+            Notice::Live(result) => self.live.set(result, self.lang, window, cx),
+            Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
                 // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
                 // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
@@ -432,6 +452,8 @@ impl MainView {
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
         if page == Page::Connect {
             self.engine.send(Command::ListDevices);
+            self.live_polled = Instant::now();
+            self.engine.send(Command::LiveOutput(None));
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
@@ -673,17 +695,21 @@ impl Render for MainView {
                                         cx,
                                         send,
                                     )),
-                                Page::Connect => this.child(self.connect.render(
-                                    self.phase,
-                                    lang,
-                                    cx,
-                                    move |_, cx| {
-                                        entity.update(cx, |this, cx| {
-                                            this.start_chosen(cx);
-                                            cx.notify();
-                                        })
-                                    },
-                                )),
+                                Page::Connect => this
+                                    .child(self.connect.render(
+                                        self.phase,
+                                        lang,
+                                        cx,
+                                        move |_, cx| {
+                                            entity.update(cx, |this, cx| {
+                                                this.start_chosen(cx);
+                                                cx.notify();
+                                            })
+                                        },
+                                    ))
+                                    .child(
+                                        div().max_w(px(560.)).child(self.live.render(lang, send)),
+                                    ),
                             }),
                     ),
             )

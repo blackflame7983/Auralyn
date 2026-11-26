@@ -18,6 +18,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | `src/sound.rs` | 音づくりの画面。ノイズ低減（ON/OFF・弱／強・環境に合わせる（測定値・会場）・抑制の強さ・声を守る）と「声を整える」（ON/OFF・種類・整え具合）と、大きな音を抑える（ON/OFF・天井・復帰時間。アプリの中だけで持つ）。値の読み方は `auralyn-ui-model` の `sound`、保存は `engine/sound.rs` の `gpui_sound.json` |
 | `src/measure.rs` | 周囲の音の測定（3秒測る・中止・話していないと確かめて採用）。測定値・会場のときに音づくりの詳細に出す。規則は `auralyn-ui-model` の `measurement` |
 | `src/setups.rs` | 保存した構成（Tauri 版と同じ `presets/`）。選んで適用・直前の状態に戻す・名前を付けて保存・削除・ファイルへ書き出す／ファイルから読み込む。VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。規則は `auralyn-ui-model` の `profile` |
+| `src/live.rs` | 接続の画面の「自分用と配信用に分ける」。加工後の声を別の WASAPI 出力（OBS が取り込む）へも送る出力先・自分用と配信用の音量・自分だけ聴かないを選び、二重取り込みを確かめてから保存する（Tauri 版と同じ `live_output.json`）。画面を出している間は 1 秒ごとに状態を読む。自分用の歌・雑談の加工（処理を分ける）はまだ変えない（保存しても保つ）。エンジン側は `engine/live.rs`、規則は `auralyn-ui-model` の `live_output` |
 | `src/voice.rs` | ボイスチェック（音づくりの画面の下）。声を最大 10 秒録り、加工前・加工後を WAV で保存し、配信に乗らない別の出力先で聴き比べる（出力先が配信・通話に取り込まれていないと確かめるまで鳴らさない）。録音・保存・試聴は音声が流れているときだけで、画面を離れる・窓を隠すと録音を止め試聴を閉じる。試聴のセッションは `engine/voice.rs`。波形・解析・候補の比較はまだ無い。規則は `auralyn-ui-model` の `voice_check` |
 | `src/vst.rs` | VST の画面。並び（ON/OFF・音量・ミュート・上へ／下へ・編集・削除）と、スキャンした候補からの追加。候補の検索と入れ替えの規則は `auralyn-ui-model` の `rack`。並びは `engine/slots.rs` が設定のフォルダの `gpui_rack.json` に保存する |
 | `src/assets.rs` | アイコン。GPUI Kit の既定の組に無いものだけを `icon_assets!` で足す |
