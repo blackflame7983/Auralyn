@@ -47,6 +47,7 @@ use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
+use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::recovery::{Choice, Exit};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::shortcuts;
@@ -181,14 +182,19 @@ impl MainView {
             this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
         })
         .detach();
-        for limit in [&sound.ceiling, &sound.release] {
-            cx.subscribe(limit, |this, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Release(_) = event {
-                    let command = this.sound.peak_limits(cx);
-                    this.send(command);
-                }
-            })
-            .detach();
+        for (limit, panel) in [
+            (Limit::Sample, &sound.peak),
+            (Limit::TruePeak, &sound.true_peak),
+        ] {
+            for slider in [&panel.ceiling, &panel.release] {
+                cx.subscribe(slider, move |this, _, event: &SliderEvent, cx| {
+                    if let SliderEvent::Release(_) = event {
+                        let command = this.sound.limiter(limit).limits(cx);
+                        this.send(command);
+                    }
+                })
+                .detach();
+            }
         }
         cx.subscribe_in(
             &connect.host,
@@ -355,11 +361,13 @@ impl MainView {
             self.modes_polled = Instant::now();
             self.engine.send(Command::Modes(ModeAction::Read));
         }
-        // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
+        // 反映待ちのあいだと ON の true-peak 制限は、Tauri 版と同じ 500ms ごとに読み直す（`peak::polls`）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
-            if self.sound.peak_pending() {
-                self.peak_polled = Instant::now();
-                self.engine.send(Command::ReadPeak);
+            for limit in Limit::ALL {
+                if !self.hidden.get() && self.sound.limiter(limit).polls() {
+                    self.peak_polled = Instant::now();
+                    self.engine.send(Command::ReadPeak(limit));
+                }
             }
             let open = self
                 .voice
@@ -476,7 +484,7 @@ impl MainView {
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
-            Notice::Peak(peak) => self.sound.set_peak(peak, window, cx),
+            Notice::Peak(limit, peak) => self.sound.limiter(limit).set(peak, window, cx),
             Notice::Measurement(reading) => self.sound.measure.set(reading),
             Notice::Catalog(Ok(candidates)) => {
                 self.vst.set_catalog(&candidates, window, cx);
@@ -573,7 +581,9 @@ impl MainView {
     /// ピーク保護・測定・歌と雑談のモードは開始・停止で変わるので、音づくりの画面を見ていれば読み直す。
     fn reread_peak(&self) {
         if self.page == Page::Sound {
-            self.engine.send(Command::ReadPeak);
+            for limit in Limit::ALL {
+                self.engine.send(Command::ReadPeak(limit));
+            }
             self.engine
                 .send(Command::Measure(measurement::Action::Read));
         }
@@ -998,7 +1008,12 @@ impl Render for MainView {
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),
                                 Page::Sound => this
-                                    .child(self.sound.render(lang, cx, send.clone()))
+                                    .child(self.sound.render(
+                                        lang,
+                                        self.modes.armed(),
+                                        cx,
+                                        send.clone(),
+                                    ))
                                     .child(self.modes.render(lang, send.clone()))
                                     .child(self.voice.render(
                                         lang,

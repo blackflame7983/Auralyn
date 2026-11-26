@@ -12,6 +12,7 @@ mod desktop;
 mod engine;
 mod home;
 mod i18n;
+mod limiter;
 mod live;
 mod locale_file;
 mod measure;

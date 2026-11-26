@@ -1,6 +1,30 @@
-//! 大きな音を抑える（ピーク保護）。エンジンの状態から、画面に出す注記を決める。
+//! 大きな音を抑える（ピーク保護）と、配信用の true-peak 制限。エンジンの状態から、画面に出す注記を決める。
 //!
 //! 設定はアプリの中だけで持ち、再起動すると OFF と既定の値に戻る（Tauri 版と同じ）。
+
+/// どちらの制限か。天井と復帰時間の範囲はどちらも同じ。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Limit {
+    /// 大きな音を抑える（出力音量の後、配信用と自分用のそれぞれ）。
+    Sample,
+    /// 配信用 true-peak 制限（分離した配信用出力の最終段だけ。先読みの遅れがある）。
+    TruePeak,
+}
+
+impl Limit {
+    pub const ALL: [Limit; 2] = [Limit::Sample, Limit::TruePeak];
+}
+
+/// true-peak 制限だけが返す、先読みの状態。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lookahead {
+    /// 分離した配信用出力で、いま効いている。
+    pub applied: bool,
+    /// いま抑えた量（dB）。
+    pub reduction_db: f32,
+    /// 配信用に足した遅れ（サンプル）。
+    pub samples: u32,
+}
 
 /// エンジンが返したピーク保護の状態。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -14,6 +38,8 @@ pub struct Peak {
     pub running: bool,
     /// 設定の反映を待っている。
     pub pending: bool,
+    /// true-peak 制限のときだけ。
+    pub lookahead: Option<Lookahead>,
 }
 
 /// スイッチの下に出す注記。ON/OFF はスイッチだけが示すので、読めない・反映待ち・停止のときだけ出す。
@@ -22,6 +48,8 @@ pub enum Note {
     Unknown,
     Pending,
     Stopped,
+    /// ON だが、配信用の出力を分けていないので効いていない（true-peak 制限だけ）。
+    NotApplied,
 }
 
 /// 天井の範囲と刻み（エンジンの `peak_protection::Config::validate` と同じ範囲）。
@@ -34,6 +62,12 @@ pub fn snap((min, max, step): (f32, f32, f32), value: f32) -> f32 {
     ((value / step).round() * step).clamp(min, max)
 }
 
+/// 画面を見ている間、500ms ごとに読み直すか。反映待ちのあいだと、ON の true-peak 制限
+/// （「いま抑えた量」はホストが読むたびに戻すので、Tauri 版と同じく読み続けないと古い値が残る）。
+pub fn polls(peak: Option<Peak>) -> bool {
+    peak.is_some_and(|peak| peak.pending || (peak.enabled && peak.lookahead.is_some()))
+}
+
 /// `None` は状態を読めていない（音声が止まっているときも読めない）。
 pub fn notes(peak: Option<Peak>) -> Vec<Note> {
     match peak {
@@ -41,6 +75,10 @@ pub fn notes(peak: Option<Peak>) -> Vec<Note> {
         Some(peak) => [
             (peak.pending, Note::Pending),
             (!peak.running, Note::Stopped),
+            (
+                peak.enabled && peak.lookahead.is_some_and(|l| !l.applied),
+                Note::NotApplied,
+            ),
         ]
         .into_iter()
         .filter_map(|(show, note)| show.then_some(note))
@@ -59,6 +97,7 @@ mod tests {
             release_ms: 100.0,
             running,
             pending,
+            lookahead: None,
         })
     }
 
@@ -68,6 +107,21 @@ mod tests {
         assert_eq!(notes(peak(true, false)), []);
         assert_eq!(notes(peak(true, true)), [Note::Pending]);
         assert_eq!(notes(peak(false, true)), [Note::Pending, Note::Stopped]);
+        let unsplit = |enabled| {
+            Some(Peak {
+                enabled,
+                lookahead: Some(Lookahead {
+                    applied: false,
+                    reduction_db: 0.0,
+                    samples: 0,
+                }),
+                ..peak(true, false).unwrap()
+            })
+        };
+        assert_eq!(notes(unsplit(true)), [Note::NotApplied]);
+        assert_eq!(notes(unsplit(false)), []);
+        assert!(polls(unsplit(true)) && !polls(unsplit(false)));
+        assert!(polls(peak(true, true)) && !polls(peak(true, false)) && !polls(None));
     }
 
     #[test]
