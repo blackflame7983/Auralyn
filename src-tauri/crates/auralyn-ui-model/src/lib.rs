@@ -18,6 +18,7 @@ pub mod preparation;
 pub mod profile;
 pub mod rack;
 pub mod recovery;
+pub mod scan_folders;
 pub mod scene_routing;
 pub mod session;
 pub mod setup;

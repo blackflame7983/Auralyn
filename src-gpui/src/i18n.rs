@@ -636,6 +636,21 @@ pub mod keys {
     pub const SHELL_STOPPED: &str = "shell.stopped";
     pub const SHELL_UNCONFIGURED: &str = "shell.unconfigured";
     pub const SHELL_UNKNOWN: &str = "shell.unknown";
+    pub const SCAN_FOLDERS: &str = "pluginBrowser.scanFolders";
+    pub const SCAN_FOLDERS_HINT: &str = "pluginBrowser.scanFoldersHint";
+    pub const SCAN_FOLDER_COUNT: &str = "pluginBrowser.scanFolderCount";
+    pub const SCAN_FOLDER_STANDARD: &str = "pluginBrowser.scanFolderStandard";
+    pub const SCAN_FOLDER_PATH: &str = "pluginBrowser.scanFolderPath";
+    pub const SCAN_FOLDER_ADD: &str = "pluginBrowser.scanFolderAdd";
+    pub const SCAN_FOLDER_REMOVE: &str = "pluginBrowser.scanFolderRemove";
+    pub const SCAN_FOLDER_REMOVE_NAMED: &str = "pluginBrowser.scanFolderRemoveNamed";
+    pub const SCAN_FOLDER_MISSING: &str = "pluginBrowser.scanFolderMissing";
+    pub const SCAN_FOLDER_NOT_DIRECTORY: &str = "pluginBrowser.scanFolderNotDirectory";
+    pub const SCAN_FOLDER_INVALID: &str = "pluginBrowser.scanFolderInvalid";
+    pub const SCAN_FOLDER_DUPLICATE: &str = "pluginBrowser.scanFolderDuplicate";
+    pub const SCAN_FOLDER_EMPTY: &str = "pluginBrowser.scanFolderEmpty";
+    pub const SCAN_FOLDER_SAVE_FAILED: &str = "pluginBrowser.scanFolderSaveFailed";
+    pub const SCAN_FOLDER_FULL: &str = "pluginBrowser.scanFolderFull";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -657,7 +672,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 644] = [
+    pub const ALL: [&str; 659] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1283,6 +1298,21 @@ pub mod keys {
         SHELL_STOPPED,
         SHELL_UNCONFIGURED,
         SHELL_UNKNOWN,
+        SCAN_FOLDERS,
+        SCAN_FOLDERS_HINT,
+        SCAN_FOLDER_COUNT,
+        SCAN_FOLDER_STANDARD,
+        SCAN_FOLDER_PATH,
+        SCAN_FOLDER_ADD,
+        SCAN_FOLDER_REMOVE,
+        SCAN_FOLDER_REMOVE_NAMED,
+        SCAN_FOLDER_MISSING,
+        SCAN_FOLDER_NOT_DIRECTORY,
+        SCAN_FOLDER_INVALID,
+        SCAN_FOLDER_DUPLICATE,
+        SCAN_FOLDER_EMPTY,
+        SCAN_FOLDER_SAVE_FAILED,
+        SCAN_FOLDER_FULL,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,

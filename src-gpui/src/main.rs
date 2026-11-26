@@ -28,6 +28,7 @@ mod post_mix;
 mod prep;
 mod prep_file;
 mod recovery;
+mod scan_file;
 mod scene_file;
 mod scenes;
 mod settings;
@@ -40,6 +41,7 @@ mod theme_file;
 mod view;
 mod voice;
 mod vst;
+mod vst_folders;
 
 use std::path::PathBuf;
 

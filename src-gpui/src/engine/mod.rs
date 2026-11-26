@@ -329,8 +329,8 @@ pub enum Notice {
     MixApps(Result<Vec<auralyn_ui_model::mix::App>, String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
-    /// 追加の候補。失敗したときは理由。
-    Catalog(Result<Vec<Candidate>, String>),
+    /// 追加の候補と、探さなかった追加のフォルダー。失敗したときは理由。
+    Catalog(Result<(Vec<Candidate>, Vec<scanner::SkippedScanRoot>), String>),
     /// 命令が失敗した。画面は直前の状態に戻す。
     Failed {
         command: &'static str,

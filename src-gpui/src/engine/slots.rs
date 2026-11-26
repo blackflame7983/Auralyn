@@ -340,9 +340,17 @@ impl Control {
             .spawn(move || {
                 let result = std::fs::create_dir_all(&config_dir)
                     .map_err(|e| e.to_string())
-                    .and_then(|()| scanner::scan_system_vst3(&config_dir, &[]))
-                    .map(|plugins| {
-                        plugins
+                    .and_then(|()| {
+                        let extra = crate::scan_file::load(&config_dir);
+                        scanner::scan_plugin_catalog(
+                            &config_dir,
+                            vst_host_lib::vst_host::catalog::ScanMode::Incremental,
+                            &extra,
+                        )
+                    })
+                    .map(|catalog| {
+                        let candidates = catalog
+                            .plugins
                             .into_iter()
                             .map(|p| Candidate {
                                 name: p.name,
@@ -351,7 +359,8 @@ impl Control {
                                 path: p.path,
                                 class_id: p.class_id,
                             })
-                            .collect()
+                            .collect();
+                        (candidates, catalog.skipped_roots)
                     });
                 let _ = notices.send(Notice::Catalog(result));
             });
