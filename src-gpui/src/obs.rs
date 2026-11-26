@@ -18,7 +18,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::obs_link::{ObsLink, Order, Reply};
+use crate::obs_changes::Changes;
+use crate::obs_link::{ObsLink, Order, Reply, Setup};
 use crate::part::{card, note};
 
 /// 画面からの OBS の命令の送り口（`MainView` が受けて描き直す）。
@@ -50,6 +51,7 @@ pub struct ObsPanel {
     asking: bool,
     /// まだ連動に渡していない、最後に替わったシーン。続けて替わったら最後だけを使う。
     scene: Option<String>,
+    changes: Changes,
 }
 
 impl ObsPanel {
@@ -77,6 +79,7 @@ impl ObsPanel {
             rechecked: Instant::now(),
             asking: false,
             scene: None,
+            changes: Changes::default(),
         }
     }
 
@@ -104,6 +107,7 @@ impl ObsPanel {
     pub fn open(&mut self) {
         self.error = None;
         self.link.send(Order::Read);
+        self.order(Order::Setup(Setup::History));
         // 見ていない間に音声の条件が変わっているかもしれないので、すぐに読み直す。
         self.rechecked = Instant::now()
             .checked_sub(Duration::from_millis(RECHECK_MS))
@@ -113,6 +117,8 @@ impl ObsPanel {
     pub fn order(&mut self, order: Order) {
         self.error = None;
         match order {
+            Order::Setup(Setup::Discard) => return self.changes.discard(),
+            Order::Setup(_) => self.changes.sent(),
             Order::Connect(_) => self.connecting = true,
             // 確かめ始めたら、前の結果はもう今のものではない（ホストも無効にする）。
             Order::CheckReach => {
@@ -139,6 +145,9 @@ impl ObsPanel {
                     if after_connect {
                         self.connecting = false;
                         if connected {
+                            self.order(Order::Setup(Setup::History));
+                        }
+                        if connected {
                             self.password
                                 .update(cx, |state, cx| state.set_value("", window, cx));
                         }
@@ -147,6 +156,11 @@ impl ObsPanel {
                     if !connected {
                         self.reach = None;
                         self.reach_error = None;
+                        self.changes.discard();
+                        // 切断中の履歴は「この接続では元に戻せない」に変わる。
+                        if self.connected == Some(true) {
+                            self.order(Order::Setup(Setup::History));
+                        }
                     }
                     self.connected = Some(connected);
                     self.fill(saved.as_ref().ok().cloned().flatten(), window, cx);
@@ -160,6 +174,7 @@ impl ObsPanel {
                 }
                 Reply::Scene(scene) => self.scene = Some(scene),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
+                Reply::Setup(done) => self.changes.done(*done),
                 Reply::Reach(result) => {
                     self.reaching = false;
                     match result {
@@ -304,6 +319,7 @@ impl ObsPanel {
                                     Button::new("obs-disconnect")
                                         .label(core(lang, keys::OBS_DISCONNECT))
                                         .outline()
+                                        .disabled(self.changes.busy())
                                         .on_click(move |_, _, cx| on(Order::Disconnect, cx)),
                                 )
                             } else {
@@ -345,8 +361,12 @@ impl ObsPanel {
                     }))
                 })
                 .when(state == State::Connected, |this| {
-                    this.child(self.render_reach(lang, on))
+                    this.child(self.render_reach(lang, on.clone()))
                 })
+                .child(
+                    self.changes
+                        .render(lang, state == State::Connected, self.reaching, on),
+                )
                 .child(note(core(lang, keys::OBS_NEEDS)))
                 .child(note(core(lang, keys::OBS_SERVER))),
         )
@@ -393,7 +413,7 @@ impl ObsPanel {
                             },
                         ))
                         .outline()
-                        .disabled(self.reaching)
+                        .disabled(self.reaching || self.changes.busy())
                         .on_click(move |_, window, cx| {
                             let on = on.clone();
                             window.open_alert_dialog(cx, move |alert, _, _| {

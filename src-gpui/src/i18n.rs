@@ -516,6 +516,35 @@ pub mod keys {
     pub const SCENE_SAVED: &str = "settings.ObsModeRoutingSettings.309";
     pub const SCENE_NAMES: &str = "settings.ObsModeRoutingSettings.308";
     pub const SCENE_SAVE_FAILED: &str = "settings.ObsModeRoutingSettings.310";
+    pub const OBS_SETUP_TITLE: &str = "settings.ObsSafeSetup.335";
+    pub const OBS_SETUP_STOP_FIRST: &str = "obsSetup.stopFirst";
+    pub const OBS_SETUP_PREVIEW: &str = "settings.ObsSafeSetup.337";
+    pub const OBS_SETUP_BUSY: &str = "settings.obs.operationBusy";
+    pub const OBS_SETUP_NEEDS_OBS: &str = "settings.obs.connectionRequired";
+    pub const OBS_SETUP_NOTHING: &str = "settings.ObsSafeSetup.341";
+    pub const OBS_SETUP_APPLY: &str = "settings.ObsSafeSetup.342";
+    pub const OBS_SETUP_CANCEL: &str = "settings.ObsSafeSetup.343";
+    pub const OBS_SETUP_DUPLICATE_MIC: &str = "settings.ObsSafeSetup.344";
+    pub const OBS_SETUP_MUTE_PREVIEW: &str = "settings.obs.mutePreview";
+    pub const OBS_SETUP_HISTORY: &str = "structure.history";
+    pub const OBS_SETUP_HISTORY_LEAD: &str = "settings.ObsSafeSetup.346";
+    pub const OBS_SETUP_REFRESH: &str = "settings.ObsSafeSetup.347";
+    pub const OBS_SETUP_TIMING_CHANGE: &str = "settings.ObsSafeSetup.349";
+    pub const OBS_SETUP_CHANGE: &str = "settings.ObsSafeSetup.350";
+    pub const OBS_SETUP_NOT_RESTORABLE: &str = "settings.ObsSafeSetup.355";
+    pub const OBS_SETUP_UNDO: &str = "settings.obs.undo";
+    pub const OBS_SETUP_FORGET: &str = "settings.obs.forget";
+    pub const OBS_SETUP_FORGET_TEXT: &str = "settings.ObsSafeSetup.360";
+    pub const OBS_SETUP_FORGET_OK: &str = "settings.ObsSafeSetup.361";
+    pub const OBS_SETUP_FORGET_CANCEL: &str = "settings.ObsSafeSetup.362";
+    pub const OBS_SETUP_HISTORY_FULL: &str = "obsSetup.historyFull";
+    pub const OBS_SETUP_PREVIEW_FAILED: &str = "obsSetup.previewFailed";
+    pub const OBS_SETUP_PREVIEW_NEXT: &str = "obsSetup.previewNextStep";
+    pub const OBS_SETUP_APPLY_FAILED: &str = "obsSetup.applyFailed";
+    pub const OBS_SETUP_ERROR_NEXT: &str = "obsSetup.errorNextStep";
+    pub const OBS_SETUP_UNDO_FAILED: &str = "obsSetup.undoFailed";
+    pub const OBS_SETUP_FORGET_FAILED: &str = "obsSetup.forgetFailed";
+    pub const OBS_SETUP_FORGET_NEXT: &str = "obsSetup.forgetNextStep";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -537,7 +566,36 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 524] = [
+    pub const ALL: [&str; 553] = [
+        OBS_SETUP_TITLE,
+        OBS_SETUP_STOP_FIRST,
+        OBS_SETUP_PREVIEW,
+        OBS_SETUP_BUSY,
+        OBS_SETUP_NEEDS_OBS,
+        OBS_SETUP_NOTHING,
+        OBS_SETUP_APPLY,
+        OBS_SETUP_CANCEL,
+        OBS_SETUP_DUPLICATE_MIC,
+        OBS_SETUP_MUTE_PREVIEW,
+        OBS_SETUP_HISTORY,
+        OBS_SETUP_HISTORY_LEAD,
+        OBS_SETUP_REFRESH,
+        OBS_SETUP_TIMING_CHANGE,
+        OBS_SETUP_CHANGE,
+        OBS_SETUP_NOT_RESTORABLE,
+        OBS_SETUP_UNDO,
+        OBS_SETUP_FORGET,
+        OBS_SETUP_FORGET_TEXT,
+        OBS_SETUP_FORGET_OK,
+        OBS_SETUP_FORGET_CANCEL,
+        OBS_SETUP_HISTORY_FULL,
+        OBS_SETUP_PREVIEW_FAILED,
+        OBS_SETUP_PREVIEW_NEXT,
+        OBS_SETUP_APPLY_FAILED,
+        OBS_SETUP_ERROR_NEXT,
+        OBS_SETUP_UNDO_FAILED,
+        OBS_SETUP_FORGET_FAILED,
+        OBS_SETUP_FORGET_NEXT,
         SCENE_TITLE,
         SCENE_LEAD,
         SCENE_NONE,
@@ -1065,6 +1123,11 @@ pub mod keys {
     ];
 }
 
+/// キーを組み立てる文言（OBS の変更の説明など）。無いキーなら `None`。
+pub fn text(lang: Lang, key: &str, args: &[(&str, &dyn std::fmt::Display)]) -> Option<String> {
+    catalog().text(locale(lang), key, args)
+}
+
 fn locale(lang: Lang) -> Locale {
     match lang {
         Lang::Ja => Locale::Ja,
@@ -1082,9 +1145,7 @@ pub fn core(lang: Lang, key: &'static str) -> &'static str {
 
 /// `{name}` に値を差し込んだ `auralyn-core` の文言。
 pub fn core_with(lang: Lang, key: &'static str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
-    catalog()
-        .text(locale(lang), key, args)
-        .unwrap_or_else(|| panic!("文言 {key} がありません"))
+    text(lang, key, args).unwrap_or_else(|| panic!("文言 {key} がありません"))
 }
 
 #[cfg(test)]
