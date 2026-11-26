@@ -21,6 +21,7 @@ mod shell;
 mod sound;
 mod store;
 mod view;
+mod voice;
 mod vst;
 
 use std::path::PathBuf;

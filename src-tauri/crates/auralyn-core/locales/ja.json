@@ -3673,5 +3673,6 @@
   "gpuiShell.setupScope": "保存・適用するのは、VST の並び・ノイズ低減・声を整える設定です。接続（機器・周波数）は変えません。",
   "gpuiShell.setupImportExists": "「{arg0}」という構成がすでにあるので、読み込みませんでした。",
   "gpuiShell.setupImportNothing": "このファイルには VST の並び・ノイズ低減・声を整える設定のどれも入っていないので、読み込みませんでした。",
-  "gpuiShell.setupImportInvalid": "構成のファイルとして読めませんでした。"
+  "gpuiShell.setupImportInvalid": "構成のファイルとして読めませんでした。",
+  "gpuiShell.voiceNeedsAudio": "録音するには、先に音声を開始してください。"
 }

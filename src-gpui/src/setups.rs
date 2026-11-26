@@ -3,8 +3,6 @@
 //! VST の画面の下に出す。読み書きするのは VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。
 //! 一覧に出すものと保存する名前の規則は `auralyn-ui-model` の `profile`。
 
-use std::path::Path;
-
 use auralyn_ui_model::profile::{self, Entry, ImportIssue, NameIssue};
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -16,7 +14,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, ProfileFile};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, open_file, save_as, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -156,7 +154,12 @@ impl SetupsPanel {
                                 .disabled(chosen.is_none())
                                 .on_click(move |_, _, cx| {
                                     if let Some(name) = chosen.clone() {
-                                        export(name.to_string(), send.clone(), cx);
+                                        let name = name.to_string();
+                                        let send = send.clone();
+                                        let file = format!("{name}.auralyn-preset.json");
+                                        save_as(file, cx, move |path, cx| {
+                                            send(Command::ExportProfile { name, path }, cx)
+                                        });
                                     }
                                 })
                         })
@@ -165,7 +168,12 @@ impl SetupsPanel {
                             Button::new("setup-import")
                                 .label(core(lang, keys::SETUPS_IMPORT))
                                 .ghost()
-                                .on_click(move |_, _, cx| import(send.clone(), cx))
+                                .on_click(move |_, _, cx| {
+                                    let send = send.clone();
+                                    open_file(cx, move |path, cx| {
+                                        send(Command::ImportProfile(path), cx)
+                                    });
+                                })
                         })
                         .child({
                             let chosen = chosen.clone();
@@ -244,47 +252,6 @@ fn done_text(done: &ProfileFile, lang: Lang) -> String {
         ProfileFile::NotImported(ImportIssue::Invalid) => {
             core(lang, keys::SETUPS_IMPORT_INVALID).to_owned()
         }
-    }
-}
-
-/// 保存先を聞いてから書き出す。やめたときは何もしない。
-fn export(name: String, send: OnCommand, cx: &mut App) {
-    let chosen =
-        cx.prompt_for_new_path(Path::new(""), Some(&format!("{name}.auralyn-preset.json")));
-    cx.spawn(async move |cx| {
-        if let Some(path) = picked(chosen.await) {
-            cx.update(|cx| send(Command::ExportProfile { name, path }, cx));
-        }
-    })
-    .detach();
-}
-
-/// 読み込むファイルを聞いてから読み込む。やめたときは何もしない。
-fn import(send: OnCommand, cx: &mut App) {
-    let chosen = cx.prompt_for_paths(PathPromptOptions {
-        files: true,
-        directories: false,
-        multiple: false,
-        prompt: None,
-    });
-    cx.spawn(async move |cx| {
-        let path = picked(chosen.await).and_then(|paths| paths.into_iter().next());
-        if let Some(path) = path {
-            cx.update(|cx| send(Command::ImportProfile(path), cx));
-        }
-    })
-    .detach();
-}
-
-/// ファイルの窓の答え。やめた・窓を開けなかったときは `None`（開けなかったときは記録に残す）。
-fn picked<T, E>(answer: Result<anyhow::Result<Option<T>>, E>) -> Option<T> {
-    match answer {
-        Ok(Ok(chosen)) => chosen,
-        Ok(Err(e)) => {
-            log::warn!("ファイルの窓を開けません: {e}");
-            None
-        }
-        Err(_) => None,
     }
 }
 

@@ -39,6 +39,16 @@ pub(super) fn on_event(
                 .map(str::to_owned)
                 .unwrap_or_else(|| payload.to_string()),
         ),
+        "voice-check-state" => {
+            let ms = |key: &str| payload.get(key).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            Notice::Recording(Recording {
+                state: VoiceState::parse(
+                    payload.get("state").and_then(|v| v.as_str()).unwrap_or(""),
+                ),
+                position_ms: ms("position_ms"),
+                duration_ms: ms("duration_ms"),
+            })
+        }
         "global-mute-changed" => Notice::Muted(payload.as_bool().unwrap_or(true)),
         "global-bypass-changed" => Notice::Bypassed(payload.as_bool().unwrap_or(false)),
         _ => return,
@@ -118,5 +128,22 @@ mod tests {
         assert!(matches!(rx.try_recv(), Ok(Notice::Muted(true))));
         assert!(matches!(rx.try_recv(), Ok(Notice::Stopped)));
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn voice_check_state_becomes_a_recording() {
+        let levels = Mutex::new(LevelSlot::default());
+        let (tx, rx) = flume::unbounded();
+        on_event(
+            "voice-check-state",
+            serde_json::json!({"state": "ready", "position_ms": 0, "duration_ms": 4200}),
+            &levels,
+            &tx,
+        );
+        let Ok(Notice::Recording(recording)) = rx.try_recv() else {
+            panic!("録音の状態が届かない");
+        };
+        assert_eq!(recording.state, VoiceState::Ready);
+        assert_eq!(recording.duration_ms, 4200);
     }
 }

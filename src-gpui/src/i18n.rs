@@ -67,6 +67,17 @@ pub mod keys {
     pub const SETUPS_IMPORT_EXISTS: &str = "gpuiShell.setupImportExists";
     pub const SETUPS_IMPORT_NOTHING: &str = "gpuiShell.setupImportNothing";
     pub const SETUPS_IMPORT_INVALID: &str = "gpuiShell.setupImportInvalid";
+    pub const VOICE_TITLE: &str = "voice.copy.001";
+    pub const VOICE_LEAD: &str = "voice.copy.002";
+    pub const VOICE_SCOPE: &str = "voice.copy.003";
+    pub const VOICE_NEEDS_AUDIO: &str = "gpuiShell.voiceNeedsAudio";
+    pub const VOICE_RECORD: &str = "voice.recordMax";
+    pub const VOICE_STOP: &str = "voice.copy.012";
+    pub const VOICE_REMAINING: &str = "voice.copy.013";
+    pub const VOICE_SAVE: &str = "voice.copy.062";
+    pub const VOICE_BEFORE: &str = "voice.copy.056";
+    pub const VOICE_AFTER: &str = "voice.copy.057";
+    pub const VOICE_SAVED: &str = "voice.copy.121";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -188,7 +199,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 175] = [
+    pub const ALL: [&str; 186] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -246,6 +257,17 @@ pub mod keys {
         SETUPS_IMPORT_EXISTS,
         SETUPS_IMPORT_NOTHING,
         SETUPS_IMPORT_INVALID,
+        VOICE_TITLE,
+        VOICE_LEAD,
+        VOICE_SCOPE,
+        VOICE_NEEDS_AUDIO,
+        VOICE_RECORD,
+        VOICE_STOP,
+        VOICE_REMAINING,
+        VOICE_SAVE,
+        VOICE_BEFORE,
+        VOICE_AFTER,
+        VOICE_SAVED,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,
