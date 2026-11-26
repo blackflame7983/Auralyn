@@ -441,6 +441,7 @@ impl Engine {
                     modes_sequence: 0,
                     posted: None,
                     scan: None,
+                    devices_wanted: false,
                     sound: None,
                     read_only: false,
                     exited,
@@ -533,8 +534,16 @@ struct Control {
     modes_sequence: u64,
     /// 最後に読んだミックス後の VST の状態（世代）。
     posted: Option<vst_host_lib::post_mix::Snapshot>,
-    /// 走査中の機器の一覧と、その期限。待つ間も命令は受け付ける。
-    scan: Option<(devices::Scan, Instant)>,
+    /// 走査中の機器の一覧。待つ間も命令は受け付ける。
+    scan: Option<Scan>,
+    /// 画面が一覧を待っている。子が替わって走査が途切れたら、次に始まったときに頼み直す。
+    devices_wanted: bool,
+}
+
+struct Scan {
+    ticket: devices::Scan,
+    deadline: Instant,
+    next_poll: Instant,
 }
 
 /// 機器の走査の様子を見に行く間隔と、あきらめるまでの時間（Tauri 版と同じ）。
@@ -663,6 +672,9 @@ impl Control {
         input: Option<String>,
         output: Option<String>,
     ) {
+        // 開始で子が替わると走査の受付票は失効するので、捨てて（成功したら）頼み直す。
+        // 同じ子なら、頼み直しても同じ走査を待ち続ける。
+        self.scan = None;
         if let Err(e) = result {
             let _ = self.notices.send(Notice::NotStarted(
                 vst_host_lib::audio::localize_audio_error(e.to_string()),
@@ -670,8 +682,7 @@ impl Control {
             return;
         }
         let _ = self.notices.send(Notice::Started { input, output });
-        // 子が替わると走査の受付票は失効するので、頼み直す（同じ子なら同じ走査を待ち続ける）。
-        if self.scan.take().is_some() {
+        if self.devices_wanted {
             self.list_devices();
         }
         if let Some(config) = self.host.get_state().config {
@@ -853,38 +864,58 @@ impl Control {
 
     /// 一覧が手元に無ければ子に走査を頼み、結果は `poll_scan` で受け取る（走査中に重ねて頼まない）。
     fn list_devices(&mut self) {
+        self.devices_wanted = true;
         if self.scan.is_some() {
             return;
         }
         match devices::begin(&mut self.host) {
             Ok(devices::Start::Ready(list)) => self.send_devices(list),
-            Ok(devices::Start::Pending(scan)) => {
-                self.scan = Some((scan, Instant::now() + SCAN_LIMIT));
+            Ok(devices::Start::Pending(ticket)) => {
+                let now = Instant::now();
+                self.scan = Some(Scan {
+                    ticket,
+                    deadline: now + SCAN_LIMIT,
+                    next_poll: now + SCAN_POLL,
+                });
             }
-            Err(e) => self.fail("enumerate_devices", e),
+            Err(e) => {
+                self.devices_wanted = false;
+                self.fail("enumerate_devices", e);
+            }
         }
     }
 
     fn poll_scan(&mut self) {
-        let Some((scan, deadline)) = self.scan.take() else {
+        let now = Instant::now();
+        let Some(mut scan) = self.scan.take_if(|scan| now >= scan.next_poll) else {
             return;
         };
-        match devices::poll(&mut self.host, &scan) {
-            Ok(Some(list)) => self.send_devices(list),
-            Ok(None) if Instant::now() < deadline => self.scan = Some((scan, deadline)),
-            result => {
-                let error = result.err().unwrap_or_else(|| {
-                    anyhow::anyhow!("デバイス検出が時間切れになりました。再試行してください。")
-                });
-                if let Err(cancel) = devices::cancel(&mut self.host, &scan) {
-                    log::warn!("機器の走査を取り消せません: {cancel}");
-                }
-                self.fail("enumerate_devices", error);
+        let error = match devices::poll(&mut self.host, &scan.ticket) {
+            Ok(Some(list)) => return self.send_devices(list),
+            Ok(None) if now < scan.deadline => {
+                scan.next_poll = now + SCAN_POLL;
+                self.scan = Some(scan);
+                return;
             }
+            Ok(None) => {
+                anyhow::anyhow!("デバイス検出が時間切れになりました。再試行してください。")
+            }
+            Err(e) => e,
+        };
+        if let Err(cancel) = devices::cancel(&mut self.host, &scan.ticket) {
+            log::warn!("機器の走査を取り消せません: {cancel}");
         }
+        // 子が落ちて途切れたなら、復旧の案内に任せ、次に始まったときに頼み直す。
+        if self.exited.load(Ordering::SeqCst) {
+            log::warn!("子が落ちて機器の走査が途切れました: {error}");
+            return;
+        }
+        self.devices_wanted = false;
+        self.fail("enumerate_devices", error);
     }
 
     fn send_devices(&mut self, list: vst_host_lib::audio::AudioDeviceList) {
+        self.devices_wanted = false;
         let devices = list
             .inputs
             .into_iter()
@@ -926,6 +957,10 @@ impl Control {
             Err(e) => Notice::StopFailed(e.to_string()),
         };
         let _ = self.notices.send(notice);
+        // 止めるときに子を終わらせていれば、走査は失効している。同じ子なら同じ走査を待ち続ける。
+        if self.scan.take().is_some() {
+            self.list_devices();
+        }
     }
 
     fn fail(&self, command: &'static str, error: anyhow::Error) {

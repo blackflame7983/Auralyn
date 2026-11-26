@@ -135,6 +135,7 @@ pub fn choices<T: Copy + PartialEq + 'static>(
                 .outline()
                 .label(core(lang, label))
                 .selected(current == Some(value))
+                .toggled(current == Some(value))
                 .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
 }
