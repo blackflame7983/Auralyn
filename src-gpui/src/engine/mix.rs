@@ -3,10 +3,10 @@
 
 use super::*;
 use auralyn_ui_model::mix::{Change as MixChange, Levels as MixLevels, Mix, Source as MixSource};
-use vst_host_lib::audio::mixing::{Request as MixRequest, Snapshot as MixSnapshot};
 use vst_host_lib::audio_engine::mixing::{
     Config as MixConfig, Device as MixDevice, Levels as EngineLevels, Source as EngineSource, Track,
 };
+use vst_host_lib::mixing::{Request as MixRequest, Snapshot as MixSnapshot};
 
 /// 配信ミックスの操作。
 #[derive(Debug, Clone)]

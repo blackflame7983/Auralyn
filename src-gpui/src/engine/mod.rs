@@ -423,7 +423,7 @@ struct Control {
     /// 試聴のセッション（`voice.rs`）。
     listen: voice::Session,
     /// 最後に読んだ配信ミックスの状態（世代と音量）。
-    mixed: Option<vst_host_lib::audio::mixing::Snapshot>,
+    mixed: Option<vst_host_lib::mixing::Snapshot>,
 }
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
