@@ -482,7 +482,7 @@ impl ConnectPage {
         let host = self.host_name(cx);
         let shared = connect::shares_device(&host);
         let app = self.uses_app(cx);
-        let stopped = matches!(phase, Phase::Stopped | Phase::Unconfigured);
+        let stopped = phase.can_start();
         let empty = core(lang, keys::NO_DEVICES);
         div()
             .flex()

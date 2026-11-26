@@ -34,33 +34,33 @@ impl Control {
         }
     }
 
-    /// 制限を読む（`values` があれば変えてから読む）。読めなければ `None` を送る。
+    /// 制限を読む（`config` があれば変えてから読む）。読めなければ `None` を送る。
     /// 止まっているときは読めないのが普通なので、読むだけの失敗は帯に出さない。
-    pub(super) fn peak(&mut self, limit: Limit, values: Option<Values>) {
-        let peak = match self.limit(limit, values) {
+    pub(super) fn peak(&mut self, limit: Limit, config: Option<PeakConfig>) {
+        let answered = config.is_some();
+        let peak = match self.limit(limit, config) {
             Ok(peak) => Some(peak),
-            Err(e) if values.is_some() => {
-                // 断られても状態は読めることがある（読めないなら、読み直しが `None` を送る）。
+            Err(e) if answered => {
+                // 断られても状態は読めることがある。
                 self.fail(limit_command(limit), e);
-                return self.peak(limit, None);
+                self.limit(limit, None).ok()
             }
             Err(e) => {
                 log::info!("{} の状態を読めません: {e}", limit_command(limit));
                 None
             }
         };
-        let _ = self.notices.send(Notice::Peak(limit, peak));
+        let _ = self.notices.send(Notice::Peak {
+            limit,
+            peak,
+            answered,
+        });
     }
 
-    /// ホストの制限を読む（`values` があれば変えてから）。2つの制限は設定の形が同じ。
-    fn limit(&mut self, limit: Limit, values: Option<Values>) -> anyhow::Result<Peak> {
+    /// ホストの制限を読む（`config` があれば変えてから）。2つの制限は設定の形が同じ。
+    fn limit(&mut self, limit: Limit, config: Option<PeakConfig>) -> anyhow::Result<Peak> {
         Ok(match limit {
             Limit::Sample => {
-                let config = values.map(|v| PeakConfig {
-                    enabled: v.enabled,
-                    ceiling_db: v.ceiling_db,
-                    release_ms: v.release_ms,
-                });
                 let snapshot = self.host.peak_protection(config)?;
                 Peak {
                     enabled: snapshot.config.enabled,
@@ -72,10 +72,10 @@ impl Control {
                 }
             }
             Limit::TruePeak => {
-                let config = values.map(|v| TruePeakConfig {
-                    enabled: v.enabled,
-                    ceiling_db: v.ceiling_db,
-                    release_ms: v.release_ms,
+                let config = config.map(|c| TruePeakConfig {
+                    enabled: c.enabled,
+                    ceiling_db: c.ceiling_db,
+                    release_ms: c.release_ms,
                 });
                 let snapshot = self.host.broadcast_true_peak(config)?;
                 Peak {
@@ -130,11 +130,11 @@ impl Control {
     }
 
     /// 今の設定の一部だけを変える（ON/OFF だけ、または天井と復帰時間だけ）。
-    pub(super) fn set_peak(&mut self, limit: Limit, change: impl FnOnce(Values) -> Values) {
+    pub(super) fn set_peak(&mut self, limit: Limit, change: impl FnOnce(PeakConfig) -> PeakConfig) {
         match self.limit(limit, None) {
             Ok(peak) => self.peak(
                 limit,
-                Some(change(Values {
+                Some(change(PeakConfig {
                     enabled: peak.enabled,
                     ceiling_db: peak.ceiling_db,
                     release_ms: peak.release_ms,
@@ -142,7 +142,11 @@ impl Control {
             ),
             Err(e) => {
                 self.fail(limit_command(limit), e);
-                self.peak(limit, None);
+                let _ = self.notices.send(Notice::Peak {
+                    limit,
+                    peak: None,
+                    answered: true,
+                });
             }
         }
     }
@@ -284,6 +288,14 @@ pub(super) fn reading(snapshot: Snapshot) -> Option<Measurement> {
     })
 }
 
+/// 失敗を帯に出すときの命令の名前（ホストの命令と同じ）。
+fn limit_command(limit: Limit) -> &'static str {
+    match limit {
+        Limit::Sample => "peak_protection",
+        Limit::TruePeak => "broadcast_true_peak",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,21 +313,5 @@ mod tests {
         };
         assert_eq!(sound_from_json(&sound_to_json(sound)), Some(sound));
         assert_eq!(sound_from_json(&serde_json::json!({"noiseOn": true})), None);
-    }
-}
-
-/// 制限に送る値（2つの制限で同じ形）。
-#[derive(Clone, Copy)]
-pub(super) struct Values {
-    pub enabled: bool,
-    pub ceiling_db: f32,
-    pub release_ms: f32,
-}
-
-/// 失敗を帯に出すときの命令の名前（ホストの命令と同じ）。
-fn limit_command(limit: Limit) -> &'static str {
-    match limit {
-        Limit::Sample => "peak_protection",
-        Limit::TruePeak => "broadcast_true_peak",
     }
 }

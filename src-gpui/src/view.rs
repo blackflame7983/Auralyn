@@ -484,7 +484,11 @@ impl MainView {
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
             Notice::Sound(sound) => self.sound.set(sound, window, cx),
-            Notice::Peak(limit, peak) => self.sound.limiter(limit).set(peak, window, cx),
+            Notice::Peak {
+                limit,
+                peak,
+                answered,
+            } => self.sound.limiter(limit).set(peak, answered, window, cx),
             Notice::Measurement(reading) => self.sound.measure.set(reading),
             Notice::Catalog(Ok(candidates)) => {
                 self.vst.set_catalog(&candidates, window, cx);
@@ -603,7 +607,7 @@ impl MainView {
     fn recover(&mut self, choice: Choice) {
         match choice.restart() {
             Some(hold) => {
-                if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
+                if !self.phase.can_start() {
                     return;
                 }
                 self.advance(SessionEvent::StartRequested);
@@ -704,7 +708,7 @@ impl MainView {
 
     /// 選んだ入力・出力先で開始する。押せるのは止まっているときだけ。
     fn start_with(&mut self, start: StartWith) {
-        if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
+        if !self.phase.can_start() {
             return;
         }
         self.advance(SessionEvent::StartRequested);
@@ -880,10 +884,7 @@ impl Render for MainView {
                                         this.child(div().max_w(px(560.)).child(recovery::render(
                                             exit,
                                             lang,
-                                            matches!(
-                                                self.phase,
-                                                Phase::Stopped | Phase::Unconfigured
-                                            ),
+                                            self.phase.can_start(),
                                             {
                                                 let entity = entity.clone();
                                                 move |choice, _, cx| {
@@ -898,10 +899,7 @@ impl Render for MainView {
                                     .when(self.first_run, |this| {
                                         this.child(div().max_w(px(560.)).child(self.setup.render(
                                             lang,
-                                            matches!(
-                                                self.phase,
-                                                Phase::Stopped | Phase::Unconfigured
-                                            ),
+                                            self.phase.can_start(),
                                             cx,
                                             {
                                                 let entity = entity.clone();
@@ -953,7 +951,7 @@ impl Render for MainView {
                                     .child(div().max_w(px(560.)).child(self.post.render(
                                         lang,
                                         self.mix.active(),
-                                        !matches!(self.phase, Phase::Stopped | Phase::Unconfigured),
+                                        !self.phase.can_start(),
                                         self.vst.scanning(),
                                         cx,
                                         send,

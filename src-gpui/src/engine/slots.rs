@@ -48,7 +48,7 @@ impl Control {
                 .is_some_and(|h| h.holds(&slot.path, slot.class_id.as_deref()))
             {
                 // 読まずに、保存にある設定のまま「読めていない」枠として残す（保存からも消さない）。
-                let id = format!("missing-{}", self.rack.len());
+                let id = self.placeholder();
                 self.rack.push(Slot {
                     id,
                     loaded: false,
@@ -69,22 +69,40 @@ impl Control {
     /// 選ぶ前に音づくりを開くなどで、子が落ちる前の並びをもう読み直していたときに使う。
     pub(super) fn hold_loaded(&mut self, hold: &Hold) {
         let ids: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
-        for (index, slot) in self.rack.iter_mut().enumerate() {
+        for index in 0..self.rack.len() {
+            let slot = &self.rack[index];
             if !slot.loaded || !hold.holds(&slot.path, slot.class_id.as_deref()) {
                 continue;
             }
             if let Err(e) = self.host.remove_plugin(&slot.id) {
-                let _ = self.notices.send(Notice::Failed {
-                    command: "remove_plugin",
-                    message: e.to_string(),
-                });
+                self.fail("remove_plugin", e);
                 continue;
             }
+            let id = self.placeholder();
+            let slot = &mut self.rack[index];
             slot.loaded = false;
-            slot.id = format!("held-{index}");
+            slot.id = id;
         }
         self.renamed = ids;
         self.changed();
+    }
+
+    /// 「読めていない」枠の仮の ID。
+    fn placeholder(&mut self) -> String {
+        self.placeholders += 1;
+        format!("missing-{}", self.placeholders)
+    }
+
+    /// 1つ読む（音量は画面に出せる 0〜200% にそろえる）。返すのは ID・名前・種類。
+    fn reload(
+        &mut self,
+        mut request: RestorePluginRequest,
+    ) -> anyhow::Result<(String, String, Option<String>)> {
+        // 手で書き換えた保存でも、画面に出せる範囲で鳴らす。
+        request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
+        let class_id = request.class_id.clone();
+        let plugin = self.host.restore_plugin(request)?;
+        Ok((plugin.id, plugin.name, plugin.class_id.or(class_id)))
     }
 
     /// 読めていない VST を、同じ位置のまま読み直す。読めたら子の中の順を並びに合わせる。
@@ -99,15 +117,13 @@ impl Control {
             if self.rack[index].loaded {
                 continue;
             }
-            let mut request = self.rack[index].request();
-            request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
-            match self.host.restore_plugin(request) {
-                Ok(plugin) => {
+            match self.reload(self.rack[index].request()) {
+                Ok((id, name, class_id)) => {
                     let slot = &mut self.rack[index];
-                    slot.id = plugin.id;
-                    slot.name = plugin.name;
+                    slot.id = id;
+                    slot.name = name;
                     slot.loaded = true;
-                    slot.class_id = plugin.class_id.or(slot.class_id.take());
+                    slot.class_id = class_id;
                     reloaded = true;
                 }
                 Err(e) => self.fail("restore_plugin", e),
@@ -135,29 +151,17 @@ impl Control {
     }
 
     /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
-    /// 並びを空から作り直すときだけ呼ぶので、仮の ID（位置）は重ならない。
     pub(super) fn restore(&mut self, mut request: RestorePluginRequest) {
-        // 手で書き換えた保存でも、画面に出せる範囲（0〜200%）で鳴らす。
         request.gain = rack::gain_from_percent(rack::gain_percent(request.gain));
-        let (id, name, loaded, class_id) = match self.host.restore_plugin(request.clone()) {
-            Ok(plugin) => (
-                plugin.id,
-                plugin.name,
-                true,
-                plugin.class_id.or(request.class_id),
-            ),
+        let (id, name, loaded, class_id) = match self.reload(request.clone()) {
+            Ok((id, name, class_id)) => (id, name, true, class_id),
             Err(e) => {
                 self.fail("restore_plugin", e);
                 let name = Path::new(&request.path).file_stem().map_or_else(
                     || request.path.clone(),
                     |s| s.to_string_lossy().into_owned(),
                 );
-                (
-                    format!("missing-{}", self.rack.len()),
-                    name,
-                    false,
-                    request.class_id,
-                )
+                (self.placeholder(), name, false, request.class_id)
             }
         };
         self.rack.push(Slot {
