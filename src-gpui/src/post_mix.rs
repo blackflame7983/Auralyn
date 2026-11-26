@@ -109,7 +109,7 @@ impl PostMixPanel {
                 div().flex().flex_col().gap_2().children(warnings),
             )
             .icon(IconName::SlidersHorizontal)
-            .hint(core(lang, keys::POST_SCOPE))
+            .hint(lang, core(lang, keys::POST_SCOPE))
             .into_any_element();
         };
         let block = post.enable_block(mix_active, audio_running);
@@ -264,7 +264,7 @@ impl PostMixPanel {
                 ),
         )
         .icon(IconName::SlidersHorizontal)
-        .hint(core(lang, keys::POST_SCOPE))
+        .hint(lang, core(lang, keys::POST_SCOPE))
         .into_any_element()
     }
 }

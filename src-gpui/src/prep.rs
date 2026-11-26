@@ -294,7 +294,7 @@ impl PrepPanel {
             }),
         )
         .icon(IconName::ListChecks)
-        .hint(core(lang, keys::PREP_ACK_PURPOSE))
+        .hint(lang, core(lang, keys::PREP_ACK_PURPOSE))
     }
 
     fn render_body<A, G>(
@@ -448,6 +448,15 @@ impl PrepPanel {
                     )
                 },
             )
+            // 記録する前にすること（送り先・試聴先での確かめ方）なので、手順の前に文のまま出す。
+            .child(note(core(
+                lang,
+                match usage {
+                    Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
+                    Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
+                    _ => keys::PREP_MANUAL_SCOPE,
+                },
+            )))
             .children(
                 Stage::ALL
                     .map(|stage| self.render_stage(lang, stage, act(Action::Unconfirm(stage)))),
@@ -467,18 +476,8 @@ impl PrepPanel {
                     )
                     .child(crate::part::hint(
                         "prep-scope",
-                        format!(
-                            "{}\n{}",
-                            core(
-                                lang,
-                                match usage {
-                                    Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
-                                    Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
-                                    _ => keys::PREP_MANUAL_SCOPE,
-                                },
-                            ),
-                            core(lang, keys::PREP_EXTERNAL_SCOPE)
-                        ),
+                        lang,
+                        core(lang, keys::PREP_EXTERNAL_SCOPE),
                     )),
             )
     }

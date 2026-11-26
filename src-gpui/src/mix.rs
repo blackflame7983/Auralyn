@@ -420,7 +420,7 @@ impl MixPanel {
                 ),
             )
             .icon(IconName::Music)
-            .hint(core(lang, keys::MIX_LEAD))
+            .hint(lang, core(lang, keys::MIX_LEAD))
             .into_any_element();
         };
         let chosen = self.chosen(cx);
@@ -516,9 +516,12 @@ impl MixPanel {
                             } else {
                                 keys::MIX_CHANNELS
                             },
-                            app_chosen.then_some(keys::MIX_ROUTE_HELP),
+                            None,
                             Select::new(&self.pair).disabled(mix.running),
                         ))
+                        .when(app_chosen, |this| {
+                            this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
+                        })
                         .when(route_unmuted, |this| {
                             this.child(warning(core(lang, keys::MIX_ROUTE_MUTE_FIRST).to_owned()))
                         })
@@ -746,10 +749,7 @@ fn field_with_hint(
                 .gap_1()
                 .child(div().text_sm().child(core(lang, label)))
                 .when_some(hint, |this, hint| {
-                    this.child(crate::part::hint(
-                        SharedString::from(label),
-                        core(lang, hint),
-                    ))
+                    this.child(crate::part::hint(label, lang, core(lang, hint)))
                 }),
         )
         .child(control)

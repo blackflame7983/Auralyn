@@ -161,7 +161,7 @@ impl SetupPanel {
                 ),
         )
         .icon(IconName::Sparkles)
-        .hint(core(lang, keys::SETUP_LEAD))
+        .hint(lang, core(lang, keys::SETUP_LEAD))
     }
 }
 

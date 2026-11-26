@@ -160,17 +160,28 @@ impl MainView {
     fn render_compare(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let bypassed = self.bypassed;
-        div().flex().flex_col().gap_1().child(
-            Button::new("compare")
-                .label(core(lang, keys::COMPARE))
-                .outline()
-                .toggled(bypassed)
-                .when(bypassed, |this| this.tooltip(core(lang, keys::COMPARE_ON)))
-                .w_full()
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.engine.send(Command::SetBypass(!bypassed));
-                })),
-        )
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                Button::new("compare")
+                    .label(core(lang, keys::COMPARE))
+                    .outline()
+                    .toggled(bypassed)
+                    .w_full()
+                    .on_click(cx.listener(move |this, _, _, _| {
+                        this.engine.send(Command::SetBypass(!bypassed));
+                    })),
+            )
+            .when(bypassed, |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .text_color(color::muted())
+                        .child(core(lang, keys::COMPARE_ON)),
+                )
+            })
     }
 
     pub(super) fn render_safety_column(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -124,7 +124,7 @@ impl SetupsPanel {
                 ),
             )
             .icon(IconName::ListMusic)
-            .hint(core(lang, keys::MUSIC_SOUND_HINT)),
+            .hint(lang, core(lang, keys::MUSIC_SOUND_HINT)),
         )
     }
 

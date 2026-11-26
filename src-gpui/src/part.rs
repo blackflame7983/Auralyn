@@ -5,13 +5,14 @@ use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
 use crate::engine::Command;
-use crate::i18n::{core, Lang};
+use crate::i18n::{core, keys, Lang};
 
 /// 画面の操作は、エンジンへの命令としてそのまま送る。
 pub type OnCommand = Rc<dyn Fn(Command, &mut App)>;
@@ -26,7 +27,7 @@ pub fn card(title: &'static str, trailing: impl IntoElement, body: impl IntoElem
 pub struct Card {
     icon: Option<IconName>,
     title: &'static str,
-    hint: Option<SharedString>,
+    hint: Option<(Lang, SharedString)>,
     trailing: Option<AnyElement>,
     body: AnyElement,
 }
@@ -48,8 +49,8 @@ impl Card {
     }
 
     /// 見出しの横の ⓘ に出す説明（画面には文を並べない）。
-    pub fn hint(mut self, text: impl Into<SharedString>) -> Self {
-        self.hint = Some(text.into());
+    pub fn hint(mut self, lang: Lang, text: impl Into<SharedString>) -> Self {
+        self.hint = Some((lang, text.into()));
         self
     }
 
@@ -93,8 +94,8 @@ impl RenderOnce for Card {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(title),
                             )
-                            .when_some(self.hint, |this, text| {
-                                this.child(hint(format!("{title}-hint"), text))
+                            .when_some(self.hint, |this, (lang, text)| {
+                                this.child(hint(format!("{title}-hint"), lang, text))
                             }),
                     )
                     .children(self.trailing),
@@ -103,16 +104,27 @@ impl RenderOnce for Card {
     }
 }
 
-/// 補足の説明。文を画面に並べず、ⓘ に指を置くと出す（読み上げにも渡す）。
-pub fn hint(id: impl Into<ElementId>, text: impl Into<SharedString>) -> impl IntoElement {
+/// 補足の説明。文を画面に並べず、ⓘ を押す（Enter・Space でも）と小さな窓に出す。
+pub fn hint(
+    id: impl Into<SharedString>,
+    lang: Lang,
+    text: impl Into<SharedString>,
+) -> impl IntoElement {
+    let id = id.into();
     let text = text.into();
-    Button::new(id)
-        .ghost()
-        .xsmall()
-        .icon(IconName::Info)
-        .accessibility_label(text.clone())
-        .tooltip(text)
+    Popover::new(id.clone())
+        .trigger(
+            Button::new(SharedString::from(format!("{id}-button")))
+                .ghost()
+                .xsmall()
+                .icon(IconName::Info)
+                .accessibility_label(core(lang, keys::HELP_MORE)),
+        )
+        .child(div().max_w(px(HINT_WIDTH)).text_sm().child(text))
 }
+
+/// ⓘ の窓の幅の上限。長い説明も窓に収まるよう折り返す。
+const HINT_WIDTH: f32 = 320.;
 
 /// 広い窓では2列、狭くなると1列に折り返す（各列は 320〜560px）。左に主な情報、右に補助を置く。
 pub fn columns(left: impl IntoElement, right: impl IntoElement) -> impl IntoElement {
