@@ -34,6 +34,7 @@ use crate::obs::ObsPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
 use crate::recovery;
+use crate::scenes::ScenePanel;
 use crate::settings;
 use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
@@ -50,6 +51,7 @@ use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::recovery::{Choice, Exit};
+use auralyn_ui_model::scene_routing::Action as SceneAction;
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::shortcuts;
 use auralyn_ui_model::sound::{Change, Knob};
@@ -114,6 +116,7 @@ pub struct MainView {
     cleared: Option<Result<(), String>>,
     sound: SoundPage,
     obs: ObsPanel,
+    scenes: ScenePanel,
     _ticker: Task<()>,
 }
 
@@ -282,6 +285,7 @@ impl MainView {
         let now = Instant::now();
         let desktop = Desktop::new(lang, &config_dir);
         let obs = ObsPanel::new(&config_dir, engine.sender(), window, cx);
+        let scenes = ScenePanel::new(&config_dir, window, cx);
         // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
@@ -351,6 +355,7 @@ impl MainView {
             cleared: None,
             sound,
             obs,
+            scenes,
             _ticker: ticker,
         }
     }
@@ -362,6 +367,15 @@ impl MainView {
             changed = true;
         }
         changed |= self.obs.poll(window, cx);
+        if let Some(scene) = self.obs.take_scene() {
+            match self.scenes.action(&scene) {
+                Some(SceneAction::Profile(name)) => self.engine.send(Command::SceneProfile(name)),
+                Some(SceneAction::Mode(mode)) => {
+                    self.engine.send(Command::Modes(ModeAction::Shortcut(mode)))
+                }
+                None => {}
+            }
+        }
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
         }
@@ -1008,6 +1022,15 @@ impl Render for MainView {
                                             Rc::new(move |order, cx| {
                                                 entity.update(cx, |this, cx| {
                                                     this.obs.order(order);
+                                                    cx.notify();
+                                                })
+                                            })
+                                        }))
+                                        .child(self.scenes.render(lang, {
+                                            let entity = entity.clone();
+                                            Rc::new(move |edit, window, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.scenes.edit(edit, window, cx);
                                                     cx.notify();
                                                 })
                                             })

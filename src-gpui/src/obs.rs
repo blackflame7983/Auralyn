@@ -48,6 +48,8 @@ pub struct ObsPanel {
     rechecked: Instant,
     /// 読み直しの答えを待っている（OBS の返事が遅いとき、読み直しを重ねて接続・切断を待たせない）。
     asking: bool,
+    /// まだ連動に渡していない、最後に替わったシーン。続けて替わったら最後だけを使う。
+    scene: Option<String>,
 }
 
 impl ObsPanel {
@@ -74,7 +76,13 @@ impl ObsPanel {
             reach_error: None,
             rechecked: Instant::now(),
             asking: false,
+            scene: None,
         }
+    }
+
+    /// 替わったシーン（シーンの連動へ渡す）。
+    pub fn take_scene(&mut self) -> Option<String> {
+        self.scene.take()
     }
 
     /// 設定の画面を出している間、到達確認の結果がまだ今の条件のものかを読み直す。
@@ -146,6 +154,7 @@ impl ObsPanel {
                 }
                 Reply::Failed { connect, message } => self.error = Some((connect, message)),
                 Reply::Lost => self.link.send(Order::Read),
+                Reply::Scene(scene) => self.scene = Some(scene),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
                 Reply::Reach(result) => {
                     self.reaching = false;

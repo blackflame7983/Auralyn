@@ -4,10 +4,9 @@
 
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::sound::{self, Change, Knob, NoiseMode, Preset, Sound};
-use gpui_kit::component::button::{Button, ButtonGroup};
 use gpui_kit::component::slider::{Slider, SliderState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable as _, Selectable as _};
+use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -16,7 +15,7 @@ use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::limiter::LimiterPanel;
 use crate::measure::MeasurePanel;
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, choices, note, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -169,7 +168,7 @@ impl SoundPage {
                         current.noise_mode,
                         {
                             let set = set.clone();
-                            move |mode, cx| set(Change::NoiseMode(mode), cx)
+                            move |mode, _, cx| set(Change::NoiseMode(mode), cx)
                         },
                     ))
                     .when(current.noise_mode.is_none(), |this| {
@@ -212,7 +211,7 @@ impl SoundPage {
                                 current.noise_mode,
                                 {
                                     let set = set.clone();
-                                    move |mode, cx| set(Change::NoiseMode(mode), cx)
+                                    move |mode, _, cx| set(Change::NoiseMode(mode), cx)
                                 },
                             ))
                             .when_some(
@@ -273,7 +272,7 @@ impl SoundPage {
                     .gap_2()
                     .child(choices("effects-preset", lang, &PRESETS, current.preset, {
                         let set = set.clone();
-                        move |preset, cx| set(Change::Preset(preset), cx)
+                        move |preset, _, cx| set(Change::Preset(preset), cx)
                     }))
                     .map(|this| {
                         if current.preset == Some(Preset::Singing) {
@@ -397,27 +396,4 @@ pub(crate) fn slider_row(
             ),
         )
         .child(div().flex_none().w(px(48.)).text_sm().child(value))
-}
-
-/// どれか1つを選ぶボタンの組。今の値が無い（分からない）ときは、どれも選ばない。
-fn choices<T: Copy + PartialEq + 'static>(
-    id: &'static str,
-    lang: Lang,
-    options: &[(T, &'static str)],
-    current: Option<T>,
-    on_pick: impl Fn(T, &mut App) + 'static,
-) -> impl IntoElement {
-    let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
-    ButtonGroup::new(id)
-        .outline()
-        .children(options.iter().enumerate().map(|(index, (value, label))| {
-            Button::new(SharedString::from(format!("{id}-{index}")))
-                .label(core(lang, label))
-                .selected(current == Some(*value))
-        }))
-        .on_click(move |clicked, _, cx| {
-            if let Some(value) = clicked.first().and_then(|index| values.get(*index)) {
-                on_pick(*value, cx);
-            }
-        })
 }
