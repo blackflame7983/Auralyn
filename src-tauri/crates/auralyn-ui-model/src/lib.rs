@@ -13,6 +13,7 @@ pub mod post_mix;
 pub mod profile;
 pub mod rack;
 pub mod session;
+pub mod setup;
 pub mod shortcuts;
 pub mod sound;
 pub mod voice_check;

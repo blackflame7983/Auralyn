@@ -319,9 +319,23 @@ pub mod keys {
     pub const POST_RESET: &str = "postMix.reset";
     pub const POST_SAVE: &str = "postMix.save";
     pub const POST_RELOAD: &str = "postMix.reload";
+    pub const SETUP_TITLE: &str = "wizard.title";
+    pub const SETUP_LEAD: &str = "gpuiShell.setupLead";
+    pub const SETUP_GOAL: &str = "wizard.chooseGoal";
+    pub const SETUP_GOAL_OBS: &str = "wizard.obs";
+    pub const SETUP_GOAL_CHAT: &str = "wizard.chat";
+    pub const SETUP_GOAL_LISTEN: &str = "prep.local";
+    pub const SETUP_MICROPHONE: &str = "wizard.microphone";
+    pub const SETUP_OUTPUT: &str = "wizard.destination";
+    pub const SETUP_CABLE_BEFORE: &str = "wizard.cableBefore";
+    pub const SETUP_CABLE: &str = "wizard.cable";
+    pub const SETUP_CABLE_AFTER: &str = "wizard.cableAfter";
+    pub const SETUP_LISTEN_HINT: &str = "wizard.listeningHint";
+    pub const SETUP_START: &str = "wizard.saveStart";
+    pub const SETUP_OTHER: &str = "gpuiShell.setupOther";
 
     #[cfg(test)]
-    pub const ALL: [&str; 308] = [
+    pub const ALL: [&str; 322] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -630,6 +644,20 @@ pub mod keys {
         POST_RESET,
         POST_SAVE,
         POST_RELOAD,
+        SETUP_TITLE,
+        SETUP_LEAD,
+        SETUP_GOAL,
+        SETUP_GOAL_OBS,
+        SETUP_GOAL_CHAT,
+        SETUP_GOAL_LISTEN,
+        SETUP_MICROPHONE,
+        SETUP_OUTPUT,
+        SETUP_CABLE_BEFORE,
+        SETUP_CABLE,
+        SETUP_CABLE_AFTER,
+        SETUP_LISTEN_HINT,
+        SETUP_START,
+        SETUP_OTHER,
     ];
 }
 

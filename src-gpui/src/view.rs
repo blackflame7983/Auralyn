@@ -28,11 +28,13 @@ use crate::mix::MixPanel;
 use crate::part::OnCommand;
 use crate::post_mix::PostMixPanel;
 use crate::settings;
+use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
+use auralyn_ui_model::connect::Device;
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
@@ -86,6 +88,9 @@ pub struct MainView {
     live: LivePanel,
     mix: MixPanel,
     post: PostMixPanel,
+    /// 保存した入出力が無いと分かってから、まだ一度も始まっていない。ホームに「はじめての設定」を出す。
+    first_run: bool,
+    setup: SetupPanel,
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
@@ -129,6 +134,13 @@ impl MainView {
         })
         .detach();
         let connect = ConnectPage::new(lang, window, cx);
+        let setup = SetupPanel::new(window, cx);
+        for state in [&setup.microphone, &setup.output] {
+            cx.subscribe(state, |_, _, _: &SelectEvent<Vec<SharedString>>, cx| {
+                cx.notify()
+            })
+            .detach();
+        }
         let vst = VstPage::new(window, cx);
         let setups = SetupsPanel::new(window, cx);
         cx.subscribe(&setups.name, |this, _, event: &InputEvent, cx| {
@@ -274,6 +286,8 @@ impl MainView {
             live: LivePanel::new(window, cx),
             mix,
             post,
+            first_run: false,
+            setup,
             stats: None,
             cleared: None,
             sound,
@@ -369,6 +383,7 @@ impl MainView {
             Notice::Started { input, output } => {
                 self.input_name = input;
                 self.output_name = output;
+                self.first_run = false;
                 self.advance(SessionEvent::Started);
                 self.reread_peak();
                 self.reread_mix();
@@ -395,7 +410,10 @@ impl MainView {
                 self.fail(SessionEvent::StopFailed, keys::STOP_FAILED, message);
                 self.reread_mix();
             }
-            Notice::Unconfigured => self.advance(SessionEvent::NoSavedConfig),
+            Notice::Unconfigured => {
+                self.first_run = true;
+                self.advance(SessionEvent::NoSavedConfig);
+            }
             Notice::Muted(muted) => self.muted = muted,
             Notice::Bypassed(bypassed) => self.bypassed = bypassed,
             Notice::Rack(rack) => self.vst.set_rack(rack, window, cx, Self::send),
@@ -431,6 +449,7 @@ impl MainView {
                 self.message = Some(format!("scan_plugins: {message}"));
             }
             Notice::Devices { devices, saved } => {
+                self.setup.set_devices(&devices, window, cx);
                 self.live.set_devices(&devices, self.lang, window, cx);
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
@@ -554,12 +573,23 @@ impl MainView {
         self.engine.send(command);
     }
 
-    /// 接続の画面で選んだ機器で開始する。押せるのは止まっているときだけ。
+    /// 接続の画面で選んだ機器で開始する。
     fn start_chosen(&mut self, cx: &App) {
         let Some((input, output)) = self.connect.chosen(cx) else {
             return;
         };
         let (sample_rate, buffer_size) = self.connect.values(cx);
+        self.start_with(input, output, sample_rate, buffer_size);
+    }
+
+    /// 選んだ機器で開始する。押せるのは止まっているときだけ。
+    fn start_with(
+        &mut self,
+        input: Device,
+        output: Device,
+        sample_rate: Option<u32>,
+        buffer_size: Option<u32>,
+    ) {
         if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
             return;
         }
@@ -715,6 +745,49 @@ impl Render for MainView {
                             .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this
+                                    .when(self.first_run, |this| {
+                                        this.child(div().max_w(px(560.)).child(self.setup.render(
+                                            lang,
+                                            matches!(
+                                                self.phase,
+                                                Phase::Stopped | Phase::Unconfigured
+                                            ),
+                                            cx,
+                                            {
+                                                let entity = entity.clone();
+                                                move |goal, window, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.setup.set_goal(goal, window, cx);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            },
+                                            {
+                                                let entity = entity.clone();
+                                                move |_, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        if let Some((input, output)) =
+                                                            this.setup.chosen(cx)
+                                                        {
+                                                            this.start_with(
+                                                                input, output, None, None,
+                                                            );
+                                                        }
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            },
+                                            {
+                                                let entity = entity.clone();
+                                                move |_, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.open(Page::Connect);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            },
+                                        )))
+                                    })
                                     .children(home::sound_flow(&self.flow, lang))
                                     .child(div().max_w(px(560.)).child(self.mix.render(
                                         lang,
