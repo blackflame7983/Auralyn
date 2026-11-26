@@ -31,7 +31,7 @@ use crate::locale_file;
 use crate::mix::MixPanel;
 use crate::modes::ModesPanel;
 use crate::obs::ObsPanel;
-use crate::part::OnCommand;
+use crate::part::{note, OnCommand};
 use crate::post_mix::PostMixPanel;
 use crate::prep::{Goto, PrepPanel};
 use crate::recovery;
@@ -102,6 +102,11 @@ pub struct MainView {
     scan_folders: crate::vst_folders::ScanFolders,
     /// 保存した接続（最後に始めた接続）の使い道が音楽。ホームに構成の切り替えを出す。
     music: bool,
+    /// 保存した接続の入力がアプリの音声（再生元の案内を出さない）。
+    from_app: bool,
+    source_hint: auralyn_ui_model::music::SourceHint,
+    /// 音楽の再生元から音が届かない状態が続いている。
+    show_source_hint: bool,
     setups: SetupsPanel,
     voice: VoicePanel,
     live: LivePanel,
@@ -369,6 +374,9 @@ impl MainView {
             vst,
             scan_folders,
             music: false,
+            from_app: false,
+            source_hint: Default::default(),
+            show_source_hint: false,
             setups,
             voice: VoicePanel::new(window, cx),
             live: LivePanel::new(window, cx),
@@ -488,6 +496,14 @@ impl MainView {
             changed |= self.output.tick(now);
             changed |= self.processed.tick(now);
         }
+        let quiet = self.source_hint.update(
+            self.phase.running(),
+            self.from_app,
+            self.input.state(),
+            Instant::now(),
+        );
+        let shown = self.music && quiet;
+        changed |= std::mem::replace(&mut self.show_source_hint, shown) != shown;
         if changed {
             self.flow.update(
                 self.phase.running(),
@@ -608,6 +624,7 @@ impl MainView {
                 self.live.set_devices(&devices, self.lang, window, cx);
                 self.connect.remembered = remembered;
                 self.music = saved.as_ref().is_some_and(|s| s.purpose == Purpose::Music);
+                self.from_app = saved.as_ref().is_some_and(|s| s.app.is_some());
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
@@ -1044,6 +1061,23 @@ impl Render for MainView {
                                         )))
                                     })
                                     .children(home::sound_flow(&self.flow, lang))
+                                    .when(self.music && self.show_source_hint, |this| {
+                                        let playback = self
+                                            .input_name
+                                            .as_deref()
+                                            .and_then(auralyn_ui_model::music::cable_playback_name);
+                                        this.child(
+                                            div().max_w(px(560.)).child(note(match playback {
+                                                Some(name) => core_with(
+                                                    lang,
+                                                    keys::MUSIC_SOURCE_HINT,
+                                                    &[("name", &name)],
+                                                ),
+                                                None => core(lang, keys::MUSIC_SOURCE_HINT_GENERIC)
+                                                    .to_string(),
+                                            })),
+                                        )
+                                    })
                                     .when(self.music, |this| {
                                         this.children(
                                             self.setups
