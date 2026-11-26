@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
 use auralyn_ui_model::connect::{Device, Saved};
+use auralyn_ui_model::diagnostics::{Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
@@ -106,6 +107,10 @@ pub enum Command {
     },
     /// 試聴（配信に乗らない別の出力先での再生）。結果は `Notice::Listening`。
     Listen(Listen),
+    /// 音声処理の稼働統計を読む。結果は `Notice::Stats`。
+    ReadStats,
+    /// 読み込めなかった VST の記録を消す（次のスキャンで確かめ直す）。結果は `Notice::ExclusionsCleared`。
+    ClearExclusions,
     /// 構成のファイルを消す。
     DeleteProfile(String),
     /// 構成をファイルへ書き出す。接続は含めない（Tauri 版の書き出しの既定と同じ）。結果は `Notice::ProfileFile`。
@@ -208,6 +213,9 @@ pub enum Notice {
     RecordingSaved,
     /// 試聴の様子。失敗したときは理由。
     Listening(Result<Listening, String>),
+    /// 稼働統計。`None` は読めない（音声が止まっているときも）。
+    Stats(Option<Stats>),
+    ExclusionsCleared(Result<(), String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
@@ -573,6 +581,28 @@ impl Control {
                 ("export_voice_check", saved)
             }
             Command::Listen(ref listen) => return self.listen(listen.clone()),
+            Command::ReadStats => {
+                let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
+                    loaded: s.active_plugin_count,
+                    enabled: s.enabled_plugin_count,
+                    pending_unload: s.pending_unload_count,
+                    burned: s.burned_library_count,
+                    max_jitter_us: s.max_jitter_us,
+                    glitches: s.glitch_count,
+                    health: s.processing_health.map(|h| Health {
+                        recent_late: h.recent_late,
+                        recent_underflow: h.recent_underflow,
+                        window_secs: h.window_secs,
+                    }),
+                });
+                let _ = self.notices.send(Notice::Stats(stats));
+                return;
+            }
+            Command::ClearExclusions => {
+                let cleared = scanner::clear_scan_exclusions(&self.config_dir);
+                let _ = self.notices.send(Notice::ExclusionsCleared(cleared));
+                return;
+            }
             Command::DeleteProfile(ref name) => return self.delete_profile(name),
             Command::ExportProfile { ref name, ref path } => {
                 return self.export_profile(name, path)

@@ -30,6 +30,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
+use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
@@ -74,6 +75,10 @@ pub struct MainView {
     vst: VstPage,
     setups: SetupsPanel,
     voice: VoicePanel,
+    /// 設定の画面の稼働統計。`None` は読めていない。
+    stats: Option<Stats>,
+    /// 読み込みを止めた VST のリセットの直前の結果。
+    cleared: Option<bool>,
     sound: SoundPage,
     _ticker: Task<()>,
 }
@@ -224,6 +229,8 @@ impl MainView {
             vst,
             setups,
             voice: VoicePanel::new(window, cx),
+            stats: None,
+            cleared: None,
             sound,
             _ticker: ticker,
         }
@@ -350,6 +357,13 @@ impl MainView {
                 }
             }
             Notice::RecordingSaved => self.voice.saved(),
+            Notice::Stats(stats) => self.stats = stats,
+            Notice::ExclusionsCleared(result) => {
+                if let Err(e) = &result {
+                    log::warn!("読み込みを止めた VST をリセットできません: {e}");
+                }
+                self.cleared = Some(result.is_ok());
+            }
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
@@ -410,6 +424,10 @@ impl MainView {
         }
         if page == Page::Vst {
             self.engine.send(Command::ListProfiles);
+        }
+        if page == Page::Settings {
+            self.cleared = None;
+            self.engine.send(Command::ReadStats);
         }
         if page == Page::Vst && self.vst.needs_scan() {
             self.send(Command::ScanPlugins);
@@ -570,20 +588,33 @@ impl Render for MainView {
                             .overflow_y_scroll()
                             .map(|this| match self.page {
                                 Page::Home => this.children(home::sound_flow(&self.flow, lang)),
-                                Page::Settings => this.child(settings::render(
-                                    lang,
-                                    self.desktop.tray_error.as_deref(),
-                                    self.desktop.hotkey_error.as_deref(),
-                                    {
-                                        let entity = entity.clone();
-                                        move |lang, _, cx| {
-                                            entity.update(cx, |this, cx| {
-                                                this.set_lang(lang);
-                                                cx.notify();
-                                            })
-                                        }
-                                    },
-                                )),
+                                Page::Settings => this.child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_6()
+                                        .max_w(px(560.))
+                                        .child(settings::render(
+                                            lang,
+                                            self.desktop.tray_error.as_deref(),
+                                            self.desktop.hotkey_error.as_deref(),
+                                            {
+                                                let entity = entity.clone();
+                                                move |lang, _, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.set_lang(lang);
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            },
+                                        ))
+                                        .child(settings::diagnostics(
+                                            lang,
+                                            self.stats.as_ref(),
+                                            send.clone(),
+                                        ))
+                                        .child(settings::plugins(lang, self.cleared, send)),
+                                ),
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),

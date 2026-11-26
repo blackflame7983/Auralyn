@@ -90,6 +90,27 @@ pub mod keys {
     pub const LISTEN_STOP: &str = "voice.copy.060";
     pub const LISTEN_LOOP: &str = "voice.copy.061";
     pub const LISTEN_RETRY: &str = "voice.copy.039";
+    pub const DIAG_TITLE: &str = "structure.diagnostics";
+    pub const DIAG_REFRESH: &str = "settings.AudioSettingsModal.170";
+    pub const DIAG_LOADED: &str = "settings.AudioSettingsModal.171";
+    pub const DIAG_ENABLED: &str = "settings.AudioSettingsModal.172";
+    pub const DIAG_PENDING: &str = "settings.AudioSettingsModal.173";
+    pub const DIAG_BURNED: &str = "settings.AudioSettingsModal.174";
+    pub const DIAG_JITTER: &str = "settings.AudioSettingsModal.175";
+    pub const DIAG_GLITCHES: &str = "settings.AudioSettingsModal.176";
+    pub const DIAG_RECENT_LABEL: &str = "master.recentAnomaliesLabel";
+    pub const DIAG_RECENT: &str = "master.recentAnomalies";
+    pub const DIAG_RECENT_NOTE: &str = "master.recentAnomaliesNote";
+    pub const DIAG_RECENT_HIGH: &str = "master.recentAnomaliesHigh";
+    pub const PLUGINS_TITLE: &str = "settings.AudioSettingsModal.179";
+    pub const EXCL_TITLE: &str = "settings.AudioSettingsModal.180";
+    pub const EXCL_LEAD: &str = "settings.AudioSettingsModal.181";
+    pub const EXCL_CONFIRM_TITLE: &str = "settings.AudioSettingsModal.182";
+    pub const EXCL_CONFIRM_TEXT: &str = "settings.AudioSettingsModal.183";
+    pub const EXCL_CONFIRM: &str = "settings.AudioSettingsModal.184";
+    pub const EXCL_DONE: &str = "settings.AudioSettingsModal.185";
+    pub const EXCL_FAILED: &str = "settings.AudioSettingsModal.186";
+    pub const EXCL_BUTTON: &str = "settings.AudioSettingsModal.187";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -211,7 +232,7 @@ pub mod keys {
     pub const HOTKEY_FAILED: &str = "gpuiShell.hotkeyFailed";
 
     #[cfg(test)]
-    pub const ALL: [&str; 198] = [
+    pub const ALL: [&str; 219] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -292,6 +313,27 @@ pub mod keys {
         LISTEN_STOP,
         LISTEN_LOOP,
         LISTEN_RETRY,
+        DIAG_TITLE,
+        DIAG_REFRESH,
+        DIAG_LOADED,
+        DIAG_ENABLED,
+        DIAG_PENDING,
+        DIAG_BURNED,
+        DIAG_JITTER,
+        DIAG_GLITCHES,
+        DIAG_RECENT_LABEL,
+        DIAG_RECENT,
+        DIAG_RECENT_NOTE,
+        DIAG_RECENT_HIGH,
+        PLUGINS_TITLE,
+        EXCL_TITLE,
+        EXCL_LEAD,
+        EXCL_CONFIRM_TITLE,
+        EXCL_CONFIRM_TEXT,
+        EXCL_CONFIRM,
+        EXCL_DONE,
+        EXCL_FAILED,
+        EXCL_BUTTON,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,
