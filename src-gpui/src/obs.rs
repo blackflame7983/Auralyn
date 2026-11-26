@@ -416,15 +416,13 @@ impl ObsPanel {
                 .child(
                     self.changes
                         .render(lang, state == State::Connected, self.reaching, on),
-                ),
+                )
+                .child(note(core(lang, keys::OBS_NEEDS))),
         )
         .icon(IconName::Cast)
         .hint(
             lang,
-            paragraphs(
-                lang,
-                &[keys::OBS_NEEDS, keys::OBS_SERVER, keys::OBS_PASSWORD_SCOPE],
-            ),
+            paragraphs(lang, &[keys::OBS_SERVER, keys::OBS_PASSWORD_SCOPE]),
         )
     }
 

@@ -123,12 +123,12 @@ pub fn desktop(lang: Lang, tray: Option<&str>) -> impl IntoElement {
             .flex()
             .flex_col()
             .gap_2()
-            .child(status(lang, keys::TRAY, tray)),
+            .child(status(lang, keys::TRAY, tray))
+            .when(tray.is_none(), |this| {
+                this.child(note(core(lang, keys::QUIT_HELP)))
+            }),
     )
     .icon(IconName::Monitor)
-    .when(tray.is_none(), |card| {
-        card.hint(lang, core(lang, keys::QUIT_HELP))
-    })
 }
 
 const THEMES: [(Theme, &str, &str); 3] = [
@@ -249,10 +249,10 @@ pub fn shortcuts(lang: Lang, saved: &[Registered], error: Option<&str>) -> impl 
                                 this.child(div().text_color(color::warning()).child(state))
                             }),
                     )
-            })),
+            }))
+            .child(note(core(lang, keys::SHORTCUTS_EDIT_IN_TAURI))),
     )
     .icon(IconName::Keyboard)
-    .hint(lang, core(lang, keys::SHORTCUTS_EDIT_IN_TAURI))
 }
 
 fn action_label(action: Action) -> &'static str {

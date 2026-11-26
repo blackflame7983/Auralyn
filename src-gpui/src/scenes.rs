@@ -14,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{choices, note, paragraphs, with_hint};
+use crate::part::{choices, note, with_hint};
 use crate::scene_file;
 
 const STRATEGIES: [(Strategy, &str); 3] = [
@@ -136,7 +136,7 @@ impl ScenePanel {
             .child(with_hint(
                 "scene-hint",
                 lang,
-                paragraphs(lang, &[keys::SCENE_LEAD, keys::SCENE_MODE_LEAD]),
+                core(lang, keys::SCENE_LEAD),
                 div()
                     .font_weight(FontWeight::MEDIUM)
                     .child(core(lang, keys::SCENE_TITLE)),
@@ -162,47 +162,51 @@ impl ScenePanel {
                     }),
             )
             .when(self.strategy == Strategy::Mode, |this| {
-                this.children(self.rows.iter().enumerate().map(|(index, (name, mode))| {
-                    let on_mode = on.clone();
-                    let on_remove = on.clone();
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(160.))
-                                .child(Input::new(name).aria_label(core_with(
+                this.child(note(core(lang, keys::SCENE_MODE_LEAD)))
+                    .children(self.rows.iter().enumerate().map(|(index, (name, mode))| {
+                        let on_mode = on.clone();
+                        let on_remove = on.clone();
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_2()
+                            .child(div().flex_1().min_w(px(160.)).child(
+                                Input::new(name).aria_label(core_with(
                                     lang,
                                     keys::SCENE_NAME_N,
                                     &[("arg0", &(index + 1))],
-                                ))),
-                        )
-                        .child(choices(
-                            format!("scene-mode-{index}"),
-                            lang,
-                            &MODES,
-                            Some(*mode),
-                            move |mode, window, cx| on_mode(Edit::Mode(index, mode), window, cx),
-                        ))
-                        .child(
-                            Button::new(SharedString::from(format!("scene-remove-{index}")))
-                                .label(core_with(lang, keys::SCENE_REMOVE, &[("n", &(index + 1))]))
-                                .ghost()
-                                .on_click(move |_, window, cx| {
-                                    on_remove(Edit::Remove(index), window, cx)
-                                }),
-                        )
-                }))
-                .child(div().child({
-                    let on = on.clone();
-                    Button::new("scene-add")
-                        .label(core(lang, keys::SCENE_ADD))
-                        .ghost()
-                        .on_click(move |_, window, cx| on(Edit::Add, window, cx))
-                }))
+                                )),
+                            ))
+                            .child(choices(
+                                format!("scene-mode-{index}"),
+                                lang,
+                                &MODES,
+                                Some(*mode),
+                                move |mode, window, cx| {
+                                    on_mode(Edit::Mode(index, mode), window, cx)
+                                },
+                            ))
+                            .child(
+                                Button::new(SharedString::from(format!("scene-remove-{index}")))
+                                    .label(core_with(
+                                        lang,
+                                        keys::SCENE_REMOVE,
+                                        &[("n", &(index + 1))],
+                                    ))
+                                    .ghost()
+                                    .on_click(move |_, window, cx| {
+                                        on_remove(Edit::Remove(index), window, cx)
+                                    }),
+                            )
+                    }))
+                    .child(div().child({
+                        let on = on.clone();
+                        Button::new("scene-add")
+                            .label(core(lang, keys::SCENE_ADD))
+                            .ghost()
+                            .on_click(move |_, window, cx| on(Edit::Add, window, cx))
+                    }))
             })
             .child(
                 div().child(

@@ -12,7 +12,7 @@ use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, SetupDone};
 use crate::obs_text;
 use crate::obs_timing;
-use crate::part::{note, with_hint};
+use crate::part::note;
 
 #[derive(Clone, Copy)]
 enum Op {
@@ -236,16 +236,12 @@ impl Changes {
             .flex_col()
             .gap_2()
             .child(
-                with_hint(
-                    "obs-history-hint",
-                    lang,
-                    core(lang, keys::OBS_SETUP_HISTORY_LEAD),
-                    div()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(core(lang, keys::OBS_SETUP_HISTORY)),
-                )
-                .text_sm(),
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(core(lang, keys::OBS_SETUP_HISTORY)),
             )
+            .child(note(core(lang, keys::OBS_SETUP_HISTORY_LEAD)))
             .child(div().child({
                 let on = on.clone();
                 Button::new("obs-history")
