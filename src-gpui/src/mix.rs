@@ -66,9 +66,9 @@ pub struct MixPanel {
     confirmed: Rc<Cell<bool>>,
     voice_gain: Entity<SliderState>,
     music_gain: Entity<SliderState>,
-    /// 時間差（ms）の入力欄と、最後にエンジンの値を入れたときの値（入力中の文字を、同じ値の読み直しで消さない）。
+    /// 時間差（ms）の入力欄と、最後に欄に入れた・送った値。届いた値がこれと同じなら、入力中の文字を消さない。
     offset: Entity<InputState>,
-    shown_offset: Option<i32>,
+    shown_offset: Rc<Cell<Option<i32>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -88,6 +88,7 @@ impl MixPanel {
         let voice_gain = gain(cx);
         let music_gain = gain(cx);
         let offset = cx.new(|cx| InputState::new(window, cx));
+        let shown_offset: Rc<Cell<Option<i32>>> = Rc::default();
         let on_gain = |change: fn(f32) -> Change| {
             move |this: &mut V, _: Entity<SliderState>, event: &SliderEvent, _: &mut Context<V>| {
                 if let SliderEvent::Release(value) = event {
@@ -113,13 +114,18 @@ impl MixPanel {
             cx.subscribe(&source, unconfirm(confirmed.clone())),
             cx.subscribe(&pair, unconfirm(confirmed.clone())),
             // 入力に合わせて「適用」を使えるかを描き直す。Enter でも適用する。
-            cx.subscribe(&offset, move |this, state, event: &InputEvent, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    if let Some(ms) = mix::parse_offset(&state.read(cx).value()) {
-                        send(this, Command::Mix(MixAction::Levels(Change::OffsetMs(ms))));
+            cx.subscribe(&offset, {
+                let shown = shown_offset.clone();
+                move |this, state, event: &InputEvent, cx| {
+                    if let InputEvent::PressEnter { .. } = event {
+                        let typed = mix::parse_offset(&state.read(cx).value());
+                        if let Some(ms) = typed.filter(|ms| Some(*ms) != shown.get()) {
+                            shown.set(Some(ms));
+                            send(this, Command::Mix(MixAction::Levels(Change::OffsetMs(ms))));
+                        }
                     }
+                    cx.notify();
                 }
-                cx.notify();
             }),
         ];
         Self {
@@ -135,7 +141,7 @@ impl MixPanel {
             voice_gain,
             music_gain,
             offset,
-            shown_offset: None,
+            shown_offset,
             _subscriptions: subscriptions,
         }
     }
@@ -213,8 +219,8 @@ impl MixPanel {
                     self.music_gain.update(cx, |s, cx| {
                         s.set_value(levels.music_gain * 100., window, cx)
                     });
-                    if self.shown_offset != Some(levels.offset_ms) {
-                        self.shown_offset = Some(levels.offset_ms);
+                    if self.shown_offset.get() != Some(levels.offset_ms) {
+                        self.shown_offset.set(Some(levels.offset_ms));
                         self.offset.update(cx, |s, cx| {
                             s.set_value(levels.offset_ms.to_string(), window, cx)
                         });
@@ -627,8 +633,11 @@ impl MixPanel {
         cx: &App,
         send: OnCommand,
     ) -> impl IntoElement {
-        let typed = mix::parse_offset(&self.offset.read(cx).value());
-        let changed = typed.is_some_and(|ms| Some(ms) != self.shown_offset);
+        let text = self.offset.read(cx).value();
+        let typed = mix::parse_offset(&text);
+        let changed = typed.is_some_and(|ms| Some(ms) != self.shown_offset.get());
+        // 打ち始め（空・「-」だけ）では知らせない。
+        let invalid = typed.is_none() && !matches!(text.trim(), "" | "-");
         let label = |field: &Field| {
             core(
                 lang,
@@ -659,6 +668,7 @@ impl MixPanel {
                     )
                     .child({
                         let send = send.clone();
+                        let shown = self.shown_offset.clone();
                         Button::new("mix-offset-apply")
                             .label(core(lang, keys::MIX_OFFSET_APPLY))
                             .outline()
@@ -666,12 +676,13 @@ impl MixPanel {
                             .disabled(!changed)
                             .on_click(move |_, _, cx| {
                                 if let Some(ms) = typed {
+                                    shown.set(Some(ms));
                                     send(Command::Mix(MixAction::Levels(Change::OffsetMs(ms))), cx);
                                 }
                             })
                     }),
             ))
-            .when(typed.is_none(), |this| {
+            .when(invalid, |this| {
                 this.child(
                     div()
                         .text_sm()

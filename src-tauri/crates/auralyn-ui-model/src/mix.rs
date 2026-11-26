@@ -251,12 +251,11 @@ pub fn offset_status(
     saved: Option<&OffsetContext>,
     current: Option<&OffsetContext>,
 ) -> OffsetStatus {
-    let Some(current) = current.filter(|_| offset_ms != 0) else {
-        return if offset_ms == 0 {
-            OffsetStatus::None
-        } else {
-            OffsetStatus::Unknown
-        };
+    if offset_ms == 0 {
+        return OffsetStatus::None;
+    }
+    let Some(current) = current else {
+        return OffsetStatus::Unknown;
     };
     match saved.map(|saved| changes(saved, current)) {
         Some(changed) if changed.is_empty() => OffsetStatus::Confirmed,

@@ -89,35 +89,8 @@ impl Control {
                 expected_epoch: epoch,
                 expected_revision: revision,
             }),
-            MixAction::Levels(change) => match self.mix_engine_levels() {
-                Some(previous) => {
-                    let mut levels = with(previous.clone(), change);
-                    if levels.offset_ms != previous.offset_ms {
-                        levels.offset_context = self.offset_context();
-                    }
-                    self.mix_request(|epoch, revision| MixRequest::Levels {
-                        expected_epoch: epoch,
-                        expected_revision: revision,
-                        levels,
-                    })
-                }
-                None => Err(anyhow::anyhow!("mixing is not active")),
-            },
-            MixAction::ConfirmOffset => match (self.mix_engine_levels(), self.offset_context()) {
-                (Some(levels), Some(context)) => {
-                    let levels = EngineLevels {
-                        offset_context: Some(context),
-                        ..levels
-                    };
-                    self.mix_request(|epoch, revision| MixRequest::Levels {
-                        expected_epoch: epoch,
-                        expected_revision: revision,
-                        levels,
-                    })
-                }
-                (None, _) => Err(anyhow::anyhow!("mixing is not active")),
-                (_, None) => Err(anyhow::anyhow!("the current audio devices are unknown")),
-            },
+            MixAction::Levels(change) => self.set_levels(Some(change)),
+            MixAction::ConfirmOffset => self.set_levels(None),
         };
         let done = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
         let _ = self.notices.send(Notice::MixDone(done));
@@ -128,12 +101,13 @@ impl Control {
     fn send_mix(&mut self, result: anyhow::Result<MixSnapshot>) {
         let notice = match result {
             Ok(snapshot) => {
-                self.mixed = Some(snapshot);
-                let current = self.offset_context();
-                let Some(snapshot) = self.mixed.as_ref() else {
-                    return;
+                // 表示の「確認済みか」だけなので、今の組み合わせを読めなければ「分からない」と出す。
+                let current = match &snapshot.engine.config {
+                    Some(config) => self.offset_context(&config.source).ok().flatten(),
+                    None => None,
                 };
-                let view = view(snapshot, current.as_ref());
+                let view = view(&snapshot, current.as_ref());
+                self.mixed = Some(snapshot);
                 Ok(view)
             }
             Err(e) => Err(e.to_string()),
@@ -160,18 +134,56 @@ impl Control {
         })
     }
 
-    /// 今の機材の組み合わせ（Tauri 版 `currentOffsetContext` と同じ作り方）。オケは最後に読んだ適用中の取り込み口。
-    /// 声にアプリの音を使っている・まだ開始していない・配信用の出力を読めないときは `None`。
-    fn offset_context(&mut self) -> Option<OffsetContext> {
-        let source = self.mixed.as_ref()?.engine.config.as_ref()?.source.clone();
-        let audio = self.host.get_state().config?;
-        if matches!(audio.input_source, Some(InputSource::ProcessLoopback(_))) {
-            return None;
+    /// 音量・ミュート・返し・時間差を変える。時間差を変えたら今の機材の組み合わせで記録を置き換え、
+    /// 変えなければ前の記録を保つ（Tauri 版と同じ）。`None` は何も変えずに、今の機材で記録し直す（確認済みにする）。
+    fn set_levels(&mut self, change: Option<MixChange>) -> anyhow::Result<MixSnapshot> {
+        let confirm = change.is_none();
+        let previous = self
+            .mix_engine_levels()
+            .ok_or_else(|| anyhow::anyhow!("mixing is not active"))?;
+        let source = self
+            .mixed
+            .as_ref()
+            .and_then(|s| s.engine.config.as_ref())
+            .map(|config| config.source.clone())
+            .ok_or_else(|| anyhow::anyhow!("mixing is not active"))?;
+        let mut levels = match change {
+            Some(change) => with(previous.clone(), change),
+            None => previous.clone(),
+        };
+        if confirm || levels.offset_ms != previous.offset_ms {
+            let context = self.offset_context(&source)?;
+            anyhow::ensure!(
+                context.is_some() || !confirm,
+                "the current audio devices are unknown"
+            );
+            levels.offset_context = context;
         }
-        let voice_input_id = rules::identity(audio.input_id.as_deref(), audio.input.as_deref())?;
-        let output_id = rules::identity(audio.output_id.as_deref(), audio.output.as_deref())?;
-        let voice_channels = audio.routing?.input_channels?;
-        let broadcast_id = self.host.live_output(None).ok()?.config.device_id;
+        self.mix_request(|epoch, revision| MixRequest::Levels {
+            expected_epoch: epoch,
+            expected_revision: revision,
+            levels,
+        })
+    }
+
+    /// 今の機材の組み合わせ（Tauri 版 `currentOffsetContext` と同じ作り方）。`source` は適用中のオケの取り込み口。
+    /// 声にアプリの音を使っている・まだ開始していないときは `None`。配信用の出力を読めなければ `Err`（Tauri 版も止める）。
+    fn offset_context(&mut self, source: &EngineSource) -> anyhow::Result<Option<OffsetContext>> {
+        let Some(audio) = self.host.get_state().config else {
+            return Ok(None);
+        };
+        let broadcast_id = self.host.live_output(None)?.config.device_id;
+        if matches!(audio.input_source, Some(InputSource::ProcessLoopback(_))) {
+            return Ok(None);
+        }
+        let ids = (
+            rules::identity(audio.input_id.as_deref(), audio.input.as_deref()),
+            rules::identity(audio.output_id.as_deref(), audio.output.as_deref()),
+            audio.routing.and_then(|routing| routing.input_channels),
+        );
+        let (Some(voice_input_id), Some(output_id), Some(voice_channels)) = ids else {
+            return Ok(None);
+        };
         // 区切り文字を含む ID でもぶつからないよう JSON の配列にする（Tauri 版と同じ文字列になる）。
         let accompaniment = match source {
             EngineSource::Device(device) => serde_json::json!([
@@ -185,13 +197,13 @@ impl Control {
             }
         }
         .to_string();
-        Some(OffsetContext {
+        Ok(Some(OffsetContext {
             voice_input_id,
             voice_channels,
             accompaniment,
             output_id,
             broadcast_id,
-        })
+        }))
     }
 
     /// 最後に読んだ世代を付けて頼む。まだ読んでいなければ先に読む。
