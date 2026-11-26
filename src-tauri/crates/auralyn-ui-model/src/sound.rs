@@ -152,17 +152,88 @@ impl Default for DeEsser {
     }
 }
 
-/// スライダーの範囲と刻み（画面の単位。百分率のものは 0〜1 の値の 100 倍）。
-pub const LOW_CUT_HZ: (f32, f32, f32) = (40.0, 160.0, 1.0);
-pub const DYNAMICS_PERCENT: (f32, f32, f32) = (0.0, 100.0, 1.0);
-pub const BRIGHTNESS_DB: (f32, f32, f32) = (-3.0, 3.0, 0.1);
-pub const MIX_PERCENT: (f32, f32, f32) = (0.0, 25.0, 1.0);
-pub const DECAY_SECONDS: (f32, f32, f32) = (0.3, 2.5, 0.1);
-pub const DAMPING_PERCENT: (f32, f32, f32) = (0.0, 100.0, 1.0);
+/// 歌向け・残響・歯擦音のスライダー。画面の単位（Hz・%・dB・秒）での範囲と、`Sound` との換算を持つ。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Knob {
+    LowCut,
+    Dynamics,
+    Brightness,
+    ReverbMix,
+    ReverbDecay,
+    ReverbDamping,
+    DeEsser,
+}
+
+impl Knob {
+    /// 宣言の順（画面は `knob as usize` で引く）。
+    pub const ALL: [Knob; 7] = [
+        Knob::LowCut,
+        Knob::Dynamics,
+        Knob::Brightness,
+        Knob::ReverbMix,
+        Knob::ReverbDecay,
+        Knob::ReverbDamping,
+        Knob::DeEsser,
+    ];
+
+    /// 画面の単位での（最小, 最大, 刻み）。エンジンが受け付ける範囲と同じ。
+    pub fn range(self) -> (f32, f32, f32) {
+        match self {
+            Knob::LowCut => (40.0, 160.0, 1.0),
+            Knob::Dynamics | Knob::ReverbDamping | Knob::DeEsser => (0.0, 100.0, 1.0),
+            Knob::Brightness => (-3.0, 3.0, 0.1),
+            Knob::ReverbMix => (0.0, 25.0, 1.0),
+            Knob::ReverbDecay => (0.3, 2.5, 0.1),
+        }
+    }
+
+    /// 画面の値 = `Sound` の値 × これ（百分率のものは 100）。
+    fn scale(self) -> f32 {
+        match self {
+            Knob::Dynamics | Knob::ReverbMix | Knob::ReverbDamping | Knob::DeEsser => 100.0,
+            Knob::LowCut | Knob::Brightness | Knob::ReverbDecay => 1.0,
+        }
+    }
+
+    /// `Sound` の値を収める範囲（`Sound` の単位）。
+    fn limits(self) -> (f32, f32) {
+        let (min, max, _) = self.range();
+        (min / self.scale(), max / self.scale())
+    }
+
+    /// 画面に出す値。
+    pub fn shown(self, sound: &Sound) -> f32 {
+        let value = match self {
+            Knob::LowCut => sound.singing.low_cut_hz,
+            Knob::Dynamics => sound.singing.dynamics,
+            Knob::Brightness => sound.singing.brightness_db,
+            Knob::ReverbMix => sound.reverb.mix,
+            Knob::ReverbDecay => sound.reverb.decay_seconds,
+            Knob::ReverbDamping => sound.reverb.damping,
+            Knob::DeEsser => sound.deesser.amount,
+        };
+        value * self.scale()
+    }
+
+    /// 画面の値からの操作。
+    pub fn change(self, shown: f32) -> Change {
+        let value = shown / self.scale();
+        match self {
+            Knob::LowCut => Change::LowCut(value),
+            Knob::Dynamics => Change::Dynamics(value),
+            Knob::Brightness => Change::Brightness(value),
+            Knob::ReverbMix => Change::ReverbMix(value),
+            Knob::ReverbDecay => Change::ReverbDecay(value),
+            Knob::ReverbDamping => Change::ReverbDamping(value),
+            Knob::DeEsser => Change::DeEsserAmount(value),
+        }
+    }
+}
 
 /// 範囲に収める。数でなければ既定にする（エンジンは範囲外を断る）。
-fn within(value: f32, (min, max): (f32, f32), default: f32) -> f32 {
+fn within(value: f32, knob: Knob, default: f32) -> f32 {
     if value.is_finite() {
+        let (min, max) = knob.limits();
         value.clamp(min, max)
     } else {
         default
@@ -173,9 +244,9 @@ impl Singing {
     fn normalized(self) -> Self {
         let d = Self::default();
         Self {
-            low_cut_hz: within(self.low_cut_hz, (40.0, 160.0), d.low_cut_hz),
-            dynamics: within(self.dynamics, (0.0, 1.0), d.dynamics),
-            brightness_db: within(self.brightness_db, (-3.0, 3.0), d.brightness_db),
+            low_cut_hz: within(self.low_cut_hz, Knob::LowCut, d.low_cut_hz),
+            dynamics: within(self.dynamics, Knob::Dynamics, d.dynamics),
+            brightness_db: within(self.brightness_db, Knob::Brightness, d.brightness_db),
         }
     }
 }
@@ -185,11 +256,32 @@ impl Reverb {
         let d = Self::default();
         Self {
             enabled: self.enabled,
-            mix: within(self.mix, (0.0, 0.25), d.mix),
-            decay_seconds: within(self.decay_seconds, (0.3, 2.5), d.decay_seconds),
-            damping: within(self.damping, (0.0, 1.0), d.damping),
+            mix: within(self.mix, Knob::ReverbMix, d.mix),
+            decay_seconds: within(self.decay_seconds, Knob::ReverbDecay, d.decay_seconds),
+            damping: within(self.damping, Knob::ReverbDamping, d.damping),
         }
     }
+}
+
+impl DeEsser {
+    /// エンジンへ送る形（OFF は `None`。OFF の間の量はエンジンへ渡らない）。
+    pub fn sent(self) -> Option<f32> {
+        self.on.then_some(self.amount)
+    }
+}
+
+/// 「声を整える」・残響・歯擦音の抑制を、エンジンへどう送るか（`Sound::effects_request`）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EffectsRequest {
+    pub active: bool,
+    pub preset: Option<Preset>,
+    pub amount: f32,
+    /// 歌向けのときだけ送る。
+    pub singing: Option<Singing>,
+    /// 変わったときだけ送る（`None` ならエンジンは今の残響を保つ）。
+    pub reverb: Option<Reverb>,
+    /// 変わったときだけ置き換える（`None` ならエンジンは今の値を保つ。`Some(None)` は OFF）。
+    pub deesser: Option<Option<f32>>,
 }
 
 /// 抑制の強さの既定（Tauri 版と同じ 80%）。統計が 0 以下（まだ設定していない）のときに使う。
@@ -231,7 +323,11 @@ impl Sound {
             singing: self.singing.normalized(),
             reverb: self.reverb.normalized(),
             deesser: DeEsser {
-                amount: within(self.deesser.amount, (0.0, 1.0), DeEsser::default().amount),
+                amount: within(
+                    self.deesser.amount,
+                    Knob::DeEsser,
+                    DeEsser::default().amount,
+                ),
                 ..self.deesser
             },
             ..self
@@ -327,7 +423,7 @@ impl Sound {
     }
 
     /// 「声を整える」・残響・歯擦音の抑制の設定が `other` と違う（エンジンへは同じ命令で送る）。
-    /// 歌向けの値は、歌向けを選んでいるときだけ比べる（ほかの種類では使わない）。
+    /// 歌向けの値は歌向けを選んでいるときだけ、歯擦音の量は ON のときだけ比べる（それ以外はエンジンへ渡らない）。
     pub fn effects_differ(&self, other: &Sound) -> bool {
         let singing = |s: &Sound| (s.preset == Some(Preset::Singing)).then_some(s.singing);
         (
@@ -336,15 +432,35 @@ impl Sound {
             self.amount,
             singing(self),
             self.reverb,
-            self.deesser,
+            self.deesser.sent(),
         ) != (
             other.effects_on,
             other.preset,
             other.amount,
             singing(other),
             other.reverb,
-            other.deesser,
+            other.deesser.sent(),
         )
+    }
+
+    /// `before`（エンジンへ最後に送った値。起動時の復元などで分からなければ `None`）から変えるとき、送る中身。
+    /// 送るものが無ければ `None`。
+    pub fn effects_request(&self, before: Option<Sound>) -> Option<EffectsRequest> {
+        if before.is_some_and(|before| !self.effects_differ(&before)) {
+            return None;
+        }
+        Some(EffectsRequest {
+            active: self.effects_on,
+            preset: self.preset,
+            amount: self.amount,
+            singing: (self.preset == Some(Preset::Singing)).then_some(self.singing),
+            reverb: before
+                .is_none_or(|before| before.reverb != self.reverb)
+                .then_some(self.reverb),
+            deesser: before
+                .is_none_or(|before| before.deesser.sent() != self.deesser.sent())
+                .then_some(self.deesser.sent()),
+        })
     }
 }
 
@@ -443,7 +559,49 @@ mod tests {
                 amount: 1.0
             }
         );
+        // OFF の間の量は送らない（本番モードを「カスタム」にしない）。
+        assert!(!sharp.effects_differ(&sound()));
         assert!(sharp.with(Change::DeEsserOn(true)).effects_differ(&sharp));
+    }
+
+    #[test]
+    fn effects_request_sends_only_what_changed() {
+        let base = sound();
+        assert_eq!(base.effects_request(Some(base)), None);
+        let first = base.effects_request(None).unwrap();
+        assert_eq!(first.reverb, Some(Reverb::default()));
+        assert_eq!(first.deesser, Some(None));
+        assert_eq!(first.singing, None);
+        let warmer = base.with(Change::Amount(0.2));
+        let request = warmer.effects_request(Some(base)).unwrap();
+        assert_eq!((request.reverb, request.deesser), (None, None));
+        let singing = base.with(Change::Preset(Preset::Singing));
+        assert_eq!(
+            singing.effects_request(Some(base)).unwrap().singing,
+            Some(Singing::default())
+        );
+        let on = base.with(Change::DeEsserOn(true));
+        assert_eq!(
+            on.effects_request(Some(base)).unwrap().deesser,
+            Some(Some(0.5))
+        );
+    }
+
+    #[test]
+    fn knobs_convert_between_screen_and_model_units() {
+        for knob in Knob::ALL {
+            let (min, max, _) = knob.range();
+            let low = sound().with(knob.change(min - 1000.0));
+            let high = sound().with(knob.change(max + 1000.0));
+            assert_eq!(
+                (knob.shown(&low), knob.shown(&high)),
+                (min, max),
+                "{knob:?}"
+            );
+        }
+        assert_eq!(Knob::ReverbMix.change(10.0), Change::ReverbMix(0.1));
+        // 画面は `knob as usize` で `ALL` の順のスライダーを引く。
+        assert!(Knob::ALL.iter().enumerate().all(|(i, k)| *k as usize == i));
     }
 
     #[test]

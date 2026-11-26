@@ -51,7 +51,7 @@ use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::recovery::{Choice, Exit};
 use auralyn_ui_model::session::{Event as SessionEvent, Phase};
 use auralyn_ui_model::shortcuts;
-use auralyn_ui_model::sound::Change;
+use auralyn_ui_model::sound::{Change, Knob};
 
 mod safety;
 
@@ -183,18 +183,10 @@ impl MainView {
             this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
         })
         .detach();
-        for (slider, change) in [
-            (&sound.low_cut, Change::LowCut as fn(f32) -> Change),
-            (&sound.dynamics, |v| Change::Dynamics(v / 100.0)),
-            (&sound.brightness, Change::Brightness),
-            (&sound.reverb_mix, |v| Change::ReverbMix(v / 100.0)),
-            (&sound.reverb_decay, Change::ReverbDecay),
-            (&sound.reverb_damping, |v| Change::ReverbDamping(v / 100.0)),
-            (&sound.deesser, |v| Change::DeEsserAmount(v / 100.0)),
-        ] {
+        for (knob, slider) in Knob::ALL.into_iter().zip(&sound.knobs) {
             cx.subscribe(slider, move |this, _, event: &SliderEvent, _| {
                 if let SliderEvent::Release(value) = event {
-                    this.send(Command::SetSound(change(value.end())));
+                    this.send(Command::SetSound(knob.change(value.end())));
                 }
             })
             .detach();
