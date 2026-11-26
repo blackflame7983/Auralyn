@@ -164,8 +164,6 @@ impl ObsPanel {
                         self.connecting = false;
                         if connected {
                             self.order(Order::Setup(Setup::History));
-                        }
-                        if connected {
                             self.password
                                 .update(cx, |state, cx| state.set_value("", window, cx));
                         }
@@ -489,8 +487,9 @@ impl ObsPanel {
             })
             .when_some(self.reach_error.as_ref(), |this, message| {
                 this.child(note(format!(
-                    "{} {message}",
-                    core(lang, keys::OBS_REACH_FAILED)
+                    "{} {}",
+                    core(lang, keys::OBS_REACH_FAILED),
+                    crate::obs_text::original(lang, message)
                 )))
             })
             .when(self.reach.is_some(), |this| {
