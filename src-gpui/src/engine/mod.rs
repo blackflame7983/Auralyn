@@ -42,6 +42,8 @@ mod live;
 mod mix;
 mod modes;
 mod post_mix;
+mod preparation;
+pub use preparation::Observation;
 mod profile;
 mod slots;
 mod sound;
@@ -124,6 +126,8 @@ pub enum Command {
     Listen(Listen),
     /// 音声処理の稼働統計を読む。結果は `Notice::Stats`。
     ReadStats,
+    /// ホームの「接続の確認」のために音声の状態を読む。結果は `Notice::Preparation`（印はそのまま返す）。
+    ReadPreparation(Option<u64>),
     /// 配信用の出力（`live.rs`）。`None` は読むだけ、`Some` は保存・反映。
     LiveOutput(Option<auralyn_ui_model::live_output::Draft>),
     /// 配信ミックス（`mix.rs`）。
@@ -262,6 +266,11 @@ pub enum ProfileFile {
 
 #[derive(Debug, Clone)]
 pub enum Notice {
+    /// 「接続の確認」の状態。`None` は読めなかった（読む間に条件が変わったときも）。
+    Preparation {
+        observation: Option<Observation>,
+        confirm: Option<u64>,
+    },
     Started {
         input: Option<String>,
         output: Option<String>,
@@ -751,6 +760,7 @@ impl Control {
             Command::PostMix(ref action, ref seen) => {
                 return self.post_mix(action.clone(), seen.clone())
             }
+            Command::ReadPreparation(confirm) => return self.read_preparation(confirm),
             Command::ReadStats => {
                 let stats = self.host.get_engine_runtime_stats().ok().map(|s| Stats {
                     loaded: s.active_plugin_count,

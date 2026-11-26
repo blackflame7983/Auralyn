@@ -25,6 +25,8 @@ mod obs_text;
 mod obs_timing;
 mod part;
 mod post_mix;
+mod prep;
+mod prep_file;
 mod recovery;
 mod scene_file;
 mod scenes;
