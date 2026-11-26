@@ -62,6 +62,10 @@ pub struct PrepPanel {
     /// 確認の記録を頼んだ印・確かめること・頼んだときの鍵。読み直した鍵が同じときだけ記録する。
     confirming: Option<(u64, Stage, String)>,
     sequence: u64,
+    /// 窓を隠していた（隠している間の外での変更は鍵に出ないので、出し直したら確認をやり直す）。
+    hidden: bool,
+    /// 送り先の種類を替えたので、名前の欄を空にする（欄を書き換えるには窓が要るので次の `tick` で）。
+    clear_receiver: bool,
     /// 利用者が開閉を選んだ。`None` の間は、問題があるときだけ開く。
     open: Option<bool>,
     _subscription: Subscription,
@@ -91,9 +95,14 @@ impl PrepPanel {
             observation: None,
             records: Records::default(),
             asking: false,
-            polled: Instant::now(),
+            // 出したらすぐ読む。
+            polled: Instant::now()
+                .checked_sub(POLL)
+                .unwrap_or_else(Instant::now),
             confirming: None,
             sequence: 0,
+            hidden: false,
+            clear_receiver: false,
             open: None,
             _subscription,
         }
@@ -108,11 +117,30 @@ impl PrepPanel {
     fn keys(&self) -> Option<Keys> {
         let observation = self.observation.as_ref()?;
         let (sound, output) = observation.keys.as_ref()?;
-        Some(Keys::new(sound, output, &self.context, None))
+        Some(Keys::new(sound, output, &self.context))
+    }
+
+    /// 窓を隠した・出した。隠したらすべての確認を失効にする（Tauri 版と同じ）。
+    pub fn set_hidden(&mut self, hidden: bool) {
+        if hidden && !self.hidden {
+            self.external();
+        }
+        self.hidden = hidden;
+    }
+
+    /// 鍵に出ない変更（ピーク保護・true-peak 制限、設定の外での変更）。確認をやり直す。
+    pub fn external(&mut self) {
+        self.records.expire_all();
+        self.confirming = None;
     }
 
     /// ホームを見ている間に呼ぶ。読み直す時期なら命令を返す。
-    pub fn tick(&mut self, cx: &App) -> Option<Command> {
+    pub fn tick(&mut self, window: &mut Window, cx: &mut App) -> Option<Command> {
+        if std::mem::take(&mut self.clear_receiver) {
+            self.receiver
+                .update(cx, |state, cx| state.set_value("", window, cx));
+            self.receiver_edited.set(false);
+        }
         if self.receiver_edited.take() {
             let receiver = normalize_receiver(&self.receiver.read(cx).value());
             if receiver != self.context.receiver {
@@ -135,7 +163,7 @@ impl PrepPanel {
 
     /// 音声が始まった・止まった・落ちた。前の確認はすべて今のものではない。
     pub fn audio_changed(&mut self) {
-        self.records.expire_all();
+        self.external();
         self.polled = Instant::now()
             .checked_sub(POLL)
             .unwrap_or_else(Instant::now);
@@ -193,10 +221,11 @@ impl PrepPanel {
                 signal,
                 ..self.context.clone()
             }),
-            Action::Usage(usage) => self.change(PrepContext {
-                usage: Some(usage),
-                ..self.context.clone()
-            }),
+            Action::Usage(usage) => {
+                let next = self.context.with_usage(usage);
+                self.clear_receiver = next.receiver != self.context.receiver;
+                self.change(next);
+            }
             Action::Confirm(stage) => {
                 let expected = self.keys()?.get(stage).to_string();
                 self.sequence += 1;
@@ -208,7 +237,7 @@ impl PrepPanel {
                 return None;
             }
             Action::Reset => {
-                self.records.expire_all();
+                self.external();
                 return None;
             }
             Action::Toggle => {

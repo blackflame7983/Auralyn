@@ -389,8 +389,9 @@ impl MainView {
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
         }
+        self.prep.set_hidden(self.hidden.get());
         if self.page == Page::Home && !self.hidden.get() {
-            if let Some(command) = self.prep.tick(cx) {
+            if let Some(command) = self.prep.tick(window, cx) {
                 self.engine.send(command);
             }
         }
@@ -739,6 +740,13 @@ impl MainView {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
         }
+        // ピーク保護・true-peak 制限は「接続の確認」の鍵に出ないので、変えたら確認をやり直す（Tauri 版と同じ）。
+        if matches!(
+            command,
+            Command::SetPeak(..) | Command::SetPeakLimits { .. }
+        ) {
+            self.prep.external();
+        }
         // ミックス後の VST を変える操作には、画面が見た世代を付ける（見た後に変わっていればホストが断る）。
         let command = match command {
             Command::PostMix(action, None) => Command::PostMix(action, self.post.seen()),
@@ -974,6 +982,12 @@ impl Render for MainView {
                                                         if let Some((input, output)) =
                                                             this.setup.chosen(cx)
                                                         {
+                                                            let usage = this.setup.goal().into();
+                                                            if let Some(command) = this.prep.act(
+                                                                crate::prep::Action::Usage(usage),
+                                                            ) {
+                                                                this.engine.send(command);
+                                                            }
                                                             this.start_with(StartWith {
                                                                 input: Input::Device(input),
                                                                 purpose: Purpose::Voice,

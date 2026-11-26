@@ -26,6 +26,17 @@ pub enum Usage {
     Listening,
 }
 
+/// はじめての設定で選んだ使い道を、送り先にする（Tauri 版も同じ保存を共有する）。
+impl From<crate::setup::Goal> for Usage {
+    fn from(goal: crate::setup::Goal) -> Self {
+        match goal {
+            crate::setup::Goal::Obs => Usage::Obs,
+            crate::setup::Goal::Chat => Usage::Discord,
+            crate::setup::Goal::Listen => Usage::Listening,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Context {
     pub location: Location,
@@ -46,6 +57,19 @@ pub fn normalize_receiver(text: &str) -> String {
 }
 
 impl Context {
+    /// 送り先の種類を替える。名前は前の送り先のものなので消す（Tauri 版と同じ）。
+    pub fn with_usage(&self, usage: Usage) -> Context {
+        Context {
+            usage: Some(usage),
+            receiver: if self.usage == Some(usage) {
+                self.receiver.clone()
+            } else {
+                String::new()
+            },
+            ..self.clone()
+        }
+    }
+
     /// 変えると、どの確認が失効するか。場所と入力の種類は音づくりから、送り先は送り先の確認だけ。
     pub fn expires(&self, next: &Context) -> &'static [Stage] {
         if self.location != next.location || self.signal != next.signal {
@@ -96,6 +120,8 @@ pub struct Facts {
     pub failed: bool,
     /// 状態の読み取りがそろっている（壊れた値がない）。
     pub readable: bool,
+    /// 配信用の出力の行き先が無い・動いていない（読み取りがそろったときだけ失敗とみなす）。
+    pub output_missing: bool,
     pub controls_pending: bool,
     pub muted: bool,
     pub output_gain_zero: bool,
@@ -110,6 +136,8 @@ pub fn availability(facts: Facts) -> Availability {
         Availability::Failed
     } else if !facts.readable {
         Availability::Unknown
+    } else if facts.output_missing {
+        Availability::Failed
     } else if facts.controls_pending {
         Availability::Pending
     } else if facts.muted || facts.output_gain_zero {
@@ -186,14 +214,10 @@ pub struct Keys([String; 3]);
 
 impl Keys {
     /// `sound` は入力と処理、`output` は出力と配信用の出力の条件（どちらもエンジンを読む側が作る文字列）。
-    /// `reach` は OBS のテスト音で届いたと確かめた記録の番号と、それがまだ今のものか。
-    pub fn new(sound: &str, output: &str, context: &Context, reach: Option<(&str, bool)>) -> Self {
+    pub fn new(sound: &str, output: &str, context: &Context) -> Self {
         let sound = format!("{sound}|{:?}|{:?}", context.location, context.signal);
         let listen = format!("{sound}|{output}");
-        let receiver = format!(
-            "{listen}|{:?}|{}|{:?}",
-            context.usage, context.receiver, reach
-        );
+        let receiver = format!("{listen}|{:?}|{}", context.usage, context.receiver);
         Keys([sound, listen, receiver])
     }
 
@@ -312,14 +336,14 @@ mod tests {
             usage: Some(Usage::Obs),
             ..Context::default()
         };
-        let before = Keys::new("in", "out", &context, None);
+        let before = Keys::new("in", "out", &context);
         let mut records = Records::default();
         Stage::ALL
             .into_iter()
             .for_each(|stage| confirm(&mut records, &before, stage));
         assert_eq!(next(Availability::Ready, &records, &context), Next::Done);
 
-        let output_changed = Keys::new("in", "out2", &context, None);
+        let output_changed = Keys::new("in", "out2", &context);
         records.expire_changed(Some(&output_changed));
         assert_eq!(records.state(Stage::Sound), State::Confirmed);
         assert_eq!(records.state(Stage::Listen), State::Stale);
@@ -341,9 +365,9 @@ mod tests {
             usage: Some(Usage::Obs),
             ..Context::default()
         };
-        let a = Keys::new("in", "out", &context, None);
+        let a = Keys::new("in", "out", &context);
         context.receiver = "マイク".into();
-        let b = Keys::new("in", "out", &context, Some(("op-1", true)));
+        let b = Keys::new("in", "out", &context);
         assert_eq!(a.get(Stage::Listen), b.get(Stage::Listen));
         assert_ne!(a.get(Stage::Receiver), b.get(Stage::Receiver));
         let venue = Context {
@@ -356,6 +380,8 @@ mod tests {
             ..context.clone()
         };
         assert_eq!(context.expires(&renamed), &[Stage::Receiver]);
+        assert_eq!(context.with_usage(Usage::Obs).receiver, "マイク");
+        assert_eq!(context.with_usage(Usage::Discord).receiver, "");
     }
 
     #[test]

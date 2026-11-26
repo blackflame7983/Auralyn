@@ -13,8 +13,6 @@ use super::{Control, Notice};
 #[derive(Clone, Debug)]
 pub struct Observation {
     pub availability: Availability,
-    /// 音を送っていない原因が緊急ミュートか（`false` は出力音量ゼロ）。
-    pub muted: bool,
     pub keys: Option<(String, String)>,
     /// 入力の名前（アプリの音声ならアプリ名）。
     pub input: String,
@@ -26,7 +24,6 @@ impl Observation {
         let config = state.config.as_ref();
         Self {
             availability,
-            muted: false,
             keys: None,
             input: config.and_then(input_name).unwrap_or_default(),
             output: config.and_then(|c| c.output.clone()).unwrap_or_default(),
@@ -75,7 +72,8 @@ fn build(state: &AudioStateInfo, stats: &EngineRuntimeStats, live: &LiveStatus) 
     let latency = stats.latency_metadata.as_deref();
     let stream = latency
         .filter(|l| l.stream_running)
-        .and_then(|l| l.stream_epoch.clone());
+        .and_then(|l| l.stream_epoch.clone())
+        .filter(|epoch| !epoch.is_empty());
     let facts = Facts {
         configured: !config.host.is_empty()
             && input_name(config).is_some()
@@ -88,8 +86,8 @@ fn build(state: &AudioStateInfo, stats: &EngineRuntimeStats, live: &LiveStatus) 
                 .queue_diagnostics
                 .as_ref()
                 .is_some_and(|q| matches!(q.state, QueueState::Failed))
-            || stats.process_input.as_ref().is_some_and(|p| p.failed)
-            || (live.config.split_processing && live.config.device_id.is_none())
+            || stats.process_input.as_ref().is_some_and(|p| p.failed),
+        output_missing: (live.config.split_processing && live.config.device_id.is_none())
             || (live.config.device_id.is_some() && !sink.is_some_and(|s| s.active)),
         readable: p.is_some() && stream.is_some(),
         controls_pending: p.is_some_and(|p| p.controls_pending),
@@ -107,7 +105,6 @@ fn build(state: &AudioStateInfo, stats: &EngineRuntimeStats, live: &LiveStatus) 
     ) {
         return observation;
     }
-    observation.muted = p.muted;
     let identity = match &config.input_source {
         Some(InputSource::ProcessLoopback(app)) => {
             serde_json::json!(["app", app.app_key, app.raw_endpoint_id])
