@@ -24,8 +24,12 @@ type Names = SelectState<Vec<SharedString>>;
 pub struct LivePanel {
     /// 最後に読めた状態。`None` はまだ読めていない。
     live: Option<Live>,
-    /// 最後の読み込み・保存が断られた理由（次に読めたら消す）。
+    /// 最後の読み込みが失敗した理由（次に読めたら消す）。
     failed: Option<String>,
+    /// 保存を頼んで、結果を待っている。待っている間は変えさせない。
+    saving: Rc<Cell<bool>>,
+    /// 最後の保存が断られた理由（次の保存まで残す）。
+    save_failed: Option<String>,
     /// 保存する前の下書き。読めた構成が変わるたびに、それに戻す。
     draft: Rc<RefCell<Option<Draft>>>,
     /// 「二重取り込みを確かめた」。下書きを変えると外れる。
@@ -55,11 +59,8 @@ impl LivePanel {
             move |change: Change| {
                 let mut draft = draft.borrow_mut();
                 if let Some(current) = draft.take() {
-                    let next = current.clone().with(change);
-                    if next != current {
-                        confirmed.set(false);
-                    }
-                    *draft = Some(next);
+                    *draft = Some(current.with(change));
+                    confirmed.set(false);
                 }
             }
         };
@@ -92,6 +93,8 @@ impl LivePanel {
         Self {
             live: None,
             failed: None,
+            saving: Rc::default(),
+            save_failed: None,
             draft,
             confirmed,
             device,
@@ -142,6 +145,12 @@ impl LivePanel {
         }
     }
 
+    /// 保存の結果。
+    pub fn saved(&mut self, result: Result<(), String>) {
+        self.saving.set(false);
+        self.save_failed = result.err();
+    }
+
     /// 下書きを保存してある構成に戻す。
     fn reset(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
         let Some(saved) = self.live.as_ref().map(|l| l.saved.clone()) else {
@@ -190,6 +199,7 @@ impl LivePanel {
         let draft = self.draft.borrow().clone();
         let saved = self.live.as_ref().map(|l| &l.saved);
         let confirmed = self.confirmed.get();
+        let saving = self.saving.get();
         let can_save = draft
             .as_ref()
             .zip(saved)
@@ -224,9 +234,16 @@ impl LivePanel {
                             .child(core(lang, text)),
                     )
                 })
-                .when_some(self.failed.clone(), |this, message| {
-                    this.child(div().text_sm().text_color(color::warning()).child(message))
-                })
+                .children(
+                    [
+                        self.failed.clone(),
+                        self.save_failed.clone(),
+                        self.live.as_ref().and_then(|l| l.error.clone()),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .map(|message| div().text_sm().text_color(color::warning()).child(message)),
+                )
                 .when_some(draft, |this, draft| {
                     let monitor_muted = draft.monitor_muted;
                     this.child(
@@ -235,7 +252,7 @@ impl LivePanel {
                             .flex_col()
                             .gap_1()
                             .child(div().text_sm().child(core(lang, keys::LIVE_DEVICE)))
-                            .child(Select::new(&self.device)),
+                            .child(Select::new(&self.device).disabled(saving)),
                     )
                     .when(self.live.as_ref().is_some_and(|l| l.split), |this| {
                         this.child(note(core(lang, keys::LIVE_SPLIT_KEPT)))
@@ -245,16 +262,19 @@ impl LivePanel {
                         keys::LIVE_MONITOR_TRIM,
                         &self.monitor_trim,
                         draft.monitor_trim,
+                        saving,
                     ))
                     .child(trim_row(
                         lang,
                         keys::LIVE_BROADCAST_TRIM,
                         &self.broadcast_trim,
                         draft.broadcast_trim,
+                        saving,
                     ))
                     .child(
                         Checkbox::new("live-monitor-muted")
                             .checked(monitor_muted)
+                            .disabled(saving)
                             .label(core(lang, keys::LIVE_MONITOR_MUTED))
                             .on_click({
                                 let draft = self.draft.clone();
@@ -272,6 +292,7 @@ impl LivePanel {
                     .child(
                         Checkbox::new("live-confirm")
                             .checked(confirmed)
+                            .disabled(saving)
                             .label(core(lang, keys::LIVE_CONFIRM))
                             .on_click({
                                 let confirmed = self.confirmed.clone();
@@ -285,9 +306,14 @@ impl LivePanel {
                         Button::new("live-save")
                             .label(core(lang, keys::LIVE_SAVE))
                             .primary()
-                            .disabled(!can_save)
-                            .on_click(move |_, _, cx| {
-                                send(Command::LiveOutput(Some(draft.clone())), cx)
+                            .disabled(!can_save || saving)
+                            .on_click({
+                                let saving = self.saving.clone();
+                                move |_, window, cx| {
+                                    saving.set(true);
+                                    send(Command::LiveOutput(Some(draft.clone())), cx);
+                                    window.refresh();
+                                }
                             }),
                     )
                 }),
@@ -301,6 +327,7 @@ fn trim_row(
     label: &'static str,
     state: &Entity<SliderState>,
     value: f32,
+    disabled: bool,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -311,6 +338,7 @@ fn trim_row(
             div().flex_1().child(
                 Slider::new(state)
                     .horizontal()
+                    .disabled(disabled)
                     .accessibility_label(core(lang, label)),
             ),
         )

@@ -401,6 +401,7 @@ impl MainView {
                     .set_devices(devices, saved, self.lang, window, cx)
             }
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
+            Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
                 // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
                 // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。

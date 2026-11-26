@@ -74,6 +74,7 @@ pub struct Live {
     pub active: bool,
     /// 配信用の出力が止まった。
     pub failed: bool,
+    /// 配信用の出力を開けないなどの理由（Tauri 版と同じく、あれば止まったものとして扱う）。
     pub error: Option<String>,
 }
 
@@ -92,7 +93,7 @@ impl Live {
     pub fn verdict(&self) -> Verdict {
         if self.saved.device_id.is_none() {
             Verdict::Off
-        } else if self.failed {
+        } else if self.failed || self.error.is_some() {
             Verdict::Failed
         } else if self.active {
             Verdict::Active
@@ -172,5 +173,10 @@ mod tests {
         assert_eq!(live(Some("x"), true, false).verdict(), Verdict::Active);
         assert_eq!(live(Some("x"), false, false).verdict(), Verdict::Inactive);
         assert_eq!(live(Some("x"), true, true).verdict(), Verdict::Failed);
+        let errored = Live {
+            error: Some("open failed".into()),
+            ..live(Some("x"), false, false)
+        };
+        assert_eq!(errored.verdict(), Verdict::Failed);
     }
 }

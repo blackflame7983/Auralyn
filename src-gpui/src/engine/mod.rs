@@ -224,6 +224,8 @@ pub enum Notice {
     ExclusionsCleared(Result<(), String>),
     /// 配信用の出力の状態。`Err` は読めない・断られた理由。
     Live(Result<auralyn_ui_model::live_output::Live, String>),
+    /// 配信用の出力の保存の結果（`Err` は断られた理由）。このあと読んだ状態が `Live` で届く。
+    LiveSaved(Result<(), String>),
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。

@@ -6,7 +6,7 @@ use vst_host_lib::audio_engine::live_output::{Config as LiveConfig, Status as Li
 
 impl Control {
     /// `draft` があれば、今の構成に重ねて保存・反映する（自分用と配信用の処理の分け方は保つ。分けないなら外す）。
-    /// 断られたら理由を送り、今の状態を読み直して送る。`None` なら読むだけ。
+    /// 保存の結果を送り、断られたら今の状態を読み直して送る。`None` なら読むだけ。
     pub(super) fn live_output(&mut self, draft: Option<Draft>) {
         let saving = draft.is_some();
         let result = match draft {
@@ -23,12 +23,13 @@ impl Control {
                 }))
             }),
         };
-        let result = match result {
-            Err(e) if saving => {
-                let _ = self.notices.send(Notice::Live(Err(e.to_string())));
-                self.host.live_output(None)
-            }
-            other => other,
+        // 保存の結果は、読んだ状態と別に送る（読み直しの成功で、断られた理由を消さないため）。
+        let result = if saving {
+            let saved = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
+            let _ = self.notices.send(Notice::LiveSaved(saved));
+            result.or_else(|_| self.host.live_output(None))
+        } else {
+            result
         };
         let result = result
             .map(|status| view(&status))
