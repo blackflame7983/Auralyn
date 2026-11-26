@@ -46,12 +46,14 @@ pub struct ObsPanel {
     reaching: bool,
     reach_error: Option<String>,
     rechecked: Instant,
+    /// 読み直しの答えを待っている（OBS の返事が遅いとき、読み直しを重ねて接続・切断を待たせない）。
+    asking: bool,
 }
 
 impl ObsPanel {
     pub fn new<V: 'static>(
         config_dir: &Path,
-        engine: flume::Sender<crate::engine::Command>,
+        engine: flume::WeakSender<crate::engine::Command>,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self {
@@ -71,16 +73,21 @@ impl ObsPanel {
             reaching: false,
             reach_error: None,
             rechecked: Instant::now(),
+            asking: false,
         }
     }
 
     /// 設定の画面を出している間、到達確認の結果がまだ今の条件のものかを読み直す。
     pub fn recheck(&mut self) {
-        if self.reaching || self.rechecked.elapsed() < Duration::from_millis(RECHECK_MS) {
+        if self.reaching
+            || self.asking
+            || self.rechecked.elapsed() < Duration::from_millis(RECHECK_MS)
+        {
             return;
         }
         self.rechecked = Instant::now();
         if let Some(operation) = self.reach.as_ref().and_then(Reach::recheck) {
+            self.asking = true;
             self.link.send(Order::ReachCurrent(operation.to_string()));
         }
     }
@@ -89,14 +96,20 @@ impl ObsPanel {
     pub fn open(&mut self) {
         self.error = None;
         self.link.send(Order::Read);
+        // 見ていない間に音声の条件が変わっているかもしれないので、すぐに読み直す。
+        self.rechecked = Instant::now()
+            .checked_sub(Duration::from_millis(RECHECK_MS))
+            .unwrap_or_else(Instant::now);
     }
 
     pub fn order(&mut self, order: Order) {
         self.error = None;
         match order {
             Order::Connect(_) => self.connecting = true,
+            // 確かめ始めたら、前の結果はもう今のものではない（ホストも無効にする）。
             Order::CheckReach => {
                 self.reaching = true;
+                self.reach = None;
                 self.reach_error = None;
             }
             _ => {}
@@ -122,6 +135,11 @@ impl ObsPanel {
                                 .update(cx, |state, cx| state.set_value("", window, cx));
                         }
                     }
+                    // 接続が替われば、前の到達確認は今の接続のものではない。
+                    if !connected {
+                        self.reach = None;
+                        self.reach_error = None;
+                    }
                     self.connected = Some(connected);
                     self.fill(saved.as_ref().ok().cloned().flatten(), window, cx);
                     self.saved = saved;
@@ -137,6 +155,7 @@ impl ObsPanel {
                     }
                 }
                 Reply::ReachCurrent { operation, current } => {
+                    self.asking = false;
                     if let Some(reach) = self.reach.as_mut() {
                         reach.answer(&operation, current);
                     }

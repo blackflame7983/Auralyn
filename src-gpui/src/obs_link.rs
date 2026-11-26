@@ -1,7 +1,8 @@
 //! OBS との接続を、画面とは別のスレッドで扱う。接続は Tauri 版と同じ `vst_host_lib::obs`（obws と tokio）を使い、
 //! パスワードは同じ `obs-credentials.dpapi`（Windows のユーザー単位で保護）へ保存する。
 //!
-//! 命令は1本のスレッドが受付順に実行する（接続と切断が入れ替わらない）。OBS 側から切れたら `Reply::Lost` を送る
+//! 命令は1本のスレッドが受付順に実行する（接続と切断が入れ替わらない）。到達確認の間（最大十数秒）は、
+//! 切断もその後に待つ（Tauri 版のように途中で中止はしない。テスト音は確認の終わりに必ず止める）。OBS 側から切れたら `Reply::Lost` を送る
 //! （自分で切断したときは送らない）。
 
 use std::path::{Path, PathBuf};
@@ -59,7 +60,7 @@ pub struct ObsLink {
 
 impl ObsLink {
     /// `engine` はテスト音を鳴らすときの、音声エンジンへの命令の口。
-    pub fn start(config_dir: &Path, engine: flume::Sender<Command>) -> Self {
+    pub fn start(config_dir: &Path, engine: flume::WeakSender<Command>) -> Self {
         let (orders, inbox) = flume::unbounded();
         let (outbox, replies) = flume::unbounded();
         let file = obs_credentials::file_in(config_dir);
@@ -184,13 +185,16 @@ fn notify(outbox: &flume::Sender<Reply>) -> impl obs::Notify {
 }
 
 /// テスト音は、音声エンジンのスレッドに鳴らしてもらう（`AudioHost` はそのスレッドだけが持つ）。
+/// 弱い口にして、画面が閉じたらエンジンのスレッドが終われるようにする。
 #[derive(Clone)]
-struct EngineTone(flume::Sender<Command>);
+struct EngineTone(flume::WeakSender<Command>);
 
 impl EngineTone {
     async fn ask(&self, step: ToneStep) -> Result<ReachReceipt, String> {
         let (reply, answer) = flume::bounded(1);
         self.0
+            .upgrade()
+            .ok_or("音声エンジンが終わっています")?
             .send(Command::ReachTone(step, reply))
             .map_err(|_| "音声エンジンに届きません".to_string())?;
         answer

@@ -441,9 +441,9 @@ impl Engine {
         let _ = self.commands.send(command);
     }
 
-    /// 別のスレッドから命令を送る口（OBS の到達確認のテスト音）。
-    pub fn sender(&self) -> flume::Sender<Command> {
-        self.commands.clone()
+    /// 別のスレッドから命令を送る口（OBS の到達確認のテスト音）。弱い口なので、画面が閉じればエンジンは終わる。
+    pub fn sender(&self) -> flume::WeakSender<Command> {
+        self.commands.downgrade()
     }
 
     /// 終了の前に、並びと VST の中の設定を保存し終えるのを待つ。エンジンが応えなければ数秒で諦める。
