@@ -30,14 +30,14 @@ impl VoicePanel {
         self.saved = true;
     }
 
-    /// 音声が止まった。録った音は子と一緒に消えることがあるので、無いものとして扱う。
-    pub fn stopped(&mut self) {
-        *self = Self::default();
-    }
-
-    /// 音づくりの画面を離れるとき。録っている途中なら止める命令を返す（録音はこの画面からしか始めない）。
-    pub fn leave(&self) -> Option<Command> {
-        self.recording.can_stop().then_some(Command::StopRecording)
+    /// 音づくりの画面を離れる・窓を隠すとき。録っている途中なら止める命令を1度だけ返す
+    /// （録音はこの画面からしか始めない）。止まった状態は、あとでエンジンから届く。
+    pub fn leave(&mut self) -> Option<Command> {
+        let recording = self.recording.can_stop();
+        if recording {
+            self.recording.state = State::Idle;
+        }
+        recording.then_some(Command::StopRecording)
     }
 
     pub fn render(&self, lang: Lang, running: bool, send: OnCommand) -> impl IntoElement {
@@ -99,7 +99,7 @@ impl VoicePanel {
                             )))
                         }),
                 )
-                .when(recording.can_save(), |this| {
+                .when(recording.can_save(running), |this| {
                     this.child(
                         div()
                             .flex()

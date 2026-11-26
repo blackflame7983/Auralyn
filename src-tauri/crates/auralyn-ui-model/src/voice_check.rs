@@ -43,8 +43,10 @@ impl Recording {
         self.state == State::Recording
     }
 
-    pub fn can_save(&self) -> bool {
-        self.state == State::Ready && self.duration_ms > 0
+    /// 音声が止まっている間は保存させない。止めたあとも録った音は残るが、子が落ちて作り直されたときは
+    /// 新しい子が何も持たないまま通知を出さないので、止まっている間はどちらか分からない。
+    pub fn can_save(&self, running: bool) -> bool {
+        running && self.state == State::Ready && self.duration_ms > 0
     }
 
     pub fn remaining_ms(&self) -> u32 {
@@ -106,9 +108,10 @@ mod tests {
 
     #[test]
     fn saves_only_a_finished_take() {
-        assert!(at(State::Ready, 0, 4000).can_save());
-        assert!(!at(State::Ready, 0, 0).can_save());
-        assert!(!at(State::Recording, 4000, 4000).can_save());
+        assert!(at(State::Ready, 0, 4000).can_save(true));
+        assert!(!at(State::Ready, 0, 4000).can_save(false));
+        assert!(!at(State::Ready, 0, 0).can_save(true));
+        assert!(!at(State::Recording, 4000, 4000).can_save(true));
         assert!(at(State::Recording, 4000, 4000).can_stop());
     }
 

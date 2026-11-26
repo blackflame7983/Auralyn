@@ -259,6 +259,12 @@ impl MainView {
             }
             changed = true;
         }
+        // 隠れている間は録らない（Tauri 版と同じ）。
+        if self.hidden.get() {
+            if let Some(command) = self.voice.leave() {
+                self.engine.send(command);
+            }
+        }
         // 隠れている間は読まない。出し直したら、最新の値と経った時間から続ける。
         if !self.hidden.get() {
             let slot = *self.engine.levels.lock().unwrap_or_else(|e| e.into_inner());
@@ -298,7 +304,6 @@ impl MainView {
             }
             Notice::Stopped => {
                 self.advance(SessionEvent::Stopped);
-                self.voice.stopped();
                 self.reread_peak();
             }
             Notice::StreamError(message) => {
@@ -556,9 +561,11 @@ impl Render for MainView {
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),
-                                Page::Sound => this
-                                    .child(self.sound.render(lang, cx, send.clone()))
-                                    .child(self.voice.render(lang, self.phase.running(), send)),
+                                Page::Sound => {
+                                    this.child(self.sound.render(lang, cx, send.clone())).child(
+                                        self.voice.render(lang, self.phase == Phase::Running, send),
+                                    )
+                                }
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,
