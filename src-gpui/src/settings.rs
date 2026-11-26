@@ -3,7 +3,7 @@
 //! 自動起動・更新・音声処理の調整・再起動は、まだこの画面に無い。数え方の規則は `auralyn-ui-model` の `diagnostics`。
 
 use auralyn_core::design::Theme;
-use auralyn_ui_model::diagnostics::Stats;
+use auralyn_ui_model::diagnostics::{self, Stats};
 use std::sync::LazyLock;
 
 use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
@@ -281,6 +281,49 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
                         .child(core(lang, keys::DIAG_RECENT_HIGH)),
                 )
             }),
+    )
+}
+
+/// 配信ミックスの診断。診断と一緒に読む（「読み直す」で両方）。読めない項目は「-」。
+pub fn mix_diagnostics(lang: Lang, mix: &diagnostics::Mix) -> impl IntoElement {
+    fn text(value: Option<impl ToString>) -> String {
+        value.map_or_else(|| "-".to_owned(), |v| v.to_string())
+    }
+    let on_off = |v: Option<bool>| text(v.map(|on| if on { "ON" } else { "OFF" }));
+    let rows = [
+        (
+            keys::MIX_DIAG_CAPTURE,
+            text(mix.captured.map(|(all, heard)| format!("{all} / {heard}"))),
+        ),
+        (keys::MIX_DIAG_QUEUE, text(mix.queued)),
+        (keys::MIX_DIAG_CORRECTION, text(mix.correction_ppm)),
+        (keys::MIX_DIAG_DISCONTINUITIES, text(mix.discontinuities)),
+        (keys::MIX_DIAG_TIMESTAMPS, text(mix.timestamp_errors)),
+        (keys::MIX_DIAG_NONFINITE, text(mix.nonfinite)),
+        (keys::MIX_DIAG_DISCARDED, text(mix.discarded)),
+        (keys::MIX_DIAG_PRIMARY_QUEUE, text(mix.primary_queued)),
+        (
+            keys::MIX_DIAG_PRIMARY_CORRECTION,
+            text(mix.primary_correction_ppm),
+        ),
+        (keys::MIX_DIAG_UNDERRUNS, text(mix.underruns)),
+        (keys::MIX_DIAG_VOICE_FRAMES, text(mix.voice_frames)),
+        (keys::MIX_DIAG_ATTACHED, on_off(mix.attached)),
+        (keys::MIX_DIAG_READY, on_off(mix.ready)),
+        (keys::MIX_DIAG_FAILED, on_off(mix.failed)),
+        (keys::MIX_DIAG_PACKETS, text(mix.packets)),
+        (keys::MIX_DIAG_RATE, text(mix.sample_rate)),
+        (keys::MIX_DIAG_TRANSPORT, text(mix.transport_frames)),
+        (keys::MIX_DIAG_DECLARED, text(mix.declared_frames)),
+    ];
+    card(
+        core(lang, keys::MIX_DIAG_TITLE),
+        div(),
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .children(rows.map(|(name, value)| row(lang, name, value))),
     )
 }
 
