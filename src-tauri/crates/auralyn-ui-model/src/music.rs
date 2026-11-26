@@ -8,8 +8,8 @@ use crate::meter::State;
 /// 届かない状態がこの時間続いたときだけ出す（曲の合間の無音では出さない）。
 pub const SOURCE_HINT_AFTER: Duration = Duration::from_secs(5);
 
-/// 名前の末尾の「 [48 kHz]」のような周波数の札を除く（札のあとに空白があれば除かない。Tauri 版と同じ）。
-fn without_rate(name: &str) -> &str {
+/// 名前の末尾の「 [48kHz]」「 [44/48/96kHz]」のような周波数の札を除く（札のあとに空白があれば除かない。Tauri 版と同じ）。
+pub fn without_rate(name: &str) -> &str {
     let Some(body) = name
         .len()
         .checked_sub(4)
@@ -84,6 +84,17 @@ impl SourceHint {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rate_tags_from_the_engine_are_removed_and_other_brackets_kept() {
+        assert_eq!(
+            without_rate("Voicemeeter In 2 [44/48/96kHz]"),
+            "Voicemeeter In 2"
+        );
+        assert_eq!(without_rate("Mic (2) [48kHz]"), "Mic (2)");
+        assert_eq!(without_rate("Mic [USB]"), "Mic [USB]");
+        assert_eq!(without_rate("Mic [44.1kHz, 48kHz]"), "Mic [44.1kHz, 48kHz]");
+    }
 
     #[test]
     fn only_known_cable_names_map_to_their_playback_side() {

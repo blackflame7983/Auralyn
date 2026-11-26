@@ -953,7 +953,15 @@ impl Render for MainView {
             }
         });
         let route = match (self.phase.running(), &self.input_name, &self.output_name) {
-            (true, Some(input), Some(output)) => Some(format!("{input} → {output}").into()),
+            // 周波数の札（「 [44/48/96 kHz]」）は帯に収まらず機器名が切れるので外す。
+            (true, Some(input), Some(output)) => Some(
+                format!(
+                    "{} → {}",
+                    auralyn_ui_model::music::without_rate(input),
+                    auralyn_ui_model::music::without_rate(output)
+                )
+                .into(),
+            ),
             _ => None,
         };
         let band = shell::band(self.phase, self.modes.badges(lang), route, lang, {

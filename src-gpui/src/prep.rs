@@ -10,10 +10,11 @@ use auralyn_ui_model::preparation::{
     self, normalize_receiver, Availability, Context as PrepContext, Keys, Location, Next, Records,
     Signal, Stage, State, Usage,
 };
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::Disableable as _;
+use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -279,7 +280,13 @@ impl PrepPanel {
                 .child(
                     Button::new("prep-toggle")
                         .label(core(lang, keys::PREP_STEPS))
-                        .ghost()
+                        .icon(if open {
+                            IconName::ChevronUp
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .outline()
+                        .small()
                         .on_click(act(Action::Toggle)),
                 ),
             div().when(open, |this| {
