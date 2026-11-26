@@ -4,12 +4,16 @@
 use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-use auralyn_ui_model::obs::{self, State, Target, DEFAULT_HOST, DEFAULT_PORT};
+use auralyn_ui_model::obs::{
+    self, Reach, State, Target, Verdict, DEFAULT_HOST, DEFAULT_PORT, RECHECK_MS,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::Disableable as _;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -36,12 +40,23 @@ pub struct ObsPanel {
     filled: bool,
     /// 直前の失敗。`bool` は接続の失敗か（接続の失敗だけ「接続に失敗しました」を前に付ける）。
     error: Option<(bool, String)>,
+    /// 最後のテスト音での到達確認。
+    reach: Option<Reach>,
+    /// テスト音の確認を送って、まだ結果が届いていない。
+    reaching: bool,
+    reach_error: Option<String>,
+    rechecked: Instant,
 }
 
 impl ObsPanel {
-    pub fn new<V: 'static>(config_dir: &Path, window: &mut Window, cx: &mut Context<V>) -> Self {
+    pub fn new<V: 'static>(
+        config_dir: &Path,
+        engine: flume::Sender<crate::engine::Command>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Self {
         Self {
-            link: ObsLink::start(config_dir),
+            link: ObsLink::start(config_dir, engine),
             host: cx.new(|cx| InputState::new(window, cx)),
             port: cx.new(|cx| InputState::new(window, cx)),
             password: cx.new(|cx| InputState::new(window, cx).masked(true)),
@@ -52,6 +67,21 @@ impl ObsPanel {
             use_saved: Rc::new(Cell::new(true)),
             filled: false,
             error: None,
+            reach: None,
+            reaching: false,
+            reach_error: None,
+            rechecked: Instant::now(),
+        }
+    }
+
+    /// 設定の画面を出している間、到達確認の結果がまだ今の条件のものかを読み直す。
+    pub fn recheck(&mut self) {
+        if self.reaching || self.rechecked.elapsed() < Duration::from_millis(RECHECK_MS) {
+            return;
+        }
+        self.rechecked = Instant::now();
+        if let Some(operation) = self.reach.as_ref().and_then(Reach::recheck) {
+            self.link.send(Order::ReachCurrent(operation.to_string()));
         }
     }
 
@@ -63,8 +93,13 @@ impl ObsPanel {
 
     pub fn order(&mut self, order: Order) {
         self.error = None;
-        if matches!(order, Order::Connect(_)) {
-            self.connecting = true;
+        match order {
+            Order::Connect(_) => self.connecting = true,
+            Order::CheckReach => {
+                self.reaching = true;
+                self.reach_error = None;
+            }
+            _ => {}
         }
         self.link.send(order);
     }
@@ -94,6 +129,18 @@ impl ObsPanel {
                 Reply::Failed { connect, message } => self.error = Some((connect, message)),
                 Reply::Lost => self.link.send(Order::Read),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
+                Reply::Reach(result) => {
+                    self.reaching = false;
+                    match result {
+                        Ok(reach) => self.reach = Some(reach),
+                        Err(message) => self.reach_error = Some(message),
+                    }
+                }
+                Reply::ReachCurrent { operation, current } => {
+                    if let Some(reach) = self.reach.as_mut() {
+                        reach.answer(&operation, current);
+                    }
+                }
             }
         }
         any
@@ -242,6 +289,7 @@ impl ObsPanel {
                             }
                         })
                         .when(saved.is_some() || self.saved.is_err(), |this| {
+                            let on = on.clone();
                             this.child(
                                 Button::new("obs-forget")
                                     .label(core(lang, keys::OBS_FORGET))
@@ -264,8 +312,85 @@ impl ObsPanel {
                         message.clone()
                     }))
                 })
+                .when(state == State::Connected, |this| {
+                    this.child(self.render_reach(lang, on))
+                })
                 .child(note(core(lang, keys::OBS_NEEDS)))
                 .child(note(core(lang, keys::OBS_SERVER))),
         )
+    }
+
+    fn render_reach(&self, lang: Lang, on: OnOrder) -> impl IntoElement {
+        let verdict = self.reach.as_ref().map(|reach| {
+            let peak = reach
+                .peak_db
+                .map(|peak| core_with(lang, keys::OBS_PEAK, &[("peak", &format!("{peak:.1}"))]))
+                .unwrap_or_default();
+            match reach.verdict() {
+                Verdict::Confirmed => format!("{}{peak}", core(lang, keys::OBS_REACHED)),
+                Verdict::NotReached => format!(
+                    "{}{peak} {}",
+                    core(lang, keys::OBS_NOT_REACHED),
+                    core(lang, keys::OBS_NOT_REACHED_HINT)
+                ),
+                Verdict::Unsupported => core(lang, keys::OBS_METER_UNSUPPORTED).to_string(),
+                Verdict::Stale => core(lang, keys::OBS_REACH_STALE).to_string(),
+            }
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .pt_3()
+            .border_t_1()
+            .border_color(crate::color::border())
+            .child(
+                div()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(core(lang, keys::OBS_REACH_TITLE)),
+            )
+            .child(
+                div().child(
+                    Button::new("obs-reach")
+                        .label(core(
+                            lang,
+                            if self.reaching {
+                                keys::OBS_REACHING
+                            } else {
+                                keys::OBS_REACH_CHECK
+                            },
+                        ))
+                        .outline()
+                        .disabled(self.reaching)
+                        .on_click(move |_, window, cx| {
+                            let on = on.clone();
+                            window.open_alert_dialog(cx, move |alert, _, _| {
+                                let on = on.clone();
+                                alert
+                                    .title(core(lang, keys::OBS_REACH_CONFIRM_TITLE))
+                                    .description(core(lang, keys::OBS_REACH_CONFIRM_TEXT))
+                                    .ok_text(core(lang, keys::OBS_REACH_PLAY))
+                                    .cancel_text(core(lang, keys::CANCEL))
+                                    .show_cancel(true)
+                                    .on_ok(move |_, _, cx| {
+                                        on(Order::CheckReach, cx);
+                                        true
+                                    })
+                            });
+                        }),
+                ),
+            )
+            .when_some(verdict, |this, verdict| {
+                this.child(div().text_sm().child(verdict))
+            })
+            .when_some(self.reach_error.as_ref(), |this, message| {
+                this.child(note(format!(
+                    "{} {message}",
+                    core(lang, keys::OBS_REACH_FAILED)
+                )))
+            })
+            .when(self.reach.is_some(), |this| {
+                this.child(note(core(lang, keys::OBS_REACH_SCOPE)))
+            })
     }
 }

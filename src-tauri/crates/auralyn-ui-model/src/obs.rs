@@ -74,6 +74,72 @@ pub fn request(
     })
 }
 
+/// 到達確認のテスト音の長さ（Tauri 版と同じ）。
+pub const REACH_MS: u32 = 1500;
+/// 確認の結果がまだ今の条件のものかを、設定の画面を出している間に読み直す間隔。
+pub const RECHECK_MS: u64 = 2000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reached {
+    Yes,
+    No,
+    /// OBS がメーターを返さない。手で確かめてもらう。
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Confirmed,
+    NotReached,
+    Unsupported,
+    /// 確かめたあとに OBS の対象・接続・音声の条件が変わった。確かめ直してもらう。
+    Stale,
+}
+
+/// テスト音での到達確認の結果。
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reach {
+    pub reached: Reached,
+    pub peak_db: Option<f32>,
+    /// 今の条件のものかを聞くときの番号。無ければ聞けない。
+    pub operation: Option<String>,
+    pub current: bool,
+}
+
+impl Reach {
+    pub fn new(reached: Reached, peak_db: Option<f32>, operation: Option<String>) -> Self {
+        Self {
+            reached,
+            peak_db,
+            operation,
+            current: true,
+        }
+    }
+
+    pub fn verdict(&self) -> Verdict {
+        match self.reached {
+            Reached::Unsupported => Verdict::Unsupported,
+            _ if !self.current => Verdict::Stale,
+            Reached::Yes => Verdict::Confirmed,
+            Reached::No => Verdict::NotReached,
+        }
+    }
+
+    /// 読み直すときの番号。一度古くなったら戻らない（ホストも戻さない）ので、もう聞かない。
+    pub fn recheck(&self) -> Option<&str> {
+        self.operation
+            .as_deref()
+            .filter(|_| self.current && self.reached != Reached::Unsupported)
+    }
+
+    /// 読み直した答え。別の確認への答え（遅れて届いたもの）は無視する。
+    pub fn answer(&mut self, operation: &str, current: bool) {
+        if self.operation.as_deref() == Some(operation) {
+            self.current &= current;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,6 +183,30 @@ mod tests {
     fn debug_output_hides_the_password() {
         let request = request("localhost", "4455", "OBS_SECRET_CANARY", false, None).unwrap();
         assert!(!format!("{request:?}").contains("OBS_SECRET_CANARY"));
+    }
+
+    #[test]
+    fn a_reach_goes_stale_once_and_stays_stale() {
+        let mut reach = Reach::new(Reached::Yes, Some(-12.0), Some("3".into()));
+        assert_eq!(reach.verdict(), Verdict::Confirmed);
+        assert_eq!(reach.recheck(), Some("3"));
+        reach.answer("2", false);
+        assert_eq!(reach.verdict(), Verdict::Confirmed);
+        reach.answer("3", false);
+        assert_eq!(reach.verdict(), Verdict::Stale);
+        reach.answer("3", true);
+        assert_eq!(reach.verdict(), Verdict::Stale);
+        assert_eq!(reach.recheck(), None);
+    }
+
+    #[test]
+    fn unsupported_meters_are_never_stale_or_rechecked() {
+        let mut reach = Reach::new(Reached::Unsupported, None, None);
+        reach.current = false;
+        assert_eq!(reach.verdict(), Verdict::Unsupported);
+        assert_eq!(reach.recheck(), None);
+        let not_reached = Reach::new(Reached::No, None, Some("1".into()));
+        assert_eq!(not_reached.verdict(), Verdict::NotReached);
     }
 
     #[test]
