@@ -16,6 +16,7 @@ use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
+use auralyn_ui_model::recovery::Hold;
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
 use auralyn_ui_model::voice_check::{
     Device as ListenDevice, Listening, Playback, Recording, Source as VoiceSource,
@@ -51,6 +52,8 @@ pub enum Command {
     Start,
     /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
     StartWith(StartWith),
+    /// 音声エンジンが落ちたあと、保存した入出力で始め直す。`Some` の VST は読まずに並びへ残す。
+    Recover(Option<Hold>),
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
     Stop,
@@ -291,6 +294,8 @@ pub enum Notice {
     },
     /// 開始に失敗した。
     NotStarted(String),
+    /// 音声エンジンが落ちた。音は止まっている。
+    EngineExited(auralyn_ui_model::recovery::Exit),
     /// 保存した入力がアプリの音声なので、自動では開始しなかった（アプリの名前）。
     AppNotResumed(String),
     /// 保存した入出力の設定がない。
@@ -389,6 +394,7 @@ impl Engine {
                     sound: None,
                     read_only: false,
                     exited,
+                    hold: None,
                     input_gain: None,
                     output_gain: None,
                 }
@@ -455,6 +461,8 @@ struct Control {
     /// 保存を読めず、脇へ移せもしなかった。上書きして消さないよう、この起動の間は保存しない。
     read_only: bool,
     exited: Arc<AtomicBool>,
+    /// 子が落ちたあとの読み直しで、読まずに残す VST（`Command::Recover` の間だけ）。
+    hold: Option<Hold>,
     /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
     input_gain: Option<f32>,
     output_gain: Option<f32>,
@@ -600,6 +608,16 @@ impl Control {
     fn execute(&mut self, command: &Command) {
         let (name, result) = match *command {
             Command::Start => return self.start_saved(),
+            Command::Recover(ref hold) => {
+                // 落ちたあとの並びをもう読み直していたら（選ぶ前に別の操作で子が起きた）、先に外す。
+                match hold {
+                    Some(hold) if !self.exited.load(Ordering::SeqCst) => self.hold_loaded(hold),
+                    _ => self.hold = hold.clone(),
+                }
+                self.start_saved();
+                self.hold = None;
+                return;
+            }
             Command::StartWith(ref start) => return self.start_with(start.clone()),
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),

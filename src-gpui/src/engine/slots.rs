@@ -34,20 +34,57 @@ impl Control {
 
     /// 子が落ちていたら、次の子（空で始まる）に並びを、最後に保存した VST の中の設定で読み直す。
     /// 開始のあとと、VST を足す前に呼ぶ（足すと子が起き、落ちる前の並びが消えたままになる）。
+    /// 復旧で選んだ `hold` の VST は読まずに並びへ残す。
     pub(super) fn recover(&mut self) {
         if !self.exited.swap(false, Ordering::SeqCst) {
             return;
         }
         let old = std::mem::take(&mut self.rack);
         self.renamed = old.iter().map(|slot| slot.id.clone()).collect();
+        let hold = self.hold.take();
         for slot in old {
-            self.restore(slot.request());
+            if hold
+                .as_ref()
+                .is_some_and(|h| h.holds(&slot.path, slot.class_id.as_deref()))
+            {
+                // 読まずに、保存にある設定のまま「読めていない」枠として残す（保存からも消さない）。
+                let id = format!("missing-{}", self.rack.len());
+                self.rack.push(Slot {
+                    id,
+                    loaded: false,
+                    ..slot
+                });
+            } else {
+                self.restore(slot.request());
+            }
         }
         // 新しい子の音づくりは既定値で始まるので、落ちる前の設定を送り直す。
         if let Some(sound) = self.sound {
             self.apply_sound(sound, None);
         }
         self.send_rack();
+    }
+
+    /// 復旧で選んだ VST を、読み直したあとの子から外して「読めていない」枠にする。
+    /// 選ぶ前に音づくりを開くなどで、子が落ちる前の並びをもう読み直していたときに使う。
+    pub(super) fn hold_loaded(&mut self, hold: &Hold) {
+        let ids: Vec<String> = self.rack.iter().map(|slot| slot.id.clone()).collect();
+        for (index, slot) in self.rack.iter_mut().enumerate() {
+            if !slot.loaded || !hold.holds(&slot.path, slot.class_id.as_deref()) {
+                continue;
+            }
+            if let Err(e) = self.host.remove_plugin(&slot.id) {
+                let _ = self.notices.send(Notice::Failed {
+                    command: "remove_plugin",
+                    message: e.to_string(),
+                });
+                continue;
+            }
+            slot.loaded = false;
+            slot.id = format!("held-{index}");
+        }
+        self.renamed = ids;
+        self.changed();
     }
 
     /// 1つ読んで並びの末尾に足す。読めなければ理由を出し、同じ位置に「読めていない」枠として残す（保存から消さず、順も変えない）。
@@ -91,7 +128,7 @@ impl Control {
 
     pub(super) fn add(&mut self, path: &str, class_id: Option<&str>) {
         self.recover();
-        if let Some((id, name, binary)) = self.load(path, class_id) {
+        if let Some((id, name, binary, class_id)) = self.load(path, class_id) {
             self.rack.push(Slot {
                 id,
                 name,
@@ -100,7 +137,7 @@ impl Control {
                 gain: 1.0,
                 loaded: true,
                 path: binary,
-                class_id: class_id.map(str::to_owned),
+                class_id,
                 state: None,
             });
         }
@@ -141,7 +178,7 @@ impl Control {
         &mut self,
         path: &str,
         class_id: Option<&str>,
-    ) -> Option<(String, String, String)> {
+    ) -> Option<(String, String, String, Option<String>)> {
         let binary = scanner::resolve_binary(Path::new(path));
         let Some(binary) = binary.as_deref().and_then(Path::to_str) else {
             let _ = self.notices.send(Notice::Failed {
@@ -152,7 +189,12 @@ impl Control {
         };
         log::info!("VST3 を読み込む: {binary}");
         match self.host.load_plugin(binary, class_id) {
-            Ok(plugin) => Some((plugin.id, plugin.name, binary.to_owned())),
+            Ok(plugin) => Some((
+                plugin.id,
+                plugin.name,
+                binary.to_owned(),
+                plugin.class_id.or(class_id.map(str::to_owned)),
+            )),
             Err(e) => {
                 self.fail("load_plugin", e);
                 None
