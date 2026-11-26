@@ -8,6 +8,18 @@ pub enum Location {
     Venue,
 }
 
+impl Location {
+    pub const ALL: [Location; 2] = [Location::Home, Location::Venue];
+
+    /// 保存に使う名前（Tauri 版と同じ）。
+    pub fn key(self) -> &'static str {
+        match self {
+            Location::Home => "home",
+            Location::Venue => "venue",
+        }
+    }
+}
+
 /// ゲーム音とマイクの入力。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Signal {
@@ -17,6 +29,18 @@ pub enum Signal {
     Mixed,
 }
 
+impl Signal {
+    pub const ALL: [Signal; 3] = [Signal::Unknown, Signal::Separate, Signal::Mixed];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Signal::Unknown => "unknown",
+            Signal::Separate => "separate",
+            Signal::Mixed => "mixed",
+        }
+    }
+}
+
 /// 声の送り先。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Usage {
@@ -24,6 +48,24 @@ pub enum Usage {
     Discord,
     Other,
     Listening,
+}
+
+impl Usage {
+    pub const ALL: [Usage; 4] = [Usage::Obs, Usage::Discord, Usage::Other, Usage::Listening];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Usage::Obs => "obs",
+            Usage::Discord => "discord",
+            Usage::Other => "other",
+            Usage::Listening => "listening",
+        }
+    }
+}
+
+/// 保存した名前から選ぶ。知らない名前は `None`。
+pub fn from_key<T: Copy>(all: &[T], key: impl Fn(T) -> &'static str, text: &str) -> Option<T> {
+    all.iter().copied().find(|value| key(*value) == text)
 }
 
 /// はじめての設定で選んだ使い道を、送り先にする（Tauri 版も同じ保存を共有する）。
@@ -111,6 +153,16 @@ pub enum Availability {
     Ready,
 }
 
+impl Availability {
+    /// 音は流れている（ミュート・反映待ちでも、設定の問題ではない）。
+    pub fn usable(self) -> bool {
+        matches!(
+            self,
+            Availability::Ready | Availability::Muted | Availability::Pending
+        )
+    }
+}
+
 /// エンジンから読んだ事実。読めなかったものは `false`/`None`。
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Facts {
@@ -181,8 +233,30 @@ impl Records {
         }
     }
 
-    pub fn record(&mut self, stage: Stage, confirmation: Confirmation) {
-        self.0[stage.index()] = Some(confirmation);
+    /// 確かめたことを記録する。頼んだときの鍵 `expected` と読み直した鍵が同じで、
+    /// 音声が使えて送り先を選んでいるときだけ。記録したら `true`。
+    pub fn confirm(
+        &mut self,
+        stage: Stage,
+        expected: &str,
+        keys: Option<&Keys>,
+        availability: Availability,
+        context: &Context,
+        target: String,
+    ) -> bool {
+        let ready = availability == Availability::Ready && context.usage.is_some();
+        let Some(key) = keys
+            .map(|keys| keys.get(stage))
+            .filter(|key| ready && *key == expected)
+        else {
+            return false;
+        };
+        self.0[stage.index()] = Some(Confirmation {
+            key: key.to_string(),
+            target,
+            expired: false,
+        });
+        true
     }
 
     pub fn expire(&mut self, stage: Stage) {
@@ -250,8 +324,11 @@ pub fn next(availability: Availability, records: &Records, context: &Context) ->
         .map_or(Next::Done, Next::Stage)
 }
 
-/// 送り先を確かめた記録に残す相手。名前が無ければ送り先の種類（その他のアプリは出力先）。
-pub fn receiver_target(context: &Context, output: &str) -> String {
+/// 確かめた記録に残す相手。音づくりとボイスチェックは入力、送り先は名前か送り先の種類（その他のアプリは出力先）。
+pub fn target(stage: Stage, context: &Context, input: &str, output: &str) -> String {
+    if stage != Stage::Receiver {
+        return input.into();
+    }
     if !context.receiver.is_empty() {
         return context.receiver.clone();
     }
@@ -320,14 +397,67 @@ mod tests {
     }
 
     fn confirm(records: &mut Records, keys: &Keys, stage: Stage) {
-        records.record(
+        let context = Context {
+            usage: Some(Usage::Obs),
+            ..Context::default()
+        };
+        let expected = keys.get(stage).to_string();
+        assert!(records.confirm(
             stage,
-            Confirmation {
-                key: keys.get(stage).into(),
-                target: String::new(),
-                expired: false,
-            },
-        );
+            &expected,
+            Some(keys),
+            Availability::Ready,
+            &context,
+            String::new()
+        ));
+    }
+
+    #[test]
+    fn confirm_needs_the_same_key_ready_audio_and_a_purpose() {
+        let mut context = Context::default();
+        let keys = Keys::new("in", "out", &context);
+        let expected = keys.get(Stage::Sound).to_string();
+        let mut records = Records::default();
+        let mut try_confirm = |keys: Option<&Keys>, availability, context: &Context| {
+            records.confirm(
+                Stage::Sound,
+                &expected,
+                keys,
+                availability,
+                context,
+                "マイク".into(),
+            )
+        };
+        assert!(!try_confirm(Some(&keys), Availability::Ready, &context));
+        context.usage = Some(Usage::Obs);
+        let changed = Keys::new("in2", "out", &context);
+        assert!(!try_confirm(Some(&changed), Availability::Ready, &context));
+        assert!(!try_confirm(None, Availability::Ready, &context));
+        assert!(!try_confirm(Some(&keys), Availability::Muted, &context));
+        assert!(try_confirm(Some(&keys), Availability::Ready, &context));
+        assert_eq!(records.state(Stage::Sound), State::Confirmed);
+        assert_eq!(records.get(Stage::Sound).unwrap().target, "マイク");
+    }
+
+    #[test]
+    fn saved_names_read_back() {
+        for usage in Usage::ALL {
+            assert_eq!(from_key(&Usage::ALL, Usage::key, usage.key()), Some(usage));
+        }
+        for location in Location::ALL {
+            assert_eq!(
+                from_key(&Location::ALL, Location::key, location.key()),
+                Some(location)
+            );
+        }
+        for signal in Signal::ALL {
+            assert_eq!(
+                from_key(&Signal::ALL, Signal::key, signal.key()),
+                Some(signal)
+            );
+        }
+        assert_eq!(from_key(&Usage::ALL, Usage::key, "tv"), None);
+        assert!(Availability::Pending.usable() && !Availability::Unknown.usable());
     }
 
     #[test]
@@ -398,14 +528,21 @@ mod tests {
     }
 
     #[test]
-    fn receiver_target_falls_back_to_the_usage() {
+    fn target_falls_back_to_the_usage() {
         let mut context = Context {
             usage: Some(Usage::Other),
             ..Context::default()
         };
-        assert_eq!(receiver_target(&context, "Speakers"), "Speakers");
+        assert_eq!(
+            target(Stage::Receiver, &context, "Mic", "Speakers"),
+            "Speakers"
+        );
+        assert_eq!(target(Stage::Listen, &context, "Mic", "Speakers"), "Mic");
         context.usage = Some(Usage::Discord);
-        assert_eq!(receiver_target(&context, "Speakers"), "Discord");
+        assert_eq!(
+            target(Stage::Receiver, &context, "Mic", "Speakers"),
+            "Discord"
+        );
         assert_eq!(normalize_receiver("  名前  "), "名前");
         assert_eq!(normalize_receiver(&"あ".repeat(300)).chars().count(), 200);
     }

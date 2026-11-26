@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use auralyn_ui_model::preparation::{
-    self, normalize_receiver, Availability, Confirmation, Context as PrepContext, Keys, Location,
-    Next, Records, Signal, Stage, State, Usage,
+    self, normalize_receiver, Availability, Context as PrepContext, Keys, Location, Next, Records,
+    Signal, Stage, State, Usage,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
@@ -178,25 +178,18 @@ impl PrepPanel {
         else {
             return;
         };
-        let ready = self.availability() == Availability::Ready && self.context.usage.is_some();
-        let Some(keys) = keys.filter(|keys| ready && keys.get(stage) == expected) else {
-            return;
-        };
-        let observation = self.observation.as_ref();
-        let target = match stage {
-            Stage::Receiver => preparation::receiver_target(
-                &self.context,
-                observation.map_or("", |o| o.output.as_str()),
-            ),
-            _ => observation.map(|o| o.input.clone()).unwrap_or_default(),
-        };
-        self.records.record(
+        let (input, output) = self
+            .observation
+            .as_ref()
+            .map_or(("", ""), |o| (o.input.as_str(), o.output.as_str()));
+        let target = preparation::target(stage, &self.context, input, output);
+        self.records.confirm(
             stage,
-            Confirmation {
-                key: keys.get(stage).to_string(),
-                target,
-                expired: false,
-            },
+            &expected,
+            keys.as_ref(),
+            self.availability(),
+            &self.context,
+            target,
         );
     }
 
@@ -250,10 +243,7 @@ impl PrepPanel {
     }
 
     fn problem(&self) -> bool {
-        !matches!(
-            self.availability(),
-            Availability::Ready | Availability::Muted | Availability::Pending
-        ) || self.context.usage.is_none()
+        !self.availability().usable() || self.context.usage.is_none()
     }
 
     fn is_open(&self) -> bool {

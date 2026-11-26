@@ -108,8 +108,6 @@ impl Control {
         self.list_profiles();
     }
 
-    /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
-    /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
     /// OBS のシーンと同じ名前の構成の VST の並びだけを読む（Tauri 版の連動のプリセット読み込みと同じく、
     /// 退避は作らず音づくりも変えない）。無い名前・退避の名前は読まない。
     pub(super) fn scene_profile(&mut self, name: &str) {
@@ -133,6 +131,8 @@ impl Control {
         }
     }
 
+    /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
+    /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
     pub(super) fn apply_profile(&mut self, name: &str, restore: bool) {
         // 子が落ちていたら先に読み直す（あとで読み直すと、落ちる前の音づくりで構成の値を上書きしてしまう）。
         self.recover();

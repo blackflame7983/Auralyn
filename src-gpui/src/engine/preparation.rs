@@ -99,10 +99,7 @@ fn build(state: &AudioStateInfo, stats: &EngineRuntimeStats, live: &LiveStatus) 
     let (Some(p), Some(stream)) = (p, stream) else {
         return observation;
     };
-    if !matches!(
-        availability,
-        Availability::Ready | Availability::Muted | Availability::Pending
-    ) {
+    if !availability.usable() {
         return observation;
     }
     let identity = match &config.input_source {
@@ -153,12 +150,11 @@ impl Control {
     fn observe(&mut self) -> Option<Observation> {
         let state = self.host.get_state();
         if !state.is_running {
-            let availability = if state.config.as_ref().is_some_and(|c| !c.host.is_empty()) {
-                Availability::Stopped
-            } else {
-                Availability::Unconfigured
+            let facts = Facts {
+                configured: state.config.as_ref().is_some_and(|c| !c.host.is_empty()),
+                ..Facts::default()
             };
-            return Some(Observation::without(availability, &state));
+            return Some(Observation::without(availability(facts), &state));
         }
         let before = self.host.get_engine_runtime_stats().ok()?;
         let live = self.host.live_output(None).ok()?;

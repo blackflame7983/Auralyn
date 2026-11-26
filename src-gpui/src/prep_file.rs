@@ -3,7 +3,9 @@
 
 use std::path::Path;
 
-use auralyn_ui_model::preparation::{normalize_receiver, Context, Location, Signal, Usage};
+use auralyn_ui_model::preparation::{
+    from_key, normalize_receiver, Context, Location, Signal, Usage,
+};
 
 const FILE: &str = "gpui_preparation.json";
 
@@ -21,25 +23,12 @@ pub fn save(config_dir: &Path, context: &Context) -> std::io::Result<()> {
     )
 }
 
-fn usage_key(usage: Usage) -> &'static str {
-    match usage {
-        Usage::Obs => "obs",
-        Usage::Discord => "discord",
-        Usage::Other => "other",
-        Usage::Listening => "listening",
-    }
-}
-
 fn to_json(context: &Context) -> serde_json::Value {
     serde_json::json!({
         "version": 1,
-        "location": match context.location { Location::Home => "home", Location::Venue => "venue" },
-        "signal": match context.signal {
-            Signal::Unknown => "unknown",
-            Signal::Separate => "separate",
-            Signal::Mixed => "mixed",
-        },
-        "usage": context.usage.map(usage_key),
+        "location": context.location.key(),
+        "signal": context.signal.key(),
+        "usage": context.usage.map(Usage::key),
         "receiver": context.receiver,
     })
 }
@@ -51,21 +40,10 @@ fn parse(text: &str) -> Option<Context> {
         return None;
     }
     let text = |key: &str| value.get(key).and_then(|v| v.as_str()).unwrap_or_default();
-    let usage = [Usage::Obs, Usage::Discord, Usage::Other, Usage::Listening]
-        .into_iter()
-        .find(|usage| usage_key(*usage) == text("usage"));
     Some(Context {
-        location: if text("location") == "venue" {
-            Location::Venue
-        } else {
-            Location::Home
-        },
-        signal: match text("signal") {
-            "separate" => Signal::Separate,
-            "mixed" => Signal::Mixed,
-            _ => Signal::Unknown,
-        },
-        usage,
+        location: from_key(&Location::ALL, Location::key, text("location")).unwrap_or_default(),
+        signal: from_key(&Signal::ALL, Signal::key, text("signal")).unwrap_or_default(),
+        usage: from_key(&Usage::ALL, Usage::key, text("usage")),
         receiver: normalize_receiver(text("receiver")),
     })
 }
