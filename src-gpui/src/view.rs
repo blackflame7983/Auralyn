@@ -23,11 +23,12 @@ use crate::engine::{Command, Engine, Notice};
 use crate::home;
 use crate::i18n::{core, keys, Lang};
 use crate::locale_file;
+use crate::part::OnCommand;
 use crate::settings;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
-use crate::vst::{Send, VstPage};
+use crate::vst::VstPage;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
@@ -369,9 +370,7 @@ impl MainView {
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
-            self.engine.send(Command::ReadPeak);
-            self.engine
-                .send(Command::Measure(measurement::Action::Read));
+            self.reread_peak();
         }
         if page == Page::Vst {
             self.engine.send(Command::ListProfiles);
@@ -669,7 +668,7 @@ impl Render for MainView {
                 })
             }
         });
-        let send: Send = {
+        let send: OnCommand = {
             let entity = entity.clone();
             Rc::new(move |command, cx| {
                 entity.update(cx, |this, cx| {

@@ -15,7 +15,7 @@ use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
 use crate::part::note;
-use crate::vst::Send;
+use crate::part::OnCommand;
 
 #[derive(Default)]
 pub struct MeasurePanel {
@@ -48,7 +48,7 @@ impl MeasurePanel {
             .map(|m| Command::Measure(Action::Cancel(m.take.clone())))
     }
 
-    pub fn render(&self, lang: Lang, send: Send) -> impl IntoElement {
+    pub fn render(&self, lang: Lang, send: OnCommand) -> impl IntoElement {
         let reading = self.reading.as_ref();
         let status = match reading {
             Some(m) => {

@@ -632,7 +632,9 @@ impl Control {
         };
         // 子が落ちていたら、子に聞かずに並びから外す（落ちる原因の VST を、音を出さずに外せるように）。
         let result = if self.rack[index].loaded && !self.exited.load(Ordering::SeqCst) {
-            self.host.remove_plugin(id)
+            // 画面の ID は読み直す前のものかもしれないので、同じ位置の今の ID で頼む。
+            let id = self.rack[index].id.clone();
+            self.host.remove_plugin(&id)
         } else {
             Ok(())
         };
@@ -676,35 +678,20 @@ impl Control {
         self.changed();
     }
 
-    fn set_enabled(&mut self, id: &str, enabled: bool) {
+    /// 並びの1つを子へ頼み、受け付けられたら枠を書き換える（ON/OFF・ミュート・音量）。
+    fn edit(
+        &mut self,
+        id: &str,
+        name: &'static str,
+        call: impl FnOnce(&mut AudioHost, &str) -> anyhow::Result<()>,
+        apply: impl FnOnce(&mut Slot),
+    ) {
         let Some((index, id)) = self.live(id) else {
             return;
         };
-        match self.host.set_bypass(&id, !enabled) {
-            Ok(()) => self.rack[index].enabled = enabled,
-            Err(e) => self.fail("set_bypass", e),
-        }
-        self.changed();
-    }
-
-    fn set_muted(&mut self, id: &str, muted: bool) {
-        let Some((index, id)) = self.live(id) else {
-            return;
-        };
-        match self.host.set_mute(&id, muted) {
-            Ok(()) => self.rack[index].muted = muted,
-            Err(e) => self.fail("set_mute", e),
-        }
-        self.changed();
-    }
-
-    fn set_gain(&mut self, id: &str, gain: f32) {
-        let Some((index, id)) = self.live(id) else {
-            return;
-        };
-        match self.host.set_gain(&id, gain) {
-            Ok(()) => self.rack[index].gain = gain,
-            Err(e) => self.fail("set_gain", e),
+        match call(&mut self.host, &id) {
+            Ok(()) => apply(&mut self.rack[index]),
+            Err(e) => self.fail(name, e),
         }
         self.changed();
     }
@@ -860,12 +847,8 @@ impl Control {
         if let Err(e) = result {
             self.fail("apply_profile", e);
         }
-        // 音づくりは、エンジンが受け付けた値を読んで保存し直す（次の起動もこの構成で始まる）。
-        self.sound = None;
-        self.read_sound();
-        if let Some(sound) = self.sound {
-            self.save_sound(sound);
-        }
+        // 次の起動もこの構成の音づくりで始まる。
+        self.reread_and_save_sound();
         self.list_profiles();
     }
 
@@ -947,6 +930,12 @@ impl Control {
             return;
         };
         self.apply_sound(before.with(change), Some(before));
+        self.reread_and_save_sound();
+    }
+
+    /// エンジンが受け付けた音づくりを読み、次の起動のために保存する。
+    /// 読む前に `sound` を消さない（子が落ちていたら、読み直しで前の設定を送り直すのに使う）。
+    fn reread_and_save_sound(&mut self) {
         self.read_sound();
         if let Some(sound) = self.sound {
             self.save_sound(sound);
@@ -1061,9 +1050,30 @@ impl Control {
             }
             Command::RemovePlugin(ref id) => return self.remove(id),
             Command::MovePlugin { ref id, up } => return self.shift(id, up),
-            Command::SetPluginEnabled { ref id, enabled } => return self.set_enabled(id, enabled),
-            Command::SetPluginMuted { ref id, muted } => return self.set_muted(id, muted),
-            Command::SetPluginGain { ref id, gain } => return self.set_gain(id, gain),
+            Command::SetPluginEnabled { ref id, enabled } => {
+                return self.edit(
+                    id,
+                    "set_bypass",
+                    |host, id| host.set_bypass(id, !enabled),
+                    |slot| slot.enabled = enabled,
+                )
+            }
+            Command::SetPluginMuted { ref id, muted } => {
+                return self.edit(
+                    id,
+                    "set_mute",
+                    |host, id| host.set_mute(id, muted),
+                    |slot| slot.muted = muted,
+                )
+            }
+            Command::SetPluginGain { ref id, gain } => {
+                return self.edit(
+                    id,
+                    "set_gain",
+                    |host, id| host.set_gain(id, gain),
+                    |slot| slot.gain = gain,
+                )
+            }
             Command::OpenEditor(ref id) => match self.live(id) {
                 Some((_, id)) => ("open_editor", self.host.open_editor(&id)),
                 None => return,

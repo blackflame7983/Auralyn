@@ -3,7 +3,6 @@
 //! 並びと VST の中の設定は、エンジンが変わるたびに保存する（`engine.rs`）。保存した構成は `setups`。テンプレートは、まだこの画面に無い。
 
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use auralyn_ui_model::rack::{self, Candidate};
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
@@ -18,6 +17,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Slot};
 use crate::i18n::{core, core_with, keys, Lang};
+use crate::part::OnCommand;
 
 /// 追加の候補の1行。検索は [`Candidate::matches`] に任せる。
 #[derive(Clone)]
@@ -40,9 +40,6 @@ impl SelectItem for Choice {
 }
 
 type Choices = SelectState<SearchableVec<Choice>>;
-
-/// 画面の操作は、エンジンへの命令としてそのまま送る。
-pub type Send = Rc<dyn Fn(Command, &mut App)>;
 
 pub struct VstPage {
     rack: Vec<Slot>,
@@ -122,7 +119,7 @@ impl VstPage {
         self.scanning = Some(false);
     }
 
-    pub fn render(&self, lang: Lang, cx: &App, send: Send) -> impl IntoElement {
+    pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
         let scanning = self.scanning == Some(true);
         let chosen = self.catalog.read(cx).selected_value().cloned();
         div()
@@ -217,7 +214,7 @@ fn row(
     index: usize,
     last: bool,
     lang: Lang,
-    send: Send,
+    send: OnCommand,
 ) -> impl IntoElement {
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
@@ -369,7 +366,7 @@ fn volume(
     gain: &Entity<SliderState>,
     percent: f32,
     lang: Lang,
-    send: Send,
+    send: OnCommand,
 ) -> impl IntoElement {
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
@@ -413,7 +410,7 @@ fn confirm_remove(
     title: &str,
     id: &str,
     lang: Lang,
-    send: Send,
+    send: OnCommand,
     window: &mut Window,
     cx: &mut App,
 ) {
