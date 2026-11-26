@@ -19,6 +19,7 @@ mod mix;
 mod part;
 mod post_mix;
 mod settings;
+mod setup;
 mod setups;
 mod shell;
 mod sound;

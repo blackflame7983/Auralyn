@@ -3681,5 +3681,7 @@
   "gpuiShell.liveSplitKept": "For now, fine-tune your own singing and talk shaping in the Tauri version. The first time you separate them, defaults are used; existing values are kept.",
   "gpuiShell.mixNeedOutput": "First, on the Connect page, choose a stream output under \"Separate for yourself and the stream\", turn on separate processing, and save.",
   "gpuiShell.mixVoiceMute": "Mute voice",
-  "gpuiShell.mixMusicMute": "Mute backing track"
+  "gpuiShell.mixMusicMute": "Mute backing track",
+  "gpuiShell.setupLead": "Choose what it is for, and a likely microphone and output are picked for you. Change them if they are wrong.",
+  "gpuiShell.setupOther": "Choose ASIO and others on the Connect page"
 }
