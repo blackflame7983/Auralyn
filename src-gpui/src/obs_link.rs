@@ -66,7 +66,6 @@ pub enum SetupDone {
     History(Vec<History>),
     Restored(Result<History, String>),
     Forgot(Result<u64, String>),
-    Targets(Result<TimingTargets, String>),
 }
 
 pub enum Reply {
@@ -92,6 +91,8 @@ pub enum Reply {
         current: bool,
     },
     Setup(Box<SetupDone>),
+    /// 同期調整の対象（`Setup::Targets` の返事）。
+    Targets(Box<Result<TimingTargets, String>>),
     /// OBS を扱うスレッドを動かせない。以後の命令には返事が来ない。
     Unavailable(String),
 }
@@ -169,9 +170,14 @@ fn run(
                     let _ = outbox.send(Reply::Reach(reach));
                     continue;
                 }
+                Order::Setup(Setup::Targets) => {
+                    let targets = vst_host_lib::obs_timing::targets(&state, &timing).await;
+                    let _ = outbox.send(Reply::Targets(Box::new(targets)));
+                    continue;
+                }
                 Order::Setup(setup) => {
                     let done = match setup {
-                        Setup::Discard => continue,
+                        Setup::Discard | Setup::Targets => continue,
                         Setup::Preview(mute) => {
                             SetupDone::Plan(obs_setup::preview(&state, mute).await)
                         }
@@ -182,9 +188,6 @@ fn run(
                         }
                         Setup::Forget(id) => SetupDone::Forgot(
                             obs_setup::forget_history(&state, id).await.map(|()| id),
-                        ),
-                        Setup::Targets => SetupDone::Targets(
-                            vst_host_lib::obs_timing::targets(&state, &timing).await,
                         ),
                         Setup::Timing(timing) => SetupDone::Plan(
                             obs_setup::preview_timing(&state, timing_request(timing)).await,

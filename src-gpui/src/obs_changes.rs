@@ -44,7 +44,7 @@ impl Changes {
         }
     }
 
-    /// 結果を `done` へ渡さない命令（同期調整の対象の読み込み）の返事が届いた。
+    /// `done` へ渡さない返事（同期調整の対象）が届いた。
     pub fn settled(&mut self) {
         self.pending = self.pending.saturating_sub(1);
     }
@@ -93,7 +93,6 @@ impl Changes {
                 Ok(id) => self.history.retain(|h| h.id != id),
                 Err(e) => self.error = Some((Op::Forget, e)),
             },
-            SetupDone::Targets(_) => {}
         }
     }
 

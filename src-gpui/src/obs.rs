@@ -122,13 +122,17 @@ impl ObsPanel {
         self.error = None;
         match order {
             Order::Setup(Setup::Discard) => return self.changes.discard(),
-            Order::Setup(ref setup) => {
-                if let Setup::Targets = setup {
-                    self.timing.forget_targets();
-                    self.changes.discard_timing();
-                }
+            // ホストは対象を読むとき、どの変更予定も捨てる。
+            Order::Setup(Setup::Targets) => {
+                self.timing.forget_targets();
+                self.changes.discard();
                 self.changes.sent();
             }
+            Order::Setup(Setup::Timing(_)) => {
+                self.timing.asked();
+                self.changes.sent();
+            }
+            Order::Setup(_) => self.changes.sent(),
             Order::Connect(_) => self.connecting = true,
             // 確かめ始めたら、前の結果はもう今のものではない（ホストも無効にする）。
             Order::CheckReach => {
@@ -171,7 +175,7 @@ impl ObsPanel {
                         self.reach = None;
                         self.reach_error = None;
                         self.changes.discard();
-                        self.timing.forget_targets();
+                        self.timing.reset();
                         // 切断中の履歴は「この接続では元に戻せない」に変わる。
                         if self.connected == Some(true) {
                             self.order(Order::Setup(Setup::History));
@@ -189,28 +193,33 @@ impl ObsPanel {
                 }
                 Reply::Scene(scene) => self.scene = Some(scene),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
-                Reply::Setup(done) => match *done {
-                    SetupDone::Targets(targets) => {
-                        self.changes.settled();
-                        self.timing.set_targets(targets);
+                Reply::Targets(targets) => {
+                    self.changes.settled();
+                    // 切断のあとに届いた一覧は、もう今の接続のものではない。
+                    if self.connected == Some(true) {
+                        self.timing.set_targets(*targets);
                     }
-                    done => {
-                        // OBS のオフセットが変われば、読んだ対象の「現在」はもう今の値ではない。
-                        let moved = match &done {
-                            SetupDone::Applied(Ok(h)) | SetupDone::Restored(Ok(h)) => {
-                                h.timing.is_some()
-                            }
-                            _ => false,
-                        };
-                        let applied = matches!(&done, SetupDone::Applied(Ok(_)));
-                        self.changes.done(done);
-                        if moved && applied {
-                            self.timing.applied();
-                        } else if moved {
-                            self.timing.forget_targets();
-                        }
+                }
+                Reply::Setup(done) => {
+                    let done = *done;
+                    // OBS のオフセットが変われば、読んだ対象の「現在」はもう今の値ではない。
+                    let moved = matches!(
+                        &done,
+                        SetupDone::Applied(Ok(h)) | SetupDone::Restored(Ok(h)) if h.timing.is_some()
+                    );
+                    let stale = matches!(
+                        &done,
+                        SetupDone::Plan(Ok(plan)) if plan.timing.is_some() && !self.timing.plan_current()
+                    );
+                    self.changes.done(done);
+                    if moved {
+                        self.timing.reset();
                     }
-                },
+                    // 頼んだあと入力を変えたなら、届いた予定は今の入力のものではない。
+                    if stale {
+                        self.changes.discard_timing();
+                    }
+                }
                 Reply::Reach(result) => {
                     self.reaching = false;
                     match result {

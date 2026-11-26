@@ -30,6 +30,16 @@ struct Picked {
     mixed: bool,
     checked: bool,
     token: Option<String>,
+    /// 入力を変えるたびに増える。
+    revision: u64,
+}
+
+/// ボタンで選び直す。入力が変わったことも記録する。
+fn edit(picked: &RefCell<Picked>, window: &mut Window, change: impl FnOnce(&mut Picked)) {
+    let mut picked = picked.borrow_mut();
+    change(&mut picked);
+    picked.revision += 1;
+    window.refresh();
 }
 
 pub struct TimingPanel {
@@ -38,15 +48,17 @@ pub struct TimingPanel {
     note: Entity<InputState>,
     fps: Entity<InputState>,
     track: Entity<InputState>,
-    /// 入力が変わった（作った同期の変更予定は、もう今の入力のものではない）。
-    edited: Rc<Cell<bool>>,
+    /// 最後に見た入力の番号（`Picked::revision`）。
+    seen: Cell<u64>,
+    /// 同期の変更予定を頼んだときの入力の番号。
+    asked: Cell<Option<u64>>,
     targets: Option<Result<TimingTargets, String>>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl TimingPanel {
     pub fn new<V: 'static>(window: &mut Window, cx: &mut Context<V>) -> Self {
-        let edited = Rc::new(Cell::new(false));
+        let picked: Rc<RefCell<Picked>> = Rc::default();
         let input =
             |window: &mut Window, cx: &mut Context<V>| cx.new(|cx| InputState::new(window, cx));
         let difference = input(window, cx);
@@ -56,30 +68,42 @@ impl TimingPanel {
         let _subscriptions = [&difference, &note, &fps, &track]
             .into_iter()
             .map(|state| {
-                let edited = edited.clone();
+                let picked = picked.clone();
                 cx.subscribe(state, move |_, _, event: &InputEvent, cx| {
                     if let InputEvent::Change = event {
-                        edited.set(true);
+                        picked.borrow_mut().revision += 1;
                         cx.notify();
                     }
                 })
             })
             .collect();
         Self {
-            picked: Rc::default(),
+            picked,
             difference,
             note,
             fps,
             track,
-            edited,
+            seen: Cell::new(0),
+            asked: Cell::new(None),
             targets: None,
             _subscriptions,
         }
     }
 
-    /// 入力が変わったか（読むと戻す）。
+    /// 前に聞いてから入力が変わったか。
     pub fn take_edited(&self) -> bool {
-        self.edited.take()
+        let revision = self.picked.borrow().revision;
+        self.seen.replace(revision) != revision
+    }
+
+    /// 同期の変更予定を頼んだ。
+    pub fn asked(&self) {
+        self.asked.set(Some(self.picked.borrow().revision));
+    }
+
+    /// 届いた同期の変更予定が、頼んだあと入力を変えていないものか。
+    pub fn plan_current(&self) -> bool {
+        self.asked.get() == Some(self.picked.borrow().revision)
     }
 
     pub fn set_targets(&mut self, targets: Result<TimingTargets, String>) {
@@ -92,8 +116,8 @@ impl TimingPanel {
         self.picked.borrow_mut().token = None;
     }
 
-    /// 適用したあと。もう一度測ってから確かめ直してもらう。
-    pub fn applied(&mut self) {
+    /// 適用・元に戻す・切断のあと。もう一度測ってから確かめ直してもらう。
+    pub fn reset(&mut self) {
         self.forget_targets();
         self.picked.borrow_mut().checked = false;
     }
@@ -159,20 +183,6 @@ impl TimingPanel {
         let form = self.form(cx);
         let measurement = form.measurement();
         let picked = self.picked.borrow();
-        let setter = {
-            let picked = self.picked.clone();
-            let edited = self.edited.clone();
-            move |change: Box<dyn Fn(&mut Picked)>| {
-                let picked = picked.clone();
-                let edited = edited.clone();
-                move |window: &mut Window| {
-                    let mut picked = picked.borrow_mut();
-                    change(&mut picked);
-                    edited.set(true);
-                    window.refresh();
-                }
-            }
-        };
         let av = form.comparison == Comparison::AudioVideo;
         let field = |label: &'static str, input: &Entity<InputState>| {
             div()
@@ -191,13 +201,13 @@ impl TimingPanel {
             ],
             Some(form.comparison),
             {
-                let setter = setter.clone();
+                let picked = self.picked.clone();
                 move |value, window, _| {
-                    setter(Box::new(move |p| {
+                    edit(&picked, window, |p| {
                         p.comparison = value;
                         p.direction = None;
                         p.token = None;
-                    }))(window)
+                    })
                 }
             },
         );
@@ -210,12 +220,13 @@ impl TimingPanel {
             ],
             Some(form.mixed),
             {
-                let setter = setter.clone();
+                let picked = self.picked.clone();
                 move |value, window, _| {
-                    setter(Box::new(move |p| {
+                    edit(&picked, window, |p| {
                         p.mixed = value;
                         p.token = None;
-                    }))(window)
+                        p.checked = false;
+                    })
                 }
             },
         );
@@ -243,12 +254,12 @@ impl TimingPanel {
             ],
             form.direction,
             {
-                let setter = setter.clone();
+                let picked = self.picked.clone();
                 move |value, window, _| {
-                    setter(Box::new(move |p| {
+                    edit(&picked, window, |p| {
                         p.direction = Some(value);
                         p.token = None;
-                    }))(window)
+                    })
                 }
             },
         );
@@ -256,11 +267,8 @@ impl TimingPanel {
             .checked(form.checked)
             .label(core(lang, keys::OBS_TIMING_CHECKED))
             .on_click({
-                let setter = setter.clone();
-                move |checked, window, _| {
-                    let checked = *checked;
-                    setter(Box::new(move |p| p.checked = checked))(window)
-                }
+                let picked = self.picked.clone();
+                move |checked, window, _| edit(&picked, window, |p| p.checked = *checked)
             });
         let blocked = form.blocked().map(|blocked| match blocked {
             Blocked::Mixed => keys::OBS_TIMING_BLOCK_MIXED,
@@ -286,20 +294,14 @@ impl TimingPanel {
                 .iter()
                 .find(|target| &target.target_token == token)
         });
-        let after = selected.zip(measurement.as_ref()).map(|(target, m)| {
-            (
-                target,
-                m,
-                result_offset(target.current_offset_ms, m.delay_ms),
-            )
-        });
-        let preview = after.as_ref().and_then(|(target, m, after)| {
-            after.map(|_| Timing {
+        let chosen = selected.zip(measurement.as_ref());
+        let preview = chosen
+            .filter(|(target, m)| result_offset(target.current_offset_ms, m.delay_ms).is_some())
+            .map(|(target, m)| Timing {
                 token: target.target_token.clone(),
                 comparison: form.comparison,
-                measurement: (*m).clone(),
-            })
-        });
+                measurement: m.clone(),
+            });
         let idle = connected && !busy;
         div()
             .flex()
@@ -341,11 +343,11 @@ impl TimingPanel {
             )
             .child(field(keys::OBS_TIMING_NOTE, &self.note))
             .child(note(core(lang, keys::OBS_TIMING_NOTE_HINT)))
-            .when(form.note.chars().count() > MAX_NOTE_CHARS, |this| {
-                this.child(note(format!(
-                    "{} / {MAX_NOTE_CHARS}",
-                    form.note.chars().count()
-                )))
+            .map(|this| {
+                let count = form.note.chars().count();
+                this.when(count > MAX_NOTE_CHARS, |this| {
+                    this.child(note(format!("{count} / {MAX_NOTE_CHARS}")))
+                })
             })
             .child(checked)
             .when_some(blocked, |this, key| this.child(note(core(lang, key))))
@@ -361,27 +363,19 @@ impl TimingPanel {
             .when_some(self.targets.as_ref(), |this, targets| {
                 this.child(self.render_targets(lang, targets, picked.token.as_deref(), busy))
             })
-            .when_some(after.as_ref(), |this, (target, m, after)| {
-                this.child(div().text_sm().child(match after {
-                    Some(after) => offset_line(
-                        lang,
-                        &target.source,
-                        target.current_offset_ms,
-                        m.delay_ms,
-                        *after,
-                    ),
-                    None => format!(
-                        "{}{}",
-                        offset_line(
-                            lang,
-                            &target.source,
-                            target.current_offset_ms,
-                            m.delay_ms,
-                            target.current_offset_ms.saturating_add(m.delay_ms),
-                        ),
-                        core(lang, keys::OBS_TIMING_OUT_OF_RANGE)
-                    ),
-                }))
+            .when_some(chosen, |this, (target, m)| {
+                let before = target.current_offset_ms;
+                let mut line = offset_line(
+                    lang,
+                    &target.source,
+                    before,
+                    m.delay_ms,
+                    before.saturating_add(m.delay_ms),
+                );
+                if result_offset(before, m.delay_ms).is_none() {
+                    line.push_str(core(lang, keys::OBS_TIMING_OUT_OF_RANGE));
+                }
+                this.child(div().text_sm().child(line))
             })
             .child(div().child({
                 let on = on.clone();
@@ -438,7 +432,6 @@ impl TimingPanel {
                     .child(div().flex().flex_col().gap_1().children(
                         targets.targets.iter().enumerate().map(|(index, target)| {
                             let picked = self.picked.clone();
-                            let edited = self.edited.clone();
                             let chosen = token == Some(target.target_token.as_str());
                             let value = target.target_token.clone();
                             Button::new(SharedString::from(format!("obs-timing-target-{index}")))
@@ -454,9 +447,7 @@ impl TimingPanel {
                                 .selected(chosen)
                                 .disabled(busy)
                                 .on_click(move |_, window, _| {
-                                    picked.borrow_mut().token = Some(value.clone());
-                                    edited.set(true);
-                                    window.refresh();
+                                    edit(&picked, window, |p| p.token = Some(value.clone()))
                                 })
                         }),
                     ))
