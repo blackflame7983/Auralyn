@@ -661,6 +661,8 @@ pub mod keys {
     pub const SETTINGS_OBS: &str = "settings.obs";
     pub const SETTINGS_SHORTCUTS: &str = "settings.shortcuts";
     pub const SETTINGS_SYSTEM: &str = "settings.system";
+    pub const POST_ON: &str = "flow.enabled";
+    pub const POST_OFF: &str = "flow.disabled";
     pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
@@ -682,7 +684,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 669] = [
+    pub const ALL: [&str; 671] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1333,6 +1335,8 @@ pub mod keys {
         SETTINGS_OBS,
         SETTINGS_SHORTCUTS,
         SETTINGS_SYSTEM,
+        POST_ON,
+        POST_OFF,
         MIX_DIAG_TITLE,
         MIX_DIAG_CAPTURE,
         MIX_DIAG_QUEUE,
