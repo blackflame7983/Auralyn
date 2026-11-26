@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
-use auralyn_ui_model::connect::{Device, Saved};
+use auralyn_ui_model::connect::{Device, Output, Saved};
 use auralyn_ui_model::diagnostics::{Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::Peak;
@@ -24,7 +24,7 @@ use auralyn_ui_model::voice_check::{
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
-use vst_host_lib::ipc::RestorePluginRequest;
+use vst_host_lib::ipc::{ChannelRouting, OutputRouting, RestorePluginRequest};
 use vst_host_lib::vst_host::{presets, scanner};
 
 use crate::store;
@@ -55,6 +55,8 @@ pub enum Command {
         output: Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
+        /// ASIO のチャンネルの割り当て。`None` は WASAPI など（同じ機器なら保存した割り当てを引き継ぐ）。
+        routing: Option<auralyn_ui_model::connect::Routing>,
     },
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
@@ -520,13 +522,14 @@ impl Control {
         self.start(config);
     }
 
-    /// 選んだ機器・周波数・バッファで開始する。チャンネルの割り当ては、同じ機器のときだけ引き継ぐ。
+    /// 選んだ機器・周波数・バッファで開始する。チャンネルの割り当ては、画面が選んだもの（ASIO）か、同じ機器のときだけ引き継ぐ。
     fn start_with(
         &mut self,
         input: &Device,
         output: &Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
+        routing: Option<auralyn_ui_model::connect::Routing>,
     ) {
         let saved = self.host.read_saved_audio_config().ok().flatten();
         let same_devices = saved
@@ -541,7 +544,9 @@ impl Control {
             output_id: output.id.clone(),
             buffer_size,
             sample_rate,
-            routing: same_devices.and_then(|s| s.routing),
+            routing: routing
+                .map(channel_routing)
+                .or_else(|| same_devices.and_then(|s| s.routing)),
         });
     }
 
@@ -589,7 +594,8 @@ impl Control {
                 ref output,
                 sample_rate,
                 buffer_size,
-            } => return self.start_with(input, output, sample_rate, buffer_size),
+                routing,
+            } => return self.start_with(input, output, sample_rate, buffer_size, routing),
             Command::ListDevices => return self.list_devices(),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
@@ -753,6 +759,14 @@ impl Control {
                 output_id: c.output_id,
                 sample_rate: c.sample_rate,
                 buffer_size: c.buffer_size,
+                routing: c.routing.map(|r| auralyn_ui_model::connect::Routing {
+                    input: r.input_channels,
+                    output: match r.output_routing {
+                        OutputRouting::Legacy => Output::Legacy,
+                        OutputRouting::Independent { channels } => Output::Independent(channels),
+                        OutputRouting::Insert => Output::Insert,
+                    },
+                }),
             });
         let _ = self.notices.send(Notice::Devices { devices, saved });
     }
@@ -773,6 +787,18 @@ impl Control {
             command,
             message: error.to_string(),
         });
+    }
+}
+
+/// 画面が選んだ割り当てを、ホストの形にする。
+fn channel_routing(routing: auralyn_ui_model::connect::Routing) -> ChannelRouting {
+    ChannelRouting {
+        input_channels: routing.input,
+        output_routing: match routing.output {
+            Output::Legacy => OutputRouting::Legacy,
+            Output::Independent(channels) => OutputRouting::Independent { channels },
+            Output::Insert => OutputRouting::Insert,
+        },
     }
 }
 

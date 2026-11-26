@@ -1,8 +1,8 @@
 //! 接続の画面：接続方式・マイク・出力先を選び、その機器で開始する。
 //! 周波数とバッファは、選んだ機器が受け付ける値と「自動」から選ぶ。
-//! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。チャンネルの割り当ては、まだこの画面に無い。
+//! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。ASIO では入力のペアと出力の返し方も選ぶ（チャンネルの信号の監視は、まだ無い）。
 
-use auralyn_ui_model::connect::{self, Device, Saved};
+use auralyn_ui_model::connect::{self, Device, Output, Routing, Saved};
 use auralyn_ui_model::session::Phase;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::select::{Select, SelectState};
@@ -12,7 +12,7 @@ use gpui_kit::*;
 
 use crate::color;
 
-use crate::i18n::{core, keys, Lang};
+use crate::i18n::{core, core_with, keys, Lang};
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -30,7 +30,20 @@ pub struct ConnectPage {
     /// 周波数とバッファの選択肢の値。選択肢の先頭は「自動」で、ここには入れない。
     rates: Vec<u32>,
     buffers: Vec<u32>,
+    /// ASIO の入力のペア・出力の返し方・出力のペア。返し方を選び直したら描き直す（`MainView` が購読する）。
+    input_pair: Entity<Choices>,
+    pub output_mode: Entity<Choices>,
+    output_pair: Entity<Choices>,
+    input_pairs: Vec<[usize; 2]>,
+    output_pairs: Vec<[usize; 2]>,
 }
+
+/// 出力の返し方の並び（Tauri 版と同じ順）。
+const OUTPUT_MODES: [&str; 3] = [
+    keys::ROUTING_INDEPENDENT,
+    keys::ROUTING_INSERT,
+    keys::ROUTING_LEGACY,
+];
 
 impl ConnectPage {
     pub fn new<V: 'static>(lang: Lang, window: &mut Window, cx: &mut Context<V>) -> Self {
@@ -47,6 +60,11 @@ impl ConnectPage {
             buffer: choices(cx),
             rates: Vec::new(),
             buffers: Vec::new(),
+            input_pair: choices(cx),
+            output_mode: choices(cx),
+            output_pair: choices(cx),
+            input_pairs: Vec::new(),
+            output_pairs: Vec::new(),
         }
     }
 
@@ -84,6 +102,7 @@ impl ConnectPage {
         let rate = connect::saved_value(saved, &host, |s| s.sample_rate);
         let buffer = connect::saved_value(saved, &host, |s| s.buffer_size);
         self.fill_values(rate, buffer, window, cx);
+        self.fill_routing(None, window, cx);
     }
 
     /// 選んでいる機器が受け付ける周波数とバッファを選択肢に入れる。`rate`・`buffer` が候補にあれば選び、無ければ「自動」。
@@ -124,6 +143,102 @@ impl ConnectPage {
     pub fn devices_changed(&mut self, window: &mut Window, cx: &mut App) {
         let (rate, buffer) = self.values(cx);
         self.fill_values(rate, buffer, window, cx);
+        self.fill_routing(None, window, cx);
+    }
+
+    /// 表示言語を替えた。選んでいる値は保ったまま、札を作り直す。
+    pub fn set_lang(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
+        self.lang = lang;
+        let routing = self.routing(cx);
+        let (rate, buffer) = self.values(cx);
+        self.fill_values(rate, buffer, window, cx);
+        self.fill_routing(routing, window, cx);
+    }
+
+    /// ASIO の割り当ての選択肢を入れる。`keep` が無ければ、保存した同じドライバーの割り当てか既定から選ぶ。
+    fn fill_routing(&mut self, keep: Option<Routing>, window: &mut Window, cx: &mut App) {
+        let Some((input, output)) = self
+            .chosen(cx)
+            .filter(|(input, _)| connect::shares_device(&input.host))
+        else {
+            self.input_pairs.clear();
+            self.output_pairs.clear();
+            return;
+        };
+        let routing = keep.unwrap_or_else(|| connect::initial_routing(self.saved.as_ref(), &input));
+        let independent = match routing.output {
+            Output::Independent(pair) => Some(pair),
+            _ => None,
+        };
+        self.input_pairs = if input.channels == 0 {
+            Vec::new()
+        } else {
+            connect::pairs(input.channels, routing.input)
+        };
+        self.output_pairs = connect::pairs(output.channels, independent);
+        let lang = self.lang;
+        let pair_names = |pairs: &[[usize; 2]], key| {
+            pairs
+                .iter()
+                .map(|[left, right]| {
+                    SharedString::from(core_with(
+                        lang,
+                        key,
+                        &[("left", &(left + 1)), ("right", &(right + 1))],
+                    ))
+                })
+                .collect()
+        };
+        let input_row = routing
+            .input
+            .and_then(|pair| self.input_pairs.iter().position(|p| *p == pair));
+        set(
+            &self.input_pair,
+            pair_names(&self.input_pairs, keys::CHANNEL_INPUT),
+            input_row,
+            window,
+            cx,
+        );
+        let mode = match routing.output {
+            Output::Independent(_) => 0,
+            Output::Insert => 1,
+            Output::Legacy => 2,
+        };
+        let modes = OUTPUT_MODES
+            .iter()
+            .map(|key| SharedString::from(core(lang, key)))
+            .collect();
+        set(&self.output_mode, modes, Some(mode), window, cx);
+        let output_row = independent
+            .and_then(|pair| self.output_pairs.iter().position(|p| *p == pair))
+            .or((!self.output_pairs.is_empty()).then_some(0));
+        set(
+            &self.output_pair,
+            pair_names(&self.output_pairs, keys::ROUTING_PAIR),
+            output_row,
+            window,
+            cx,
+        );
+    }
+
+    /// 選んでいる ASIO の割り当て。ASIO 以外は `None`（エンジンが同じ機器なら保存した割り当てを引き継ぐ）。
+    pub fn routing(&self, cx: &App) -> Option<Routing> {
+        if !connect::shares_device(&self.host_name(cx)) {
+            return None;
+        }
+        let row = |state: &Entity<Choices>| Some(state.read(cx).selected_index(cx)?.row);
+        let pick = |state, pairs: &[[usize; 2]]| row(state).and_then(|r| pairs.get(r).copied());
+        let output = match row(&self.output_mode) {
+            Some(0) => {
+                Output::Independent(pick(&self.output_pair, &self.output_pairs).unwrap_or([0, 1]))
+            }
+            Some(1) => Output::Insert,
+            _ => Output::Legacy,
+        };
+        Some(Routing {
+            input: pick(&self.input_pair, &self.input_pairs),
+            output,
+        })
     }
 
     /// 選んでいる周波数とバッファ。`None` は「自動」。
@@ -228,6 +343,7 @@ impl ConnectPage {
                 core(lang, keys::BUFFER_SIZE),
                 Select::new(&self.buffer),
             ))
+            .when(shared, |this| this.child(self.render_routing(lang, cx)))
             .child(
                 div()
                     .flex()
@@ -249,6 +365,61 @@ impl ConnectPage {
                         },
                     ))),
             )
+    }
+}
+
+impl ConnectPage {
+    /// ASIO の入力のペアと、出力の返し方。チャンネル数が分からなければ入力のペアは選ばせない（ホストに任せる）。
+    fn render_routing(&self, lang: Lang, cx: &App) -> impl IntoElement {
+        let mode = self.output_mode.read(cx).selected_index(cx).map(|i| i.row);
+        let hint = match mode {
+            Some(0) => keys::ROUTING_INDEPENDENT_HINT,
+            Some(1) => keys::ROUTING_INSERT_HINT,
+            _ => keys::ROUTING_LEGACY_HINT,
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .map(|this| {
+                if self.input_pairs.is_empty() {
+                    this.child(
+                        div()
+                            .text_sm()
+                            .text_color(color::muted())
+                            .child(core(lang, keys::CHANNEL_UNVERIFIED)),
+                    )
+                } else {
+                    this.child(field(
+                        core(lang, keys::CHANNEL_TITLE),
+                        Select::new(&self.input_pair),
+                    ))
+                }
+            })
+            .child(field(
+                core(lang, keys::ROUTING_MODE),
+                Select::new(&self.output_mode),
+            ))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(color::muted())
+                    .child(core(lang, hint)),
+            )
+            .when(mode == Some(0), |this| {
+                this.child(field(
+                    core(lang, keys::ROUTING_CHANNELS),
+                    Select::new(&self.output_pair),
+                ))
+            })
+            .when(self.output_pairs.is_empty() && mode == Some(0), |this| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(color::muted())
+                        .child(core(lang, keys::ROUTING_UNVERIFIED)),
+                )
+            })
     }
 }
 

@@ -35,7 +35,7 @@ use crate::shell::{self, Page};
 use crate::sound::SoundPage;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
-use auralyn_ui_model::connect::Device;
+use auralyn_ui_model::connect::{Device, Routing};
 use auralyn_ui_model::diagnostics::Stats;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::live_modes::Mode as LiveMode;
@@ -138,7 +138,7 @@ impl MainView {
         .detach();
         let connect = ConnectPage::new(lang, window, cx);
         let setup = SetupPanel::new(window, cx);
-        for state in [&setup.microphone, &setup.output] {
+        for state in [&setup.microphone, &setup.output, &connect.output_mode] {
             cx.subscribe(state, |_, _, _: &SelectEvent<Vec<SharedString>>, cx| {
                 cx.notify()
             })
@@ -601,7 +601,8 @@ impl MainView {
             return;
         };
         let (sample_rate, buffer_size) = self.connect.values(cx);
-        self.start_with(input, output, sample_rate, buffer_size);
+        let routing = self.connect.routing(cx);
+        self.start_with(input, output, sample_rate, buffer_size, routing);
     }
 
     /// 選んだ機器で開始する。押せるのは止まっているときだけ。
@@ -611,6 +612,7 @@ impl MainView {
         output: Device,
         sample_rate: Option<u32>,
         buffer_size: Option<u32>,
+        routing: Option<Routing>,
     ) {
         if !matches!(self.phase, Phase::Stopped | Phase::Unconfigured) {
             return;
@@ -622,6 +624,7 @@ impl MainView {
             output,
             sample_rate,
             buffer_size,
+            routing,
         });
     }
 
@@ -686,6 +689,7 @@ impl MainView {
         self.lang = lang;
         self.desktop.set_lang(lang);
         self.mix.relabel(lang, window, cx);
+        self.connect.set_lang(lang, window, cx);
         let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
         match locale_file::save(&self.config_dir, lang) {
             Ok(()) => {
@@ -798,7 +802,7 @@ impl Render for MainView {
                                                             this.setup.chosen(cx)
                                                         {
                                                             this.start_with(
-                                                                input, output, None, None,
+                                                                input, output, None, None, None,
                                                             );
                                                         }
                                                         cx.notify();
