@@ -409,79 +409,85 @@ impl PrepPanel {
                         }),
                 )
             })
-            .child(div().text_sm().child(core(lang, keys::PREP_LOCATION)))
-            .child(div().child(choices(
-                "prep-location",
-                lang,
-                &[
-                    (Location::Home, keys::PREP_HOME),
-                    (Location::Venue, keys::PREP_VENUE),
-                ],
-                Some(self.context.location),
-                pick(on, Action::Location),
-            )))
-            .child(div().text_sm().child(core(lang, keys::PREP_SIGNAL)))
-            .child(div().child(choices(
-                "prep-signal",
-                lang,
-                &[
-                    (Signal::Unknown, keys::PREP_SIGNAL_UNKNOWN),
-                    (Signal::Separate, keys::PREP_SEPARATE),
-                    (Signal::Mixed, keys::PREP_MIXED),
-                ],
-                Some(self.context.signal),
-                pick(on, Action::Signal),
-            )))
-            .when(
-                usage.is_some_and(|usage| usage != Usage::Listening),
-                |this| {
-                    let label = if usage == Some(Usage::Obs) {
-                        keys::PREP_OBS_TARGET
-                    } else {
-                        keys::PREP_TARGET
-                    };
-                    this.child(
+            // 使い道を選ぶまでは、使い道の問いだけを出す（場所・手順はそのあと）。
+            .when(usage.is_some(), |this| {
+                this.child(div().text_sm().child(core(lang, keys::PREP_LOCATION)))
+                    .child(div().child(choices(
+                        "prep-location",
+                        lang,
+                        &[
+                            (Location::Home, keys::PREP_HOME),
+                            (Location::Venue, keys::PREP_VENUE),
+                        ],
+                        Some(self.context.location),
+                        pick(on, Action::Location),
+                    )))
+                    .child(div().text_sm().child(core(lang, keys::PREP_SIGNAL)))
+                    .child(div().child(choices(
+                        "prep-signal",
+                        lang,
+                        &[
+                            (Signal::Unknown, keys::PREP_SIGNAL_UNKNOWN),
+                            (Signal::Separate, keys::PREP_SEPARATE),
+                            (Signal::Mixed, keys::PREP_MIXED),
+                        ],
+                        Some(self.context.signal),
+                        pick(on, Action::Signal),
+                    )))
+                    .when(
+                        usage.is_some_and(|usage| usage != Usage::Listening),
+                        |this| {
+                            let label = if usage == Some(Usage::Obs) {
+                                keys::PREP_OBS_TARGET
+                            } else {
+                                keys::PREP_TARGET
+                            };
+                            this.child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .child(div().text_sm().child(core(lang, label)))
+                                    .child(
+                                        Input::new(&self.receiver).aria_label(core(lang, label)),
+                                    ),
+                            )
+                        },
+                    )
+                    // 記録する前にすること（送り先・試聴先での確かめ方）なので、手順の前に文のまま出す。
+                    .child(note(core(
+                        lang,
+                        match usage {
+                            Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
+                            Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
+                            _ => keys::PREP_MANUAL_SCOPE,
+                        },
+                    )))
+                    .children(
+                        Stage::ALL.map(|stage| {
+                            self.render_stage(lang, stage, act(Action::Unconfirm(stage)))
+                        }),
+                    )
+                    .child(
                         div()
                             .flex()
-                            .flex_col()
+                            .items_center()
                             .gap_1()
-                            .child(div().text_sm().child(core(lang, label)))
-                            .child(Input::new(&self.receiver).aria_label(core(lang, label))),
+                            .child(
+                                Button::new("prep-reset")
+                                    .label(core(lang, keys::PREP_EXTERNAL_CHANGED))
+                                    .icon(IconName::RotateCw)
+                                    .outline()
+                                    .small()
+                                    .on_click(act(Action::Reset)),
+                            )
+                            .child(crate::part::hint(
+                                "prep-scope",
+                                lang,
+                                core(lang, keys::PREP_EXTERNAL_SCOPE),
+                            )),
                     )
-                },
-            )
-            // 記録する前にすること（送り先・試聴先での確かめ方）なので、手順の前に文のまま出す。
-            .child(note(core(
-                lang,
-                match usage {
-                    Some(Usage::Discord) => keys::PREP_CALL_SCOPE,
-                    Some(Usage::Listening) => keys::PREP_LOCAL_SCOPE,
-                    _ => keys::PREP_MANUAL_SCOPE,
-                },
-            )))
-            .children(
-                Stage::ALL
-                    .map(|stage| self.render_stage(lang, stage, act(Action::Unconfirm(stage)))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(
-                        Button::new("prep-reset")
-                            .label(core(lang, keys::PREP_EXTERNAL_CHANGED))
-                            .icon(IconName::RotateCw)
-                            .outline()
-                            .small()
-                            .on_click(act(Action::Reset)),
-                    )
-                    .child(crate::part::hint(
-                        "prep-scope",
-                        lang,
-                        core(lang, keys::PREP_EXTERNAL_SCOPE),
-                    )),
-            )
+            })
     }
 
     fn render_stage(
