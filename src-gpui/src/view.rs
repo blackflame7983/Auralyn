@@ -371,7 +371,7 @@ impl MainView {
             match self.scenes.action(&scene) {
                 Some(SceneAction::Profile(name)) => self.engine.send(Command::SceneProfile(name)),
                 Some(SceneAction::Mode(mode)) => {
-                    self.engine.send(Command::Modes(ModeAction::Shortcut(mode)))
+                    self.engine.send(Command::Modes(ModeAction::Scene(mode)))
                 }
                 None => {}
             }

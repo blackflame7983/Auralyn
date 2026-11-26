@@ -38,6 +38,13 @@ pub enum Edit {
     Save,
 }
 
+enum Saved {
+    Done,
+    /// シーン名が空か、同じ名前が2つある。
+    Names,
+    Failed(String),
+}
+
 pub type OnEdit = Rc<dyn Fn(Edit, &mut Window, &mut App)>;
 
 pub struct ScenePanel {
@@ -48,7 +55,7 @@ pub struct ScenePanel {
     enabled: bool,
     rows: Vec<(Entity<InputState>, Mode)>,
     /// 直前の保存の結果。
-    done: Option<Result<(), String>>,
+    done: Option<Saved>,
 }
 
 impl ScenePanel {
@@ -105,13 +112,13 @@ impl ScenePanel {
                     .map(|(name, mode)| (name.read(cx).value().to_string(), *mode))
                     .collect();
                 self.done = Some(match Routing::checked(self.strategy, self.enabled, &rows) {
-                    Err(Issue::Names) => Err(String::new()),
+                    Err(Issue::Names) => Saved::Names,
                     Ok(routing) => match scene_file::save(&self.config_dir, &routing) {
                         Ok(()) => {
                             self.saved = routing;
-                            Ok(())
+                            Saved::Done
                         }
-                        Err(e) => Err(e.to_string()),
+                        Err(e) => Saved::Failed(e.to_string()),
                     },
                 });
             }
@@ -209,9 +216,9 @@ impl ScenePanel {
             )
             .when_some(self.done.as_ref(), |this, done| {
                 this.child(note(match done {
-                    Ok(()) => core(lang, keys::SCENE_SAVED).to_string(),
-                    Err(e) if e.is_empty() => core(lang, keys::SCENE_NAMES).to_string(),
-                    Err(e) => format!("{} {e}", core(lang, keys::SCENE_SAVE_FAILED)),
+                    Saved::Done => core(lang, keys::SCENE_SAVED).to_string(),
+                    Saved::Names => core(lang, keys::SCENE_NAMES).to_string(),
+                    Saved::Failed(e) => format!("{} {e}", core(lang, keys::SCENE_SAVE_FAILED)),
                 }))
             })
     }

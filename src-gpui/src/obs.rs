@@ -153,7 +153,11 @@ impl ObsPanel {
                     self.saved = saved;
                 }
                 Reply::Failed { connect, message } => self.error = Some((connect, message)),
-                Reply::Lost => self.link.send(Order::Read),
+                // 切れる前に届いたシーンでは動かない（Tauri 版も動く直前に接続を確かめる）。
+                Reply::Lost => {
+                    self.scene = None;
+                    self.link.send(Order::Read);
+                }
                 Reply::Scene(scene) => self.scene = Some(scene),
                 Reply::Unavailable(message) => self.unavailable = Some(message),
                 Reply::Reach(result) => {

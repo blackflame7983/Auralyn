@@ -199,6 +199,11 @@ impl Command {
                     Command::Modes(ModeAction::Shortcut(_)),
                     Command::Modes(ModeAction::Shortcut(_))
                 )
+                // OBS のシーンが続けて替わったら、最後のシーンの分だけ（途中のシーンの VST を読み込まない）。
+                | (
+                    Command::SceneProfile(_) | Command::Modes(ModeAction::Scene(_)),
+                    Command::SceneProfile(_) | Command::Modes(ModeAction::Scene(_))
+                )
                 | (
                     Command::PostMix(PostAction::Read, _),
                     Command::PostMix(PostAction::Read, _)
@@ -961,6 +966,12 @@ mod tests {
             release_ms: 100.0,
         };
         assert!(!true_peak.supersedes(&limits(-2.0)));
+        let scene = Command::SceneProfile("B".into());
+        assert!(scene.supersedes(&Command::SceneProfile("A".into())));
+        assert!(!scene.supersedes(&Command::ApplyProfile {
+            name: "A".into(),
+            restore: false
+        }));
     }
 
     #[test]

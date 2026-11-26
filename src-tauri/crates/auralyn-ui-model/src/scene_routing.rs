@@ -65,15 +65,25 @@ pub enum Issue {
 
 impl Routing {
     /// 入力から保存する形を作る。シーン名は前後の空白を除く。「連動なし」なら有効にしない。
+    /// 割り当ては歌・雑談の方式でだけ確かめる（ほかの方式では見えないので、空・重複の行は黙って外す）。
     pub fn checked(
         strategy: Strategy,
         enabled: bool,
         rows: &[(String, Mode)],
     ) -> Result<Routing, Issue> {
-        let scenes: Vec<(String, Mode)> = rows
+        let mut scenes: Vec<(String, Mode)> = rows
             .iter()
             .map(|(name, mode)| (name.trim().to_string(), *mode))
             .collect();
+        if strategy != Strategy::Mode {
+            let mut kept: Vec<(String, Mode)> = Vec::new();
+            for (name, mode) in scenes {
+                if !name.is_empty() && kept.iter().all(|(other, _)| *other != name) {
+                    kept.push((name, mode));
+                }
+            }
+            scenes = kept;
+        }
         let blank = scenes.iter().any(|(name, _)| name.is_empty());
         let repeated = scenes
             .iter()
@@ -136,6 +146,21 @@ mod tests {
         );
         let ok = Routing::checked(Strategy::Mode, true, &[row(" 歌 ")]).unwrap();
         assert_eq!(ok.scenes, vec![("歌".to_string(), Mode::Singing)]);
+    }
+
+    #[test]
+    fn hidden_rows_do_not_block_saving_other_strategies() {
+        let rows = [
+            ("".to_string(), Mode::Singing),
+            ("歌".to_string(), Mode::Singing),
+            ("歌".to_string(), Mode::Talk),
+        ];
+        let saved = Routing::checked(Strategy::Profile, true, &rows).unwrap();
+        assert_eq!(saved.scenes, vec![("歌".to_string(), Mode::Singing)]);
+        assert_eq!(
+            Routing::checked(Strategy::Mode, true, &rows),
+            Err(Issue::Names)
+        );
     }
 
     #[test]
