@@ -622,6 +622,8 @@ impl MixPanel {
                     },
                 ),
         )
+        .icon(IconName::Music)
+        .hint(lang, core(lang, keys::MIX_LEAD))
         .into_any_element()
     }
 }

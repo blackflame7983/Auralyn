@@ -259,6 +259,8 @@ impl PrepPanel {
         let status = match next {
             Next::Done => core(lang, keys::PREP_SESSION_CHECKED),
             _ if self.asking && self.observation.is_none() => core(lang, keys::PREP_CHECKING),
+            // 音が流れていることは上の帯が示すので、ここでは繰り返さない。
+            _ if availability == Availability::Ready => "",
             _ => core(lang, availability_label(availability)),
         };
         let act = |action: Action| {
