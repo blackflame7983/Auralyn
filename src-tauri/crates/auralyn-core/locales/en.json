@@ -3680,7 +3680,6 @@
   "gpuiShell.liveInactive": "The stream output is stopped. To change the output, stop audio, save, then start again.",
   "gpuiShell.liveSplitKept": "For now, fine-tune your own singing and talk shaping in the Tauri version. The first time you separate them, defaults are used; existing values are kept.",
   "gpuiShell.mixNeedOutput": "First, on the Connect page, choose a stream output under \"Separate for yourself and the stream\", turn on separate processing, and save.",
-  "gpuiShell.mixAppLater": "Using an app’s audio as backing is not available in the GPUI version yet (use the Tauri version).",
   "gpuiShell.mixVoiceMute": "Mute voice",
   "gpuiShell.mixMusicMute": "Mute backing track"
 }

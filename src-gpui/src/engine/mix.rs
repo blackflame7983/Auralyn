@@ -1,15 +1,19 @@
-//! 配信ミックス（声にオケを混ぜる）。Tauri 版と同じ `AudioHost::mixing` を使い、保存も同じ `mixing.json`。
+//! 配信ミックス（声にオケを混ぜる。オケは入力機器かアプリの音）。Tauri 版と同じ `AudioHost::mixing` を使い、保存も同じ `mixing.json`。
 //! 変更の操作には、最後に読んだ世代（epoch・revision）を付ける。ずれていれば断られるので、読み直して画面へ送る。
 
 use super::*;
-use auralyn_ui_model::mix::{Change as MixChange, Levels as MixLevels, Mix, Source as MixSource};
+use auralyn_ui_model::mix::{
+    App as MixApp, Change as MixChange, Levels as MixLevels, Mix, Route as MixRoute,
+    Source as MixSource,
+};
 use vst_host_lib::audio_engine::mixing::{
     Config as MixConfig, Device as MixDevice, Levels as EngineLevels, Source as EngineSource, Track,
 };
+use vst_host_lib::input_source::{ProcessConfig, Purpose};
 use vst_host_lib::mixing::{Request as MixRequest, Snapshot as MixSnapshot};
 
 /// 配信ミックスの操作。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MixAction {
     Read,
     /// 入力機器の2チャンネルを混ぜ始める（音量は今の値を引き継ぐ）。
@@ -17,6 +21,15 @@ pub enum MixAction {
         input_id: String,
         channels: [usize; 2],
     },
+    /// アプリの音を混ぜ始める。`candidate_id` は最後に読んだ一覧のもの、`route` はそのアプリが音を出している出力先。
+    ApplyApp {
+        candidate_id: String,
+        key: String,
+        name: String,
+        route: String,
+    },
+    /// オケに選べる起動中のアプリを読む。
+    Apps,
     /// 混ぜるのをやめる（保存も消える。Tauri 版と同じ）。
     Disable,
     /// 保存を読み直す（保存が読めない・書き換えられたあと。音声を止めているときだけ）。
@@ -33,23 +46,35 @@ impl Control {
                 let result = self.host.mixing(MixRequest::Snapshot);
                 return self.send_mix(result);
             }
-            MixAction::Apply { input_id, channels } => {
-                let levels = self.mix_engine_levels().unwrap_or_default();
-                self.mix_request(|epoch, revision| MixRequest::Configure {
-                    expected_epoch: epoch,
-                    expected_revision: revision,
-                    config: Some(MixConfig {
-                        version: 1,
-                        source: EngineSource::Device(MixDevice {
-                            host: "WASAPI".into(),
-                            input_id,
-                            input_channels: channels,
-                        }),
-                        levels,
-                    }),
-                    candidate_id: None,
-                })
+            MixAction::Apps => {
+                let apps = vst_host_lib::mixing::apps(&mut self.host)
+                    .map(|apps| apps.into_iter().map(app).collect())
+                    .map_err(|e| e.to_string());
+                let _ = self.notices.send(Notice::MixApps(apps));
+                return;
             }
+            MixAction::Apply { input_id, channels } => self.configure(
+                EngineSource::Device(MixDevice {
+                    host: "WASAPI".into(),
+                    input_id,
+                    input_channels: channels,
+                }),
+                None,
+            ),
+            MixAction::ApplyApp {
+                candidate_id,
+                key,
+                name,
+                route,
+            } => self.configure(
+                EngineSource::ProcessLoopback(ProcessConfig {
+                    app_key: key,
+                    app_name: name,
+                    raw_endpoint_id: route,
+                    purpose: Purpose::Music,
+                }),
+                Some(candidate_id),
+            ),
             MixAction::Disable => self.mix_request(|epoch, revision| MixRequest::Configure {
                 expected_epoch: epoch,
                 expected_revision: revision,
@@ -88,6 +113,25 @@ impl Control {
             Err(e) => Err(e.to_string()),
         };
         let _ = self.notices.send(Notice::Mix(notice));
+    }
+
+    /// 取り込み口を変える（音量は今の値を引き継ぐ）。
+    fn configure(
+        &mut self,
+        source: EngineSource,
+        candidate_id: Option<String>,
+    ) -> anyhow::Result<MixSnapshot> {
+        let levels = self.mix_engine_levels().unwrap_or_default();
+        self.mix_request(|epoch, revision| MixRequest::Configure {
+            expected_epoch: epoch,
+            expected_revision: revision,
+            config: Some(MixConfig {
+                version: 1,
+                source,
+                levels,
+            }),
+            candidate_id,
+        })
     }
 
     /// 最後に読んだ世代を付けて頼む。まだ読んでいなければ先に読む。
@@ -151,8 +195,27 @@ fn source(config: &MixConfig) -> MixSource {
             channels: device.input_channels,
         },
         EngineSource::ProcessLoopback(app) => MixSource::App {
+            key: app.app_key.clone(),
             name: app.app_name.clone(),
+            route: app.raw_endpoint_id.clone(),
         },
+    }
+}
+
+fn app(app: vst_host_lib::mixing::App) -> MixApp {
+    MixApp {
+        id: app.id,
+        key: app.app_key,
+        name: app.name,
+        routes: app
+            .routes
+            .into_iter()
+            .map(|r| MixRoute {
+                id: r.id,
+                name: r.name,
+                muted: r.muted,
+            })
+            .collect(),
     }
 }
 

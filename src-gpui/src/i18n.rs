@@ -268,7 +268,13 @@ pub mod keys {
     pub const MIX_CURRENT: &str = "mixing.current";
     pub const MIX_SAVED: &str = "mixing.saved";
     pub const MIX_NONE: &str = "mixing.none";
-    pub const MIX_APP_LATER: &str = "gpuiShell.mixAppLater";
+    pub const MIX_APP: &str = "mixing.process";
+    pub const MIX_REFRESH_APPS: &str = "mixing.refreshApps";
+    pub const MIX_ROUTE: &str = "mixing.chooseRoute";
+    pub const MIX_ROUTE_HELP: &str = "mixing.routeHelp";
+    pub const MIX_ROUTE_MUTED: &str = "mixing.muted";
+    pub const MIX_ROUTE_NEEDS_MUTE: &str = "mixing.unmuted";
+    pub const MIX_ROUTE_MUTE_FIRST: &str = "mixingUi.routeMuted";
     pub const MIX_INPUT_FAILED: &str = "mixing.accompanimentFailed";
     pub const MIX_SOURCE: &str = "mixing.device";
     pub const MIX_CHANNELS: &str = "mixing.channels";
@@ -284,7 +290,7 @@ pub mod keys {
     pub const MIX_RELOAD: &str = "mixing.reload";
 
     #[cfg(test)]
-    pub const ALL: [&str; 271] = [
+    pub const ALL: [&str; 277] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -542,7 +548,13 @@ pub mod keys {
         MIX_CURRENT,
         MIX_SAVED,
         MIX_NONE,
-        MIX_APP_LATER,
+        MIX_APP,
+        MIX_REFRESH_APPS,
+        MIX_ROUTE,
+        MIX_ROUTE_HELP,
+        MIX_ROUTE_MUTED,
+        MIX_ROUTE_NEEDS_MUTE,
+        MIX_ROUTE_MUTE_FIRST,
         MIX_INPUT_FAILED,
         MIX_SOURCE,
         MIX_CHANNELS,

@@ -187,7 +187,7 @@ impl MainView {
             mix.source_state(),
             window,
             |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
-                this.mix.source_changed(window, cx);
+                this.mix.source_changed(this.lang, window, cx);
                 cx.notify();
             },
         )
@@ -424,10 +424,12 @@ impl MainView {
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
-                self.mix.set_devices(&devices, voice.as_deref(), window, cx);
+                self.mix
+                    .set_devices(&devices, voice.as_deref(), self.lang, window, cx);
             }
-            Notice::Mix(result) => self.mix.set(result, window, cx),
+            Notice::Mix(result) => self.mix.set(result, self.lang, window, cx),
             Notice::MixDone(result) => self.mix.done(result),
+            Notice::MixApps(result) => self.mix.set_apps(result, self.lang, window, cx),
             Notice::Live(result) => self.live.set(result, self.lang, window, cx),
             Notice::LiveSaved(result) => self.live.saved(result),
             Notice::Failed { command, message } => {
@@ -599,12 +601,13 @@ impl MainView {
         }
     }
 
-    fn set_lang(&mut self, lang: Lang) {
+    fn set_lang(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
         if lang == self.lang {
             return;
         }
         self.lang = lang;
         self.desktop.set_lang(lang);
+        self.mix.relabel(lang, window, cx);
         let failed = |lang| core(lang, keys::LANGUAGE_SAVE_FAILED);
         match locale_file::save(&self.config_dir, lang) {
             Ok(()) => {
@@ -704,9 +707,9 @@ impl Render for MainView {
                                     self.desktop.tray_error.as_deref(),
                                     {
                                         let entity = entity.clone();
-                                        move |lang, _, cx| {
+                                        move |lang, window, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.set_lang(lang);
+                                                this.set_lang(lang, window, cx);
                                                 cx.notify();
                                             })
                                         }
