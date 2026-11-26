@@ -48,6 +48,24 @@ pub fn card(
         .child(body)
 }
 
+/// 広い窓では2列、狭くなると1列に折り返す（各列は 320〜560px）。左に主な情報、右に補助を置く。
+pub fn columns(left: impl IntoElement, right: impl IntoElement) -> impl IntoElement {
+    let column = |content: AnyElement| {
+        div()
+            .flex_1()
+            .min_w(px(320.))
+            .max_w(px(560.))
+            .child(content)
+    };
+    div()
+        .flex()
+        .flex_wrap()
+        .items_start()
+        .gap_3()
+        .child(column(left.into_any_element()))
+        .child(column(right.into_any_element()))
+}
+
 /// 補足の文（小さく、薄い色）。
 pub fn note(text: impl Into<SharedString>) -> impl IntoElement {
     div()

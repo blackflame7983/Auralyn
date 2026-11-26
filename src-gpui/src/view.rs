@@ -1060,72 +1060,90 @@ impl Render for MainView {
                                             },
                                         )))
                                     })
-                                    .children(home::sound_flow(&self.flow, lang))
-                                    .when(self.music && self.show_source_hint, |this| {
-                                        let playback = self
-                                            .input_name
-                                            .as_deref()
-                                            .and_then(auralyn_ui_model::music::cable_playback_name);
-                                        this.child(
-                                            div().max_w(px(560.)).child(note(match playback {
-                                                Some(name) => core_with(
-                                                    lang,
-                                                    keys::MUSIC_SOURCE_HINT,
-                                                    &[("name", &name)],
-                                                ),
-                                                None => core(lang, keys::MUSIC_SOURCE_HINT_GENERIC)
-                                                    .to_string(),
-                                            })),
-                                        )
-                                    })
-                                    .when(self.music, |this| {
-                                        this.children(
-                                            self.setups
-                                                .render_music(lang, cx, send.clone())
-                                                .map(|card| div().max_w(px(560.)).child(card)),
-                                        )
-                                    })
-                                    .child(div().max_w(px(560.)).child(self.prep.render(
-                                        lang,
-                                        {
-                                            let entity = entity.clone();
-                                            Rc::new(move |action, _, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    if let Some(command) = this.prep.act(action) {
-                                                        this.engine.send(command);
-                                                    }
-                                                    cx.notify();
-                                                })
+                                    .child(crate::part::columns(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_3()
+                                            .children(home::sound_flow(&self.flow, lang))
+                                            .when(self.music && self.show_source_hint, |this| {
+                                                let playback = self.input_name.as_deref().and_then(
+                                                    auralyn_ui_model::music::cable_playback_name,
+                                                );
+                                                this.child(
+                                                    div().max_w(px(560.)).child(note(
+                                                        match playback {
+                                                            Some(name) => core_with(
+                                                                lang,
+                                                                keys::MUSIC_SOURCE_HINT,
+                                                                &[("name", &name)],
+                                                            ),
+                                                            None => core(
+                                                                lang,
+                                                                keys::MUSIC_SOURCE_HINT_GENERIC,
+                                                            )
+                                                            .to_string(),
+                                                        },
+                                                    )),
+                                                )
                                             })
-                                        },
-                                        {
-                                            let entity = entity.clone();
-                                            Rc::new(move |goto, _, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.open(match goto {
-                                                        Goto::Connect => Page::Connect,
-                                                        Goto::Sound => Page::Sound,
-                                                        Goto::Settings => Page::Settings,
-                                                    });
-                                                    cx.notify();
-                                                })
+                                            .when(self.music, |this| {
+                                                this.children(
+                                                    self.setups
+                                                        .render_music(lang, cx, send.clone())
+                                                        .map(|card| {
+                                                            div().max_w(px(560.)).child(card)
+                                                        }),
+                                                )
                                             })
-                                        },
-                                    )))
-                                    .child(div().max_w(px(560.)).child(self.mix.render(
-                                        lang,
-                                        self.live.ready(),
-                                        cx,
-                                        send.clone(),
-                                    )))
-                                    .child(div().max_w(px(560.)).child(self.post.render(
-                                        lang,
-                                        self.mix.active(),
-                                        !self.phase.can_start(),
-                                        self.vst.scanning(),
-                                        cx,
-                                        send,
-                                    ))),
+                                            .child(div().max_w(px(560.)).child(self.prep.render(
+                                                lang,
+                                                {
+                                                    let entity = entity.clone();
+                                                    Rc::new(move |action, _, cx| {
+                                                        entity.update(cx, |this, cx| {
+                                                            if let Some(command) =
+                                                                this.prep.act(action)
+                                                            {
+                                                                this.engine.send(command);
+                                                            }
+                                                            cx.notify();
+                                                        })
+                                                    })
+                                                },
+                                                {
+                                                    let entity = entity.clone();
+                                                    Rc::new(move |goto, _, cx| {
+                                                        entity.update(cx, |this, cx| {
+                                                            this.open(match goto {
+                                                                Goto::Connect => Page::Connect,
+                                                                Goto::Sound => Page::Sound,
+                                                                Goto::Settings => Page::Settings,
+                                                            });
+                                                            cx.notify();
+                                                        })
+                                                    })
+                                                },
+                                            ))),
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_3()
+                                            .child(div().max_w(px(560.)).child(self.mix.render(
+                                                lang,
+                                                self.live.ready(),
+                                                cx,
+                                                send.clone(),
+                                            )))
+                                            .child(div().max_w(px(560.)).child(self.post.render(
+                                                lang,
+                                                self.mix.active(),
+                                                !self.phase.can_start(),
+                                                self.vst.scanning(),
+                                                cx,
+                                                send,
+                                            ))),
+                                    )),
                                 Page::Settings => this.child(settings::render(
                                     lang,
                                     self.desktop.tray_error.as_deref(),
@@ -1191,30 +1209,36 @@ impl Render for MainView {
                                             send,
                                         )),
                                 )),
-                                Page::Vst => this
-                                    .child(self.vst.render(lang, cx, send.clone()))
-                                    .child(self.scan_folders.render(
-                                        lang,
-                                        self.vst.scanning(),
-                                        send.clone(),
-                                    ))
-                                    .child(self.setups.render(lang, cx, send)),
-                                Page::Sound => this
-                                    .child(self.sound.render(
-                                        lang,
-                                        self.modes.armed(),
-                                        cx,
-                                        send.clone(),
-                                    ))
-                                    .child(self.modes.render(lang, send.clone()))
-                                    .child(self.voice.render(
-                                        lang,
-                                        self.phase == Phase::Running,
-                                        cx,
-                                        send,
-                                    )),
-                                Page::Connect => this
-                                    .child(self.connect.render(
+                                Page::Vst => this.child(crate::part::columns(
+                                    self.vst.render(lang, cx, send.clone()),
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_3()
+                                        .child(self.setups.render(lang, cx, send.clone()))
+                                        .child(self.scan_folders.render(
+                                            lang,
+                                            self.vst.scanning(),
+                                            send,
+                                        )),
+                                )),
+                                Page::Sound => this.child(crate::part::columns(
+                                    self.sound
+                                        .render(lang, self.modes.armed(), cx, send.clone()),
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_3()
+                                        .child(self.modes.render(lang, send.clone()))
+                                        .child(self.voice.render(
+                                            lang,
+                                            self.phase == Phase::Running,
+                                            cx,
+                                            send,
+                                        )),
+                                )),
+                                Page::Connect => this.child(crate::part::columns(
+                                    self.connect.render(
                                         self.phase,
                                         lang,
                                         cx,
@@ -1246,10 +1270,9 @@ impl Render for MainView {
                                                 cx.notify();
                                             })
                                         },
-                                    ))
-                                    .child(
-                                        div().max_w(px(560.)).child(self.live.render(lang, send)),
                                     ),
+                                    self.live.render(lang, send),
+                                )),
                             }),
                     ),
             )
