@@ -10,6 +10,7 @@ pub mod live_output;
 pub mod measurement;
 pub mod meter;
 pub mod mix;
+pub mod obs;
 pub mod peak;
 pub mod post_mix;
 pub mod profile;

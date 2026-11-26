@@ -12,7 +12,6 @@ use std::sync::{
     Arc,
 };
 use std::time::Duration as StdDuration;
-use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, watch, Mutex};
 
 struct ReachTask {
@@ -437,17 +436,25 @@ async fn connect_client(host: &str, port: u16, password: Option<String>) -> Resu
         .map_err(|e| format!("Failed to connect to OBS: {}", e))
 }
 
+/// 画面へ知らせる口。名前は `obs://...`、中身は JSON。Tauri と GPUI の両方から使う。
+pub trait Notify: Fn(&'static str, serde_json::Value) + Send + Sync + 'static {}
+impl<F: Fn(&'static str, serde_json::Value) + Send + Sync + 'static> Notify for F {}
+
+fn payload(value: impl Serialize) -> serde_json::Value {
+    serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
+}
+
 pub async fn connect_obs(
-    app: AppHandle,
-    state: tauri::State<'_, ObsState>,
+    notify: impl Notify,
+    state: &ObsState,
     host: String,
     port: u16,
     password: Option<String>,
 ) -> Result<(), String> {
     // 接続開始と切断を同じロックで直列化し、閉じた画面の遅い接続を残さない。
     let mut client_guard = state.client.lock().await;
-    let stopped = stop_connection(&state, &mut client_guard).await;
-    let _ = app.emit("obs://timing-invalidated", ());
+    let stopped = stop_connection(state, &mut client_guard).await;
+    notify("obs://timing-invalidated", serde_json::Value::Null);
     stopped?;
     let client = connect_client(&host, port, password.clone()).await?;
 
@@ -473,7 +480,7 @@ pub async fn connect_obs(
         tokio::pin!(events);
         while let Some(event) = events.next().await {
             if invalidate_reach_settings(&event, &reach_settings_generation) {
-                let _ = app.emit("obs://reach-invalidated", ());
+                notify("obs://reach-invalidated", serde_json::Value::Null);
             }
             let invalidated = if let obws::events::Event::SourceFilterEnableStateChanged {
                 source,
@@ -497,39 +504,36 @@ pub async fn connect_obs(
                 invalidate_setup_target(&event, &setup_generation, &source_generations).await
             };
             if invalidated {
-                let _ = app.emit("obs://timing-invalidated", ());
+                notify("obs://timing-invalidated", serde_json::Value::Null);
             }
             if let obws::events::Event::CurrentProgramSceneChanged { name, .. } = event {
                 if let Some(event) = scene_clock.event(connection_generation, name.clone()) {
-                    let _ = app.emit("obs://live-scene-changed", event);
+                    notify("obs://live-scene-changed", payload(event));
                 }
                 log::info!("OBS Scene Changed: {}", name);
-                let _ = app.emit(
+                notify(
                     "obs://scene-changed",
-                    ObsSceneChangedEvent { scene_name: name },
+                    payload(ObsSceneChangedEvent { scene_name: name }),
                 );
             }
         }
         if scene_clock.generation.load(Ordering::SeqCst) == connection_generation {
             scene_clock.stop();
         }
-        let _ = app.emit("obs://live-scene-invalidated", ());
+        notify("obs://live-scene-invalidated", serde_json::Value::Null);
         // 購読が失われた後の条件を、古い測定と同一として扱わない。
         setup_generation.fetch_add(1, Ordering::SeqCst);
-        let _ = app.emit("obs://timing-invalidated", ());
+        notify("obs://timing-invalidated", serde_json::Value::Null);
         log::info!("OBS Event Loop Ended");
     }));
 
     Ok(())
 }
 
-pub async fn disconnect_obs(
-    app: AppHandle,
-    state: tauri::State<'_, ObsState>,
-) -> Result<(), String> {
+pub async fn disconnect_obs(notify: impl Notify, state: &ObsState) -> Result<(), String> {
     let mut client_guard = state.client.lock().await;
-    let result = stop_connection(&state, &mut client_guard).await;
-    let _ = app.emit("obs://timing-invalidated", ());
+    let result = stop_connection(state, &mut client_guard).await;
+    notify("obs://timing-invalidated", serde_json::Value::Null);
     result
 }
 

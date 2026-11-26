@@ -672,6 +672,7 @@ dependencies = [
  "log",
  "raw-window-handle",
  "serde_json",
+ "tokio",
  "tray-icon 0.21.3",
  "vst-host",
  "windows-sys 0.61.2",

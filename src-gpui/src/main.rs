@@ -18,6 +18,8 @@ mod locale_file;
 mod measure;
 mod mix;
 mod modes;
+mod obs;
+mod obs_link;
 mod part;
 mod post_mix;
 mod recovery;
