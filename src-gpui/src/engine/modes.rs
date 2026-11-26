@@ -14,6 +14,8 @@ use vst_host_lib::audio_engine::live_modes::{
 pub enum ModeAction {
     Read,
     Select(Mode),
+    /// ショートカットからの切り替え。断られたら上の帯にも出す（隠れていても音づくりの画面を見ていなくても分かるように）。
+    Shortcut(Mode),
     /// 本番保護を付ける・外す。
     Protect(bool),
     /// 今の音づくりを、そのモードとして保存する。`drop_reverb` は雑談で残響を切って保存する（Tauri 版と同じ確認のあと）。
@@ -32,10 +34,14 @@ impl Control {
                 let result = self.host.live_modes(ModesRequest::Snapshot);
                 return self.send_modes(result);
             }
-            ModeAction::Select(mode) => self.modes_intent(|intent| match mode {
-                Mode::Singing => ModesRequest::SingingOn { intent },
-                Mode::Talk => ModesRequest::TalkOn { intent },
-            }),
+            ModeAction::Select(mode) => self.select_mode(mode),
+            ModeAction::Shortcut(mode) => {
+                let result = self.select_mode(mode);
+                if let Err(e) = &result {
+                    self.fail("shortcut", anyhow::anyhow!("{e}"));
+                }
+                result
+            }
             ModeAction::Protect(armed) => self.modes_intent(|intent| {
                 if armed {
                     ModesRequest::Arm { intent }
@@ -64,6 +70,20 @@ impl Control {
             .map(|snapshot| view(&snapshot))
             .map_err(|e| e.to_string());
         let _ = self.notices.send(Notice::Modes(notice));
+    }
+
+    /// 読み直した状態で選べるときだけ切り替える。VST の組み合わせを結び付けたモードは、この版では選ばない
+    /// （VST が入れ替わっても、この版の並びが追いつかない）。
+    fn select_mode(&mut self, mode: Mode) -> anyhow::Result<ModesSnapshot> {
+        let last = self.modes_last()?;
+        anyhow::ensure!(
+            view(&last).can_select(mode),
+            "this mode is not registered, is linked to a VST setup, or is still switching"
+        );
+        self.modes_intent(|intent| match mode {
+            Mode::Singing => ModesRequest::SingingOn { intent },
+            Mode::Talk => ModesRequest::TalkOn { intent },
+        })
     }
 
     /// 今の状態（操作に付ける世代・保存の版を取るため、毎回読む）。

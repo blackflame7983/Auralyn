@@ -38,11 +38,6 @@ impl ModesPanel {
         self.state.as_ref()?.as_ref().ok()
     }
 
-    /// そのモードへ切り替えられる（最後に読んだ状態で）。
-    pub fn can_select(&self, mode: Mode) -> bool {
-        self.current().is_some_and(|m| m.can_select(mode))
-    }
-
     /// 操作ロック中（最後に読んだ状態で）。
     pub fn armed(&self) -> bool {
         self.current().is_some_and(|m| m.armed)

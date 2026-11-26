@@ -669,17 +669,13 @@ impl MainView {
                 self.engine.send(Command::SetOutputGain(next));
             }
             A::NoiseToggle => self.engine.send(Command::ToggleNoise),
-            // Tauri 版と同じく、選べないとき（未登録・VST の組み合わせ付き・切り替えの途中）は何もしない。
-            A::SingingOn | A::TalkOn => {
-                let mode = if action == A::SingingOn {
-                    LiveMode::Singing
-                } else {
-                    LiveMode::Talk
-                };
-                if self.modes.can_select(mode) {
-                    self.engine.send(Command::Modes(ModeAction::Select(mode)));
-                }
-            }
+            // 選べるかはエンジンが読み直した状態で決め、断られたら上の帯に出す。
+            A::SingingOn => self
+                .engine
+                .send(Command::Modes(ModeAction::Shortcut(LiveMode::Singing))),
+            A::TalkOn => self
+                .engine
+                .send(Command::Modes(ModeAction::Shortcut(LiveMode::Talk))),
         }
     }
 

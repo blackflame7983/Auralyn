@@ -175,6 +175,11 @@ impl Command {
                     Command::Modes(ModeAction::Read),
                     Command::Modes(ModeAction::Read)
                 )
+                // 連打したショートカットは最後の押下だけ（Tauri 版と同じ）。
+                | (
+                    Command::Modes(ModeAction::Shortcut(_)),
+                    Command::Modes(ModeAction::Shortcut(_))
+                )
                 | (
                     Command::PostMix(PostAction::Read, _),
                     Command::PostMix(PostAction::Read, _)
