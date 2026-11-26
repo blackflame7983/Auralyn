@@ -407,7 +407,7 @@ pub fn glossary(lang: Lang) -> impl IntoElement {
                     .child(note(term.summary.clone()))
                     .child(
                         div().child(
-                            Button::new(SharedString::from(format!("term-{}", term.anchor)))
+                            Button::new(SharedString::from(term.anchor.clone()))
                                 .label(core(lang, keys::HELP_MORE))
                                 .link()
                                 .on_click(move |_, _, cx| {

@@ -60,7 +60,7 @@ pub struct Term {
 
 /// `user-docs/{ja,en}/glossary.md` から各用語の見出しと直後の段落だけを取り出す。補足はサイトで読む。
 pub fn glossary(source: &str) -> Vec<Term> {
-    let lines: Vec<&str> = source.lines().map(|l| l.trim_end_matches('\r')).collect();
+    let lines: Vec<&str> = source.lines().collect();
     let mut terms = Vec::new();
     for (i, line) in lines.iter().enumerate() {
         let Some((title, anchor)) = line
@@ -70,7 +70,10 @@ pub fn glossary(source: &str) -> Vec<Term> {
         else {
             continue;
         };
-        if !anchor.starts_with("term-") {
+        let valid = anchor.strip_prefix("term-").is_some_and(|name| {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+        });
+        if !valid {
             continue;
         }
         let summary: Vec<&str> = lines[i + 1..]
@@ -113,11 +116,15 @@ mod tests {
             let target = trouble.target();
             assert!(links.contains(&format!(": \"{target}\"")), "{target}");
         }
+        for term in glossary(include_str!("../../../../user-docs/ja/glossary.md")) {
+            let target = format!("glossary#{}", term.anchor);
+            assert!(links.contains(&format!(": \"{target}\"")), "{target}");
+        }
     }
 
     #[test]
     fn glossary_takes_the_first_paragraph_of_each_term() {
-        let source = "## 言葉の意味 {#terms}\n\n### 送り先 {#term-destination}\n\n配信や通話など、\n音を使う目的です。\n\n補足。\n\n### 見出しだけ {#other}\n\n本文\n";
+        let source = "## 言葉の意味 {#terms}\n\n### 送り先 {#term-destination}\n\n配信や通話など、\n音を使う目的です。\n\n補足。\n\n### 見出しだけ {#other}\n\n本文\n\n### 大文字 {#term-Foo}\n\n本文\n";
         assert_eq!(
             glossary(source),
             vec![Term {
