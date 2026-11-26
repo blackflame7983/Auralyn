@@ -86,7 +86,8 @@ impl SoundPage {
         })
     }
 
-    pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
+    /// `locked` は操作ロック中（制限を変えさせない）。
+    pub fn render(&self, lang: Lang, locked: bool, cx: &App, send: OnCommand) -> impl IntoElement {
         let Some(current) = self.current else {
             return div()
                 .text_sm()
@@ -191,7 +192,7 @@ impl SoundPage {
                             .child(slider_row(
                                 lang,
                                 keys::STRENGTH,
-                                keys::STRENGTH_NAMED,
+                                core(lang, keys::STRENGTH_NAMED),
                                 &self.strength,
                                 percent,
                                 current.noise_mode.is_none(),
@@ -245,7 +246,7 @@ impl SoundPage {
                         .child(slider_row(
                             lang,
                             keys::EFFECTS_AMOUNT,
-                            keys::EFFECTS_AMOUNT,
+                            core(lang, keys::EFFECTS_AMOUNT),
                             &self.amount,
                             percent,
                             false,
@@ -256,8 +257,8 @@ impl SoundPage {
                     div().child(note(core(lang, keys::SINGING_NOT_YET)))
                 },
             ))
-            .child(self.peak.render(lang, cx, send.clone()))
-            .child(self.true_peak.render(lang, cx, send))
+            .child(self.peak.render(lang, locked, cx, send.clone()))
+            .child(self.true_peak.render(lang, locked, cx, send))
     }
 }
 
@@ -302,7 +303,7 @@ fn percent(value: f32) -> String {
 pub(crate) fn slider_row(
     lang: Lang,
     label: &'static str,
-    named: &'static str,
+    named: impl Into<SharedString>,
     state: &Entity<SliderState>,
     show: fn(f32) -> String,
     disabled: bool,
@@ -319,7 +320,7 @@ pub(crate) fn slider_row(
                 Slider::new(state)
                     .horizontal()
                     .disabled(disabled)
-                    .accessibility_label(core(lang, named)),
+                    .accessibility_label(named),
             ),
         )
         .child(div().flex_none().w(px(48.)).text_sm().child(value))

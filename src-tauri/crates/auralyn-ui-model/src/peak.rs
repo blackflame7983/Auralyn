@@ -62,6 +62,12 @@ pub fn snap((min, max, step): (f32, f32, f32), value: f32) -> f32 {
     ((value / step).round() * step).clamp(min, max)
 }
 
+/// 画面を見ている間、500ms ごとに読み直すか。反映待ちのあいだと、ON の true-peak 制限
+/// （「いま抑えた量」はホストが読むたびに戻すので、Tauri 版と同じく読み続けないと古い値が残る）。
+pub fn polls(peak: Option<Peak>) -> bool {
+    peak.is_some_and(|peak| peak.pending || (peak.enabled && peak.lookahead.is_some()))
+}
+
 /// `None` は状態を読めていない（音声が止まっているときも読めない）。
 pub fn notes(peak: Option<Peak>) -> Vec<Note> {
     match peak {
@@ -114,6 +120,8 @@ mod tests {
         };
         assert_eq!(notes(unsplit(true)), [Note::NotApplied]);
         assert_eq!(notes(unsplit(false)), []);
+        assert!(polls(unsplit(true)) && !polls(unsplit(false)));
+        assert!(polls(peak(true, true)) && !polls(peak(true, false)) && !polls(None));
     }
 
     #[test]

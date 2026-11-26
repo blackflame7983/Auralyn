@@ -62,14 +62,17 @@ impl LimiterPanel {
         }
     }
 
-    pub fn pending(&self) -> bool {
-        self.peak.is_some_and(|peak| peak.pending)
+    /// 見ている間 500ms ごとに読み直すか（`peak::polls`）。
+    pub fn polls(&self) -> bool {
+        peak::polls(self.peak)
     }
 
-    pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
+    /// `locked` は操作ロック中。エンジンが断るので、先に操作を止めて理由を出す（Tauri 版と同じ）。
+    pub fn render(&self, lang: Lang, locked: bool, cx: &App, send: OnCommand) -> impl IntoElement {
         let limit = self.limit;
         let true_peak = limit == Limit::TruePeak;
         let unread = self.peak.is_none();
+        let disabled = unread || locked;
         let title = if true_peak {
             keys::TRUE_PEAK_TITLE
         } else {
@@ -94,7 +97,7 @@ impl LimiterPanel {
             core(lang, title),
             Switch::new(if true_peak { "true-peak-on" } else { "peak-on" })
                 .checked(self.enabled)
-                .disabled(unread)
+                .disabled(disabled)
                 .accessibility_label(core(lang, title))
                 .on_click(move |on, _, cx| send(Command::SetPeak(limit, *on), cx)),
             div()
@@ -110,6 +113,9 @@ impl LimiterPanel {
                             .child(note(core(lang, keys::PEAK_SCOPE)))
                             .child(note(core(lang, keys::PEAK_RESETS)))
                     }
+                })
+                .when(locked, |this| {
+                    this.child(note(core(lang, keys::PEAK_LOCKED)))
                 })
                 .when(!notes.is_empty(), |this| {
                     this.child(div().text_sm().child(notes.join(" · ")))
@@ -136,27 +142,27 @@ impl LimiterPanel {
                 .child(slider_row(
                     lang,
                     keys::PEAK_CEILING,
-                    keys::PEAK_CEILING,
+                    format!("{} {}", core(lang, title), core(lang, keys::PEAK_CEILING)),
                     &self.ceiling,
                     if unread {
                         unknown
                     } else {
                         |v| format!("{v:.1}")
                     },
-                    unread,
+                    disabled,
                     cx,
                 ))
                 .child(slider_row(
                     lang,
                     keys::PEAK_RELEASE,
-                    keys::PEAK_RELEASE,
+                    format!("{} {}", core(lang, title), core(lang, keys::PEAK_RELEASE)),
                     &self.release,
                     if unread {
                         unknown
                     } else {
                         |v| format!("{v:.0}")
                     },
-                    unread,
+                    disabled,
                     cx,
                 ))
                 .when(true_peak, |this| {

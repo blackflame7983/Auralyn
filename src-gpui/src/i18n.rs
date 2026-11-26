@@ -191,6 +191,7 @@ pub mod keys {
     pub const PEAK_UNKNOWN: &str = "peak.unknown";
     pub const PEAK_PENDING: &str = "peak.pending";
     pub const PEAK_STOPPED: &str = "peak.stopped";
+    pub const PEAK_LOCKED: &str = "peak.liveLocked";
     pub const TRUE_PEAK_TITLE: &str = "truePeak.title";
     pub const TRUE_PEAK_LEAD: &str = "truePeak.lead";
     pub const TRUE_PEAK_SCOPE: &str = "truePeak.scope";
@@ -456,7 +457,7 @@ pub mod keys {
     pub const VST_OP_OTHER: &str = "audioNotices.vstOp.other";
 
     #[cfg(test)]
-    pub const ALL: [&str; 443] = [
+    pub const ALL: [&str; 444] = [
         FLOW_VOICE,
         FLOW_COMPARE,
         FLOW_BEFORE,
@@ -638,6 +639,7 @@ pub mod keys {
         PEAK_UNKNOWN,
         PEAK_PENDING,
         PEAK_STOPPED,
+        PEAK_LOCKED,
         TRUE_PEAK_TITLE,
         TRUE_PEAK_LEAD,
         TRUE_PEAK_SCOPE,

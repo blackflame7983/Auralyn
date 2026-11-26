@@ -361,10 +361,10 @@ impl MainView {
             self.modes_polled = Instant::now();
             self.engine.send(Command::Modes(ModeAction::Read));
         }
-        // 反映待ちのあいだだけ、Tauri 版と同じ 500ms ごとに読み直す（返事が来るまで「反映待ち」が残らないように）。
+        // 反映待ちのあいだと ON の true-peak 制限は、Tauri 版と同じ 500ms ごとに読み直す（`peak::polls`）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
             for limit in Limit::ALL {
-                if self.sound.limiter(limit).pending() {
+                if !self.hidden.get() && self.sound.limiter(limit).polls() {
                     self.peak_polled = Instant::now();
                     self.engine.send(Command::ReadPeak(limit));
                 }
@@ -1008,7 +1008,12 @@ impl Render for MainView {
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),
                                 Page::Sound => this
-                                    .child(self.sound.render(lang, cx, send.clone()))
+                                    .child(self.sound.render(
+                                        lang,
+                                        self.modes.armed(),
+                                        cx,
+                                        send.clone(),
+                                    ))
                                     .child(self.modes.render(lang, send.clone()))
                                     .child(self.voice.render(
                                         lang,
