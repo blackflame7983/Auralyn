@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use auralyn_ui_model::scan_folders::{self, Reject, STANDARD};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
@@ -148,6 +149,8 @@ impl ScanFolders {
                 this.child(self.render_body(lang, busy, &folders, send))
             }),
         )
+        .icon(IconName::FolderSearch)
+        .hint(lang, core(lang, keys::SCAN_FOLDERS_HINT))
     }
 
     fn render_body(
@@ -171,7 +174,6 @@ impl ScanFolders {
             .flex()
             .flex_col()
             .gap_2()
-            .child(note(core(lang, keys::SCAN_FOLDERS_HINT)))
             .children(STANDARD.iter().map(|path| {
                 div()
                     .flex()

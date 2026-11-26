@@ -6,10 +6,12 @@ use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
 use auralyn_ui_model::live_output::{self, Change, Draft, Live, Verdict};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::{Disableable as _, IndexPath};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -17,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{paragraphs, with_hint, Card, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -233,17 +235,17 @@ impl LivePanel {
             let send = send.clone();
             Button::new("live-refresh")
                 .label(core(lang, keys::LIVE_REFRESH))
+                .icon(IconName::RefreshCw)
                 .outline()
+                .small()
                 .on_click(move |_, _, cx| send(Command::LiveOutput(None), cx))
         };
-        card(
+        Card::new(
             core(lang, keys::LIVE_TITLE),
-            refresh,
             div()
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::LIVE_SCOPE)))
                 .when_some(verdict, |this, verdict| {
                     let (text, warn) = match verdict {
                         Verdict::Off => (keys::LIVE_OFF, false),
@@ -278,17 +280,16 @@ impl LivePanel {
                             .child(div().text_sm().child(core(lang, keys::LIVE_DEVICE)))
                             .child(Select::new(&self.device).disabled(saving)),
                     )
-                    .child(
+                    .child(with_hint(
+                        "live-split-hint",
+                        lang,
+                        paragraphs(lang, &[keys::LIVE_SPLIT_SCOPE, keys::LIVE_SPLIT_KEPT]),
                         Checkbox::new("live-split")
                             .checked(draft.split)
                             .disabled(saving || draft.device_id.is_none())
                             .label(core(lang, keys::LIVE_SPLIT))
                             .on_click(self.on_change(Change::Split)),
-                    )
-                    .when(draft.split, |this| {
-                        this.child(note(core(lang, keys::LIVE_SPLIT_SCOPE)))
-                            .child(note(core(lang, keys::LIVE_SPLIT_KEPT)))
-                    })
+                    ))
                     .child(trim_row(
                         lang,
                         keys::LIVE_MONITOR_TRIM,
@@ -339,6 +340,9 @@ impl LivePanel {
                     )
                 }),
         )
+        .icon(IconName::Radio)
+        .hint(lang, core(lang, keys::LIVE_SCOPE))
+        .trailing(refresh)
     }
 }
 

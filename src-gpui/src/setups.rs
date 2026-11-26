@@ -15,7 +15,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, ProfileFile};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, open_file, save_as, OnCommand};
+use crate::part::{card, note, open_file, paragraphs, save_as, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -148,8 +148,6 @@ impl SetupsPanel {
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(note(core(lang, keys::SETUPS_LEAD)))
-                .child(note(core(lang, keys::SETUPS_SCOPE)))
                 .child(
                     div()
                         .flex()
@@ -247,7 +245,6 @@ impl SetupsPanel {
                 .when_some(self.done.as_ref(), |this, done| {
                     this.child(note(done_text(done, lang)))
                 })
-                .child(note(core(lang, keys::SETUPS_BACKED_UP)))
                 .child(
                     div()
                         .flex()
@@ -284,6 +281,18 @@ impl SetupsPanel {
                             this.child(note(core(lang, keys::SETUPS_EXISTS)))
                         }),
                 ),
+        )
+        .icon(IconName::Layers)
+        .hint(
+            lang,
+            paragraphs(
+                lang,
+                &[
+                    keys::SETUPS_LEAD,
+                    keys::SETUPS_SCOPE,
+                    keys::SETUPS_BACKED_UP,
+                ],
+            ),
         )
     }
 }

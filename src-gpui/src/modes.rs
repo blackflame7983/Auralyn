@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use auralyn_ui_model::live_modes::{self, LiveModes, Mode};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,7 +14,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, ModeAction};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, OnCommand};
+use crate::part::{card, note, with_hint, OnCommand};
 
 #[derive(Default)]
 pub struct ModesPanel {
@@ -107,6 +108,8 @@ impl ModesPanel {
             Some(modes) => self.render_modes(modes, body, lang, send.clone()),
         };
         card(core(lang, keys::MODES_TITLE), div(), body)
+            .icon(IconName::MicVocal)
+            .hint(lang, core(lang, keys::MODES_HINT))
     }
 
     fn render_modes(&self, modes: &LiveModes, body: Div, lang: Lang, send: OnCommand) -> Div {
@@ -127,66 +130,63 @@ impl ModesPanel {
             None
         };
         let selected = modes.selected();
-        body.child(note(core(lang, keys::MODES_HINT)))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(Mode::ALL.map(|mode| {
-                        let send = send.clone();
-                        Button::new(SharedString::from(format!("mode-{mode:?}")))
-                            .label(name(mode))
-                            .outline()
-                            .selected(selected == Some(mode))
-                            .disabled(!modes.can_select(mode))
-                            .on_click(move |_, _, cx| {
-                                send(Command::Modes(ModeAction::Select(mode)), cx)
-                            })
-                    })),
+        body.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_2()
+                .children(Mode::ALL.map(|mode| {
+                    let send = send.clone();
+                    Button::new(SharedString::from(format!("mode-{mode:?}")))
+                        .label(name(mode))
+                        .outline()
+                        .selected(selected == Some(mode))
+                        .disabled(!modes.can_select(mode))
+                        .on_click(move |_, _, cx| {
+                            send(Command::Modes(ModeAction::Select(mode)), cx)
+                        })
+                })),
+        )
+        .when_some(status, |this, status| this.child(note(status)))
+        .when(modes.singing_linked || modes.talk_linked, |this| {
+            this.child(note(core(lang, keys::MODES_LINKED)))
+        })
+        .when_some(modes.transaction.as_ref(), |this, transaction| {
+            this.child(warning(core(
+                lang,
+                if transaction.busy() {
+                    keys::MODES_TRANSACTION_RUNNING
+                } else {
+                    keys::MODES_TRANSACTION_FAILED
+                },
+            )))
+            .when_some(transaction.error.clone(), |this, error| {
+                this.child(note(error))
+            })
+        })
+        .when(modes.recoverable(), |this| {
+            let send = send.clone();
+            this.child(
+                div().child(
+                    Button::new("mode-recover")
+                        .label(core(lang, keys::MODES_RECOVER))
+                        .outline()
+                        .on_click(move |_, _, cx| send(Command::Modes(ModeAction::Recover), cx)),
+                ),
             )
-            .when_some(status, |this, status| this.child(note(status)))
-            .when(modes.singing_linked || modes.talk_linked, |this| {
-                this.child(note(core(lang, keys::MODES_LINKED)))
-            })
-            .when_some(modes.transaction.as_ref(), |this, transaction| {
-                this.child(warning(core(
-                    lang,
-                    if transaction.busy() {
-                        keys::MODES_TRANSACTION_RUNNING
-                    } else {
-                        keys::MODES_TRANSACTION_FAILED
-                    },
-                )))
-                .when_some(transaction.error.clone(), |this, error| {
-                    this.child(note(error))
-                })
-            })
-            .when(modes.recoverable(), |this| {
-                let send = send.clone();
-                this.child(
-                    div().child(
-                        Button::new("mode-recover")
-                            .label(core(lang, keys::MODES_RECOVER))
-                            .outline()
-                            .on_click(move |_, _, cx| {
-                                send(Command::Modes(ModeAction::Recover), cx)
-                            }),
-                    ),
-                )
-            })
-            .when_some(modes.error.clone(), |this, error| {
-                this.child(warning(error))
-            })
-            .when_some(self.failed.clone(), |this, error| {
-                this.child(warning(format!(
-                    "{} {error}",
-                    core(lang, keys::MODES_FAILED)
-                )))
-                .child(refresh(lang, send.clone()))
-            })
-            .child(self.render_save(modes, lang, send.clone()))
-            .child(protect(modes, lang, send))
+        })
+        .when_some(modes.error.clone(), |this, error| {
+            this.child(warning(error))
+        })
+        .when_some(self.failed.clone(), |this, error| {
+            this.child(warning(format!(
+                "{} {error}",
+                core(lang, keys::MODES_FAILED)
+            )))
+            .child(refresh(lang, send.clone()))
+        })
+        .child(self.render_save(modes, lang, send.clone()))
+        .child(protect(modes, lang, send))
     }
 
     /// 今の音づくりを歌・雑談として登録する。雑談で残響が ON なら、切ってから登録するかを聞く。
@@ -206,12 +206,15 @@ impl ModesPanel {
             .flex_col()
             .gap_2()
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(core(lang, keys::MODES_REGISTER)),
+                with_hint(
+                    "modes-register-hint",
+                    lang,
+                    core(lang, keys::MODES_REGISTER_NOTE),
+                    core(lang, keys::MODES_REGISTER),
+                )
+                .text_sm()
+                .font_weight(FontWeight::MEDIUM),
             )
-            .child(note(core(lang, keys::MODES_REGISTER_NOTE)))
             .child(
                 div()
                     .flex()

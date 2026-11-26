@@ -4,6 +4,7 @@
 
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::sound::{self, Change, Knob, NoiseMode, Preset, Sound};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::slider::{Slider, SliderState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::Disableable as _;
@@ -15,7 +16,7 @@ use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::limiter::LimiterPanel;
 use crate::measure::MeasurePanel;
-use crate::part::{card, choices, note, OnCommand};
+use crate::part::{choices, note, paragraphs, with_hint, Card, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -147,8 +148,9 @@ impl SoundPage {
             )
             .child(section(
                 lang,
+                IconName::Wind,
                 keys::NOISE,
-                keys::NOISE_LEAD,
+                &[keys::NOISE_LEAD, keys::NOISE_MIX],
                 Switch::new("noise-on")
                     .checked(current.noise_on)
                     .accessibility_label(core(lang, keys::NOISE))
@@ -188,7 +190,6 @@ impl SoundPage {
                             )))
                         },
                     )
-                    .child(note(core(lang, keys::NOISE_MIX)))
                     .child(
                         div()
                             .flex()
@@ -240,7 +241,15 @@ impl SoundPage {
                                     .items_center()
                                     .justify_between()
                                     .gap_3()
-                                    .child(div().text_sm().child(core(lang, keys::VOICE_GUARD)))
+                                    .child(
+                                        with_hint(
+                                            "voice-guard-hint",
+                                            lang,
+                                            core(lang, keys::VOICE_GUARD_MEANS),
+                                            core(lang, keys::VOICE_GUARD),
+                                        )
+                                        .text_sm(),
+                                    )
                                     .child(
                                         Switch::new("voice-guard")
                                             .checked(current.voice_guard)
@@ -251,14 +260,14 @@ impl SoundPage {
                                                 move |on, _, cx| set(Change::VoiceGuard(*on), cx)
                                             }),
                                     ),
-                            )
-                            .child(note(core(lang, keys::VOICE_GUARD_MEANS))),
+                            ),
                     ),
             ))
             .child(section(
                 lang,
+                IconName::WandSparkles,
                 keys::EFFECTS,
-                keys::EFFECTS_LEAD,
+                &[keys::EFFECTS_LEAD, keys::EFFECTS_AMOUNT_MEANS],
                 Switch::new("effects-on")
                     .checked(current.effects_on)
                     .accessibility_label(core(lang, keys::EFFECTS))
@@ -290,14 +299,14 @@ impl SoundPage {
                                 false,
                                 cx,
                             ))
-                            .child(note(core(lang, keys::EFFECTS_AMOUNT_MEANS)))
                         }
                     }),
             ))
             .child(section(
                 lang,
+                IconName::Orbit,
                 keys::REVERB,
-                keys::REVERB_LEAD,
+                &[keys::REVERB_LEAD],
                 Switch::new("reverb-on")
                     .checked(current.reverb.enabled)
                     .accessibility_label(core(lang, keys::REVERB_ON))
@@ -312,8 +321,9 @@ impl SoundPage {
             ))
             .child(section(
                 lang,
+                IconName::Speech,
                 keys::DEESSER,
-                keys::DEESSER_HINT,
+                &[keys::DEESSER_HINT],
                 Switch::new("deesser-on")
                     .checked(current.deesser.on)
                     .accessibility_label(core(lang, keys::DEESSER))
@@ -325,24 +335,19 @@ impl SoundPage {
     }
 }
 
-/// 見出し（と右の ON/OFF）・説明・中身の区画。
+/// 見出し（と右の ON/OFF）・中身の区画。説明は見出しの ⓘ に出す。
 fn section(
     lang: Lang,
+    icon: IconName,
     title: &'static str,
-    lead: &'static str,
+    lead: &[&'static str],
     switch: Switch,
     body: impl IntoElement,
 ) -> impl IntoElement {
-    card(
-        core(lang, title),
-        switch,
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(note(core(lang, lead)))
-            .child(body),
-    )
+    Card::new(core(lang, title), body)
+        .icon(icon)
+        .hint(lang, paragraphs(lang, lead))
+        .trailing(switch)
 }
 
 /// 範囲と刻み（`peak` の定数の形）のスライダー。
