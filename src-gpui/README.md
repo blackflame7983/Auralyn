@@ -10,7 +10,7 @@ Tauri 版を置き換える GPUI Kit の画面。今は、窓の外枠（左の�
 | ファイル | 役割 |
 | :--- | :--- |
 | `src/engine/` | `AudioHost` を専用のスレッドで動かす。命令は受付順に1本で実行し、続けて届いた音量は最後の値だけを送る。通知は `AudioHost::set_event_sink`（`auralyn_core::event::EventSink`）で受け、メーターは最新の値だけを置く。`mod.rs` が命令の受付と開始・停止、`slots.rs` が VST の並び、`sound.rs` が音づくり・ピーク保護・測定、`profile.rs` が保存した構成、`events.rs` が中核の出来事の読み取り |
-| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
+| `src/view.rs` | 窓の中身。レール・帯・行き先の画面と、右の列（本番中の操作。描画は `src/view/safety.rs`）。16ms の周期を1つ共有する（GPUI に窓が隠れているかを知る手段がなく、隠れている間も止めない） |
 | `src/shell.rs` | 窓の外枠。左のレール（行き先）、先頭の帯（音声の状態と開始・停止）。開始・停止の状態は `auralyn-ui-model` の `session` |
 | `src/connect.rs` | 接続の画面。接続方式・マイク・出力先・周波数・バッファを選び、その機器で開始する（開始できると設定が保存される）。最初に選ぶ項目は `auralyn-ui-model` の `connect` |
 | `src/settings.rs` | 設定の画面。表示言語（日本語・English）と、Windows との連携（トレイ・Alt+M）が使えるかと、版 |
