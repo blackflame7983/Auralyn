@@ -28,6 +28,7 @@ use crate::settings;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
 use crate::sound::SoundPage;
+use crate::voice::VoicePanel;
 use crate::vst::VstPage;
 use auralyn_ui_model::flow::Flow;
 use auralyn_ui_model::measurement;
@@ -72,6 +73,7 @@ pub struct MainView {
     connect: ConnectPage,
     vst: VstPage,
     setups: SetupsPanel,
+    voice: VoicePanel,
     sound: SoundPage,
     _ticker: Task<()>,
 }
@@ -221,6 +223,7 @@ impl MainView {
             connect,
             vst,
             setups,
+            voice: VoicePanel::default(),
             sound,
             _ticker: ticker,
         }
@@ -295,6 +298,7 @@ impl MainView {
             }
             Notice::Stopped => {
                 self.advance(SessionEvent::Stopped);
+                self.voice.stopped();
                 self.reread_peak();
             }
             Notice::StreamError(message) => {
@@ -318,6 +322,8 @@ impl MainView {
             Notice::Catalog(Ok(candidates)) => self.vst.set_catalog(candidates, window, cx),
             Notice::Profiles(entries) => self.setups.set(entries, window, cx),
             Notice::ProfileFile(done) => self.setups.set_done(done, window, cx),
+            Notice::Recording(recording) => self.voice.set(recording),
+            Notice::RecordingSaved => self.voice.saved(),
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.message = Some(format!("scan_plugins: {message}"));
@@ -386,7 +392,8 @@ impl MainView {
 
     /// 音づくりの画面を離れるとき。この画面で始めた測定は中止する（見ていない間に測り終えて置き去りにしない）。
     fn leave_sound(&mut self) {
-        if let Some(command) = self.sound.measure.leave() {
+        let leaving = [self.sound.measure.leave(), self.voice.leave()];
+        for command in leaving.into_iter().flatten() {
             self.engine.send(command);
         }
     }
@@ -549,7 +556,9 @@ impl Render for MainView {
                                 Page::Vst => this
                                     .child(self.vst.render(lang, cx, send.clone()))
                                     .child(self.setups.render(lang, cx, send)),
-                                Page::Sound => this.child(self.sound.render(lang, cx, send)),
+                                Page::Sound => this
+                                    .child(self.sound.render(lang, cx, send.clone()))
+                                    .child(self.voice.render(lang, self.phase.running(), send)),
                                 Page::Connect => this.child(self.connect.render(
                                     self.phase,
                                     lang,

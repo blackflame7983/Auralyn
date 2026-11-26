@@ -16,6 +16,9 @@ use auralyn_ui_model::peak::Peak;
 use auralyn_ui_model::profile::{import_name, Entry as ProfileEntry, ImportIssue};
 use auralyn_ui_model::rack::{self, Candidate};
 use auralyn_ui_model::sound::{Change, NoiseMode, Preset, Sound};
+use auralyn_ui_model::voice_check::{
+    Recording, Source as VoiceSource, State as VoiceState, MAX_MS,
+};
 use vst_host_lib::audio::{ActiveAudioConfig, AudioHost};
 use vst_host_lib::audio_engine::core::noise_learning::{Request as MeasureRequest, Snapshot};
 use vst_host_lib::audio_engine::peak_protection::Config as PeakConfig;
@@ -91,6 +94,14 @@ pub enum Command {
         name: String,
         restore: bool,
     },
+    /// ボイスチェックの録音を始める（最大 `voice_check::MAX_MS`）。状態は `Notice::Recording`。
+    Record,
+    StopRecording,
+    /// 録った音を WAV で保存する。保存できたら `Notice::RecordingSaved`。
+    SaveRecording {
+        source: VoiceSource,
+        path: PathBuf,
+    },
     /// 構成のファイルを消す。
     DeleteProfile(String),
     /// 構成をファイルへ書き出す。接続は含めない（Tauri 版の書き出しの既定と同じ）。結果は `Notice::ProfileFile`。
@@ -162,6 +173,9 @@ pub enum Notice {
     Measurement(Option<Measurement>),
     /// 保存した構成の一覧。
     Profiles(Vec<ProfileEntry>),
+    /// ボイスチェックの録音の状態。
+    Recording(Recording),
+    RecordingSaved,
     /// 構成の書き出し・読み込みが終わった（失敗は `Failed`）。
     ProfileFile(ProfileFile),
     /// 追加の候補。失敗したときは理由。
@@ -510,6 +524,18 @@ impl Control {
             Command::SaveProfile(ref name) => return self.save_profile(name),
             Command::ApplyProfile { ref name, restore } => {
                 return self.apply_profile(name, restore)
+            }
+            Command::Record => ("start_voice_check", self.host.start_voice_check(MAX_MS)),
+            Command::StopRecording => ("stop_voice_check", self.host.stop_voice_check()),
+            Command::SaveRecording { source, ref path } => {
+                let saved = self.host.export_voice_check(
+                    path.to_string_lossy().into_owned(),
+                    source.as_str().to_owned(),
+                );
+                if saved.is_ok() {
+                    let _ = self.notices.send(Notice::RecordingSaved);
+                }
+                ("export_voice_check", saved)
             }
             Command::DeleteProfile(ref name) => return self.delete_profile(name),
             Command::ExportProfile { ref name, ref path } => {

@@ -3673,5 +3673,6 @@
   "gpuiShell.setupScope": "Saving and applying cover the VST chain, noise reduction and the voice chain. Devices and sample rate stay as they are.",
   "gpuiShell.setupImportExists": "A setup named “{arg0}” already exists, so the file was not imported.",
   "gpuiShell.setupImportNothing": "This file has no VST chain, noise reduction or voice shaping settings, so it was not imported.",
-  "gpuiShell.setupImportInvalid": "This file could not be read as a setup."
+  "gpuiShell.setupImportInvalid": "This file could not be read as a setup.",
+  "gpuiShell.voiceNeedsAudio": "Start audio first to record."
 }

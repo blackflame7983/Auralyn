@@ -1,5 +1,6 @@
-//! 画面どうしで同じ形の部品：見出しつきの区画と、補足の文。画面からエンジンへの命令の送り口。
+//! 画面どうしで同じ形の部品：見出しつきの区画と、補足の文、ファイルの窓。画面からエンジンへの命令の送り口。
 
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui_kit::*;
@@ -50,4 +51,44 @@ pub fn note(text: impl Into<SharedString>) -> impl IntoElement {
         .text_sm()
         .text_color(color::muted())
         .child(text.into())
+}
+
+/// 保存先を聞いてから `then` を呼ぶ。やめたときは何もしない。
+pub fn save_as(suggested: String, cx: &mut App, then: impl FnOnce(PathBuf, &mut App) + 'static) {
+    let chosen = cx.prompt_for_new_path(Path::new(""), Some(&suggested));
+    cx.spawn(async move |cx| {
+        if let Some(path) = picked(chosen.await) {
+            cx.update(|cx| then(path, cx));
+        }
+    })
+    .detach();
+}
+
+/// 開くファイルを1つ聞いてから `then` を呼ぶ。やめたときは何もしない。
+pub fn open_file(cx: &mut App, then: impl FnOnce(PathBuf, &mut App) + 'static) {
+    let chosen = cx.prompt_for_paths(PathPromptOptions {
+        files: true,
+        directories: false,
+        multiple: false,
+        prompt: None,
+    });
+    cx.spawn(async move |cx| {
+        let path = picked(chosen.await).and_then(|paths| paths.into_iter().next());
+        if let Some(path) = path {
+            cx.update(|cx| then(path, cx));
+        }
+    })
+    .detach();
+}
+
+/// ファイルの窓の答え。やめた・窓を開けなかったときは `None`（開けなかったときは記録に残す）。
+fn picked<T, E>(answer: Result<anyhow::Result<Option<T>>, E>) -> Option<T> {
+    match answer {
+        Ok(Ok(chosen)) => chosen,
+        Ok(Err(e)) => {
+            log::warn!("ファイルの窓を開けません: {e}");
+            None
+        }
+        Err(_) => None,
+    }
 }
