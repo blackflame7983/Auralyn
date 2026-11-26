@@ -48,6 +48,8 @@ pub struct ConnectPage {
     /// 最後に読んだ起動中のアプリ（配信ミックスのオケと同じ一覧）。
     apps: Vec<mix::App>,
     apps_failed: Option<String>,
+    /// 使い道ごとに、最後に始めた接続（Tauri 版の使い道の切り替え）。
+    pub remembered: Vec<Saved>,
 }
 
 /// 出力の返し方の札と説明。並びは `Output::row`。
@@ -84,6 +86,7 @@ impl ConnectPage {
             route: choices(cx),
             apps: Vec::new(),
             apps_failed: None,
+            remembered: Vec::new(),
         }
     }
 
@@ -151,6 +154,24 @@ impl ConnectPage {
         set(&self.purpose, purposes, row, window, cx);
         let current = self.app_source(cx);
         self.fill_apps(current, window, cx);
+    }
+
+    /// もう一方の使い道で最後に始めた接続。
+    fn other_usage(&self, cx: &App) -> Option<&Saved> {
+        let target = self.chosen_purpose(cx).other();
+        self.remembered.iter().find(|s| s.purpose == target)
+    }
+
+    /// もう一方の使い道で最後に始めた接続を、選択に入れる。音は変えない（開始で反映する）。
+    pub fn switch_purpose(&mut self, window: &mut Window, cx: &mut App) {
+        let Some(saved) = self.other_usage(cx).cloned() else {
+            return;
+        };
+        // 選んでいた入力元・アプリを外し、残した接続から選び直す。
+        for state in [&self.source, &self.app] {
+            state.update(cx, |state, cx| state.set_selected_index(None, window, cx));
+        }
+        self.set_devices(self.devices.clone(), Some(saved), self.lang, window, cx);
     }
 
     /// 入力にアプリの音声を選んでいるか。
@@ -478,6 +499,7 @@ impl ConnectPage {
         cx: &App,
         on_start: impl Fn(&mut Window, &mut App) + 'static,
         on_apps: impl Fn(&mut Window, &mut App) + 'static,
+        on_switch: impl Fn(&mut Window, &mut App) + 'static,
     ) -> impl IntoElement {
         let host = self.host_name(cx);
         let shared = connect::shares_device(&host);
@@ -498,6 +520,35 @@ impl ConnectPage {
                 this.child(note(core(lang, keys::SOURCE_ASIO)))
             })
             .child(field(core(lang, keys::PURPOSE), Select::new(&self.purpose)))
+            .when_some(self.other_usage(cx), |this, other| {
+                let input = other
+                    .app
+                    .as_ref()
+                    .map(|app| app.name.clone())
+                    .or_else(|| other.input.clone())
+                    .unwrap_or_default();
+                let output = other.output.clone().unwrap_or_default();
+                let name = core(lang, purpose_label(other.purpose));
+                this.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .child(div().flex_1().min_w(px(200.)).child(note(core_with(
+                            lang,
+                            keys::USAGE_SWITCH_DEVICES,
+                            &[("input", &input), ("output", &output), ("name", &name)],
+                        ))))
+                        .child(
+                            Button::new("connect-switch-purpose")
+                                .label(core(lang, keys::USAGE_SWITCH))
+                                .outline()
+                                .small()
+                                .on_click(move |_, window, cx| on_switch(window, cx)),
+                        ),
+                )
+            })
             .map(|this| {
                 if app {
                     this.child(self.render_app(lang, on_apps))

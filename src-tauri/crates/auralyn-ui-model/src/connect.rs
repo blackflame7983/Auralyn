@@ -47,6 +47,14 @@ pub enum Purpose {
 
 impl Purpose {
     pub const ALL: [Purpose; 2] = [Purpose::Voice, Purpose::Music];
+
+    /// 切り替え先（Tauri 版の使い道の切り替えと同じく2つを行き来する）。
+    pub fn other(self) -> Purpose {
+        match self {
+            Purpose::Voice => Purpose::Music,
+            Purpose::Music => Purpose::Voice,
+        }
+    }
 }
 
 /// 入力にするアプリの音声。`route` はアプリが音を出している出力先（原音の出力先）。

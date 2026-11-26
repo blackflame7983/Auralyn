@@ -38,6 +38,7 @@ mod shell;
 mod sound;
 mod store;
 mod theme_file;
+mod usage_file;
 mod view;
 mod voice;
 mod vst;

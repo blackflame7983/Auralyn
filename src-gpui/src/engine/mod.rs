@@ -349,6 +349,8 @@ pub enum Notice {
     Devices {
         devices: Vec<Device>,
         saved: Option<Saved>,
+        /// 使い道ごとに、最後に始めた接続。
+        remembered: Vec<Saved>,
     },
 }
 
@@ -646,6 +648,11 @@ impl Control {
             return;
         }
         let _ = self.notices.send(Notice::Started { input, output });
+        if let Some(config) = self.host.get_state().config {
+            if let Err(e) = crate::usage_file::remember(&self.config_dir, &config) {
+                log::warn!("使い道の接続を残せません: {e}");
+            }
+        }
         self.recover();
         // 子が替わっていると音量は 100% に戻っているので、画面のスライダーの値を送り直す（同じ子なら同じ値を送るだけ）。
         // 出力音量は反映を待つので、始めた直後は確かめきれずに失敗を返すことがある。音は始まっているので、帯の警告にせずログに残す。
@@ -843,41 +850,16 @@ impl Control {
             .read_saved_audio_config()
             .ok()
             .flatten()
-            .map(|c| Saved {
-                host: c.host,
-                input: c.input,
-                input_id: c.input_id,
-                output: c.output,
-                output_id: c.output_id,
-                sample_rate: c.sample_rate,
-                buffer_size: c.buffer_size,
-                routing: c.routing.map(|r| Routing {
-                    input: r.input_channels,
-                    output: match r.output_routing {
-                        OutputRouting::Legacy => Output::Legacy,
-                        OutputRouting::Independent { channels } => Output::Independent(channels),
-                        OutputRouting::Insert => Output::Insert,
-                    },
-                }),
-                purpose: c
-                    .input_source
-                    .as_ref()
-                    .map(|s| match s {
-                        input::Config::Device { purpose } => *purpose,
-                        input::Config::ProcessLoopback(app) => app.purpose,
-                    })
-                    .map(ui_purpose)
-                    .unwrap_or_default(),
-                app: match c.input_source {
-                    Some(input::Config::ProcessLoopback(app)) => Some(AppSource {
-                        key: app.app_key,
-                        name: app.app_name,
-                        route: app.raw_endpoint_id,
-                    }),
-                    _ => None,
-                },
-            });
-        let _ = self.notices.send(Notice::Devices { devices, saved });
+            .map(saved_of);
+        let remembered = crate::usage_file::load(&self.config_dir)
+            .into_iter()
+            .map(saved_of)
+            .collect();
+        let _ = self.notices.send(Notice::Devices {
+            devices,
+            saved,
+            remembered,
+        });
     }
 
     /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。
@@ -916,6 +898,37 @@ fn host_purpose(purpose: Purpose) -> input::Purpose {
     match purpose {
         Purpose::Voice => input::Purpose::Voice,
         Purpose::Music => input::Purpose::Music,
+    }
+}
+
+/// 保存した接続のうち、機器を選ぶのに使う部分。
+fn saved_of(c: ActiveAudioConfig) -> Saved {
+    let purpose = ui_purpose(crate::usage_file::purpose_of(&c));
+    Saved {
+        host: c.host,
+        input: c.input,
+        input_id: c.input_id,
+        output: c.output,
+        output_id: c.output_id,
+        sample_rate: c.sample_rate,
+        buffer_size: c.buffer_size,
+        routing: c.routing.map(|r| Routing {
+            input: r.input_channels,
+            output: match r.output_routing {
+                OutputRouting::Legacy => Output::Legacy,
+                OutputRouting::Independent { channels } => Output::Independent(channels),
+                OutputRouting::Insert => Output::Insert,
+            },
+        }),
+        purpose,
+        app: match c.input_source {
+            Some(input::Config::ProcessLoopback(app)) => Some(AppSource {
+                key: app.app_key,
+                name: app.app_name,
+                route: app.raw_endpoint_id,
+            }),
+            _ => None,
+        },
     }
 }
 

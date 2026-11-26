@@ -513,6 +513,10 @@ impl MainView {
                 self.recovery = None;
                 self.prep.audio_changed();
                 self.advance(SessionEvent::Started);
+                // 始めた接続を使い道の記録に残したので、接続の画面の切り替え先を読み直す。
+                if self.page == Page::Connect {
+                    self.send(Command::ListDevices);
+                }
                 self.reread_peak();
                 self.reread_mix();
             }
@@ -592,9 +596,14 @@ impl MainView {
                 self.scan_folders.set_skipped(Vec::new());
                 self.message = Some(format!("scan_plugins: {message}"));
             }
-            Notice::Devices { devices, saved } => {
+            Notice::Devices {
+                devices,
+                saved,
+                remembered,
+            } => {
                 self.setup.set_devices(&devices, window, cx);
                 self.live.set_devices(&devices, self.lang, window, cx);
+                self.connect.remembered = remembered;
                 self.connect
                     .set_devices(devices.clone(), saved, self.lang, window, cx);
                 let voice = self.connect.chosen(cx).and_then(|(input, _)| input.id);
@@ -1173,9 +1182,22 @@ impl Render for MainView {
                                                 })
                                             }
                                         },
-                                        move |_, cx| {
+                                        {
+                                            let entity = entity.clone();
+                                            move |_, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.send(Command::Mix(MixAction::Apps));
+                                                    cx.notify();
+                                                })
+                                            }
+                                        },
+                                        move |window, cx| {
                                             entity.update(cx, |this, cx| {
-                                                this.send(Command::Mix(MixAction::Apps));
+                                                this.connect.switch_purpose(window, cx);
+                                                // 選択を替えても選んだ通知は出ないので、アプリの一覧はここで読む。
+                                                if this.connect.uses_app(cx) {
+                                                    this.send(Command::Mix(MixAction::Apps));
+                                                }
                                                 cx.notify();
                                             })
                                         },
