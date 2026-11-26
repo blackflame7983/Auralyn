@@ -41,5 +41,7 @@
   "glossary.talking": "glossary#term-talking",
   "glossary.asio": "glossary#term-asio",
   "glossary.wasapi": "glossary#term-wasapi",
-  "glossary.dbfs": "glossary#term-dbfs"
+  "glossary.dbfs": "glossary#term-dbfs",
+  "guide.obs": "obs#connect",
+  "guide.discord": "discord#connect"
 }

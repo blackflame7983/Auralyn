@@ -5,7 +5,7 @@
 use auralyn_ui_model::diagnostics::Stats;
 use std::sync::LazyLock;
 
-use auralyn_ui_model::docs::{self, Term, Trouble};
+use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
@@ -321,18 +321,45 @@ pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
                         .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
                         .child(note(body))
                         .child(
-                            div().child(
-                                Button::new(SharedString::from(format!("help-{trouble:?}")))
-                                    .label(core(lang, keys::HELP_MORE))
-                                    .link()
-                                    .on_click(move |_, _, cx| {
-                                        cx.open_url(&docs::url(target, english))
-                                    }),
-                            ),
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .gap_3()
+                                .child(doc_link(
+                                    format!("help-{trouble:?}"),
+                                    core(lang, keys::HELP_MORE),
+                                    target,
+                                    english,
+                                ))
+                                .when(trouble == Trouble::NotReceived, |this| {
+                                    this.children(Guide::ALL.map(|guide| {
+                                        doc_link(
+                                            format!("help-{guide:?}"),
+                                            core(lang, guide_label(guide)),
+                                            guide.target(),
+                                            english,
+                                        )
+                                    }))
+                                }),
                         )
                 }),
         ),
     )
+}
+
+/// 公式サイトのドキュメントを開くリンク。
+fn doc_link(id: String, label: &'static str, target: &'static str, english: bool) -> Button {
+    Button::new(SharedString::from(id))
+        .label(label)
+        .link()
+        .on_click(move |_, _, cx| cx.open_url(&docs::url(target, english)))
+}
+
+fn guide_label(guide: Guide) -> &'static str {
+    match guide {
+        Guide::Obs => keys::GUIDE_OBS,
+        Guide::Call => keys::GUIDE_CALL,
+    }
 }
 
 fn trouble_text(lang: Lang, trouble: Trouble) -> (&'static str, String) {
