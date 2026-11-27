@@ -6,6 +6,7 @@ use std::rc::Rc;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Disableable as _, Icon, Selectable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -250,17 +251,28 @@ pub fn band(
         .children(badges.into_iter().map(badge))
         .child(
             div()
+                .id("band-route")
                 .flex_1()
                 .min_w_0()
                 .truncate()
                 .text_sm()
                 .text_color(color::muted())
-                .children(route),
+                // 細い窓では切れるので、ツールチップで全部を出す。
+                .when_some(route, |this, route| {
+                    let full = route.clone();
+                    this.child(route)
+                        .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+                }),
         )
         .child(
+            // 止まっているときの開始は主な操作なので目立たせる。止めるボタンは短い札にし、説明はツールチップへ。
             Button::new("band-control")
                 .label(button_label(phase, lang))
-                .outline()
+                .when(phase.can_start(), |this| this.primary())
+                .when(!phase.can_start(), |this| this.outline())
+                .when(phase == Phase::Running, |this| {
+                    this.tooltip(core(lang, keys::STOP))
+                })
                 .loading(phase.busy())
                 .disabled(phase.busy())
                 .on_click(move |_, window, cx| on_press(window, cx)),
@@ -315,7 +327,7 @@ fn button_label(phase: Phase, lang: Lang) -> &'static str {
         match phase {
             Phase::Unconfigured | Phase::Stopped => keys::START,
             Phase::Starting => keys::STARTING,
-            Phase::Running => keys::STOP,
+            Phase::Running => keys::STOP_SHORT,
             Phase::Stopping => keys::STOPPING,
         },
     )

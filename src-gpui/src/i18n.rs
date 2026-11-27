@@ -29,6 +29,7 @@ pub mod keys {
     pub const STARTING: &str = "home.starting";
     pub const START_FAILED: &str = "home.startFailed";
     pub const STOP: &str = "band.stopAudio";
+    pub const STOP_SHORT: &str = "gpuiShell.stopShort";
     pub const STOPPING: &str = "band.stopping";
     pub const STOP_FAILED: &str = "band.stopFailed";
     pub const STOP_TO_CHANGE: &str = "gpuiShell.stopToChange";
@@ -412,6 +413,8 @@ pub mod keys {
     pub const CHANNEL_UNVERIFIED: &str = "settings.InputChannelSelector.unverified";
     pub const ACTION_FAILED: &str = "gpuiShell.actionFailed";
     pub const CLOSE: &str = "licenses.close";
+    pub const RESET_TO_100: &str = "gpuiShell.resetTo100";
+    pub const RESET_NAMED: &str = "gpuiShell.resetNamed";
     pub const SCAN_FAILED: &str = "pluginNotices.scanFailed";
     pub const CHANNEL_HEARD: &str = "gpuiShell.channelHeard";
     pub const CHANNEL_SILENT: &str = "gpuiShell.channelSilent";
@@ -692,7 +695,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 679] = [
+    pub const ALL: [&str; 682] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1172,6 +1175,9 @@ pub mod keys {
         CHANNEL_UNVERIFIED,
         ACTION_FAILED,
         CLOSE,
+        RESET_TO_100,
+        STOP_SHORT,
+        RESET_NAMED,
         SCAN_FAILED,
         CHANNEL_HEARD,
         CHANNEL_SILENT,

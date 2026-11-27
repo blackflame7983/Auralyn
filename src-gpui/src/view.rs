@@ -174,8 +174,7 @@ impl MainView {
         });
         cx.subscribe(&input_gain, |this, _, event: &SliderEvent, _| {
             let (SliderEvent::Change(value) | SliderEvent::Release(value)) = event;
-            this.engine
-                .send(Command::SetInputGain(value.start() / 100.0));
+            this.engine.send(Command::SetInputGain(value.end() / 100.0));
         })
         .detach();
         cx.subscribe(&output_gain, |this, _, event: &SliderEvent, _| {

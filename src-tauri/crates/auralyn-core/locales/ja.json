@@ -3707,5 +3707,8 @@
   "gpuiShell.channelSuggest": "選んでいる {current} には音が来ていません",
   "gpuiShell.channelUse": "{pair} に切り替える",
   "gpuiShell.channelUseHint": "音が来ている入力のペアに替えて、音声を始め直します。替えた割り当ては保存され、次の起動でも使います。",
-  "gpuiShell.actionFailed": "操作を反映できませんでした。"
+  "gpuiShell.actionFailed": "操作を反映できませんでした。",
+  "gpuiShell.resetTo100": "100% に戻す",
+  "gpuiShell.resetNamed": "{name}を 100% に戻す",
+  "gpuiShell.stopShort": "停止"
 }

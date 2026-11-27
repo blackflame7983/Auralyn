@@ -3707,5 +3707,8 @@
   "gpuiShell.channelSuggest": "No signal on the selected {current}",
   "gpuiShell.channelUse": "Switch to {pair}",
   "gpuiShell.channelUseHint": "Restarts audio on the input pair that has signal. The new assignment is saved and used next time.",
-  "gpuiShell.actionFailed": "The change didn't go through."
+  "gpuiShell.actionFailed": "The change didn't go through.",
+  "gpuiShell.resetTo100": "Reset to 100%",
+  "gpuiShell.resetNamed": "Reset {name} to 100%",
+  "gpuiShell.stopShort": "Stop"
 }
