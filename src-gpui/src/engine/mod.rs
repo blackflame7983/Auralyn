@@ -104,6 +104,8 @@ pub enum Command {
     ReadSound,
     /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
     SetSound(Change),
+    /// スライダーを動かしている間の音づくり。エンジンへ送るだけで、読み直しも保存もしない（離したときの `SetSound` で行う）。
+    PreviewSound(Change),
     /// ノイズ低減の ON/OFF を、いまのエンジンの値から反転する（ショートカット）。
     ToggleNoise,
     /// 大きな音を抑える（ピーク保護）か、配信用 true-peak 制限の今の状態を読む。
@@ -189,6 +191,10 @@ impl Command {
         ) || matches!(
             (self, earlier),
             (Command::SetPeakLimits { limit, .. }, Command::SetPeakLimits { limit: other, .. }) if limit == other
+        ) || matches!(
+            (self, earlier),
+            (Command::PreviewSound(change), Command::PreviewSound(other))
+                if std::mem::discriminant(change) == std::mem::discriminant(other)
         ) || matches!(
             (self, earlier),
             (
@@ -968,6 +974,7 @@ impl Control {
                 })
             }
             Command::SetSound(change) => return self.set_sound(change),
+            Command::PreviewSound(change) => return self.preview_sound(change),
             Command::ToggleNoise => return self.toggle_noise(),
             Command::SaveRack(ref done) => {
                 self.save(true);
@@ -1209,6 +1216,15 @@ mod tests {
             name: "A".into(),
             restore: false
         }));
+    }
+
+    #[test]
+    fn later_preview_supersedes_only_the_same_slider_and_never_the_saving_change() {
+        let preview = |change| Command::PreviewSound(change);
+        assert!(preview(Change::Amount(0.6)).supersedes(&preview(Change::Amount(0.5))));
+        assert!(!preview(Change::Amount(0.6)).supersedes(&preview(Change::Strength(0.5))));
+        assert!(!preview(Change::Amount(0.6)).supersedes(&Command::SetSound(Change::Amount(0.5))));
+        assert!(!Command::SetSound(Change::Amount(0.6)).supersedes(&preview(Change::Amount(0.5))));
     }
 
     #[test]

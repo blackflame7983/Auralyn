@@ -218,24 +218,16 @@ impl MainView {
         .detach();
         let sound = SoundPage::new(cx);
         cx.subscribe(&sound.amount, |this, _, event: &SliderEvent, _| {
-            let SliderEvent::Release(value) = event else {
-                return;
-            };
-            this.send(Command::SetSound(Change::Amount(value.end() / 100.0)));
+            this.send(sound_command(event, |v| Change::Amount(v / 100.0)));
         })
         .detach();
         cx.subscribe(&sound.strength, |this, _, event: &SliderEvent, _| {
-            let SliderEvent::Release(value) = event else {
-                return;
-            };
-            this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
+            this.send(sound_command(event, |v| Change::Strength(v / 100.0)));
         })
         .detach();
         for (knob, slider) in Knob::ALL.into_iter().zip(&sound.knobs) {
             cx.subscribe(slider, move |this, _, event: &SliderEvent, _| {
-                if let SliderEvent::Release(value) = event {
-                    this.send(Command::SetSound(knob.change(value.end())));
-                }
+                this.send(sound_command(event, |v| knob.change(v)));
             })
             .detach();
         }
@@ -1593,4 +1585,12 @@ impl Render for MainView {
 /// 並びの中の位置（無ければ先頭）。
 fn index_of<T: PartialEq>(all: &[T], item: T) -> usize {
     all.iter().position(|x| *x == item).unwrap_or(0)
+}
+
+/// 音づくりのスライダー：動かしている間は送るだけ、離したら送って保存する。
+fn sound_command(event: &SliderEvent, change: impl Fn(f32) -> Change) -> Command {
+    match event {
+        SliderEvent::Change(value) => Command::PreviewSound(change(value.end())),
+        SliderEvent::Release(value) => Command::SetSound(change(value.end())),
+    }
 }

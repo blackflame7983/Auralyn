@@ -205,6 +205,13 @@ impl Control {
         self.reread_and_save_sound();
     }
 
+    /// 送るだけ。送った値はエンジンの「最後の値」になるので、離したときの `set_sound` は差が無ければ保存だけする。
+    pub(super) fn preview_sound(&mut self, change: Change) {
+        if let Some(before) = self.sound {
+            self.apply_sound(before.with(change), Some(before));
+        }
+    }
+
     /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める（Tauri 版のショートカットと同じ）。
     /// 種類がまだ無ければ「弱」で入れる（Tauri 版と同じ）。分からない種類は書き換えないので、切り替えずに断る。
     pub(super) fn toggle_noise(&mut self) {
