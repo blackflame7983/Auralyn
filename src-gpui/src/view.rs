@@ -78,7 +78,7 @@ pub struct MainView {
     page_epoch: u64,
     /// 行き先（レール）を替えた回数。子の列を出し直すのに使う。
     page_opened: u64,
-    /// 設定の画面で開いているタブ。
+    /// 設定の画面で開いている区切り。
     settings_section: Section,
     /// 音づくりの中で開いている行き先。窓を閉じるまで覚え、保存しない。
     sound_part: Part,
@@ -452,22 +452,26 @@ impl MainView {
         // 反映待ちのあいだと ON の true-peak 制限は、Tauri 版と同じ 500ms ごとに読み直す（`peak::polls`）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
             for limit in Limit::ALL {
-                if !self.hidden.get() && self.sound.limiter(limit).polls() {
+                if !self.hidden.get()
+                    && self.sound_part == Part::Peak
+                    && self.sound.limiter(limit).polls()
+                {
                     self.peak_polled = Instant::now();
                     self.engine.send(Command::ReadPeak(limit));
                 }
             }
+            let checking = self.sound_part == Part::Check;
             let open = self
                 .voice
-                .open(self.phase == Phase::Running && !self.hidden.get());
+                .open(checking && self.phase == Phase::Running && !self.hidden.get());
             if let Some(command) = open {
                 self.engine.send(command);
             }
-            if self.voice.polls() {
+            if checking && self.voice.polls() {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::Listen(Listen::Status));
             }
-            if self.sound.shows_measurement() {
+            if self.sound_part == Part::Noise && self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
                 self.engine
                     .send(Command::Measure(measurement::Action::Read));
@@ -779,14 +783,15 @@ impl MainView {
         }
     }
 
-    /// 設定のタブを移るとき。システムのタブは、開いた時点の統計と VST のリセットの結果を読み直す。
-    /// レールの子を開く（今の行き先が音づくりか設定のとき）。
+    /// レールの子を開く（今の行き先が音づくりか設定のとき）。音づくりの子を離れるときは、
+    /// 見えなくなる測定・録音・試聴を止める（見ていない間に測り終えて置き去りにしない）。
     fn open_child(&mut self, index: usize) {
         match self.page {
             Page::Sound => {
                 if let Some(&part) = Part::ALL.get(index) {
                     if part != self.sound_part {
                         self.page_epoch += 1;
+                        self.leave_sound();
                     }
                     self.sound_part = part;
                 }
@@ -800,6 +805,7 @@ impl MainView {
         }
     }
 
+    /// 設定の区切りを移るとき。システムは、開いた時点の統計と VST のリセットの結果を読み直す。
     fn open_section(&mut self, section: Section) {
         if section != self.settings_section {
             self.page_epoch += 1;
@@ -1051,7 +1057,6 @@ impl Render for MainView {
             .text_color(color::foreground())
             .font_family("Yu Gothic UI")
             .child(rail)
-            .children(subnav)
             .child(
                 div()
                     .flex_1()
@@ -1064,17 +1069,20 @@ impl Render for MainView {
                         this.child(Alert::warning("message", message).banner())
                     })
                     .child(
-                        div()
-                            .id("page")
-                            .role(Role::Main)
-                            .aria_label(self.page.label(lang))
-                            .flex_1()
-                            .min_h_0()
-                            .p_4()
-                            .child(crate::part::reveal(
-                                ElementId::NamedInteger("page".into(), self.page_epoch),
-                                div().flex().flex_col().gap_3().map(|this| {
-                                    match self.page {
+                        div().flex_1().min_h_0().flex().children(subnav).child(
+                            div()
+                                .id("page")
+                                .h_full()
+                                .min_w_0()
+                                .role(Role::Main)
+                                .aria_label(self.page.label(lang))
+                                .flex_1()
+                                .min_h_0()
+                                .p_4()
+                                .child(crate::part::reveal(
+                                    ElementId::NamedInteger("page".into(), self.page_epoch),
+                                    div().flex().flex_col().gap_3().map(|this| {
+                                        match self.page {
                                 Page::Home => this
                                     .when_some(self.recovery.as_ref(), |this, exit| {
                                         this.child(div().max_w(px(560.)).child(recovery::render(
@@ -1391,9 +1399,10 @@ impl Render for MainView {
                                     self.live.render(lang, send),
                                 )),
                             }
-                                }),
-                            ))
-                            .overflow_y_scrollbar(),
+                                    }),
+                                ))
+                                .overflow_y_scrollbar(),
+                        ),
                     ),
             )
             .child(self.render_safety_column(cx))
