@@ -141,6 +141,7 @@ impl RenderOnce for Card {
                                     .id(SharedString::new_static(title))
                                     .role(Role::Heading)
                                     .aria_level(2)
+                                    .aria_label(title)
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(title),
                             )

@@ -544,12 +544,9 @@ impl MixPanel {
                             } else {
                                 keys::MIX_CHANNELS
                             },
-                            None,
+                            app_chosen.then_some(keys::MIX_ROUTE_HELP),
                             Select::new(&self.pair).disabled(mix.running),
                         ))
-                        .when(app_chosen, |this| {
-                            this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
-                        })
                         .when(route_unmuted, |this| {
                             this.child(warning(core(lang, keys::MIX_ROUTE_MUTE_FIRST).to_owned()))
                         })
