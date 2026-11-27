@@ -3700,5 +3700,11 @@
   "gpuiShell.recoverySafety": "保存した VST の並びは消しません。除いた VST や、VST なしで始め直したときの VST は「読めていない」枠として並びに残り、VST の画面の「読めていない VST を読み直す」か、次にアプリを起動したときに読み直します。原因の VST を外すときは、VST の画面で枠を削除してください。始め直したあとも、音や受け側に届いているかは別に確かめてください。",
   "gpuiShell.reloadMissing": "読めていない VST を読み直す",
   "gpuiShell.reloadMissingHint": "除いた VST や、読めなかった VST をもう一度読みます。落ちた原因の VST なら、また音声エンジンが止まることがあります。アンインストール・移動した VST は、入れ直すか元の場所へ戻すまで読めません。",
-  "gpuiShell.themeNote": "色だけを切り替えます。ゲーミングの角の切り欠きや斜体の見出しは、今までの版だけです。"
+  "gpuiShell.themeNote": "色だけを切り替えます。ゲーミングの角の切り欠きや斜体の見出しは、今までの版だけです。",
+  "gpuiShell.channelHeard": "音が来ている入力：{pairs}",
+  "gpuiShell.channelSilent": "どの入力にも音が来ていません",
+  "gpuiShell.channelWaiting": "入力の信号を確かめています",
+  "gpuiShell.channelSuggest": "選んでいる {current} には音が来ていません",
+  "gpuiShell.channelUse": "{pair} に切り替える",
+  "gpuiShell.channelUseHint": "音が来ている入力のペアに替えて、音声を始め直します。替えた割り当ては保存され、次の起動でも使います。"
 }

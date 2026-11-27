@@ -1,20 +1,22 @@
 //! 接続の画面：接続方式・マイク・出力先を選び、その機器で開始する。
 //! 周波数とバッファは、選んだ機器が受け付ける値と「自動」から選ぶ。
-//! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。ASIO では入力のペアと出力の返し方も選ぶ（チャンネルの信号の監視は、まだ無い）。
+//! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。ASIO では入力のペアと出力の返し方も選ぶ。
+//! ASIO で動いている間は、どの入力に音が来ているかを出し、選んでいるペアが無音なら音が来ているペアへの切り替えを勧める。
 
+use auralyn_ui_model::channel_signal::{self, Signal};
 use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::select::{Select, SelectState};
-use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
+use gpui_kit::component::{Disableable as _, Icon, IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{note, with_hint};
+use crate::part::{hint, note, with_hint};
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -476,6 +478,11 @@ impl ConnectPage {
             .unwrap_or_default()
     }
 
+    /// 動いている（最後に始めた）接続が ASIO の機器なら、その入力のペアとチャンネル数。
+    pub fn asio_input(&self) -> Option<([usize; 2], u16)> {
+        connect::asio_input(self.saved.as_ref(), &self.devices)
+    }
+
     /// 選んでいるマイクと出力先。ASIO では、出力はマイクと同じドライバー。
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let host = self.host_name(cx);
@@ -493,15 +500,21 @@ impl ConnectPage {
     }
 
     /// 開始のボタンは止まっているときだけ押せる（動いている機器を替える手順は、まだ無い）。
+    /// `signal` は ASIO の入力の信号を見ている間だけ渡す。
     pub fn render(
         &self,
         phase: Phase,
         lang: Lang,
+        signal: Option<&Signal>,
         cx: &App,
-        on_start: impl Fn(&mut Window, &mut App) + 'static,
-        on_apps: impl Fn(&mut Window, &mut App) + 'static,
-        on_switch: impl Fn(&mut Window, &mut App) + 'static,
+        actions: Actions,
     ) -> impl IntoElement {
+        let Actions {
+            on_start,
+            on_apps,
+            on_switch,
+            on_use_pair,
+        } = actions;
         let host = self.host_name(cx);
         let shared = connect::shares_device(&host);
         let app = self.uses_app(cx);
@@ -586,7 +599,9 @@ impl ConnectPage {
                 core(lang, keys::BUFFER_SIZE),
                 Select::new(&self.buffer),
             ))
-            .when(shared, |this| this.child(self.render_routing(lang, cx)))
+            .when(shared, |this| {
+                this.child(self.render_routing(lang, signal, on_use_pair, cx))
+            })
             .child(
                 div()
                     .flex()
@@ -656,7 +671,13 @@ impl ConnectPage {
     }
 
     /// ASIO の入力のペアと、出力の返し方。チャンネル数が分からなければ入力のペアは選ばせない（ホストに任せる）。
-    fn render_routing(&self, lang: Lang, cx: &App) -> impl IntoElement {
+    fn render_routing(
+        &self,
+        lang: Lang,
+        signal: Option<&Signal>,
+        on_use_pair: OnPair,
+        cx: &App,
+    ) -> impl IntoElement {
         let mode = self.output_mode.read(cx).selected_index(cx).map(|i| i.row);
         let hint = OUTPUT_MODES[mode.unwrap_or(Output::Legacy.row())].1;
         div()
@@ -672,6 +693,12 @@ impl ConnectPage {
                     Select::new(&self.input_pair),
                 ))
             })
+            .when_some(
+                signal.zip(self.asio_input()),
+                |this, (signal, (current, channels))| {
+                    this.child(render_signal(lang, signal, current, channels, on_use_pair))
+                },
+            )
             .child(field(
                 core(lang, keys::ROUTING_MODE),
                 Select::new(&self.output_mode),
@@ -687,6 +714,96 @@ impl ConnectPage {
                 this.child(note(core(lang, keys::ROUTING_UNVERIFIED)))
             })
     }
+}
+
+/// 画面の操作。`MainView` がエンジンへの命令にする。
+pub struct Actions {
+    pub on_start: OnClick,
+    pub on_apps: OnClick,
+    pub on_switch: OnClick,
+    /// 動いている ASIO の入力のペアを替えて始め直す。
+    pub on_use_pair: OnPair,
+}
+
+pub type OnClick = Box<dyn Fn(&mut Window, &mut App)>;
+pub type OnPair = std::rc::Rc<dyn Fn([usize; 2], &mut Window, &mut App)>;
+
+/// 動いている ASIO の入力のどこに音が来ているか。選んでいるペアが無音で、ほかに音が来ていれば切り替えを勧める。
+fn render_signal(
+    lang: Lang,
+    signal: &Signal,
+    current: [usize; 2],
+    channels: u16,
+    on_use_pair: OnPair,
+) -> impl IntoElement {
+    let heard = signal.heard(std::time::Instant::now());
+    let pairs = channel_signal::heard_pairs(&heard, channels);
+    let status = if signal.is_empty() {
+        core(lang, keys::CHANNEL_WAITING).to_owned()
+    } else if pairs.is_empty() {
+        core(lang, keys::CHANNEL_SILENT).to_owned()
+    } else {
+        let names = pairs
+            .iter()
+            .map(|&pair| mix::pair_label(pair))
+            .collect::<Vec<_>>()
+            .join(", ");
+        core_with(lang, keys::CHANNEL_HEARD, &[("pairs", &names)])
+    };
+    let suggestion = channel_signal::suggestion(&heard, channels, Some(current));
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_sm()
+                .text_color(if pairs.is_empty() {
+                    color::muted()
+                } else {
+                    color::success()
+                })
+                .child(Icon::new(IconName::AudioLines))
+                .child(status),
+        )
+        .when_some(suggestion, |this, pair| {
+            this.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(color::warning())
+                            .child(core_with(
+                                lang,
+                                keys::CHANNEL_SUGGEST,
+                                &[("current", &mix::pair_label(current))],
+                            )),
+                    )
+                    .child(
+                        Button::new("connect-use-pair")
+                            .label(core_with(
+                                lang,
+                                keys::CHANNEL_USE,
+                                &[("pair", &mix::pair_label(pair))],
+                            ))
+                            .icon(IconName::RefreshCw)
+                            .small()
+                            .on_click(move |_, window, cx| on_use_pair(pair, window, cx)),
+                    )
+                    .child(hint(
+                        "connect-use-pair-hint",
+                        lang,
+                        core(lang, keys::CHANNEL_USE_HINT),
+                    )),
+            )
+        })
 }
 
 fn set(

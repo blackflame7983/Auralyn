@@ -161,11 +161,7 @@ pub fn first_pair(channels: u16) -> [usize; 2] {
 /// 保存した同じドライバーなら保存した割り当て（返し方が無ければ従来の返し方）、違う機器なら最初のペアを同じ番号の出力へ。
 pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
     let first = first_pair(input.channels);
-    let same = saved.filter(|saved| {
-        saved.host == input.host
-            && (saved.input_id.is_some() && saved.input_id == input.id
-                || saved.input.as_deref() == Some(input.name.as_str()))
-    });
+    let same = saved.filter(|saved| is_saved_input(saved, input));
     match same {
         Some(saved) => saved.routing.unwrap_or(Routing {
             input: Some(first),
@@ -176,6 +172,25 @@ pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
             output: Output::Independent(first),
         },
     }
+}
+
+/// 保存した接続の入力の機器か（ID か名前が同じ、同じ接続方式の機器）。
+pub fn is_saved_input(saved: &Saved, device: &Device) -> bool {
+    saved.host == device.host
+        && (saved.input_id.is_some() && saved.input_id == device.id
+            || saved.input.as_deref() == Some(device.name.as_str()))
+}
+
+/// 動いている（最後に始めた）接続が ASIO の機器なら、選んでいる入力のペアとチャンネル数（分からなければ 0）。
+/// 割り当てが保存されていなければ、エンジンと同じく 1-2。
+pub fn asio_input(saved: Option<&Saved>, devices: &[Device]) -> Option<([usize; 2], u16)> {
+    let saved = saved.filter(|saved| shares_device(&saved.host) && saved.app.is_none())?;
+    let channels = devices
+        .iter()
+        .find(|device| device.is_input && is_saved_input(saved, device))
+        .map_or(0, |device| device.channels);
+    let pair = saved.routing.and_then(|routing| routing.input);
+    Some((pair.unwrap_or([0, 1]), channels))
 }
 
 const ASIO: &str = "ASIO";
@@ -341,6 +356,29 @@ pub fn shared_output<'a>(outputs: &[&'a Device], input: &Device) -> Option<&'a D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asio_input_reads_the_running_pair_and_channel_count() {
+        let mut interface = device("ASIO", "Voicemeeter Insert", true, false);
+        interface.channels = 16;
+        let mut saved = Saved {
+            host: "ASIO".into(),
+            input: Some("Voicemeeter Insert".into()),
+            ..Saved::default()
+        };
+        assert_eq!(
+            asio_input(Some(&saved), &[interface.clone()]),
+            Some(([0, 1], 16))
+        );
+        saved.routing = Some(Routing {
+            input: Some([6, 7]),
+            output: Output::Legacy,
+        });
+        assert_eq!(asio_input(Some(&saved), &[]), Some(([6, 7], 0)));
+        saved.host = "WASAPI".into();
+        assert_eq!(asio_input(Some(&saved), &[interface]), None);
+        assert_eq!(asio_input(None, &[]), None);
+    }
 
     #[test]
     fn host_names_from_the_engine_are_unified() {

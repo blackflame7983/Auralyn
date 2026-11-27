@@ -64,6 +64,10 @@ pub enum Command {
     Recover(Option<Hold>),
     /// 機器の一覧と保存した設定を読む。
     ListDevices,
+    /// ASIO の入力チャンネルごとの信号を送らせるか。届いたピークは `Notice::ChannelLevels`。
+    ChannelScan(bool),
+    /// 動いている接続のまま、入力のペアだけを替えて始め直す（替えた割り当ては保存される）。
+    UseInputPair([usize; 2]),
     Stop,
     SetMute(bool),
     SetBypass(bool),
@@ -276,6 +280,8 @@ pub enum Notice {
         output: Option<String>,
     },
     Stopped,
+    /// 入力チャンネルごとのピーク（`Command::ChannelScan` の間だけ）。
+    ChannelLevels(Vec<f32>),
     /// 子の異常・ストリームの異常。音声は止まっている。
     StreamError(String),
     Muted(bool),
@@ -449,6 +455,7 @@ impl Engine {
                     placeholders: 0,
                     input_gain: None,
                     output_gain: None,
+                    channel_scan: false,
                 }
                 .run(command_rx);
             })
@@ -526,6 +533,8 @@ struct Control {
     /// 画面のスライダーが最後に頼んだ音量。開始のたびに送り直す。
     input_gain: Option<f32>,
     output_gain: Option<f32>,
+    /// 画面がチャンネルの信号を見ている。開始のたびに送り直す。
+    channel_scan: bool,
     /// 試聴のセッション（`voice.rs`）。
     listen: voice::Session,
     /// 最後に読んだ配信ミックスの状態（世代と音量）。
@@ -703,6 +712,31 @@ impl Control {
                 log::warn!("開始のあとに出力音量を送り直せません: {e}");
             }
         }
+        if self.channel_scan {
+            if let Err(e) = self.host.set_channel_scan(true) {
+                log::warn!("開始のあとにチャンネルの信号の監視を頼み直せません: {e}");
+            }
+        }
+    }
+
+    /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。
+    fn use_input_pair(&mut self, pair: [usize; 2]) {
+        let Some(mut config) = self.host.get_state().config else {
+            return self.fail(
+                "set_input_channels",
+                anyhow::anyhow!("音声が動いていません"),
+            );
+        };
+        let mut routing = config.routing.unwrap_or(ChannelRouting {
+            input_channels: None,
+            output_routing: OutputRouting::Legacy,
+        });
+        routing.input_channels = Some(pair);
+        config.routing = Some(routing);
+        let (input, output) = (config.input.clone(), config.output.clone());
+        self.stop();
+        let result = input::start(&mut self.host, config, None);
+        self.started(result, input, output);
     }
 
     fn execute(&mut self, command: &Command) {
@@ -728,6 +762,15 @@ impl Control {
                 return;
             }
             Command::ListDevices => return self.list_devices(),
+            Command::ChannelScan(active) => {
+                // 表示の手がかりなので、断られても帯の警告にしない（止まっている間は開始のときに頼み直す）。
+                self.channel_scan = active;
+                if let Err(e) = self.host.set_channel_scan(active) {
+                    log::warn!("チャンネルの信号の監視を切り替えられません: {e}");
+                }
+                return;
+            }
+            Command::UseInputPair(pair) => return self.use_input_pair(pair),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
             Command::SetBypass(active) => {

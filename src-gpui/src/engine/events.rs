@@ -53,6 +53,17 @@ pub(super) fn on_event(
             return;
         }
         "audio-stopped" => Notice::Stopped,
+        "audio-channel-scan" => Notice::ChannelLevels(
+            payload
+                .as_array()
+                .map(|levels| {
+                    levels
+                        .iter()
+                        .map(|level| level.as_f64().map_or(0.0, |v| v as f32))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
         "audio-engine-exited" => Notice::EngineExited(exit(&payload)),
         // 落ちたことは上の詳しい出来事で伝えるので、あとに続く旧の通知は出さない（Tauri 版と同じ）。
         "audio-error" if payload.as_str() == Some(LEGACY_EXIT) => return,
@@ -151,6 +162,22 @@ mod tests {
         assert!(matches!(rx.try_recv(), Ok(Notice::Muted(true))));
         assert!(matches!(rx.try_recv(), Ok(Notice::Stopped)));
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn channel_scan_becomes_levels() {
+        let levels = Mutex::new(LevelSlot::default());
+        let (tx, rx) = flume::unbounded();
+        on_event(
+            "audio-channel-scan",
+            serde_json::json!([0.0, 0.5]),
+            &levels,
+            &tx,
+        );
+        let Ok(Notice::ChannelLevels(peaks)) = rx.try_recv() else {
+            panic!("チャンネルの信号が届かない");
+        };
+        assert_eq!(peaks, [0.0, 0.5]);
     }
 
     #[test]
