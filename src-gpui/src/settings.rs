@@ -363,7 +363,8 @@ pub fn mix_diagnostics(lang: Lang, mix: &diagnostics::Mix, fold: &Fold) -> impl 
             .gap_1()
             .children(rows.map(|(name, value)| row(lang, name, value))),
     )
-    .fold(fold, false)
+    // 取り込みが失敗しているときは畳まない（畳んだ中に隠れると気づけない）。
+    .fold(fold, mix.failed == Some(true))
 }
 
 /// 読み込みを止めた VST のリセット。`cleared` は直前の結果（失敗なら理由）。

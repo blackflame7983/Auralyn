@@ -137,6 +137,7 @@ impl ScanFolders {
         crate::part::card(
             core(lang, keys::SCAN_FOLDERS),
             Button::new("scan-folders-toggle")
+                .aria_expanded(open)
                 .label(core_with(
                     lang,
                     keys::SCAN_FOLDER_COUNT,

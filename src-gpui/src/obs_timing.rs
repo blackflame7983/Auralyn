@@ -151,6 +151,7 @@ impl TimingPanel {
         let toggle = {
             let picked = self.picked.clone();
             Button::new("obs-timing-open")
+                .aria_expanded(open)
                 .label(core(lang, keys::OBS_TIMING_TITLE))
                 .icon(if open {
                     IconName::ChevronUp
@@ -158,7 +159,6 @@ impl TimingPanel {
                     IconName::ChevronDown
                 })
                 .outline()
-                .selected(open)
                 .on_click(move |_, window, _| {
                     let mut picked = picked.borrow_mut();
                     picked.open = !picked.open;

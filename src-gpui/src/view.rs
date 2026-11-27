@@ -301,6 +301,13 @@ impl MainView {
             },
         )
         .detach();
+        // Windows の明暗が変わると、GPUI は外観の知らせのあとでタイトルバーを OS の明暗に塗り直すので、次の描画でテーマの明暗に戻す。
+        cx.observe_window_appearance(window, |_, window, _| {
+            window.on_next_frame(|window, _| {
+                desktop::set_dark_title(window, color::theme() != Theme::Light)
+            });
+        })
+        .detach();
         // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスとミックス後の VST の状態）を読んでおく。
         for command in [
             Command::ListDevices,
