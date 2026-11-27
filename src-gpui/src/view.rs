@@ -436,7 +436,6 @@ impl MainView {
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
         }
-        self.prep.set_hidden(self.hidden.get());
         if self.page == Page::Home && !self.hidden.get() {
             if let Some(command) = self.prep.tick(window, cx) {
                 self.engine.send(command);
