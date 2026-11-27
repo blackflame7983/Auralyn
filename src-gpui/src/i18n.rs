@@ -66,6 +66,8 @@ pub mod keys {
     pub const SETUPS_EXPORTED: &str = "presets.copy.041";
     pub const SETUPS_IMPORT: &str = "presets.copy.065";
     pub const SETUPS_IMPORTED: &str = "presets.copy.043";
+    pub const SETUPS_APPLIED: &str = "gpuiShell.setupsApplied";
+    pub const SETUPS_RESTORED: &str = "gpuiShell.setupsRestored";
     pub const SETUPS_IMPORT_EXISTS: &str = "gpuiShell.setupImportExists";
     pub const SETUPS_IMPORT_NOTHING: &str = "gpuiShell.setupImportNothing";
     pub const SETUPS_IMPORT_INVALID: &str = "gpuiShell.setupImportInvalid";
@@ -698,7 +700,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 685] = [
+    pub const ALL: [&str; 687] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -831,6 +833,8 @@ pub mod keys {
         SETUPS_EXPORTED,
         SETUPS_IMPORT,
         SETUPS_IMPORTED,
+        SETUPS_APPLIED,
+        SETUPS_RESTORED,
         SETUPS_IMPORT_EXISTS,
         SETUPS_IMPORT_NOTHING,
         SETUPS_IMPORT_INVALID,

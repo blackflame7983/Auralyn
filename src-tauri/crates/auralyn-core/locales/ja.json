@@ -3714,5 +3714,7 @@
   "gpuiShell.quickAdjust": "{name}を詳しく調整",
   "gpuiShell.applyRestart": "変更を適用",
   "gpuiShell.restartNote": "音を止めて、選んだ機器で始め直します。音が一瞬途切れます。",
-  "gpuiShell.usageLoad": "この機器を選ぶ"
+  "gpuiShell.usageLoad": "この機器を選ぶ",
+  "gpuiShell.setupsApplied": "「{name}」を適用しました",
+  "gpuiShell.setupsRestored": "適用する前の状態に戻しました"
 }

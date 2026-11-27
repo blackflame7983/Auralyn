@@ -271,6 +271,11 @@ pub enum Listen {
 /// 構成の書き出し・読み込みの結果。名前は構成の名前。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfileFile {
+    /// 構成を適用した（`restore` は適用する前へ戻した）。
+    Applied {
+        name: String,
+        restore: bool,
+    },
     Exported(String),
     Imported(String),
     NotImported(ImportIssue),

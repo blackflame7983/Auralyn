@@ -3714,5 +3714,7 @@
   "gpuiShell.quickAdjust": "Adjust {name} in detail",
   "gpuiShell.applyRestart": "Apply changes",
   "gpuiShell.restartNote": "Stops the audio and starts again with the chosen devices. Sound drops out briefly.",
-  "gpuiShell.usageLoad": "Use these devices"
+  "gpuiShell.usageLoad": "Use these devices",
+  "gpuiShell.setupsApplied": "Applied “{name}”",
+  "gpuiShell.setupsRestored": "Restored the state before applying"
 }
