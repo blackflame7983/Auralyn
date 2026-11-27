@@ -570,7 +570,7 @@ pub fn glossary(lang: Lang) -> impl IntoElement {
                     )
                     .child(note(term.summary.clone()))
                     .child(
-                        div().child(
+                        div().flex().child(
                             Button::new(SharedString::from(term.anchor.clone()))
                                 .label(core(lang, keys::HELP_MORE))
                                 .link()

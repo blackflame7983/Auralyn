@@ -117,7 +117,7 @@ impl RenderOnce for Card {
             .flex_col()
             .gap_3()
             .p_4()
-            .rounded(px(8.))
+            .rounded(px(color::radius("card")))
             .border_1()
             .border_color(color::border())
             .bg(color::card())

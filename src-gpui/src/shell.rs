@@ -195,6 +195,7 @@ pub fn subnav(
                             Button::new(("subnav", index))
                                 .ghost()
                                 .selected(chosen)
+                                .accessibility_label(label)
                                 .w_full()
                                 .h(px(SUBNAV_ITEM_HEIGHT))
                                 .child(
