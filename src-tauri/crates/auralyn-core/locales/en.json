@@ -3711,5 +3711,6 @@
   "gpuiShell.resetTo100": "Reset to 100%",
   "gpuiShell.resetNamed": "Reset {name} to 100%",
   "gpuiShell.stopShort": "Stop",
-  "rail.help": "Help"
+  "rail.help": "Help",
+  "gpuiShell.quickAdjust": "Adjust {name} in detail"
 }

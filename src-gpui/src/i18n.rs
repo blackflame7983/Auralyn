@@ -416,6 +416,7 @@ pub mod keys {
     pub const CLOSE: &str = "licenses.close";
     pub const RESET_TO_100: &str = "gpuiShell.resetTo100";
     pub const RESET_NAMED: &str = "gpuiShell.resetNamed";
+    pub const QUICK_ADJUST: &str = "gpuiShell.quickAdjust";
     pub const SCAN_FAILED: &str = "pluginNotices.scanFailed";
     pub const CHANNEL_HEARD: &str = "gpuiShell.channelHeard";
     pub const CHANNEL_SILENT: &str = "gpuiShell.channelSilent";
@@ -696,7 +697,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 683] = [
+    pub const ALL: [&str; 684] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1180,6 +1181,7 @@ pub mod keys {
         STOP_SHORT,
         RAIL_HELP,
         RESET_NAMED,
+        QUICK_ADJUST,
         SCAN_FAILED,
         CHANNEL_HEARD,
         CHANNEL_SILENT,

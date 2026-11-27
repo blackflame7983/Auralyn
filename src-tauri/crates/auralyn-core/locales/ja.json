@@ -3711,5 +3711,6 @@
   "gpuiShell.resetTo100": "100% に戻す",
   "gpuiShell.resetNamed": "{name}を 100% に戻す",
   "gpuiShell.stopShort": "停止",
-  "rail.help": "ヘルプ"
+  "rail.help": "ヘルプ",
+  "gpuiShell.quickAdjust": "{name}を詳しく調整"
 }
