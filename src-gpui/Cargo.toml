@@ -33,7 +33,7 @@ tray-icon = "0.21"
 global-hotkey = "0.7"
 # 窓の × でトレイへ隠す（GPUI に窓を隠す手段が無いので、Win32 の ShowWindow を使う）。版は GPUI と tray-icon が使うものに揃える。
 raw-window-handle = "0.6"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
 
 # 窓・タスクバー・トレイのアイコンを実行ファイルに入れる。版は src-tauri（tauri-build）と同じ。
 [build-dependencies]

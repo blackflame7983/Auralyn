@@ -160,6 +160,7 @@ impl MainView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        desktop::set_dark_title(window, color::theme() != Theme::Light);
         let input_gain = cx.new(|_| {
             SliderState::new()
                 .min(0.0)
@@ -1013,11 +1014,12 @@ impl MainView {
     }
 
     /// テーマを替えて保存する。保存できなくても、この起動の間は替えたままにする。
-    fn set_theme(&mut self, theme: Theme, cx: &mut App) {
+    fn set_theme(&mut self, theme: Theme, window: &Window, cx: &mut App) {
         if theme == color::theme() {
             return;
         }
         color::set_theme(theme, cx);
+        desktop::set_dark_title(window, theme != Theme::Light);
         let result = theme_file::save(&self.config_dir, theme);
         self.report_save(keys::THEME_SAVE_FAILED, result);
     }
@@ -1414,9 +1416,9 @@ impl Render for MainView {
                                             }))
                                             .child(settings::appearance(lang, color::theme(), {
                                                 let entity = entity.clone();
-                                                move |theme, _, cx| {
+                                                move |theme, window, cx| {
                                                     entity.update(cx, |this, cx| {
-                                                        this.set_theme(theme, cx);
+                                                        this.set_theme(theme, window, cx);
                                                         cx.notify();
                                                     })
                                                 }

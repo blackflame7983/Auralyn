@@ -80,6 +80,29 @@ mod imp {
         }
     }
 
+    /// 窓のタイトルバーを暗い色にするか（テーマに合わせる）。Windows 10 の古い版などで断られても何もしない。
+    pub fn set_dark_title(window: &gpui_kit::Window, dark: bool) {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE,
+        };
+        let Ok(handle) = HasWindowHandle::window_handle(window) else {
+            return;
+        };
+        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+            return;
+        };
+        let value: windows_sys::core::BOOL = dark.into();
+        // SAFETY: `handle` は GPUI がいま持っている生きた窓のもの。`value` は呼び出しの間生きていて、大きさを正しく渡す。
+        unsafe {
+            DwmSetWindowAttribute(
+                handle.hwnd.get() as windows_sys::Win32::Foundation::HWND,
+                DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
+                (&value as *const windows_sys::core::BOOL).cast(),
+                std::mem::size_of::<windows_sys::core::BOOL>() as u32,
+            );
+        }
+    }
+
     /// Windows の「アニメーション効果」が切られているか。読めなければ動かす（GPUI の既定と同じ）。
     pub fn reduce_motion() -> bool {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -266,9 +289,11 @@ mod imp {
     pub fn reduce_motion() -> bool {
         false
     }
+
+    pub fn set_dark_title(_window: &gpui_kit::Window, _dark: bool) {}
 }
 
-pub use imp::{reduce_motion, set_shown, Desktop};
+pub use imp::{reduce_motion, set_dark_title, set_shown, Desktop};
 
 impl Desktop {
     /// 登録できなかったショートカットがあるか。
