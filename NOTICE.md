@@ -33,6 +33,20 @@ are copied unmodified from GPUI Kit v0.11.0 under Apache-2.0. Its license is
 retained in `.claude/skills/LICENSE-GPUI-KIT-APACHE`; provenance is recorded in
 `.claude/skills/PROVENANCE.md`.
 
+The agent skills in `.claude/skills/impeccable` (Apache-2.0, license in
+`.claude/skills/LICENSE-IMPECCABLE-APACHE`) and
+`.claude/skills/anything-frontend-art-direction` (MIT, license in
+`.claude/skills/LICENSE-ANYTHING-FRONTEND-MIT`) are copied unmodified, in part,
+from their upstream repositories; provenance is recorded in
+`.claude/skills/PROVENANCE.md`.
+
+## Fonts
+
+The GPUI app (`src-gpui`) embeds Noto Sans JP (variable font, unmodified, from
+Google Fonts) under the SIL Open Font License 1.1. Copyright 2014-2021 Adobe
+(http://www.adobe.com/), with Reserved Font Name 'Source'. The full license is
+in `src-gpui/assets/fonts/OFL.txt`.
+
 ## Trademark notices
 
 ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.

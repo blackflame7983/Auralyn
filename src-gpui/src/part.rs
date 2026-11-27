@@ -117,7 +117,7 @@ impl RenderOnce for Card {
             .flex_col()
             .gap_3()
             .p_4()
-            .rounded(px(8.))
+            .rounded(px(color::radius("card")))
             .border_1()
             .border_color(color::border())
             .bg(color::card())
@@ -141,6 +141,7 @@ impl RenderOnce for Card {
                                     .id(SharedString::new_static(title))
                                     .role(Role::Heading)
                                     .aria_level(2)
+                                    .aria_label(title)
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(title),
                             )

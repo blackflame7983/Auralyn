@@ -195,6 +195,7 @@ pub fn subnav(
                             Button::new(("subnav", index))
                                 .ghost()
                                 .selected(chosen)
+                                .accessibility_label(label)
                                 .w_full()
                                 .h(px(SUBNAV_ITEM_HEIGHT))
                                 .child(
@@ -284,6 +285,16 @@ fn status_chip(phase: Phase, lang: Lang) -> impl IntoElement {
         Phase::Unconfigured => color::warning(),
         _ => color::muted(),
     };
+    let text = core(
+        lang,
+        match phase {
+            Phase::Unconfigured => keys::STATUS_UNCONFIGURED,
+            Phase::Stopped => keys::STATUS_STOPPED,
+            Phase::Starting => keys::STARTING,
+            Phase::Running => keys::STATUS_RUNNING,
+            Phase::Stopping => keys::STOPPING,
+        },
+    );
     div()
         .id("status")
         .role(Role::Status)
@@ -293,17 +304,9 @@ fn status_chip(phase: Phase, lang: Lang) -> impl IntoElement {
         .gap_1p5()
         .text_sm()
         .font_weight(FontWeight::MEDIUM)
+        .aria_label(text)
         .child(div().size_2().rounded_full().bg(dot))
-        .child(core(
-            lang,
-            match phase {
-                Phase::Unconfigured => keys::STATUS_UNCONFIGURED,
-                Phase::Stopped => keys::STATUS_STOPPED,
-                Phase::Starting => keys::STARTING,
-                Phase::Running => keys::STATUS_RUNNING,
-                Phase::Stopping => keys::STOPPING,
-            },
-        ))
+        .child(text)
 }
 
 fn button_label(phase: Phase, lang: Lang) -> &'static str {

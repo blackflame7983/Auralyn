@@ -234,8 +234,9 @@ impl LivePanel {
         let refresh = {
             let send = send.clone();
             Button::new("live-refresh")
-                .label(core(lang, keys::LIVE_REFRESH))
                 .icon(IconName::RefreshCw)
+                .tooltip(core(lang, keys::LIVE_REFRESH))
+                .accessibility_label(core(lang, keys::LIVE_REFRESH))
                 .outline()
                 .small()
                 .on_click(move |_, _, cx| send(Command::LiveOutput(None), cx))
