@@ -200,6 +200,16 @@ impl MixPanel {
         self.mix.as_ref().is_some_and(|m| m.active.is_some())
     }
 
+    /// 使っている・使うつもりで残っている（適用中か保存済み）か、知らせることがある。音楽鑑賞のホームで出すかの判断。
+    pub fn in_use(&self) -> bool {
+        self.read_failed.is_some()
+            || self.failed.is_some()
+            || self
+                .mix
+                .as_ref()
+                .is_some_and(|m| m.active.is_some() || m.saved.is_some() || m.error.is_some())
+    }
+
     /// 変える操作の結果。
     pub fn done(&mut self, result: Result<(), String>) {
         self.failed = result.err();

@@ -219,6 +219,7 @@ impl MainView {
                     })
                 })
             }))
+            .overflow_y_scrollbar()
     }
 }
 

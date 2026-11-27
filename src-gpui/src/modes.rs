@@ -295,7 +295,8 @@ fn protect(modes: &LiveModes, lang: Lang, send: OnCommand) -> impl IntoElement {
             keys::MODES_PROTECT_NEEDS_AUDIO
         },
     );
-    Button::new("mode-protect")
+    let usable = modes.can_protect();
+    let button = Button::new("mode-protect")
         .label(core(
             lang,
             if armed {
@@ -312,10 +313,18 @@ fn protect(modes: &LiveModes, lang: Lang, send: OnCommand) -> impl IntoElement {
         .outline()
         .w_full()
         .selected(armed)
-        .toggled(armed)
-        .disabled(!modes.can_protect())
+        .disabled(!usable)
         .tooltip(hint)
-        .on_click(move |_, _, cx| send(Command::Modes(ModeAction::Protect(!armed)), cx))
+        .on_click(move |_, _, cx| send(Command::Modes(ModeAction::Protect(!armed)), cx));
+    // 押せないときはフォーカスが届かずツールチップも読めないので、理由を文で残す。
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(button)
+        .when(!usable, |this| {
+            this.child(div().text_xs().text_color(color::muted()).child(hint))
+        })
 }
 
 fn refresh(lang: Lang, send: OnCommand) -> impl IntoElement {

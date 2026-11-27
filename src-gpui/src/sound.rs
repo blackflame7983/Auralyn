@@ -171,17 +171,16 @@ impl SoundPage {
         let current = self.current?;
         let on_open = std::rc::Rc::new(on_open);
         let set = move |change: Change, cx: &mut App| send(Command::SetSound(change), cx);
-        let noise_kind = current.noise_mode.map(|mode| {
-            core(
-                lang,
-                match mode {
-                    NoiseMode::Low => keys::NOISE_LOW,
-                    NoiseMode::High => keys::NOISE_HIGH,
-                    NoiseMode::Measured => keys::NOISE_MEASURED,
-                    NoiseMode::Venue => keys::NOISE_VENUE,
-                },
-            )
-        });
+        let noise_kind = Some(core(
+            lang,
+            match current.noise_mode {
+                Some(NoiseMode::Low) => keys::NOISE_LOW,
+                Some(NoiseMode::High) => keys::NOISE_HIGH,
+                Some(NoiseMode::Measured) => keys::NOISE_MEASURED,
+                Some(NoiseMode::Venue) => keys::NOISE_VENUE,
+                None => keys::NOISE_MODE_FIRST,
+            },
+        ));
         let preset = current.preset.and_then(|preset| {
             PRESETS
                 .iter()

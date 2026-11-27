@@ -1058,6 +1058,9 @@ impl Render for MainView {
                 move |page, _, cx| {
                     entity.update(cx, |this, cx| {
                         this.open(page);
+                        if page == Page::Settings && this.settings_section == Section::Help {
+                            this.open_section(Section::default());
+                        }
                         cx.notify();
                     })
                 }
@@ -1360,7 +1363,7 @@ impl Render for MainView {
                                             .flex()
                                             .flex_col()
                                             .gap_3()
-                                            .when(!self.music || self.mix.active(), |this| {
+                                            .when(!self.music || self.mix.in_use(), |this| {
                                                 this.child(div().max_w(px(560.)).child(
                                                     self.mix.render(
                                                         lang,
