@@ -3,7 +3,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use auralyn_core::design::{tokens, Theme};
-use gpui_kit::{linear_color_stop, linear_gradient, rgb, App, Background, Hsla};
+use gpui_kit::component::ThemeColor;
+use gpui_kit::{linear_color_stop, linear_gradient, px, rgb, App, Background, Hsla};
 
 /// 選んでいるテーマ（`Theme::ALL` の位置）。描くたびに読むので、変えたら窓を描き直す。
 static THEME: AtomicUsize = AtomicUsize::new(1);
@@ -17,7 +18,7 @@ fn store(theme: Theme) {
     THEME.store(index, Ordering::Relaxed);
 }
 
-/// テーマを替える。部品（gpui-kit）の明暗も合わせ、窓を描き直す。ゲーミングは暗い地。
+/// テーマを替える。部品（gpui-kit）の明暗・色・角丸も合わせ、窓を描き直す（`Theme::update` が描き直す）。ゲーミングは暗い地。
 pub fn set_theme(theme: Theme, cx: &mut App) {
     store(theme);
     let mode = match theme {
@@ -25,7 +26,109 @@ pub fn set_theme(theme: Theme, cx: &mut App) {
         Theme::Dark | Theme::Gaming => gpui_kit::component::ThemeMode::Dark,
     };
     gpui_kit::component::Theme::change(mode, None, cx);
-    cx.refresh_windows();
+    gpui_kit::component::Theme::update(cx, |kit| {
+        paint_parts(&mut kit.colors);
+        kit.radius = px(radius("control"));
+        kit.radius_lg = px(radius("lg"));
+    });
+}
+
+/// 部品（gpui-kit）の色も同じトークンから塗る。既定の灰色・青のままだと、選んだ印やスイッチにブランドの色が出ない。
+fn paint_parts(kit: &mut ThemeColor) {
+    let primary = primary();
+    let tint = primary.opacity(0.16);
+    let destructive = token("destructive");
+    kit.background = background();
+    kit.foreground = foreground();
+    kit.border = border();
+    kit.window_border = border();
+    kit.input = token("input");
+    kit.ring = token("ring");
+    kit.caret = primary;
+    kit.selection = primary.opacity(0.35);
+    kit.popover = token("popover");
+    kit.popover_foreground = token("popover-foreground");
+    kit.group_box = card();
+    kit.group_box_foreground = foreground();
+    kit.muted = track();
+    kit.muted_foreground = muted();
+    kit.accent = token("accent");
+    kit.accent_foreground = token("accent-foreground");
+    kit.secondary = token("secondary");
+    kit.secondary_foreground = token("secondary-foreground");
+    kit.secondary_hover = token("accent");
+    kit.secondary_active = tint;
+    kit.list_active = tint;
+    kit.list_active_border = primary;
+    kit.link = primary;
+    kit.link_hover = primary.opacity(0.85);
+    kit.link_active = primary.opacity(0.7);
+    kit.slider_bar = primary;
+    kit.progress_bar = primary;
+    kit.switch = token("input").opacity(0.55);
+    for (fill, text, hover, active, color, on) in [
+        (
+            &mut kit.primary,
+            &mut kit.primary_foreground,
+            &mut kit.primary_hover,
+            &mut kit.primary_active,
+            primary,
+            token("primary-foreground"),
+        ),
+        (
+            &mut kit.button_primary,
+            &mut kit.button_primary_foreground,
+            &mut kit.button_primary_hover,
+            &mut kit.button_primary_active,
+            primary,
+            token("primary-foreground"),
+        ),
+        (
+            &mut kit.danger,
+            &mut kit.danger_foreground,
+            &mut kit.danger_hover,
+            &mut kit.danger_active,
+            destructive,
+            token("destructive-foreground"),
+        ),
+        (
+            &mut kit.button_danger,
+            &mut kit.button_danger_foreground,
+            &mut kit.button_danger_hover,
+            &mut kit.button_danger_active,
+            destructive,
+            token("destructive-foreground"),
+        ),
+        (
+            &mut kit.warning,
+            &mut kit.warning_foreground,
+            &mut kit.warning_hover,
+            &mut kit.warning_active,
+            warning(),
+            token("warning-foreground"),
+        ),
+        (
+            &mut kit.success,
+            &mut kit.success_foreground,
+            &mut kit.success_hover,
+            &mut kit.success_active,
+            success(),
+            token("success-foreground"),
+        ),
+        (
+            &mut kit.info,
+            &mut kit.info_foreground,
+            &mut kit.info_hover,
+            &mut kit.info_active,
+            token("info"),
+            token("info-foreground"),
+        ),
+    ] {
+        *fill = color;
+        *text = on;
+        *hover = color.opacity(0.88);
+        *active = color.opacity(0.76);
+    }
 }
 
 fn token(name: &str) -> Hsla {

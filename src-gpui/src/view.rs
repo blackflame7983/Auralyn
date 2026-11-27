@@ -1055,7 +1055,6 @@ impl Render for MainView {
             .flex()
             .bg(color::background())
             .text_color(color::foreground())
-            .font_family("Yu Gothic UI")
             .child(rail)
             .child(
                 div()
