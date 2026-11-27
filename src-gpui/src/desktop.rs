@@ -59,6 +59,9 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOW};
 
+    /// build.rs で実行ファイルに入れたアイコン（GPUI も窓とタスクバーに同じ番号を使う）。
+    const APP_ICON: u16 = 1;
+
     /// 窓を隠す（トレイへ）・出す。窓の取っ手が取れなければ何もしない。
     pub fn set_shown(window: &gpui_kit::Window, shown: bool) {
         let Ok(handle) = HasWindowHandle::window_handle(window) else {
@@ -100,11 +103,13 @@ mod imp {
             let tray = menu
                 .append_items(&[&show, &mute, &quit])
                 .map_err(|e| e.to_string())
-                .and_then(|()| Icon::from_rgba(icon_rgba(), 32, 32).map_err(|e| e.to_string()))
+                .and_then(|()| {
+                    Icon::from_resource(APP_ICON, Some((32, 32))).map_err(|e| e.to_string())
+                })
                 .and_then(|icon| {
                     TrayIconBuilder::new()
                         .with_menu(Box::new(menu))
-                        .with_tooltip("Auralyn GPUI")
+                        .with_tooltip("Auralyn")
                         .with_icon(icon)
                         .build()
                         .map_err(|e| e.to_string())
@@ -195,25 +200,6 @@ mod imp {
             Ok(value) => (Some(value), None),
             Err(error) => (None, Some(error)),
         }
-    }
-
-    /// オーロラの緑から青緑の丸。アイコンの画像ファイルは、配布の形を決めるときに用意する。
-    fn icon_rgba() -> Vec<u8> {
-        let mut rgba = Vec::with_capacity(32 * 32 * 4);
-        for y in 0..32 {
-            for x in 0..32 {
-                let (dx, dy) = (x as f32 - 15.5, y as f32 - 15.5);
-                let inside = dx * dx + dy * dy <= 15.0 * 15.0;
-                let mix = x as f32 / 31.0;
-                rgba.extend_from_slice(&[
-                    (0x2f as f32 * (1.0 - mix) + 0x26 as f32 * mix) as u8,
-                    (0xd0 as f32 * (1.0 - mix) + 0xc6 as f32 * mix) as u8,
-                    (0x8a as f32 * (1.0 - mix) + 0xc2 as f32 * mix) as u8,
-                    if inside { 255 } else { 0 },
-                ]);
-            }
-        }
-        rgba
     }
 }
 
