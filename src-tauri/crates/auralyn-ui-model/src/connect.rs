@@ -191,6 +191,16 @@ pub fn shares_device(host: &str) -> bool {
     host == ASIO
 }
 
+/// 接続方式の名前をそろえる。エンジンは一覧で「Wasapi」、動いている機器と保存した設定では「WASAPI」と
+/// 書くので、大文字小文字の違いを同じ方式として ASIO・WASAPI の表記にする（ほかの名前はそのまま）。
+pub fn canonical_host(host: &str) -> String {
+    [ASIO, WASAPI]
+        .into_iter()
+        .find(|known| known.eq_ignore_ascii_case(host))
+        .unwrap_or(host)
+        .to_owned()
+}
+
 /// 接続方式の一覧。一覧に出てきた順で、重ねない。
 pub fn hosts(devices: &[Device]) -> Vec<String> {
     let mut hosts: Vec<String> = Vec::new();
@@ -331,6 +341,14 @@ pub fn shared_output<'a>(outputs: &[&'a Device], input: &Device) -> Option<&'a D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_names_from_the_engine_are_unified() {
+        assert_eq!(canonical_host("Wasapi"), "WASAPI");
+        assert_eq!(canonical_host("WASAPI"), "WASAPI");
+        assert_eq!(canonical_host("asio"), "ASIO");
+        assert_eq!(canonical_host("JACK"), "JACK");
+    }
 
     fn device(host: &str, name: &str, is_input: bool, is_default: bool) -> Device {
         Device {

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use auralyn_core::event::{EmitError, Event, EventSink};
-use auralyn_ui_model::connect::{AppSource, Device, Input, Output, Purpose, Routing, Saved};
+use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::diagnostics::{self, Health, Stats};
 use auralyn_ui_model::measurement::{self, Measurement, Quality, Take};
 use auralyn_ui_model::peak::{Limit, Lookahead, Peak};
@@ -921,7 +921,7 @@ impl Control {
             .into_iter()
             .chain(list.outputs)
             .map(|d| Device {
-                host: d.host,
+                host: connect::canonical_host(&d.host),
                 name: d.name,
                 id: d.id,
                 is_input: d.is_input,
@@ -995,7 +995,7 @@ fn host_purpose(purpose: Purpose) -> input::Purpose {
 fn saved_of(c: ActiveAudioConfig) -> Saved {
     let purpose = ui_purpose(crate::usage_file::purpose_of(&c));
     Saved {
-        host: c.host,
+        host: connect::canonical_host(&c.host),
         input: c.input,
         input_id: c.input_id,
         output: c.output,
