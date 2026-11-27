@@ -3710,5 +3710,6 @@
   "gpuiShell.actionFailed": "The change didn't go through.",
   "gpuiShell.resetTo100": "Reset to 100%",
   "gpuiShell.resetNamed": "Reset {name} to 100%",
-  "gpuiShell.stopShort": "Stop"
+  "gpuiShell.stopShort": "Stop",
+  "rail.help": "Help"
 }

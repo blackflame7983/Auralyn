@@ -1047,15 +1047,31 @@ impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let entity = cx.entity();
-        let rail = shell::rail(self.page, lang, {
-            let entity = entity.clone();
-            move |page, _, cx| {
-                entity.update(cx, |this, cx| {
-                    this.open(page);
-                    cx.notify();
-                })
-            }
-        });
+        let help = self.page == Page::Settings && self.settings_section == Section::Help;
+        let rail = shell::rail(
+            self.page,
+            help,
+            lang,
+            {
+                let entity = entity.clone();
+                move |page, _, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.open(page);
+                        cx.notify();
+                    })
+                }
+            },
+            {
+                let entity = entity.clone();
+                move |_, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.open(Page::Settings);
+                        this.open_section(Section::Help);
+                        cx.notify();
+                    })
+                }
+            },
+        );
         let children = match self.page {
             Page::Sound => Some(shell::Children {
                 labels: Part::ALL.map(|p| core(lang, p.label())).to_vec(),

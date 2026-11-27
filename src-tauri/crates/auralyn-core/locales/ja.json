@@ -3710,5 +3710,6 @@
   "gpuiShell.actionFailed": "操作を反映できませんでした。",
   "gpuiShell.resetTo100": "100% に戻す",
   "gpuiShell.resetNamed": "{name}を 100% に戻す",
-  "gpuiShell.stopShort": "停止"
+  "gpuiShell.stopShort": "停止",
+  "rail.help": "ヘルプ"
 }

@@ -21,6 +21,7 @@ pub mod keys {
     pub const RAIL_CONNECT: &str = "rail.connect";
     pub const RAIL_CONNECT_NAME: &str = "rail.connectName";
     pub const RAIL_SETTINGS: &str = "rail.settings";
+    pub const RAIL_HELP: &str = "rail.help";
     pub const BAND_LABEL: &str = "band.label";
     pub const STATUS_UNCONFIGURED: &str = "shell.unconfigured";
     pub const STATUS_STOPPED: &str = "shell.stopped";
@@ -695,7 +696,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 682] = [
+    pub const ALL: [&str; 683] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1177,6 +1178,7 @@ pub mod keys {
         CLOSE,
         RESET_TO_100,
         STOP_SHORT,
+        RAIL_HELP,
         RESET_NAMED,
         SCAN_FAILED,
         CHANNEL_HEARD,
