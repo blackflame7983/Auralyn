@@ -21,6 +21,7 @@ use gpui_kit::*;
 use crate::engine::{Command, Observation};
 use crate::i18n::{core, keys, Lang};
 use crate::part::{choices, note};
+use crate::settings::Section;
 use crate::sound::Part;
 
 /// Tauri 版と同じ、見ている間の読み直しの間隔。
@@ -35,8 +36,8 @@ pub enum Goto {
     Connect,
     /// 音づくりの中の行き先。
     Sound(Part),
-    /// 設定の OBS連携 のタブ。
-    Obs,
+    /// 設定の中の行き先（OBS 連携・困ったとき）。
+    Settings(Section),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -385,9 +386,14 @@ impl PrepPanel {
                         Goto::Sound(Part::Check),
                         keys::PREP_ACK_LOCAL,
                     ),
+                    // OBS へ送るなら OBS 連携、通話アプリなどは困ったとき（つなぎ方の案内）へ。
                     Stage::Receiver => (
                         keys::PREP_CHECK_RECEIVER,
-                        Goto::Obs,
+                        Goto::Settings(if usage == Some(Usage::Obs) {
+                            Section::Obs
+                        } else {
+                            Section::Help
+                        }),
                         keys::PREP_ACK_RECEIVER,
                     ),
                 };

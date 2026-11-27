@@ -160,6 +160,11 @@ impl LivePanel {
         self.save_failed = result.err();
     }
 
+    /// 表示言語を替えた。選んでいる出力は保ったまま、札（分けない・見つかりません）を作り直す。
+    pub fn relabel(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
+        self.fill(lang, window, cx);
+    }
+
     /// 下書きを保存してある構成に戻す。
     fn reset(&mut self, lang: Lang, window: &mut Window, cx: &mut App) {
         let Some(saved) = self.live.as_ref().map(|l| l.saved.clone()) else {
