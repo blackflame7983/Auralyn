@@ -278,6 +278,8 @@ pub enum Notice {
     Started {
         input: Option<String>,
         output: Option<String>,
+        /// 動いている接続が ASIO の機器なら、その入力のペア（`connect::running_asio_pair`）。
+        asio_pair: Option<[usize; 2]>,
     },
     Stopped,
     /// 入力チャンネルごとのピーク（`Command::ChannelScan` の間だけ）。
@@ -690,11 +692,21 @@ impl Control {
             ));
             return;
         }
-        let _ = self.notices.send(Notice::Started { input, output });
+        let config = self.host.get_state().config;
+        let asio_pair = config.as_ref().and_then(|c| {
+            let from_app = matches!(c.input_source, Some(input::Config::ProcessLoopback(_)));
+            let pair = c.routing.and_then(|r| r.input_channels);
+            connect::running_asio_pair(&c.host, from_app, pair)
+        });
+        let _ = self.notices.send(Notice::Started {
+            input,
+            output,
+            asio_pair,
+        });
         if self.devices_wanted {
             self.list_devices();
         }
-        if let Some(config) = self.host.get_state().config {
+        if let Some(config) = config {
             if let Err(e) = crate::usage_file::remember(&self.config_dir, &config) {
                 log::warn!("使い道の接続を残せません: {e}");
             }
@@ -719,14 +731,16 @@ impl Control {
         }
     }
 
-    /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。
+    /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。始められなければ、元の割り当てで始め直す。
     fn use_input_pair(&mut self, pair: [usize; 2]) {
-        let Some(mut config) = self.host.get_state().config else {
+        let state = self.host.get_state();
+        let Some(original) = state.config.filter(|_| state.is_running) else {
             return self.fail(
                 "set_input_channels",
                 anyhow::anyhow!("音声が動いていません"),
             );
         };
+        let mut config = original.clone();
         let mut routing = config.routing.unwrap_or(ChannelRouting {
             input_channels: None,
             output_routing: OutputRouting::Legacy,
@@ -735,7 +749,19 @@ impl Control {
         config.routing = Some(routing);
         let (input, output) = (config.input.clone(), config.output.clone());
         self.stop();
-        let result = input::start(&mut self.host, config, None);
+        let result = match input::start(&mut self.host, config, None) {
+            Ok(()) => Ok(()),
+            Err(e) => match input::start(&mut self.host, original, None) {
+                Ok(()) => {
+                    self.fail("set_input_channels", e);
+                    Ok(())
+                }
+                Err(back) => {
+                    log::warn!("元の割り当てでも始め直せません: {back}");
+                    Err(e)
+                }
+            },
+        };
         self.started(result, input, output);
     }
 
@@ -764,7 +790,11 @@ impl Control {
             Command::ListDevices => return self.list_devices(),
             Command::ChannelScan(active) => {
                 // 表示の手がかりなので、断られても帯の警告にしない（止まっている間は開始のときに頼み直す）。
+                // 子がいない・落ちたあとは送らない（送ると子を起こしてしまう。新しい子は監視なしで始まる）。
                 self.channel_scan = active;
+                if !self.host.get_state().is_running || self.exited.load(Ordering::SeqCst) {
+                    return;
+                }
                 if let Err(e) = self.host.set_channel_scan(active) {
                     log::warn!("チャンネルの信号の監視を切り替えられません: {e}");
                 }

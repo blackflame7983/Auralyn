@@ -23,6 +23,8 @@ pub enum Event {
     StartRequested,
     /// 利用者が停止を押した。
     StopRequested,
+    /// 動いている接続の一部（入力のペア）を替えて始め直す。止まった知らせを挟んでも、開始の結果を待つ。
+    RestartRequested,
     Started,
     /// 止まった（利用者の停止、またはストリームの異常）。
     Stopped,
@@ -42,6 +44,7 @@ impl Phase {
         match (self, event) {
             (Phase::Stopped | Phase::Unconfigured, Event::StartRequested) => Phase::Starting,
             (Phase::Running, Event::StopRequested) => Phase::Stopping,
+            (Phase::Running, Event::RestartRequested) => Phase::Starting,
             (_, Event::Started) => Phase::Running,
             (Phase::Unconfigured, Event::Stopped) => Phase::Unconfigured,
             (_, Event::Stopped) => Phase::Stopped,
@@ -71,6 +74,16 @@ impl Phase {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restart_waits_for_the_start_result() {
+        let restarting = Phase::Running.next(Event::RestartRequested);
+        assert_eq!(restarting, Phase::Starting);
+        assert!(restarting.busy());
+        assert_eq!(restarting.next(Event::Started), Phase::Running);
+        assert_eq!(restarting.next(Event::StartFailed), Phase::Stopped);
+        assert_eq!(Phase::Stopped.next(Event::RestartRequested), Phase::Stopped);
+    }
 
     #[test]
     fn start_waits_for_the_engine_before_running() {

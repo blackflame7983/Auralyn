@@ -181,16 +181,13 @@ pub fn is_saved_input(saved: &Saved, device: &Device) -> bool {
             || saved.input.as_deref() == Some(device.name.as_str()))
 }
 
-/// 動いている（最後に始めた）接続が ASIO の機器なら、選んでいる入力のペアとチャンネル数（分からなければ 0）。
-/// 割り当てが保存されていなければ、エンジンと同じく 1-2。
-pub fn asio_input(saved: Option<&Saved>, devices: &[Device]) -> Option<([usize; 2], u16)> {
-    let saved = saved.filter(|saved| shares_device(&saved.host) && saved.app.is_none())?;
-    let channels = devices
-        .iter()
-        .find(|device| device.is_input && is_saved_input(saved, device))
-        .map_or(0, |device| device.channels);
-    let pair = saved.routing.and_then(|routing| routing.input);
-    Some((pair.unwrap_or([0, 1]), channels))
+/// 動いている接続が ASIO の機器（アプリの音声でない）なら、その入力のペア。割り当てが無ければエンジンと同じく 1-2。
+pub fn running_asio_pair(
+    host: &str,
+    from_app: bool,
+    input: Option<[usize; 2]>,
+) -> Option<[usize; 2]> {
+    (shares_device(&canonical_host(host)) && !from_app).then(|| input.unwrap_or([0, 1]))
 }
 
 const ASIO: &str = "ASIO";
@@ -358,26 +355,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn asio_input_reads_the_running_pair_and_channel_count() {
-        let mut interface = device("ASIO", "Voicemeeter Insert", true, false);
-        interface.channels = 16;
-        let mut saved = Saved {
-            host: "ASIO".into(),
-            input: Some("Voicemeeter Insert".into()),
-            ..Saved::default()
-        };
-        assert_eq!(
-            asio_input(Some(&saved), &[interface.clone()]),
-            Some(([0, 1], 16))
-        );
-        saved.routing = Some(Routing {
-            input: Some([6, 7]),
-            output: Output::Legacy,
-        });
-        assert_eq!(asio_input(Some(&saved), &[]), Some(([6, 7], 0)));
-        saved.host = "WASAPI".into();
-        assert_eq!(asio_input(Some(&saved), &[interface]), None);
-        assert_eq!(asio_input(None, &[]), None);
+    fn running_asio_pair_defaults_to_the_first_pair() {
+        assert_eq!(running_asio_pair("ASIO", false, Some([6, 7])), Some([6, 7]));
+        assert_eq!(running_asio_pair("Asio", false, None), Some([0, 1]));
+        assert_eq!(running_asio_pair("ASIO", true, Some([6, 7])), None);
+        assert_eq!(running_asio_pair("Wasapi", false, None), None);
     }
 
     #[test]

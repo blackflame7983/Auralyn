@@ -3,7 +3,7 @@
 //! 最初に選んでおく項目は `auralyn-ui-model` の `connect` で決める。ASIO では入力のペアと出力の返し方も選ぶ。
 //! ASIO で動いている間は、どの入力に音が来ているかを出し、選んでいるペアが無音なら音が来ているペアへの切り替えを勧める。
 
-use auralyn_ui_model::channel_signal::{self, Signal};
+use auralyn_ui_model::channel_signal;
 use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
 use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
@@ -478,11 +478,6 @@ impl ConnectPage {
             .unwrap_or_default()
     }
 
-    /// 動いている（最後に始めた）接続が ASIO の機器なら、その入力のペアとチャンネル数。
-    pub fn asio_input(&self) -> Option<([usize; 2], u16)> {
-        connect::asio_input(self.saved.as_ref(), &self.devices)
-    }
-
     /// 選んでいるマイクと出力先。ASIO では、出力はマイクと同じドライバー。
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let host = self.host_name(cx);
@@ -500,12 +495,12 @@ impl ConnectPage {
     }
 
     /// 開始のボタンは止まっているときだけ押せる（動いている機器を替える手順は、まだ無い）。
-    /// `signal` は ASIO の入力の信号を見ている間だけ渡す。
+    /// `signal` は動いている ASIO の入力の信号を見ている間だけ渡す。
     pub fn render(
         &self,
         phase: Phase,
         lang: Lang,
-        signal: Option<&Signal>,
+        signal: Option<InputSignal>,
         cx: &App,
         actions: Actions,
     ) -> impl IntoElement {
@@ -674,7 +669,7 @@ impl ConnectPage {
     fn render_routing(
         &self,
         lang: Lang,
-        signal: Option<&Signal>,
+        signal: Option<InputSignal>,
         on_use_pair: OnPair,
         cx: &App,
     ) -> impl IntoElement {
@@ -693,12 +688,9 @@ impl ConnectPage {
                     Select::new(&self.input_pair),
                 ))
             })
-            .when_some(
-                signal.zip(self.asio_input()),
-                |this, (signal, (current, channels))| {
-                    this.child(render_signal(lang, signal, current, channels, on_use_pair))
-                },
-            )
+            .when_some(signal, |this, signal| {
+                this.child(render_signal(lang, signal, on_use_pair))
+            })
             .child(field(
                 core(lang, keys::ROUTING_MODE),
                 Select::new(&self.output_mode),
@@ -728,17 +720,19 @@ pub struct Actions {
 pub type OnClick = Box<dyn Fn(&mut Window, &mut App)>;
 pub type OnPair = std::rc::Rc<dyn Fn([usize; 2], &mut Window, &mut App)>;
 
+/// 動いている ASIO の入力の信号。
+pub struct InputSignal<'a> {
+    /// 動いている接続の入力のペア。
+    pub current: [usize; 2],
+    /// いま音が来ているチャンネル。`None` はまだ一度も届いていない。
+    pub heard: Option<&'a [usize]>,
+}
+
 /// 動いている ASIO の入力のどこに音が来ているか。選んでいるペアが無音で、ほかに音が来ていれば切り替えを勧める。
-fn render_signal(
-    lang: Lang,
-    signal: &Signal,
-    current: [usize; 2],
-    channels: u16,
-    on_use_pair: OnPair,
-) -> impl IntoElement {
-    let heard = signal.heard(std::time::Instant::now());
-    let pairs = channel_signal::heard_pairs(&heard, channels);
-    let status = if signal.is_empty() {
+fn render_signal(lang: Lang, signal: InputSignal, on_use_pair: OnPair) -> impl IntoElement {
+    let InputSignal { current, heard } = signal;
+    let pairs = channel_signal::heard_pairs(heard.unwrap_or_default());
+    let status = if heard.is_none() {
         core(lang, keys::CHANNEL_WAITING).to_owned()
     } else if pairs.is_empty() {
         core(lang, keys::CHANNEL_SILENT).to_owned()
@@ -750,7 +744,7 @@ fn render_signal(
             .join(", ");
         core_with(lang, keys::CHANNEL_HEARD, &[("pairs", &names)])
     };
-    let suggestion = channel_signal::suggestion(&heard, channels, Some(current));
+    let suggestion = heard.and_then(|heard| channel_signal::suggestion(heard, current));
     div()
         .flex()
         .flex_col()

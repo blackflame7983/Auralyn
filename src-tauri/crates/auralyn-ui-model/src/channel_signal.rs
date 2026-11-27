@@ -55,13 +55,13 @@ pub fn pair_heard(heard: &[usize], pair: [usize; 2]) -> bool {
     pair.iter().any(|channel| heard.contains(channel))
 }
 
-/// 音が来ている組。チャンネル数が分からない（0）ときも、音が来ているチャンネルまでは組を作る。
-pub fn heard_pairs(heard: &[usize], channels: u16) -> Vec<[usize; 2]> {
-    let known = heard
+/// 音が来ている組（1-2・3-4… の並び）。エンジンが知らせるのは先頭の 32 チャンネルまで。
+pub fn heard_pairs(heard: &[usize]) -> Vec<[usize; 2]> {
+    let count = heard
         .iter()
         .max()
-        .map_or(0, |&last| u16::try_from(last + 1).unwrap_or(u16::MAX));
-    crate::mix::pairs(channels.max(known))
+        .map_or(0, |&last| u16::try_from(last + 2).unwrap_or(u16::MAX));
+    crate::mix::pairs(count)
         .into_iter()
         .filter(|&pair| pair_heard(heard, pair))
         .collect()
@@ -69,15 +69,11 @@ pub fn heard_pairs(heard: &[usize], channels: u16) -> Vec<[usize; 2]> {
 
 /// 選んでいる組が無音で、ほかの組に音が来ていれば、その最初の組を勧める。
 /// 選んでいる組に音が来ているなら勧めない（話の切れ目にほかの音へ替えさせない）。
-pub fn suggestion(
-    heard: &[usize],
-    channels: u16,
-    current: Option<[usize; 2]>,
-) -> Option<[usize; 2]> {
-    if current.is_some_and(|pair| pair_heard(heard, pair)) {
+pub fn suggestion(heard: &[usize], current: [usize; 2]) -> Option<[usize; 2]> {
+    if pair_heard(heard, current) {
         return None;
     }
-    heard_pairs(heard, channels).into_iter().next()
+    heard_pairs(heard).into_iter().next()
 }
 
 #[cfg(test)]
@@ -109,17 +105,17 @@ mod tests {
     #[test]
     fn suggests_the_pair_with_sound_when_the_chosen_one_is_silent() {
         // Voicemeeter Insert：曲は 7-8 に来て、選んでいるのは 1-2。
-        assert_eq!(suggestion(&[6, 7], 16, Some([0, 1])), Some([6, 7]));
-        assert_eq!(suggestion(&[6, 7], 16, None), Some([6, 7]));
+        assert_eq!(suggestion(&[6, 7], [0, 1]), Some([6, 7]));
         // 選んでいる組に音が来ていれば、ほかに音があっても勧めない。
-        assert_eq!(suggestion(&[0, 6], 16, Some([0, 1])), None);
-        assert_eq!(suggestion(&[], 16, Some([0, 1])), None);
+        assert_eq!(suggestion(&[0, 6], [0, 1]), None);
+        assert_eq!(suggestion(&[], [0, 1]), None);
     }
 
     #[test]
-    fn pairs_reach_the_heard_channel_even_when_the_count_is_unknown() {
-        assert_eq!(heard_pairs(&[6, 7], 0), [[6, 7]]);
-        assert_eq!(heard_pairs(&[2], 3), [[2, 2]]);
-        assert_eq!(heard_pairs(&[1, 4], 8), [[0, 1], [4, 5]]);
+    fn heard_channels_become_stereo_pairs() {
+        assert_eq!(heard_pairs(&[6, 7]), [[6, 7]]);
+        assert_eq!(heard_pairs(&[6]), [[6, 7]]);
+        assert_eq!(heard_pairs(&[1, 4]), [[0, 1], [4, 5]]);
+        assert!(heard_pairs(&[]).is_empty());
     }
 }
