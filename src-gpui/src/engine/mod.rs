@@ -632,12 +632,8 @@ impl Control {
                 return;
             }
         };
-        let app = match &config.input_source {
-            Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
-            _ => None,
-        };
-        let input = app.clone().or(config.input.clone());
-        let output = config.output.clone();
+        let app = app_name(&config);
+        let (input, output) = names(&config);
         let result = input::start(&mut self.host, config, None);
         // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する（Tauri 版と同じ）。
         // 起動し直したあとは候補が無いので、選び直してもらう（既定のマイクにも替えない）。
@@ -690,11 +686,17 @@ impl Control {
         command: &'static str,
         names: (Option<String>, Option<String>),
     ) {
-        self.stop();
+        // 止められなければ元の接続のまま動いているので、始め直さずにそのことだけ知らせる。
+        if let Err(e) = self.halt() {
+            self.fail(command, anyhow::anyhow!(e));
+            let (input, output) = self::names(&original);
+            return self.started(Ok(()), input, output);
+        }
+        let _ = self.notices.send(Notice::Stopped);
         let (result, (input, output)) = match input::start(&mut self.host, config, candidate_id) {
             Ok(()) => (Ok(()), names),
             Err(e) => {
-                let names = (original.input.clone(), original.output.clone());
+                let names = self::names(&original);
                 match input::start(&mut self.host, original, None) {
                     Ok(()) => {
                         self.fail(command, e);
@@ -709,48 +711,7 @@ impl Control {
         };
         self.started(result, input, output);
     }
-}
 
-/// 選んだ機器から、開始する設定・アプリの候補・入力と出力の名前を作る。
-fn prepare(start: StartWith) -> (ActiveAudioConfig, Option<String>, String, String) {
-    let (input, input_name, source, candidate_id) = match start.input {
-        Input::Device(device) => {
-            let purpose = start.purpose;
-            let name = device.name.clone();
-            let source = input::Config::Device {
-                purpose: host_purpose(purpose),
-            };
-            (Some(device), name, source, None)
-        }
-        Input::App {
-            candidate_id,
-            source,
-        } => {
-            let name = source.name.clone();
-            let source = input::Config::ProcessLoopback(input::ProcessConfig {
-                app_key: source.key,
-                app_name: source.name,
-                raw_endpoint_id: source.route,
-                purpose: host_purpose(start.purpose),
-            });
-            (None, name, source, Some(candidate_id))
-        }
-    };
-    let config = ActiveAudioConfig {
-        input_source: Some(source),
-        host: start.output.host.clone(),
-        input: input.as_ref().map(|d| d.name.clone()),
-        output: Some(start.output.name.clone()),
-        input_id: input.and_then(|d| d.id),
-        output_id: start.output.id.clone(),
-        buffer_size: start.buffer_size,
-        sample_rate: start.sample_rate,
-        routing: Some(channel_routing(start.routing)),
-    };
-    (config, candidate_id, input_name, start.output.name)
-}
-
-impl Control {
     /// 開始の結果を画面へ送り、始まったら子に並びと音量を送り直す。
     fn started(
         &mut self,
@@ -1082,17 +1043,23 @@ impl Control {
 
     /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。
     fn stop(&mut self) {
-        // VST の窓を開いたまま止めても、それまでの調整を残す。
-        self.save(true);
-        let notice = match self.host.stop() {
+        let notice = match self.halt() {
             Ok(()) => Notice::Stopped,
-            Err(e) => Notice::StopFailed(e.to_string()),
+            Err(e) => Notice::StopFailed(e),
         };
         let _ = self.notices.send(notice);
+    }
+
+    /// 止める。知らせは呼ぶ側が送る。
+    fn halt(&mut self) -> Result<(), String> {
+        // VST の窓を開いたまま止めても、それまでの調整を残す。
+        self.save(true);
+        let result = self.host.stop().map_err(|e| e.to_string());
         // 止めるときに子を終わらせていれば、走査は失効している。同じ子なら同じ走査を待ち続ける。
         if self.scan.take().is_some() {
             self.list_devices();
         }
+        result
     }
 
     fn fail(&self, command: &'static str, error: anyhow::Error) {
@@ -1101,6 +1068,61 @@ impl Control {
             message: error.to_string(),
         });
     }
+}
+
+/// 選んだ機器から、開始する設定・アプリの候補・入力と出力の名前を作る。
+fn prepare(start: StartWith) -> (ActiveAudioConfig, Option<String>, String, String) {
+    let (input, input_name, source, candidate_id) = match start.input {
+        Input::Device(device) => {
+            let purpose = start.purpose;
+            let name = device.name.clone();
+            let source = input::Config::Device {
+                purpose: host_purpose(purpose),
+            };
+            (Some(device), name, source, None)
+        }
+        Input::App {
+            candidate_id,
+            source,
+        } => {
+            let name = source.name.clone();
+            let source = input::Config::ProcessLoopback(input::ProcessConfig {
+                app_key: source.key,
+                app_name: source.name,
+                raw_endpoint_id: source.route,
+                purpose: host_purpose(start.purpose),
+            });
+            (None, name, source, Some(candidate_id))
+        }
+    };
+    let config = ActiveAudioConfig {
+        input_source: Some(source),
+        host: start.output.host.clone(),
+        input: input.as_ref().map(|d| d.name.clone()),
+        output: Some(start.output.name.clone()),
+        input_id: input.and_then(|d| d.id),
+        output_id: start.output.id.clone(),
+        buffer_size: start.buffer_size,
+        sample_rate: start.sample_rate,
+        routing: Some(channel_routing(start.routing)),
+    };
+    (config, candidate_id, input_name, start.output.name)
+}
+
+/// アプリの音声で動く設定なら、そのアプリの名前。
+fn app_name(config: &ActiveAudioConfig) -> Option<String> {
+    match &config.input_source {
+        Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
+        _ => None,
+    }
+}
+
+/// 帯に出す入力（アプリの音声ならアプリの名前）と出力の名前。
+fn names(config: &ActiveAudioConfig) -> (Option<String>, Option<String>) {
+    (
+        app_name(config).or(config.input.clone()),
+        config.output.clone(),
+    )
 }
 
 /// 選んだ機器での開始。周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
@@ -1221,6 +1243,36 @@ mod tests {
             name: "A".into(),
             restore: false
         }));
+    }
+
+    #[test]
+    fn names_use_the_app_name_for_app_audio() {
+        let mut config = ActiveAudioConfig {
+            input_source: None,
+            host: "WASAPI".into(),
+            input: Some("Mic".into()),
+            output: Some("Speakers".into()),
+            input_id: None,
+            output_id: None,
+            buffer_size: None,
+            sample_rate: None,
+            routing: None,
+        };
+        assert_eq!(
+            names(&config),
+            (Some("Mic".into()), Some("Speakers".into()))
+        );
+        config.input = None;
+        config.input_source = Some(input::Config::ProcessLoopback(input::ProcessConfig {
+            app_key: "key".into(),
+            app_name: "Player".into(),
+            raw_endpoint_id: "route".into(),
+            purpose: input::Purpose::Music,
+        }));
+        assert_eq!(
+            names(&config),
+            (Some("Player".into()), Some("Speakers".into()))
+        );
     }
 
     #[test]

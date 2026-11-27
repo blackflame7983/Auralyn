@@ -126,9 +126,12 @@ impl SetupsPanel {
                                     }),
                             ),
                     )
-                    .when_some(self.done.as_ref(), |this, done| {
-                        this.child(note(done_text(done, lang)))
-                    }),
+                    .when_some(
+                        self.done
+                            .as_ref()
+                            .filter(|done| matches!(done, ProfileFile::Applied { .. })),
+                        |this, done| this.child(note(done_text(done, lang))),
+                    ),
             )
             .icon(IconName::ListMusic)
             .hint(lang, core(lang, keys::MUSIC_SOUND_HINT)),
