@@ -11,7 +11,7 @@ use gpui_kit::*;
 
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, paragraphs, OnCommand};
+use crate::part::{card, note, paragraphs, Fold, OnCommand};
 use crate::sound::{range, slider_row, unknown};
 
 pub struct LimiterPanel {
@@ -23,6 +23,8 @@ pub struct LimiterPanel {
     peak: Option<Peak>,
     /// 最後に読めた ON/OFF。止まっていて読めない間も、スイッチはこれを示す（次の開始で付け直される）。
     enabled: bool,
+    /// 普段は畳んで ON/OFF だけを出す。
+    fold: Fold,
 }
 
 impl LimiterPanel {
@@ -33,6 +35,7 @@ impl LimiterPanel {
             release: range(cx, peak::RELEASE_MS),
             peak: None,
             enabled: false,
+            fold: Fold::default(),
         }
     }
 
@@ -76,7 +79,9 @@ impl LimiterPanel {
         } else {
             keys::PEAK_TITLE
         };
-        let notes: Vec<&str> = peak::notes(self.peak)
+        let notes = peak::notes(self.peak);
+        let attention = locked || notes.contains(&peak::Note::NotApplied);
+        let notes: Vec<&str> = notes
             .into_iter()
             .map(|note| {
                 core(
@@ -157,6 +162,7 @@ impl LimiterPanel {
                     this.child(note(core(lang, keys::TRUE_PEAK_LIMITS)))
                 }),
         )
+        .fold(&self.fold, attention)
         .icon(if true_peak {
             IconName::ShieldCheck
         } else {

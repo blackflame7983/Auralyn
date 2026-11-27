@@ -74,6 +74,8 @@ pub struct MainView {
     desktop: Desktop,
     lang: Lang,
     page: Page,
+    /// 画面を開いた回数。変わるたびに中身を下からふわっと出す。
+    page_epoch: u64,
     /// 設定の画面で開いているタブ。
     settings_section: Section,
     phase: Phase,
@@ -355,6 +357,7 @@ impl MainView {
             desktop,
             lang,
             page: Page::Home,
+            page_epoch: 0,
             settings_section: Section::default(),
             phase: Phase::LAUNCH,
             muted: false,
@@ -736,6 +739,9 @@ impl MainView {
         if self.page == Page::Sound && page != Page::Sound {
             self.leave_sound();
         }
+        if self.page != page {
+            self.page_epoch += 1;
+        }
         self.page = page;
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
         if page == Page::Connect {
@@ -768,6 +774,9 @@ impl MainView {
 
     /// 設定のタブを移るとき。システムのタブは、開いた時点の統計と VST のリセットの結果を読み直す。
     fn open_section(&mut self, section: Section) {
+        if self.settings_section != section {
+            self.page_epoch += 1;
+        }
         self.settings_section = section;
         if section == Section::System {
             self.cleared = None;
@@ -1008,11 +1017,11 @@ impl Render for MainView {
                             .aria_label(self.page.label(lang))
                             .flex_1()
                             .min_h_0()
-                            .flex()
-                            .flex_col()
-                            .gap_3()
                             .p_4()
-                            .map(|this| match self.page {
+                            .child(crate::part::reveal(
+                                ElementId::NamedInteger("page".into(), self.page_epoch),
+                                div().flex().flex_col().gap_3().map(|this| {
+                                    match self.page {
                                 Page::Home => this
                                     .when_some(self.recovery.as_ref(), |this, exit| {
                                         this.child(div().max_w(px(560.)).child(recovery::render(
@@ -1330,7 +1339,9 @@ impl Render for MainView {
                                     ),
                                     self.live.render(lang, send),
                                 )),
-                            })
+                            }
+                                }),
+                            ))
                             .overflow_y_scrollbar(),
                     ),
             )

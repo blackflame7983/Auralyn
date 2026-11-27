@@ -3,6 +3,7 @@
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -35,17 +36,41 @@ pub struct Card {
 }
 
 /// 区画を畳んでいるか。区画を持つ画面が覚え、見出しの ∨/∧ で切り替える。
+/// `opened` は開いた回数で、開くたびに中身をふわっと出すのに使う。
 #[derive(Clone, Default)]
-pub struct Fold(Rc<Cell<bool>>);
+pub struct Fold {
+    open: Rc<Cell<bool>>,
+    opened: Rc<Cell<u64>>,
+}
 
 impl Fold {
     pub fn is_open(&self) -> bool {
-        self.0.get()
+        self.open.get()
     }
 
     pub fn set(&self, open: bool) {
-        self.0.set(open);
+        if open && !self.open.get() {
+            self.opened.set(self.opened.get() + 1);
+        }
+        self.open.set(open);
     }
+}
+
+/// 開いた区画の中身が出てくる時間と、下から上がる量。画面を開いたときも同じ動きにする。
+pub const REVEAL: Duration = Duration::from_millis(220);
+pub const REVEAL_RISE: f32 = 8.;
+
+/// 中身を下からふわっと出す。`id` が変わるたびに動き直す。
+pub fn reveal<E: IntoElement + Styled + 'static>(id: ElementId, element: E) -> impl IntoElement {
+    element.with_animation(
+        id,
+        Animation::new(REVEAL).with_easing(ease_out_quint()),
+        |this, delta| {
+            this.opacity(delta)
+                .relative()
+                .top(px(REVEAL_RISE * (1. - delta)))
+        },
+    )
 }
 
 impl Card {
@@ -144,15 +169,23 @@ impl RenderOnce for Card {
                                         .accessibility_label(title)
                                         .aria_expanded(open)
                                         .on_click(move |_, window, _| {
-                                            fold.0.set(!fold.0.get());
+                                            fold.set(!fold.is_open());
                                             window.refresh();
                                         }),
                                 )
                             }),
                     ),
             )
-            .when(self.fold.as_ref().is_none_or(Fold::is_open), |this| {
-                this.child(self.body)
+            .map(|this| match &self.fold {
+                None => this.child(self.body),
+                Some(fold) if fold.is_open() => this.child(reveal(
+                    ElementId::NamedInteger(
+                        SharedString::from(format!("{title}-body")),
+                        fold.opened.get(),
+                    ),
+                    div().child(self.body),
+                )),
+                Some(_) => this,
             })
     }
 }
