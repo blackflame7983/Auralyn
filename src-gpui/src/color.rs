@@ -42,7 +42,8 @@ fn paint_parts(kit: &mut ThemeColor) {
     kit.foreground = foreground();
     kit.border = border();
     kit.window_border = border();
-    kit.input = token("input");
+    // 部品は input を枠だけでなく欄の地（30%）にも使うので、枠の色を渡す（Tauri 版の欄の地は background）。
+    kit.input = border();
     kit.ring = token("ring");
     kit.caret = primary;
     kit.selection = primary.opacity(0.35);
@@ -57,15 +58,17 @@ fn paint_parts(kit: &mut ThemeColor) {
     kit.secondary = token("secondary");
     kit.secondary_foreground = token("secondary-foreground");
     kit.secondary_hover = token("accent");
+    kit.button_active = token("accent");
     kit.secondary_active = tint;
     kit.list_active = tint;
-    kit.list_active_border = primary;
     kit.link = primary;
     kit.link_hover = primary.opacity(0.85);
     kit.link_active = primary.opacity(0.7);
     kit.slider_bar = primary;
     kit.progress_bar = primary;
     kit.switch = token("input").opacity(0.55);
+    // スイッチは「つまみ = 地の色」を前提に、使えないときの見た目を作る。
+    kit.switch_thumb = background();
     for (fill, text, hover, active, color, on) in [
         (
             &mut kit.primary,
@@ -233,5 +236,7 @@ mod tests {
             assert!(color().a > 0.0);
         }
         assert!(super::radius("card") > 0.0);
+        super::paint_parts(&mut gpui_kit::component::ThemeColor::default());
+        assert!(super::radius("control") > 0.0 && super::radius("lg") > 0.0);
     }
 }
