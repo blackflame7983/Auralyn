@@ -734,11 +734,9 @@ impl Control {
     /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。始められなければ、元の割り当てで始め直す。
     fn use_input_pair(&mut self, pair: [usize; 2]) {
         let state = self.host.get_state();
+        // 画面は開始中で結果を待っているので、断るときも開始の失敗として返す。
         let Some(original) = state.config.filter(|_| state.is_running) else {
-            return self.fail(
-                "set_input_channels",
-                anyhow::anyhow!("音声が動いていません"),
-            );
+            return self.started(Err(anyhow::anyhow!("音声が動いていません")), None, None);
         };
         let mut config = original.clone();
         let mut routing = config.routing.unwrap_or(ChannelRouting {
