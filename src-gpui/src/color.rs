@@ -67,8 +67,8 @@ fn paint_parts(kit: &mut ThemeColor) {
     kit.slider_bar = primary;
     kit.progress_bar = primary;
     kit.switch = token("input").opacity(0.55);
-    // スイッチは「つまみ = 地の色」を前提に、使えないときの見た目を作る。
-    kit.switch_thumb = background();
+    // 暗い地では、地と同じ色のつまみが OFF の溝に沈むので、文字の色にする。
+    kit.switch_thumb = foreground();
     for (fill, text, hover, active, color, on) in [
         (
             &mut kit.primary,
