@@ -908,20 +908,39 @@ impl MainView {
         self.engine.send(command);
     }
 
-    /// 接続の画面で選んだ入力・出力先で開始する。
-    fn start_chosen(&mut self, cx: &App) {
-        let Some((input, purpose, output)) = self.connect.start_choice(cx) else {
-            return;
-        };
+    /// 接続の画面で選んだ機器・周波数・バッファ。
+    fn chosen_start(&self, cx: &App) -> Option<StartWith> {
+        let (input, purpose, output) = self.connect.start_choice(cx)?;
         let (sample_rate, buffer_size) = self.connect.values(cx);
-        self.start_with(StartWith {
+        Some(StartWith {
             input,
             purpose,
             output,
             sample_rate,
             buffer_size,
             routing: self.connect.routing(cx),
-        });
+        })
+    }
+
+    /// 接続の画面で選んだ入力・出力先で開始する。
+    fn start_chosen(&mut self, cx: &App) {
+        if let Some(start) = self.chosen_start(cx) {
+            self.start_with(start);
+        }
+    }
+
+    /// 動いている接続を、接続の画面で選び直した機器で始め直す。押せるのは動いているときだけ。
+    fn restart_chosen(&mut self, cx: &App) {
+        if self.phase != Phase::Running {
+            return;
+        }
+        let Some(start) = self.chosen_start(cx) else {
+            return;
+        };
+        self.message = None;
+        self.restarting = true;
+        self.advance(SessionEvent::RestartRequested);
+        self.engine.send(Command::Restart(start));
     }
 
     /// 動いている ASIO の入力のペアを替えて始め直す。押せるのは動いているときだけ。
@@ -1519,7 +1538,11 @@ impl Render for MainView {
                                                 let entity = entity.clone();
                                                 move |_, cx| {
                                                     entity.update(cx, |this, cx| {
-                                                        this.start_chosen(cx);
+                                                        if this.phase == Phase::Running {
+                                                            this.restart_chosen(cx);
+                                                        } else {
+                                                            this.start_chosen(cx);
+                                                        }
                                                         cx.notify();
                                                     })
                                                 }

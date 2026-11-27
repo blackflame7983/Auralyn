@@ -68,6 +68,8 @@ pub enum Command {
     ChannelScan(bool),
     /// 動いている接続のまま、入力のペアだけを替えて始め直す（替えた割り当ては保存される）。
     UseInputPair([usize; 2]),
+    /// 動いている接続を、選び直した機器で始め直す。始まらなければ元の接続へ戻す（`UseInputPair` と同じ）。
+    Restart(StartWith),
     Stop,
     SetMute(bool),
     SetBypass(bool),
@@ -638,44 +640,106 @@ impl Control {
 
     /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する（Tauri 版の開始と同じく入力の元を明示する）。
     fn start_with(&mut self, start: StartWith) {
-        let (input, input_name, source, candidate_id) = match start.input {
-            Input::Device(device) => {
-                let purpose = start.purpose;
-                let name = device.name.clone();
-                let source = input::Config::Device {
-                    purpose: host_purpose(purpose),
-                };
-                (Some(device), name, source, None)
-            }
-            Input::App {
-                candidate_id,
-                source,
-            } => {
-                let name = source.name.clone();
-                let source = input::Config::ProcessLoopback(input::ProcessConfig {
-                    app_key: source.key,
-                    app_name: source.name,
-                    raw_endpoint_id: source.route,
-                    purpose: host_purpose(start.purpose),
-                });
-                (None, name, source, Some(candidate_id))
-            }
-        };
-        let config = ActiveAudioConfig {
-            input_source: Some(source),
-            host: start.output.host.clone(),
-            input: input.as_ref().map(|d| d.name.clone()),
-            output: Some(start.output.name.clone()),
-            input_id: input.and_then(|d| d.id),
-            output_id: start.output.id.clone(),
-            buffer_size: start.buffer_size,
-            sample_rate: start.sample_rate,
-            routing: Some(channel_routing(start.routing)),
-        };
+        let (config, candidate_id, input, output) = prepare(start);
         let result = input::start(&mut self.host, config, candidate_id);
-        self.started(result, Some(input_name), Some(start.output.name));
+        self.started(result, Some(input), Some(output));
     }
 
+    /// 動いている接続を、選び直した機器・周波数・バッファで始め直す。始まらなければ元の接続へ戻す。
+    fn restart_with(&mut self, start: StartWith) {
+        let Some(original) = self.running_config() else {
+            return self.not_running();
+        };
+        let (config, candidate_id, input, output) = prepare(start);
+        self.switch(
+            original,
+            (config, candidate_id),
+            "restart",
+            (Some(input), Some(output)),
+        );
+    }
+
+    /// 動いている接続の設定。止まっていれば `None`。
+    fn running_config(&self) -> Option<ActiveAudioConfig> {
+        let state = self.host.get_state();
+        state.config.filter(|_| state.is_running)
+    }
+
+    /// 画面は開始中で結果を待っているので、断るときも開始の失敗として返す。
+    fn not_running(&mut self) {
+        self.started(Err(anyhow::anyhow!("音声が動いていません")), None, None)
+    }
+
+    /// 止めて `config` で始め直す。始まらなければ `original` へ戻し、失敗は `command` として知らせる。
+    /// `names` は `config` の入力と出力の名前（戻したときは `original` の名前を知らせる）。
+    fn switch(
+        &mut self,
+        original: ActiveAudioConfig,
+        (config, candidate_id): (ActiveAudioConfig, Option<String>),
+        command: &'static str,
+        names: (Option<String>, Option<String>),
+    ) {
+        self.stop();
+        let (result, (input, output)) = match input::start(&mut self.host, config, candidate_id) {
+            Ok(()) => (Ok(()), names),
+            Err(e) => {
+                let names = (original.input.clone(), original.output.clone());
+                match input::start(&mut self.host, original, None) {
+                    Ok(()) => {
+                        self.fail(command, e);
+                        (Ok(()), names)
+                    }
+                    Err(back) => {
+                        log::warn!("元の接続でも始め直せません: {back}");
+                        (Err(e), names)
+                    }
+                }
+            }
+        };
+        self.started(result, input, output);
+    }
+}
+
+/// 選んだ機器から、開始する設定・アプリの候補・入力と出力の名前を作る。
+fn prepare(start: StartWith) -> (ActiveAudioConfig, Option<String>, String, String) {
+    let (input, input_name, source, candidate_id) = match start.input {
+        Input::Device(device) => {
+            let purpose = start.purpose;
+            let name = device.name.clone();
+            let source = input::Config::Device {
+                purpose: host_purpose(purpose),
+            };
+            (Some(device), name, source, None)
+        }
+        Input::App {
+            candidate_id,
+            source,
+        } => {
+            let name = source.name.clone();
+            let source = input::Config::ProcessLoopback(input::ProcessConfig {
+                app_key: source.key,
+                app_name: source.name,
+                raw_endpoint_id: source.route,
+                purpose: host_purpose(start.purpose),
+            });
+            (None, name, source, Some(candidate_id))
+        }
+    };
+    let config = ActiveAudioConfig {
+        input_source: Some(source),
+        host: start.output.host.clone(),
+        input: input.as_ref().map(|d| d.name.clone()),
+        output: Some(start.output.name.clone()),
+        input_id: input.and_then(|d| d.id),
+        output_id: start.output.id.clone(),
+        buffer_size: start.buffer_size,
+        sample_rate: start.sample_rate,
+        routing: Some(channel_routing(start.routing)),
+    };
+    (config, candidate_id, input_name, start.output.name)
+}
+
+impl Control {
     /// 開始の結果を画面へ送り、始まったら子に並びと音量を送り直す。
     fn started(
         &mut self,
@@ -733,10 +797,8 @@ impl Control {
 
     /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。始められなければ、元の割り当てで始め直す。
     fn use_input_pair(&mut self, pair: [usize; 2]) {
-        let state = self.host.get_state();
-        // 画面は開始中で結果を待っているので、断るときも開始の失敗として返す。
-        let Some(original) = state.config.filter(|_| state.is_running) else {
-            return self.started(Err(anyhow::anyhow!("音声が動いていません")), None, None);
+        let Some(original) = self.running_config() else {
+            return self.not_running();
         };
         let mut config = original.clone();
         let mut routing = config.routing.unwrap_or(ChannelRouting {
@@ -745,22 +807,8 @@ impl Control {
         });
         routing.input_channels = Some(pair);
         config.routing = Some(routing);
-        let (input, output) = (config.input.clone(), config.output.clone());
-        self.stop();
-        let result = match input::start(&mut self.host, config, None) {
-            Ok(()) => Ok(()),
-            Err(e) => match input::start(&mut self.host, original, None) {
-                Ok(()) => {
-                    self.fail("set_input_channels", e);
-                    Ok(())
-                }
-                Err(back) => {
-                    log::warn!("元の割り当てでも始め直せません: {back}");
-                    Err(e)
-                }
-            },
-        };
-        self.started(result, input, output);
+        let names = (config.input.clone(), config.output.clone());
+        self.switch(original, (config, None), "set_input_channels", names);
     }
 
     fn execute(&mut self, command: &Command) {
@@ -799,6 +847,7 @@ impl Control {
                 return;
             }
             Command::UseInputPair(pair) => return self.use_input_pair(pair),
+            Command::Restart(ref start) => return self.restart_with(start.clone()),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
             Command::SetBypass(active) => {

@@ -3653,7 +3653,6 @@
   "troubleshoot.receiverOptional": "空でもかまいません。",
   "troubleshoot.clearReceiver": "名前を消す",
   "session.retryDetails": "保存済みの並びを読み直す",
-  "gpuiShell.stopToChange": "機器を変えるときは、先に音を止めてください。",
   "gpuiShell.removeVst": "このVSTを並びから外します。VSTの中の設定も消え、元に戻せません。",
   "gpuiShell.notLoaded": "読み込めません",
   "gpuiShell.reverb": "残響",
@@ -3712,5 +3711,8 @@
   "gpuiShell.resetNamed": "{name}を 100% に戻す",
   "gpuiShell.stopShort": "停止",
   "rail.help": "ヘルプ",
-  "gpuiShell.quickAdjust": "{name}を詳しく調整"
+  "gpuiShell.quickAdjust": "{name}を詳しく調整",
+  "gpuiShell.applyRestart": "変更を適用",
+  "gpuiShell.restartNote": "音を止めて、選んだ機器で始め直します。音が一瞬途切れます。",
+  "gpuiShell.usageLoad": "この機器を選ぶ"
 }
