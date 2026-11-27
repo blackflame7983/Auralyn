@@ -14,7 +14,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::{note, paragraphs, with_hint, OnCommand};
+use crate::part::{note, with_hint, OnCommand};
 
 #[derive(Default)]
 pub struct MeasurePanel {
@@ -83,13 +83,14 @@ impl MeasurePanel {
                 with_hint(
                     "measure-hint",
                     lang,
-                    paragraphs(lang, &[keys::MEASURE_LIMITS, keys::MEASURE_SCOPE]),
+                    core(lang, keys::MEASURE_LIMITS),
                     div()
                         .font_weight(FontWeight::MEDIUM)
                         .child(core(lang, keys::MEASURE_TITLE)),
                 )
                 .text_sm(),
             )
+            .child(note(core(lang, keys::MEASURE_SCOPE)))
             .child(
                 div()
                     .flex()

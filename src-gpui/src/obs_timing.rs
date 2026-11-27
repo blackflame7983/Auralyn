@@ -19,7 +19,7 @@ use vst_host_lib::obs_setup::{TimingMetadata, TimingTargets};
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, Timing};
-use crate::part::{choices, note, paragraphs, with_hint};
+use crate::part::{choices, note};
 
 /// ボタンで選ぶもの。入力欄の文字は `InputState` が持つ。
 #[derive(Default)]
@@ -307,16 +307,13 @@ impl TimingPanel {
             .flex()
             .flex_col()
             .gap_2()
+            .child(note(core(lang, keys::OBS_TIMING_LEAD)))
+            .child(note(core(lang, keys::OBS_TIMING_SCOPE)))
             .child(
-                with_hint(
-                    "obs-timing-hint",
-                    lang,
-                    paragraphs(lang, &[keys::OBS_TIMING_LEAD, keys::OBS_TIMING_SCOPE]),
-                    div()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(core(lang, keys::OBS_TIMING_STEP)),
-                )
-                .text_sm(),
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(core(lang, keys::OBS_TIMING_STEP)),
             )
             .child(div().text_sm().child(core(lang, keys::OBS_TIMING_COMPARE)))
             .child(div().child(comparison))
