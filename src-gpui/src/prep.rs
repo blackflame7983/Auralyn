@@ -21,6 +21,7 @@ use gpui_kit::*;
 use crate::engine::{Command, Observation};
 use crate::i18n::{core, keys, Lang};
 use crate::part::{choices, note};
+use crate::sound::Part;
 
 /// Tauri 版と同じ、見ている間の読み直しの間隔。
 const POLL: Duration = Duration::from_secs(2);
@@ -32,7 +33,8 @@ pub type OnGoto = Rc<dyn Fn(Goto, &mut Window, &mut App)>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Goto {
     Connect,
-    Sound,
+    /// 音づくりの中の行き先。
+    Sound(Part),
     /// 設定の OBS連携 のタブ。
     Obs,
 }
@@ -368,11 +370,21 @@ impl PrepPanel {
             )))
             .when_some(stage, |this, stage| {
                 let (label, page, ack) = match stage {
-                    Stage::Sound => (keys::SHELL_SOUND, Goto::Sound, keys::PREP_ACK_SOUND),
-                    Stage::Listen => (keys::HOME_VOICE_CHECK, Goto::Sound, keys::PREP_ACK_LISTEN),
-                    Stage::Receiver if usage == Some(Usage::Listening) => {
-                        (keys::PREP_LOCAL_RECEIVER, Goto::Sound, keys::PREP_ACK_LOCAL)
-                    }
+                    Stage::Sound => (
+                        keys::SHELL_SOUND,
+                        Goto::Sound(Part::Noise),
+                        keys::PREP_ACK_SOUND,
+                    ),
+                    Stage::Listen => (
+                        keys::HOME_VOICE_CHECK,
+                        Goto::Sound(Part::Check),
+                        keys::PREP_ACK_LISTEN,
+                    ),
+                    Stage::Receiver if usage == Some(Usage::Listening) => (
+                        keys::PREP_LOCAL_RECEIVER,
+                        Goto::Sound(Part::Check),
+                        keys::PREP_ACK_LOCAL,
+                    ),
                     Stage::Receiver => (
                         keys::PREP_CHECK_RECEIVER,
                         Goto::Obs,

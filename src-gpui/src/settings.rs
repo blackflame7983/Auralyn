@@ -10,7 +10,6 @@ use auralyn_ui_model::docs::{self, Guide, Term, Trouble};
 use auralyn_ui_model::shortcuts::{self, Action};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{Selectable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -19,7 +18,7 @@ use crate::color;
 use crate::desktop::Registered;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, reveal, with_hint, OnCommand};
+use crate::part::{card, note, with_hint, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
@@ -35,7 +34,7 @@ pub enum Section {
 }
 
 impl Section {
-    const ALL: [Section; 5] = [
+    pub const ALL: [Section; 5] = [
         Section::Appearance,
         Section::Obs,
         Section::Shortcuts,
@@ -43,7 +42,7 @@ impl Section {
         Section::Help,
     ];
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Section::Appearance => keys::APPEARANCE,
             Section::Obs => keys::SETTINGS_OBS,
@@ -54,38 +53,14 @@ impl Section {
     }
 }
 
-/// 区切りのタブと、選んだ区切りの中身と、版。
-pub fn render(
-    lang: Lang,
-    section: Section,
-    on_section: impl Fn(Section, &mut Window, &mut App) + 'static,
-    body: impl IntoElement,
-) -> impl IntoElement {
-    let selected = Section::ALL.iter().position(|s| *s == section).unwrap_or(0);
+/// 選んだ区切りの中身と、版。区切りは左のレールの子で選ぶ。
+pub fn render(body: impl IntoElement, lang: Lang) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_6()
         .max_w(px(560.))
-        .child(
-            TabBar::new("settings-sections")
-                .underline()
-                .selected_index(selected)
-                .children(
-                    Section::ALL
-                        .iter()
-                        .map(|s| Tab::new().label(core(lang, s.label()))),
-                )
-                .on_click(move |index, window, cx| {
-                    if let Some(section) = Section::ALL.get(*index) {
-                        on_section(*section, window, cx);
-                    }
-                }),
-        )
-        .child(reveal(
-            ElementId::NamedInteger("settings-body".into(), selected as u64),
-            div().child(body),
-        ))
+        .child(body)
         .child(note(format!(
             "{} {}",
             core(lang, keys::VERSION).trim(),

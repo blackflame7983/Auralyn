@@ -12,11 +12,15 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, keys, Lang};
+use crate::part::{REVEAL, REVEAL_RISE};
 
 /// レールの幅（`AppRail.tsx` の `w-[76px]`）。
 const RAIL_WIDTH: f32 = 76.;
 /// レールの1項目の高さ（`h-14`）。
 const RAIL_ITEM_HEIGHT: f32 = 56.;
+/// 子の列の幅と、1項目の高さ。
+const SUBNAV_WIDTH: f32 = 168.;
+const SUBNAV_ITEM_HEIGHT: f32 = 34.;
 /// 帯の高さ（`h-12`）。
 const BAND_HEIGHT: f32 = 48.;
 
@@ -139,6 +143,85 @@ pub fn rail(
                 )
                 .on_click(move |_, window, cx| on_select(page, window, cx))
         }))
+}
+
+/// 今の行き先の中の子（音づくり・設定）。名前は訳したもの。
+pub struct Children {
+    pub labels: Vec<&'static str>,
+    pub selected: usize,
+}
+
+/// レールの右に出す、今の行き先の中の子の列。行き先を開くたびに横からふわっと出す（`epoch`）。
+pub fn subnav(
+    title: &'static str,
+    children: Children,
+    epoch: u64,
+    on_child: impl Fn(usize, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let on_child = Rc::new(on_child);
+    div()
+        .id("subnav")
+        .role(Role::Navigation)
+        .aria_label(title)
+        .w(px(SUBNAV_WIDTH))
+        .flex_none()
+        .h_full()
+        .border_r_1()
+        .border_color(color::border())
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .px_2()
+                .py_3()
+                .child(
+                    div()
+                        .px_2()
+                        .pb_2()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(color::muted())
+                        .child(title),
+                )
+                .children(
+                    children
+                        .labels
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, label)| {
+                            let chosen = index == children.selected;
+                            let on_child = on_child.clone();
+                            Button::new(("subnav", index))
+                                .ghost()
+                                .selected(chosen)
+                                .w_full()
+                                .h(px(SUBNAV_ITEM_HEIGHT))
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .truncate()
+                                        .text_sm()
+                                        .when(chosen, |this| {
+                                            this.font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(color::foreground())
+                                        })
+                                        .when(!chosen, |this| this.text_color(color::muted()))
+                                        .child(label),
+                                )
+                                .on_click(move |_, window, cx| on_child(index, window, cx))
+                        }),
+                )
+                .with_animation(
+                    ElementId::NamedInteger("subnav".into(), epoch),
+                    Animation::new(REVEAL).with_easing(ease_out_quint()),
+                    |this, delta| {
+                        this.opacity(delta)
+                            .relative()
+                            .left(px(-REVEAL_RISE * (1. - delta)))
+                    },
+                ),
+        )
 }
 
 /// 中央の先頭の帯。状態の札、歌・雑談や操作ロックの札、入出力の機器名（音が流れているときだけ渡す）、開始・停止のボタン。

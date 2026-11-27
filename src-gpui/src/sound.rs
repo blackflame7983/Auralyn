@@ -33,6 +33,37 @@ const PRESETS: [(Preset, &str); 4] = [
     (Preset::Singing, keys::SINGING_PRESET),
 ];
 
+/// 音づくりの中の行き先（左のレールの子）。1つずつ1画面に出す。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Part {
+    #[default]
+    Noise,
+    Voice,
+    Peak,
+    Modes,
+    Check,
+}
+
+impl Part {
+    pub const ALL: [Part; 5] = [
+        Part::Noise,
+        Part::Voice,
+        Part::Peak,
+        Part::Modes,
+        Part::Check,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Part::Noise => keys::NOISE,
+            Part::Voice => keys::EFFECTS,
+            Part::Peak => keys::PEAK_TITLE,
+            Part::Modes => keys::MODES_TITLE,
+            Part::Check => keys::VOICE_TITLE,
+        }
+    }
+}
+
 pub struct SoundPage {
     /// エンジンから読んだ今の設定。まだ読めていなければ `None`（操作させない）。
     current: Option<Sound>,
@@ -129,7 +160,14 @@ impl SoundPage {
     }
 
     /// `locked` は操作ロック中（制限を変えさせない）。
-    pub fn render(&self, lang: Lang, locked: bool, cx: &App, send: OnCommand) -> impl IntoElement {
+    pub fn render(
+        &self,
+        lang: Lang,
+        part: Part,
+        locked: bool,
+        cx: &App,
+        send: OnCommand,
+    ) -> impl IntoElement {
         let Some(current) = self.current else {
             return div()
                 .text_sm()
@@ -151,196 +189,208 @@ impl SoundPage {
                     .text_color(color::muted())
                     .child(core(lang, keys::OFF_UNTIL_ON)),
             )
-            .child(section(
-                lang,
-                IconName::Wind,
-                None,
-                keys::NOISE,
-                &[keys::NOISE_LEAD, keys::NOISE_MIX],
-                Switch::new("noise-on")
-                    .checked(current.noise_on)
-                    .accessibility_label(core(lang, keys::NOISE))
-                    .disabled(current.noise_mode.is_none())
-                    .on_click({
-                        let set = set.clone();
-                        move |on, _, cx| set(Change::NoiseOn(*on), cx)
-                    }),
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(choices(
-                        "noise-mode",
-                        lang,
-                        &NOISE_MODES,
-                        current.noise_mode,
-                        {
+            .when(part == Part::Noise, |this| {
+                this.child(section(
+                    lang,
+                    IconName::Wind,
+                    None,
+                    keys::NOISE,
+                    &[keys::NOISE_LEAD, keys::NOISE_MIX],
+                    Switch::new("noise-on")
+                        .checked(current.noise_on)
+                        .accessibility_label(core(lang, keys::NOISE))
+                        .disabled(current.noise_mode.is_none())
+                        .on_click({
                             let set = set.clone();
-                            move |mode, _, cx| set(Change::NoiseMode(mode), cx)
-                        },
-                    ))
-                    .when(current.noise_mode.is_none(), |this| {
-                        this.child(note(core(lang, keys::NOISE_MODE_FIRST)))
-                    })
-                    .when_some(
-                        current.noise_mode.and_then(|mode| match mode {
-                            NoiseMode::Measured => Some(keys::NOISE_MEASURED),
-                            NoiseMode::Venue => Some(keys::NOISE_VENUE),
-                            NoiseMode::Low | NoiseMode::High => None,
+                            move |on, _, cx| set(Change::NoiseOn(*on), cx)
                         }),
-                        |this, mode| {
-                            this.child(note(core_with(
-                                lang,
-                                keys::NOISE_ADVANCED,
-                                &[("mode", &core(lang, mode))],
-                            )))
-                        },
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_2()
-                            .pt_3()
-                            .border_t_1()
-                            .border_color(color::border())
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(core(lang, keys::NOISE_DETAILS)),
-                            )
-                            .child(div().text_sm().child(core(lang, keys::NOISE_ADAPTIVE)))
-                            .child(choices(
-                                "noise-adaptive",
-                                lang,
-                                &ADAPTIVE_MODES,
-                                current.noise_mode,
-                                {
-                                    let set = set.clone();
-                                    move |mode, _, cx| set(Change::NoiseMode(mode), cx)
-                                },
-                            ))
-                            .when_some(
-                                current.noise_mode.and_then(|mode| match mode {
-                                    NoiseMode::Measured => Some(keys::NOISE_MEASURED_MEANS),
-                                    NoiseMode::Venue => Some(keys::NOISE_VENUE_MEANS),
-                                    NoiseMode::Low | NoiseMode::High => None,
-                                }),
-                                |this, means| {
-                                    this.child(note(core(lang, means)))
-                                        .child(self.measure.render(lang, send.clone()))
-                                },
-                            )
-                            .child(slider_row(
-                                lang,
-                                keys::STRENGTH,
-                                core(lang, keys::STRENGTH_NAMED),
-                                &self.strength,
-                                percent,
-                                current.noise_mode.is_none(),
-                                cx,
-                            ))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_between()
-                                    .gap_3()
-                                    .child(
-                                        with_hint(
-                                            "voice-guard-hint",
-                                            lang,
-                                            core(lang, keys::VOICE_GUARD_MEANS),
-                                            core(lang, keys::VOICE_GUARD),
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(choices(
+                            "noise-mode",
+                            lang,
+                            &NOISE_MODES,
+                            current.noise_mode,
+                            {
+                                let set = set.clone();
+                                move |mode, _, cx| set(Change::NoiseMode(mode), cx)
+                            },
+                        ))
+                        .when(current.noise_mode.is_none(), |this| {
+                            this.child(note(core(lang, keys::NOISE_MODE_FIRST)))
+                        })
+                        .when_some(
+                            current.noise_mode.and_then(|mode| match mode {
+                                NoiseMode::Measured => Some(keys::NOISE_MEASURED),
+                                NoiseMode::Venue => Some(keys::NOISE_VENUE),
+                                NoiseMode::Low | NoiseMode::High => None,
+                            }),
+                            |this, mode| {
+                                this.child(note(core_with(
+                                    lang,
+                                    keys::NOISE_ADVANCED,
+                                    &[("mode", &core(lang, mode))],
+                                )))
+                            },
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .pt_3()
+                                .border_t_1()
+                                .border_color(color::border())
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(core(lang, keys::NOISE_DETAILS)),
+                                )
+                                .child(div().text_sm().child(core(lang, keys::NOISE_ADAPTIVE)))
+                                .child(choices(
+                                    "noise-adaptive",
+                                    lang,
+                                    &ADAPTIVE_MODES,
+                                    current.noise_mode,
+                                    {
+                                        let set = set.clone();
+                                        move |mode, _, cx| set(Change::NoiseMode(mode), cx)
+                                    },
+                                ))
+                                .when_some(
+                                    current.noise_mode.and_then(|mode| match mode {
+                                        NoiseMode::Measured => Some(keys::NOISE_MEASURED_MEANS),
+                                        NoiseMode::Venue => Some(keys::NOISE_VENUE_MEANS),
+                                        NoiseMode::Low | NoiseMode::High => None,
+                                    }),
+                                    |this, means| {
+                                        this.child(note(core(lang, means)))
+                                            .child(self.measure.render(lang, send.clone()))
+                                    },
+                                )
+                                .child(slider_row(
+                                    lang,
+                                    keys::STRENGTH,
+                                    core(lang, keys::STRENGTH_NAMED),
+                                    &self.strength,
+                                    percent,
+                                    current.noise_mode.is_none(),
+                                    cx,
+                                ))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .gap_3()
+                                        .child(
+                                            with_hint(
+                                                "voice-guard-hint",
+                                                lang,
+                                                core(lang, keys::VOICE_GUARD_MEANS),
+                                                core(lang, keys::VOICE_GUARD),
+                                            )
+                                            .text_sm(),
                                         )
-                                        .text_sm(),
-                                    )
-                                    .child(
-                                        Switch::new("voice-guard")
-                                            .checked(current.voice_guard)
-                                            .accessibility_label(core(lang, keys::VOICE_GUARD))
-                                            .disabled(current.noise_mode.is_none())
-                                            .on_click({
-                                                let set = set.clone();
-                                                move |on, _, cx| set(Change::VoiceGuard(*on), cx)
-                                            }),
-                                    ),
-                            ),
+                                        .child(
+                                            Switch::new("voice-guard")
+                                                .checked(current.voice_guard)
+                                                .accessibility_label(core(lang, keys::VOICE_GUARD))
+                                                .disabled(current.noise_mode.is_none())
+                                                .on_click({
+                                                    let set = set.clone();
+                                                    move |on, _, cx| {
+                                                        set(Change::VoiceGuard(*on), cx)
+                                                    }
+                                                }),
+                                        ),
+                                ),
+                        ),
+                ))
+            })
+            .when(part == Part::Voice, |this| {
+                this.child(section(
+                    lang,
+                    IconName::WandSparkles,
+                    None,
+                    keys::EFFECTS,
+                    &[keys::EFFECTS_LEAD, keys::EFFECTS_AMOUNT_MEANS],
+                    Switch::new("effects-on")
+                        .checked(current.effects_on)
+                        .accessibility_label(core(lang, keys::EFFECTS))
+                        .on_click({
+                            let set = set.clone();
+                            move |on, _, cx| set(Change::EffectsOn(*on), cx)
+                        }),
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(choices("effects-preset", lang, &PRESETS, current.preset, {
+                            let set = set.clone();
+                            move |preset, _, cx| set(Change::Preset(preset), cx)
+                        }))
+                        .map(|this| {
+                            if current.preset == Some(Preset::Singing) {
+                                this.children(
+                                    [Knob::LowCut, Knob::Dynamics, Knob::Brightness]
+                                        .map(|knob| self.knob(knob, lang, cx)),
+                                )
+                            } else {
+                                this.child(slider_row(
+                                    lang,
+                                    keys::EFFECTS_AMOUNT,
+                                    core(lang, keys::EFFECTS_AMOUNT),
+                                    &self.amount,
+                                    percent,
+                                    false,
+                                    cx,
+                                ))
+                            }
+                        }),
+                ))
+            })
+            .when(part == Part::Voice, |this| {
+                this.child(section(
+                    lang,
+                    IconName::Orbit,
+                    Some(&self.reverb_fold),
+                    keys::REVERB,
+                    &[keys::REVERB_LEAD],
+                    Switch::new("reverb-on")
+                        .checked(current.reverb.enabled)
+                        .accessibility_label(core(lang, keys::REVERB_ON))
+                        .on_click({
+                            let set = set.clone();
+                            move |on, _, cx| set(Change::ReverbOn(*on), cx)
+                        }),
+                    div().flex().flex_col().gap_2().children(
+                        [Knob::ReverbMix, Knob::ReverbDecay, Knob::ReverbDamping]
+                            .map(|knob| self.knob(knob, lang, cx)),
                     ),
-            ))
-            .child(section(
-                lang,
-                IconName::WandSparkles,
-                None,
-                keys::EFFECTS,
-                &[keys::EFFECTS_LEAD, keys::EFFECTS_AMOUNT_MEANS],
-                Switch::new("effects-on")
-                    .checked(current.effects_on)
-                    .accessibility_label(core(lang, keys::EFFECTS))
-                    .on_click({
-                        let set = set.clone();
-                        move |on, _, cx| set(Change::EffectsOn(*on), cx)
-                    }),
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(choices("effects-preset", lang, &PRESETS, current.preset, {
-                        let set = set.clone();
-                        move |preset, _, cx| set(Change::Preset(preset), cx)
-                    }))
-                    .map(|this| {
-                        if current.preset == Some(Preset::Singing) {
-                            this.children(
-                                [Knob::LowCut, Knob::Dynamics, Knob::Brightness]
-                                    .map(|knob| self.knob(knob, lang, cx)),
-                            )
-                        } else {
-                            this.child(slider_row(
-                                lang,
-                                keys::EFFECTS_AMOUNT,
-                                core(lang, keys::EFFECTS_AMOUNT),
-                                &self.amount,
-                                percent,
-                                false,
-                                cx,
-                            ))
-                        }
-                    }),
-            ))
-            .child(section(
-                lang,
-                IconName::Orbit,
-                Some(&self.reverb_fold),
-                keys::REVERB,
-                &[keys::REVERB_LEAD],
-                Switch::new("reverb-on")
-                    .checked(current.reverb.enabled)
-                    .accessibility_label(core(lang, keys::REVERB_ON))
-                    .on_click({
-                        let set = set.clone();
-                        move |on, _, cx| set(Change::ReverbOn(*on), cx)
-                    }),
-                div().flex().flex_col().gap_2().children(
-                    [Knob::ReverbMix, Knob::ReverbDecay, Knob::ReverbDamping]
-                        .map(|knob| self.knob(knob, lang, cx)),
-                ),
-            ))
-            .child(section(
-                lang,
-                IconName::Speech,
-                Some(&self.deesser_fold),
-                keys::DEESSER,
-                &[keys::DEESSER_HINT],
-                Switch::new("deesser-on")
-                    .checked(current.deesser.on)
-                    .accessibility_label(core(lang, keys::DEESSER))
-                    .on_click(move |on, _, cx| set(Change::DeEsserOn(*on), cx)),
-                self.knob(Knob::DeEsser, lang, cx),
-            ))
-            .child(self.peak.render(lang, locked, cx, send.clone()))
-            .child(self.true_peak.render(lang, locked, cx, send))
+                ))
+            })
+            .when(part == Part::Voice, |this| {
+                this.child(section(
+                    lang,
+                    IconName::Speech,
+                    Some(&self.deesser_fold),
+                    keys::DEESSER,
+                    &[keys::DEESSER_HINT],
+                    Switch::new("deesser-on")
+                        .checked(current.deesser.on)
+                        .accessibility_label(core(lang, keys::DEESSER))
+                        .on_click(move |on, _, cx| set(Change::DeEsserOn(*on), cx)),
+                    self.knob(Knob::DeEsser, lang, cx),
+                ))
+            })
+            .when(part == Part::Peak, |this| {
+                this.child(self.peak.render(lang, locked, cx, send.clone()))
+                    .child(self.true_peak.render(lang, locked, cx, send))
+            })
     }
 }
 
