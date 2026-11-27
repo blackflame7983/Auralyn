@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use auralyn_ui_model::rack::{self, Candidate};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::select::{SearchableVec, Select, SelectItem, SelectState};
@@ -309,7 +310,8 @@ impl VstPage {
     }
 }
 
-/// 並びの1枠。上の行は番号・名前（OFF・ミュートの札）・ON/OFF・上へ・下へ・編集・削除、下の行は音量とミュート。
+/// 並びの1枠。1段目は番号・名前（OFF・ミュートの札）・ON/OFF、2段目は編集・上へ・下へ・削除、3段目は音量とミュート。
+/// 1024 幅の2列（1列 約 320px）でも名前が読めるよう、1段目には名前と ON/OFF だけを置く。
 fn row(
     slot: &Slot,
     gain: Option<(&Entity<SliderState>, f32)>,
@@ -322,13 +324,14 @@ fn row(
     let prefix = ops.prefix;
     let name = slot.name.as_str();
     let named = |key| core_with(lang, key, &[("arg0", &name)]);
-    let button = |suffix: &str, label: &'static str, command: Command| {
-        let send = send.clone();
+    // 並べ替えと削除は、名前の幅を取らないようアイコンだけにし、ツールチップで名前を出す。
+    let icon_button = |suffix: &str, icon: IconName, label: String| {
         Button::new(SharedString::from(format!("{prefix}-{suffix}-{}", slot.id)))
-            .label(label)
+            .icon(icon)
             .ghost()
             .small()
-            .on_click(move |_, _, cx| send(command.clone(), cx))
+            .tooltip(label.clone())
+            .accessibility_label(label)
     };
     let id = slot.id.clone();
     let enabled = slot.enabled;
@@ -364,6 +367,7 @@ fn row(
                 .gap_2()
                 .child(
                     div()
+                        .min_w_0()
                         .truncate()
                         .text_sm()
                         .font_weight(FontWeight::MEDIUM)
@@ -384,47 +388,58 @@ fn row(
                 }),
         )
         .when(loaded, |this| {
-            this.child({
-                let send = send.clone();
+            let send = send.clone();
+            let id = id.clone();
+            this.child(
                 Switch::new(SharedString::from(format!("{prefix}-enable-{}", slot.id)))
                     .checked(enabled)
                     .accessibility_label(named(keys::VST_ENABLE))
-                    .on_click(move |checked, _, cx| send((ops.enable)(id.clone(), *checked), cx))
-            })
+                    .on_click(move |checked, _, cx| send((ops.enable)(id.clone(), *checked), cx)),
+            )
+        });
+    // 2段目：編集・並べ替え・削除。番号の幅だけ字下げして名前にそろえる。
+    let tools = div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .pl(px(28.))
+        .when(loaded, |this| {
+            let edit = (ops.edit)(slot.id.clone());
+            let up = (ops.shift)(slot.id.clone(), true);
+            let down = (ops.shift)(slot.id.clone(), false);
+            let (edit_send, up_send, down_send) = (send.clone(), send.clone(), send.clone());
+            this.child(
+                Button::new(SharedString::from(format!("{prefix}-edit-{}", slot.id)))
+                    .label(core(lang, keys::VST_EDIT))
+                    .icon(IconName::SquarePen)
+                    .outline()
+                    .small()
+                    .accessibility_label(named(keys::VST_EDIT_NAMED))
+                    .on_click(move |_, _, cx| edit_send(edit.clone(), cx)),
+            )
             .child(
-                button(
+                icon_button(
                     "up",
-                    core(lang, keys::VST_UP),
-                    (ops.shift)(slot.id.clone(), true),
+                    IconName::ArrowUp,
+                    format!("{name} {}", core(lang, keys::VST_UP)),
                 )
-                .accessibility_label(format!("{name} {}", core(lang, keys::VST_UP)))
-                .disabled(locked || index == 0),
+                .disabled(locked || index == 0)
+                .on_click(move |_, _, cx| up_send(up.clone(), cx)),
             )
             .child(
-                button(
+                icon_button(
                     "down",
-                    core(lang, keys::VST_DOWN),
-                    (ops.shift)(slot.id.clone(), false),
+                    IconName::ArrowDown,
+                    format!("{name} {}", core(lang, keys::VST_DOWN)),
                 )
-                .accessibility_label(format!("{name} {}", core(lang, keys::VST_DOWN)))
-                .disabled(locked || last),
-            )
-            .child(
-                button(
-                    "edit",
-                    core(lang, keys::VST_EDIT),
-                    (ops.edit)(slot.id.clone()),
-                )
-                .accessibility_label(named(keys::VST_EDIT_NAMED)),
+                .disabled(locked || last)
+                .on_click(move |_, _, cx| down_send(down.clone(), cx)),
             )
         })
+        .child(div().flex_1())
         .child(
-            Button::new(SharedString::from(format!("{prefix}-remove-{}", slot.id)))
-                .label(core(lang, keys::VST_REMOVE))
-                .ghost()
-                .small()
+            icon_button("remove", IconName::Trash, named(keys::VST_REMOVE_NAMED))
                 .disabled(locked)
-                .accessibility_label(named(keys::VST_REMOVE_NAMED))
                 .on_click({
                     let title = named(keys::VST_REMOVE_TITLE);
                     let command = (ops.remove)(slot.id.clone());
@@ -448,6 +463,7 @@ fn row(
         .border_color(color::border())
         .bg(color::card())
         .child(top)
+        .child(tools)
         .when_some(gain, |this, (gain, percent)| {
             this.child(volume(slot, gain, percent, look, send))
         })

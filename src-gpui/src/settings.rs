@@ -23,7 +23,7 @@ use crate::part::{card, note, with_hint, OnCommand};
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
 /// 設定の画面の区切り（Tauri 版の設定と同じ名前を使う）。
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Section {
     #[default]
     Appearance,

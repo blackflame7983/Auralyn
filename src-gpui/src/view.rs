@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::Button;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -668,7 +669,8 @@ impl MainView {
             Notice::Catalog(Err(message)) => {
                 self.vst.scan_failed();
                 self.scan_folders.set_skipped(Vec::new());
-                self.message = Some(format!("scan_plugins: {message}"));
+                log::warn!("scan_plugins: {message}");
+                self.message = Some(format!("{} {message}", core(self.lang, keys::SCAN_FAILED)));
             }
             Notice::Devices {
                 devices,
@@ -707,11 +709,13 @@ impl MainView {
             Notice::Failed { command, message } => {
                 // 並び・音づくり・ピーク保護は、エンジンが送り直す状態で表示が戻る。入出力の音量のスライダーは戻さない
                 // （出力は反映を確かめきれなかっただけで、子には新しい値が入っていることが多い）。
+                // 内部の命令の名前は画面に出さず、記録に残す。
+                log::warn!("{command}: {message}");
                 self.setups.forget_done();
                 self.message = Some(if self.modes.armed() {
                     core(self.lang, keys::MODES_LOCKED).to_owned()
                 } else {
-                    format!("{command}: {message}")
+                    format!("{} {message}", core(self.lang, keys::ACTION_FAILED))
                 });
             }
         }
@@ -1033,6 +1037,7 @@ impl MainView {
         gpui_kit::component::set_locale(locale_file::code(lang));
         self.desktop.set_lang(lang);
         self.mix.relabel(lang, window, cx);
+        self.live.relabel(lang, window, cx);
         self.connect.set_lang(lang, window, cx);
         let result = locale_file::save(&self.config_dir, lang);
         self.report_save(keys::LANGUAGE_SAVE_FAILED, result);
@@ -1122,7 +1127,41 @@ impl Render for MainView {
                     .flex_col()
                     .child(band)
                     .when_some(self.message.clone(), |this, message| {
-                        this.child(Alert::warning("message", message).banner())
+                        // GPUI Kit の Alert の閉じる印はキーで届かないので、自前の帯に読み上げの名前を付けた閉じるボタンを置く。
+                        let entity = entity.clone();
+                        this.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .id("message")
+                                .role(Role::Alert)
+                                .gap_2()
+                                .pl_4()
+                                .py_1()
+                                .border_b_1()
+                                .border_color(color::warning().opacity(0.4))
+                                .bg(color::warning().opacity(0.1))
+                                .child(
+                                    Icon::new(IconName::TriangleAlert)
+                                        .text_color(color::warning()),
+                                )
+                                .child(div().flex_1().min_w_0().text_sm().child(message))
+                                .child(
+                                    Button::new("message-close")
+                                        .icon(IconName::Close)
+                                        .ghost()
+                                        .small()
+                                        .mr_2()
+                                        .tooltip(core(lang, keys::CLOSE))
+                                        .accessibility_label(core(lang, keys::CLOSE))
+                                        .on_click(move |_, _, cx| {
+                                            entity.update(cx, |this, cx| {
+                                                this.message = None;
+                                                cx.notify();
+                                            })
+                                        }),
+                                ),
+                        )
                     })
                     .child(
                         div().flex_1().min_h_0().flex().children(subnav).child(
@@ -1270,9 +1309,9 @@ impl Render for MainView {
                                                                     this.sound_part = part;
                                                                     this.open(Page::Sound)
                                                                 }
-                                                                Goto::Obs => {
+                                                                Goto::Settings(section) => {
                                                                     this.settings_section =
-                                                                        Section::Obs;
+                                                                        section;
                                                                     this.open(Page::Settings)
                                                                 }
                                                             }

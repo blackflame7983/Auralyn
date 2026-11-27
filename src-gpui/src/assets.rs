@@ -35,6 +35,8 @@ icon_assets!(
         Stethoscope,
         LifeBuoy,
         Cast,
+        SquarePen,
+        Trash,
     ]
 );
 
