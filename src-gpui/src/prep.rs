@@ -67,8 +67,6 @@ pub struct PrepPanel {
     /// 確認の記録を頼んだ印・確かめること・頼んだときの鍵。読み直した鍵が同じときだけ記録する。
     confirming: Option<(u64, Stage, String)>,
     sequence: u64,
-    /// 窓を隠していた（隠している間の外での変更は鍵に出ないので、出し直したら確認をやり直す）。
-    hidden: bool,
     /// 送り先の種類を替えたので、名前の欄を空にする（欄を書き換えるには窓が要るので次の `tick` で）。
     clear_receiver: bool,
     /// 利用者が開閉を選んだ。`None` の間は、問題があるときだけ開く。
@@ -106,7 +104,6 @@ impl PrepPanel {
                 .unwrap_or_else(Instant::now),
             confirming: None,
             sequence: 0,
-            hidden: false,
             clear_receiver: false,
             open: None,
             _subscription,
@@ -123,14 +120,6 @@ impl PrepPanel {
         let observation = self.observation.as_ref()?;
         let (sound, output) = observation.keys.as_ref()?;
         Some(Keys::new(sound, output, &self.context))
-    }
-
-    /// 窓を隠した・出した。隠したらすべての確認を失効にする（Tauri 版と同じ）。
-    pub fn set_hidden(&mut self, hidden: bool) {
-        if hidden && !self.hidden {
-            self.external();
-        }
-        self.hidden = hidden;
     }
 
     /// 鍵に出ない変更（ピーク保護・true-peak 制限、設定の外での変更）。確認をやり直す。

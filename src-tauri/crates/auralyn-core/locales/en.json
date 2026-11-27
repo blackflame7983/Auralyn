@@ -3653,7 +3653,6 @@
   "troubleshoot.receiverOptional": "You can leave it blank.",
   "troubleshoot.clearReceiver": "Clear the name",
   "session.retryDetails": "Reload the saved chain",
-  "gpuiShell.stopToChange": "Stop the audio before changing devices.",
   "gpuiShell.removeVst": "This removes the VST from the chain. Its settings are lost and cannot be restored.",
   "gpuiShell.notLoaded": "Not loaded",
   "gpuiShell.reverb": "Reverb",
@@ -3712,5 +3711,10 @@
   "gpuiShell.resetNamed": "Reset {name} to 100%",
   "gpuiShell.stopShort": "Stop",
   "rail.help": "Help",
-  "gpuiShell.quickAdjust": "Adjust {name} in detail"
+  "gpuiShell.quickAdjust": "Adjust {name} in detail",
+  "gpuiShell.applyRestart": "Apply changes",
+  "gpuiShell.restartNote": "Stops the audio and starts again with the chosen devices. Sound drops out briefly.",
+  "gpuiShell.usageLoad": "Use these devices",
+  "gpuiShell.setupsApplied": "Applied “{name}”",
+  "gpuiShell.setupsRestored": "Restored the state before applying"
 }

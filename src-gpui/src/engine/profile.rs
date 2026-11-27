@@ -137,12 +137,20 @@ impl Control {
         // 子が落ちていたら先に読み直す（あとで読み直すと、落ちる前の音づくりで構成の値を上書きしてしまう）。
         self.recover();
         let result = self.apply_profile_parts(name, restore);
+        let applied = result.is_ok();
         if let Err(e) = result {
             self.fail("apply_profile", e);
         }
         // 次の起動もこの構成の音づくりで始まる。
         self.reread_and_save_sound();
+        // 一覧を送ると前の結果は消えるので、適用できたことはそのあとに知らせる。
         self.list_profiles();
+        if applied {
+            self.tell(ProfileFile::Applied {
+                name: name.to_owned(),
+                restore,
+            });
+        }
     }
 
     /// 構成に無い分類は変えない。外せない VST があればそこで止める（画面から消えたまま鳴り続けないように）。

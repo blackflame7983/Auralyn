@@ -1,6 +1,7 @@
 //! 右の列：緊急ミュート・入力・出力・聴き比べのメーターと操作。
 
 use super::*;
+use gpui_kit::component::Disableable as _;
 
 impl MainView {
     fn render_mute(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -175,6 +176,7 @@ impl MainView {
                     .label(core(lang, keys::COMPARE))
                     .outline()
                     .toggled(bypassed)
+                    .disabled(!bypassed && self.phase != Phase::Running)
                     .w_full()
                     .on_click(cx.listener(move |this, _, _, _| {
                         this.engine.send(Command::SetBypass(!bypassed));

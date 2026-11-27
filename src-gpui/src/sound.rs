@@ -480,7 +480,14 @@ impl SoundPage {
                         .accessibility_label(core(lang, keys::REVERB_ON))
                         .on_click({
                             let set = set.clone();
-                            move |on, _, cx| set(Change::ReverbOn(*on), cx)
+                            let fold = self.reverb_fold.clone();
+                            move |on, _, cx| {
+                                // 入れたら調整の欄を見せる。
+                                if *on {
+                                    fold.set(true);
+                                }
+                                set(Change::ReverbOn(*on), cx)
+                            }
                         }),
                     div().flex().flex_col().gap_2().children(
                         [Knob::ReverbMix, Knob::ReverbDecay, Knob::ReverbDamping]
@@ -498,7 +505,15 @@ impl SoundPage {
                     Switch::new("deesser-on")
                         .checked(current.deesser.on)
                         .accessibility_label(core(lang, keys::DEESSER))
-                        .on_click(move |on, _, cx| set(Change::DeEsserOn(*on), cx)),
+                        .on_click({
+                            let fold = self.deesser_fold.clone();
+                            move |on, _, cx| {
+                                if *on {
+                                    fold.set(true);
+                                }
+                                set(Change::DeEsserOn(*on), cx)
+                            }
+                        }),
                     self.knob(Knob::DeEsser, lang, cx),
                 ))
             })

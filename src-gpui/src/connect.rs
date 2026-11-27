@@ -8,7 +8,7 @@ use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose,
 use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::component::{Disableable as _, Icon, IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -514,6 +514,7 @@ impl ConnectPage {
         let shared = connect::shares_device(&host);
         let app = self.uses_app(cx);
         let stopped = phase.can_start();
+        let running = phase == Phase::Running;
         let unchosen = self.start_choice(cx).is_none();
         let empty = core(lang, keys::NO_DEVICES);
         div()
@@ -552,7 +553,7 @@ impl ConnectPage {
                         ))))
                         .child(
                             Button::new("connect-switch-purpose")
-                                .label(core(lang, keys::USAGE_SWITCH))
+                                .label(core(lang, keys::USAGE_LOAD))
                                 .outline()
                                 .small()
                                 .on_click(move |_, window, cx| on_switch(window, cx)),
@@ -604,15 +605,26 @@ impl ConnectPage {
                     .gap_1p5()
                     .child(
                         Button::new("connect-start")
-                            .label(core(lang, keys::START))
-                            .icon(IconName::Play)
-                            .outline()
-                            .disabled(!stopped || unchosen)
+                            .label(core(
+                                lang,
+                                if running {
+                                    keys::APPLY_RESTART
+                                } else {
+                                    keys::START
+                                },
+                            ))
+                            .icon(if running {
+                                IconName::RefreshCw
+                            } else {
+                                IconName::Play
+                            })
+                            .primary()
+                            .disabled(!(stopped || running) || unchosen)
                             .on_click(move |_, window, cx| on_start(window, cx)),
                     )
                     .map(|this| {
-                        if !stopped {
-                            this.child(note(core(lang, keys::STOP_TO_CHANGE)))
+                        if running {
+                            this.child(note(core(lang, keys::RESTART_NOTE)))
                         } else if unchosen {
                             this.child(note(core(lang, keys::FIRST_START_HINT)))
                         } else {

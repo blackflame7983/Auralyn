@@ -91,37 +91,47 @@ impl SetupsPanel {
             card(
                 core(lang, keys::MUSIC_PLAYBACK),
                 div(),
-                div().flex().flex_col().gap_2().child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div().flex_1().min_w(px(200.)).child(
-                                Select::new(&self.chosen)
-                                    .placeholder(core(lang, keys::MUSIC_PRESET_CHOOSE))
-                                    .accessibility_label(core(lang, keys::MUSIC_PRESET_LABEL)),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div().flex_1().min_w(px(200.)).child(
+                                    Select::new(&self.chosen)
+                                        .placeholder(core(lang, keys::MUSIC_PRESET_CHOOSE))
+                                        .accessibility_label(core(lang, keys::MUSIC_PRESET_LABEL)),
+                                ),
+                            )
+                            .child(
+                                Button::new("music-setup-apply")
+                                    .label(core(lang, keys::SETUPS_APPLY))
+                                    .outline()
+                                    .disabled(chosen.is_none())
+                                    .on_click(move |_, _, cx| {
+                                        if let Some(name) = chosen.clone() {
+                                            send(
+                                                Command::ApplyProfile {
+                                                    name: name.to_string(),
+                                                    restore: false,
+                                                },
+                                                cx,
+                                            );
+                                        }
+                                    }),
                             ),
-                        )
-                        .child(
-                            Button::new("music-setup-apply")
-                                .label(core(lang, keys::SETUPS_APPLY))
-                                .outline()
-                                .disabled(chosen.is_none())
-                                .on_click(move |_, _, cx| {
-                                    if let Some(name) = chosen.clone() {
-                                        send(
-                                            Command::ApplyProfile {
-                                                name: name.to_string(),
-                                                restore: false,
-                                            },
-                                            cx,
-                                        );
-                                    }
-                                }),
-                        ),
-                ),
+                    )
+                    .when_some(
+                        self.done
+                            .as_ref()
+                            .filter(|done| matches!(done, ProfileFile::Applied { .. })),
+                        |this, done| this.child(note(done_text(done, lang))),
+                    ),
             )
             .icon(IconName::ListMusic)
             .hint(lang, core(lang, keys::MUSIC_SOUND_HINT)),
@@ -299,6 +309,10 @@ impl SetupsPanel {
 
 fn done_text(done: &ProfileFile, lang: Lang) -> String {
     match done {
+        ProfileFile::Applied { restore: true, .. } => core(lang, keys::SETUPS_RESTORED).to_owned(),
+        ProfileFile::Applied { name, .. } => {
+            core_with(lang, keys::SETUPS_APPLIED, &[("name", name)])
+        }
         ProfileFile::Exported(name) => core_with(lang, keys::SETUPS_EXPORTED, &[("arg0", name)]),
         ProfileFile::Imported(name) => core_with(lang, keys::SETUPS_IMPORTED, &[("arg0", name)]),
         ProfileFile::NotImported(ImportIssue::Exists(name)) => {

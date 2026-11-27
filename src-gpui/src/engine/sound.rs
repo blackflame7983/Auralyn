@@ -205,6 +205,16 @@ impl Control {
         self.reread_and_save_sound();
     }
 
+    /// 送るだけ。送った値はエンジンの「最後の値」になるので、離したときの `set_sound` は差が無ければ保存だけする。
+    pub(super) fn preview_sound(&mut self, change: Change) {
+        // 動かしている間に何度も知らせないよう、断られたら記録だけ残す。離したときの `set_sound` が知らせる。
+        if let Some(before) = self.sound {
+            for (command, e) in self.send_sound(before.with(change), Some(before)) {
+                log::warn!("{command}: {e}");
+            }
+        }
+    }
+
     /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める（Tauri 版のショートカットと同じ）。
     /// 種類がまだ無ければ「弱」で入れる（Tauri 版と同じ）。分からない種類は書き換えないので、切り替えずに断る。
     pub(super) fn toggle_noise(&mut self) {
@@ -238,7 +248,18 @@ impl Control {
     /// 何を送るかは `Sound::effects_request`。断られなければ（前の値を知らなければ断られても）、送った値を「最後の値」として持つ
     /// （エンジンが持たない値＝歌向けでないときの歌向けの値・OFF の歯擦音の量は、次に読むときこの値を使う）。
     pub(super) fn apply_sound(&mut self, next: Sound, before: Option<Sound>) {
-        let mut accepted = true;
+        for (command, e) in self.send_sound(next, before) {
+            self.fail(command, e);
+        }
+    }
+
+    /// `apply_sound` の本体。断られた操作を返す（知らせるかは呼ぶ側が決める）。
+    fn send_sound(
+        &mut self,
+        next: Sound,
+        before: Option<Sound>,
+    ) -> Vec<(&'static str, anyhow::Error)> {
+        let mut failures = Vec::new();
         // 種類が分からない（エンジンが知らない名前を返した）ときは送らない。種類を「弱」に書き換えないため。
         if let Some(mode) = next
             .noise_mode
@@ -250,8 +271,7 @@ impl Control {
                 next.strength,
                 next.voice_guard,
             ) {
-                accepted = false;
-                self.fail("set_noise_control_config", e);
+                failures.push(("set_noise_control_config", e));
             }
         }
         if let Some(request) = next.effects_request(before) {
@@ -285,14 +305,14 @@ impl Control {
                 ),
             };
             if let Err(e) = result {
-                accepted = false;
-                self.fail("set_built_in_effects", e);
+                failures.push(("set_built_in_effects", e));
             }
         }
         // 前の値を知らない（起動時の復元が断られた）ときも持つ。既定値より保存した値のほうが正しい。
-        if accepted || self.sound.is_none() {
+        if failures.is_empty() || self.sound.is_none() {
             self.sound = Some(next);
         }
+        failures
     }
 
     /// 起動したら、音を始める前に、保存した音づくりをエンジンへ送る。

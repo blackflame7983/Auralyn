@@ -33,7 +33,8 @@ pub mod keys {
     pub const STOP_SHORT: &str = "gpuiShell.stopShort";
     pub const STOPPING: &str = "band.stopping";
     pub const STOP_FAILED: &str = "band.stopFailed";
-    pub const STOP_TO_CHANGE: &str = "gpuiShell.stopToChange";
+    pub const APPLY_RESTART: &str = "gpuiShell.applyRestart";
+    pub const RESTART_NOTE: &str = "gpuiShell.restartNote";
     pub const CONNECTION_METHOD: &str = "settings.AudioSettingsModal.035";
     pub const DEVICE: &str = "settings.AudioSettingsModal.037";
     pub const MICROPHONE: &str = "settings.AudioSettingsModal.038";
@@ -65,6 +66,8 @@ pub mod keys {
     pub const SETUPS_EXPORTED: &str = "presets.copy.041";
     pub const SETUPS_IMPORT: &str = "presets.copy.065";
     pub const SETUPS_IMPORTED: &str = "presets.copy.043";
+    pub const SETUPS_APPLIED: &str = "gpuiShell.setupsApplied";
+    pub const SETUPS_RESTORED: &str = "gpuiShell.setupsRestored";
     pub const SETUPS_IMPORT_EXISTS: &str = "gpuiShell.setupImportExists";
     pub const SETUPS_IMPORT_NOTHING: &str = "gpuiShell.setupImportNothing";
     pub const SETUPS_IMPORT_INVALID: &str = "gpuiShell.setupImportInvalid";
@@ -663,7 +666,7 @@ pub mod keys {
     pub const SCAN_FOLDER_EMPTY: &str = "pluginBrowser.scanFolderEmpty";
     pub const SCAN_FOLDER_SAVE_FAILED: &str = "pluginBrowser.scanFolderSaveFailed";
     pub const SCAN_FOLDER_FULL: &str = "pluginBrowser.scanFolderFull";
-    pub const USAGE_SWITCH: &str = "purpose.switch";
+    pub const USAGE_LOAD: &str = "gpuiShell.usageLoad";
     pub const USAGE_SWITCH_DEVICES: &str = "purpose.switchDevices";
     pub const MUSIC_PLAYBACK: &str = "music.playback";
     pub const MUSIC_PRESET_LABEL: &str = "music.presetLabel";
@@ -697,7 +700,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 684] = [
+    pub const ALL: [&str; 687] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -797,7 +800,8 @@ pub mod keys {
         STOP,
         STOPPING,
         STOP_FAILED,
-        STOP_TO_CHANGE,
+        APPLY_RESTART,
+        RESTART_NOTE,
         CONNECTION_METHOD,
         DEVICE,
         MICROPHONE,
@@ -829,6 +833,8 @@ pub mod keys {
         SETUPS_EXPORTED,
         SETUPS_IMPORT,
         SETUPS_IMPORTED,
+        SETUPS_APPLIED,
+        SETUPS_RESTORED,
         SETUPS_IMPORT_EXISTS,
         SETUPS_IMPORT_NOTHING,
         SETUPS_IMPORT_INVALID,
@@ -1350,7 +1356,7 @@ pub mod keys {
         SCAN_FOLDER_EMPTY,
         SCAN_FOLDER_SAVE_FAILED,
         SCAN_FOLDER_FULL,
-        USAGE_SWITCH,
+        USAGE_LOAD,
         USAGE_SWITCH_DEVICES,
         MUSIC_PLAYBACK,
         MUSIC_PRESET_LABEL,

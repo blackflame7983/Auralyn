@@ -68,6 +68,8 @@ pub enum Command {
     ChannelScan(bool),
     /// 動いている接続のまま、入力のペアだけを替えて始め直す（替えた割り当ては保存される）。
     UseInputPair([usize; 2]),
+    /// 動いている接続を、選び直した機器で始め直す。始まらなければ元の接続へ戻す（`UseInputPair` と同じ）。
+    Restart(StartWith),
     Stop,
     SetMute(bool),
     SetBypass(bool),
@@ -102,6 +104,8 @@ pub enum Command {
     ReadSound,
     /// 音づくりの1つの操作。エンジンが持つ今の設定に重ね、変わった区画（ノイズ低減・声を整える）だけを送って保存する。
     SetSound(Change),
+    /// スライダーを動かしている間の音づくり。エンジンへ送るだけで、読み直しも保存もしない（離したときの `SetSound` で行う）。
+    PreviewSound(Change),
     /// ノイズ低減の ON/OFF を、いまのエンジンの値から反転する（ショートカット）。
     ToggleNoise,
     /// 大きな音を抑える（ピーク保護）か、配信用 true-peak 制限の今の状態を読む。
@@ -189,6 +193,10 @@ impl Command {
             (Command::SetPeakLimits { limit, .. }, Command::SetPeakLimits { limit: other, .. }) if limit == other
         ) || matches!(
             (self, earlier),
+            (Command::PreviewSound(change), Command::PreviewSound(other))
+                if std::mem::discriminant(change) == std::mem::discriminant(other)
+        ) || matches!(
+            (self, earlier),
             (
                     Command::Measure(measurement::Action::Read),
                     Command::Measure(measurement::Action::Read)
@@ -263,6 +271,11 @@ pub enum Listen {
 /// 構成の書き出し・読み込みの結果。名前は構成の名前。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfileFile {
+    /// 構成を適用した（`restore` は適用する前へ戻した）。
+    Applied {
+        name: String,
+        restore: bool,
+    },
     Exported(String),
     Imported(String),
     NotImported(ImportIssue),
@@ -619,12 +632,8 @@ impl Control {
                 return;
             }
         };
-        let app = match &config.input_source {
-            Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
-            _ => None,
-        };
-        let input = app.clone().or(config.input.clone());
-        let output = config.output.clone();
+        let app = app_name(&config);
+        let (input, output) = names(&config);
         let result = input::start(&mut self.host, config, None);
         // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する（Tauri 版と同じ）。
         // 起動し直したあとは候補が無いので、選び直してもらう（既定のマイクにも替えない）。
@@ -638,42 +647,69 @@ impl Control {
 
     /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する（Tauri 版の開始と同じく入力の元を明示する）。
     fn start_with(&mut self, start: StartWith) {
-        let (input, input_name, source, candidate_id) = match start.input {
-            Input::Device(device) => {
-                let purpose = start.purpose;
-                let name = device.name.clone();
-                let source = input::Config::Device {
-                    purpose: host_purpose(purpose),
-                };
-                (Some(device), name, source, None)
-            }
-            Input::App {
-                candidate_id,
-                source,
-            } => {
-                let name = source.name.clone();
-                let source = input::Config::ProcessLoopback(input::ProcessConfig {
-                    app_key: source.key,
-                    app_name: source.name,
-                    raw_endpoint_id: source.route,
-                    purpose: host_purpose(start.purpose),
-                });
-                (None, name, source, Some(candidate_id))
-            }
-        };
-        let config = ActiveAudioConfig {
-            input_source: Some(source),
-            host: start.output.host.clone(),
-            input: input.as_ref().map(|d| d.name.clone()),
-            output: Some(start.output.name.clone()),
-            input_id: input.and_then(|d| d.id),
-            output_id: start.output.id.clone(),
-            buffer_size: start.buffer_size,
-            sample_rate: start.sample_rate,
-            routing: Some(channel_routing(start.routing)),
-        };
+        let (config, candidate_id, input, output) = prepare(start);
         let result = input::start(&mut self.host, config, candidate_id);
-        self.started(result, Some(input_name), Some(start.output.name));
+        self.started(result, Some(input), Some(output));
+    }
+
+    /// 動いている接続を、選び直した機器・周波数・バッファで始め直す。始まらなければ元の接続へ戻す。
+    fn restart_with(&mut self, start: StartWith) {
+        let Some(original) = self.running_config() else {
+            return self.not_running();
+        };
+        let (config, candidate_id, input, output) = prepare(start);
+        self.switch(
+            original,
+            (config, candidate_id),
+            "restart",
+            (Some(input), Some(output)),
+        );
+    }
+
+    /// 動いている接続の設定。止まっていれば `None`。
+    fn running_config(&self) -> Option<ActiveAudioConfig> {
+        let state = self.host.get_state();
+        state.config.filter(|_| state.is_running)
+    }
+
+    /// 画面は開始中で結果を待っているので、断るときも開始の失敗として返す。
+    fn not_running(&mut self) {
+        self.started(Err(anyhow::anyhow!("音声が動いていません")), None, None)
+    }
+
+    /// 止めて `config` で始め直す。始まらなければ `original` へ戻し、失敗は `command` として知らせる。
+    /// `names` は `config` の入力と出力の名前（戻したときは `original` の名前を知らせる）。
+    fn switch(
+        &mut self,
+        original: ActiveAudioConfig,
+        (config, candidate_id): (ActiveAudioConfig, Option<String>),
+        command: &'static str,
+        names: (Option<String>, Option<String>),
+    ) {
+        // 止められなければ元の接続のまま動いているので、始め直さずにそのことだけ知らせる。
+        if let Err(e) = self.halt() {
+            self.fail(command, anyhow::anyhow!(e));
+            let (input, output) = self::names(&original);
+            return self.started(Ok(()), input, output);
+        }
+        let _ = self.notices.send(Notice::Stopped);
+        let (result, (input, output)) = match input::start(&mut self.host, config, candidate_id) {
+            Ok(()) => (Ok(()), names),
+            Err(e) => {
+                let names = self::names(&original);
+                match input::start(&mut self.host, original, None) {
+                    Ok(()) => {
+                        self.fail(command, e);
+                        (Ok(()), names)
+                    }
+                    Err(back) => {
+                        log::warn!("元の接続でも始め直せません: {back}");
+                        (Err(e), names)
+                    }
+                }
+            }
+        };
+        self.started(result, input, output);
     }
 
     /// 開始の結果を画面へ送り、始まったら子に並びと音量を送り直す。
@@ -733,10 +769,8 @@ impl Control {
 
     /// 動いている接続の入力のペアだけを替えて、止めてから始め直す。始められなければ、元の割り当てで始め直す。
     fn use_input_pair(&mut self, pair: [usize; 2]) {
-        let state = self.host.get_state();
-        // 画面は開始中で結果を待っているので、断るときも開始の失敗として返す。
-        let Some(original) = state.config.filter(|_| state.is_running) else {
-            return self.started(Err(anyhow::anyhow!("音声が動いていません")), None, None);
+        let Some(original) = self.running_config() else {
+            return self.not_running();
         };
         let mut config = original.clone();
         let mut routing = config.routing.unwrap_or(ChannelRouting {
@@ -745,22 +779,8 @@ impl Control {
         });
         routing.input_channels = Some(pair);
         config.routing = Some(routing);
-        let (input, output) = (config.input.clone(), config.output.clone());
-        self.stop();
-        let result = match input::start(&mut self.host, config, None) {
-            Ok(()) => Ok(()),
-            Err(e) => match input::start(&mut self.host, original, None) {
-                Ok(()) => {
-                    self.fail("set_input_channels", e);
-                    Ok(())
-                }
-                Err(back) => {
-                    log::warn!("元の割り当てでも始め直せません: {back}");
-                    Err(e)
-                }
-            },
-        };
-        self.started(result, input, output);
+        let names = (config.input.clone(), config.output.clone());
+        self.switch(original, (config, None), "set_input_channels", names);
     }
 
     fn execute(&mut self, command: &Command) {
@@ -799,6 +819,7 @@ impl Control {
                 return;
             }
             Command::UseInputPair(pair) => return self.use_input_pair(pair),
+            Command::Restart(ref start) => return self.restart_with(start.clone()),
             Command::Stop => return self.stop(),
             Command::SetMute(active) => ("set_global_mute", self.host.set_global_mute(active)),
             Command::SetBypass(active) => {
@@ -919,6 +940,7 @@ impl Control {
                 })
             }
             Command::SetSound(change) => return self.set_sound(change),
+            Command::PreviewSound(change) => return self.preview_sound(change),
             Command::ToggleNoise => return self.toggle_noise(),
             Command::SaveRack(ref done) => {
                 self.save(true);
@@ -1021,17 +1043,23 @@ impl Control {
 
     /// 停止の結果は通知（`audio-stopped`）を待たずに送る。止まったことの通知が重なっても、画面の状態は同じになる。
     fn stop(&mut self) {
-        // VST の窓を開いたまま止めても、それまでの調整を残す。
-        self.save(true);
-        let notice = match self.host.stop() {
+        let notice = match self.halt() {
             Ok(()) => Notice::Stopped,
-            Err(e) => Notice::StopFailed(e.to_string()),
+            Err(e) => Notice::StopFailed(e),
         };
         let _ = self.notices.send(notice);
+    }
+
+    /// 止める。知らせは呼ぶ側が送る。
+    fn halt(&mut self) -> Result<(), String> {
+        // VST の窓を開いたまま止めても、それまでの調整を残す。
+        self.save(true);
+        let result = self.host.stop().map_err(|e| e.to_string());
         // 止めるときに子を終わらせていれば、走査は失効している。同じ子なら同じ走査を待ち続ける。
         if self.scan.take().is_some() {
             self.list_devices();
         }
+        result
     }
 
     fn fail(&self, command: &'static str, error: anyhow::Error) {
@@ -1040,6 +1068,61 @@ impl Control {
             message: error.to_string(),
         });
     }
+}
+
+/// 選んだ機器から、開始する設定・アプリの候補・入力と出力の名前を作る。
+fn prepare(start: StartWith) -> (ActiveAudioConfig, Option<String>, String, String) {
+    let (input, input_name, source, candidate_id) = match start.input {
+        Input::Device(device) => {
+            let purpose = start.purpose;
+            let name = device.name.clone();
+            let source = input::Config::Device {
+                purpose: host_purpose(purpose),
+            };
+            (Some(device), name, source, None)
+        }
+        Input::App {
+            candidate_id,
+            source,
+        } => {
+            let name = source.name.clone();
+            let source = input::Config::ProcessLoopback(input::ProcessConfig {
+                app_key: source.key,
+                app_name: source.name,
+                raw_endpoint_id: source.route,
+                purpose: host_purpose(start.purpose),
+            });
+            (None, name, source, Some(candidate_id))
+        }
+    };
+    let config = ActiveAudioConfig {
+        input_source: Some(source),
+        host: start.output.host.clone(),
+        input: input.as_ref().map(|d| d.name.clone()),
+        output: Some(start.output.name.clone()),
+        input_id: input.and_then(|d| d.id),
+        output_id: start.output.id.clone(),
+        buffer_size: start.buffer_size,
+        sample_rate: start.sample_rate,
+        routing: Some(channel_routing(start.routing)),
+    };
+    (config, candidate_id, input_name, start.output.name)
+}
+
+/// アプリの音声で動く設定なら、そのアプリの名前。
+fn app_name(config: &ActiveAudioConfig) -> Option<String> {
+    match &config.input_source {
+        Some(input::Config::ProcessLoopback(app)) => Some(app.app_name.clone()),
+        _ => None,
+    }
+}
+
+/// 帯に出す入力（アプリの音声ならアプリの名前）と出力の名前。
+fn names(config: &ActiveAudioConfig) -> (Option<String>, Option<String>) {
+    (
+        app_name(config).or(config.input.clone()),
+        config.output.clone(),
+    )
 }
 
 /// 選んだ機器での開始。周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
@@ -1160,6 +1243,45 @@ mod tests {
             name: "A".into(),
             restore: false
         }));
+    }
+
+    #[test]
+    fn names_use_the_app_name_for_app_audio() {
+        let mut config = ActiveAudioConfig {
+            input_source: None,
+            host: "WASAPI".into(),
+            input: Some("Mic".into()),
+            output: Some("Speakers".into()),
+            input_id: None,
+            output_id: None,
+            buffer_size: None,
+            sample_rate: None,
+            routing: None,
+        };
+        assert_eq!(
+            names(&config),
+            (Some("Mic".into()), Some("Speakers".into()))
+        );
+        config.input = None;
+        config.input_source = Some(input::Config::ProcessLoopback(input::ProcessConfig {
+            app_key: "key".into(),
+            app_name: "Player".into(),
+            raw_endpoint_id: "route".into(),
+            purpose: input::Purpose::Music,
+        }));
+        assert_eq!(
+            names(&config),
+            (Some("Player".into()), Some("Speakers".into()))
+        );
+    }
+
+    #[test]
+    fn later_preview_supersedes_only_the_same_slider_and_never_the_saving_change() {
+        let preview = |change| Command::PreviewSound(change);
+        assert!(preview(Change::Amount(0.6)).supersedes(&preview(Change::Amount(0.5))));
+        assert!(!preview(Change::Amount(0.6)).supersedes(&preview(Change::Strength(0.5))));
+        assert!(!preview(Change::Amount(0.6)).supersedes(&Command::SetSound(Change::Amount(0.5))));
+        assert!(!Command::SetSound(Change::Amount(0.6)).supersedes(&preview(Change::Amount(0.5))));
     }
 
     #[test]

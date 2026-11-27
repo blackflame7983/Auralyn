@@ -218,24 +218,16 @@ impl MainView {
         .detach();
         let sound = SoundPage::new(cx);
         cx.subscribe(&sound.amount, |this, _, event: &SliderEvent, _| {
-            let SliderEvent::Release(value) = event else {
-                return;
-            };
-            this.send(Command::SetSound(Change::Amount(value.end() / 100.0)));
+            this.send(sound_command(event, |v| Change::Amount(v / 100.0)));
         })
         .detach();
         cx.subscribe(&sound.strength, |this, _, event: &SliderEvent, _| {
-            let SliderEvent::Release(value) = event else {
-                return;
-            };
-            this.send(Command::SetSound(Change::Strength(value.end() / 100.0)));
+            this.send(sound_command(event, |v| Change::Strength(v / 100.0)));
         })
         .detach();
         for (knob, slider) in Knob::ALL.into_iter().zip(&sound.knobs) {
             cx.subscribe(slider, move |this, _, event: &SliderEvent, _| {
-                if let SliderEvent::Release(value) = event {
-                    this.send(Command::SetSound(knob.change(value.end())));
-                }
+                this.send(sound_command(event, |v| knob.change(v)));
             })
             .detach();
         }
@@ -444,7 +436,6 @@ impl MainView {
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
         }
-        self.prep.set_hidden(self.hidden.get());
         if self.page == Page::Home && !self.hidden.get() {
             if let Some(command) = self.prep.tick(window, cx) {
                 self.engine.send(command);
@@ -908,20 +899,39 @@ impl MainView {
         self.engine.send(command);
     }
 
-    /// 接続の画面で選んだ入力・出力先で開始する。
-    fn start_chosen(&mut self, cx: &App) {
-        let Some((input, purpose, output)) = self.connect.start_choice(cx) else {
-            return;
-        };
+    /// 接続の画面で選んだ機器・周波数・バッファ。
+    fn chosen_start(&self, cx: &App) -> Option<StartWith> {
+        let (input, purpose, output) = self.connect.start_choice(cx)?;
         let (sample_rate, buffer_size) = self.connect.values(cx);
-        self.start_with(StartWith {
+        Some(StartWith {
             input,
             purpose,
             output,
             sample_rate,
             buffer_size,
             routing: self.connect.routing(cx),
-        });
+        })
+    }
+
+    /// 接続の画面で選んだ入力・出力先で開始する。
+    fn start_chosen(&mut self, cx: &App) {
+        if let Some(start) = self.chosen_start(cx) {
+            self.start_with(start);
+        }
+    }
+
+    /// 動いている接続を、接続の画面で選び直した機器で始め直す。押せるのは動いているときだけ。
+    fn restart_chosen(&mut self, cx: &App) {
+        if self.phase != Phase::Running {
+            return;
+        }
+        let Some(start) = self.chosen_start(cx) else {
+            return;
+        };
+        self.message = None;
+        self.restarting = true;
+        self.advance(SessionEvent::RestartRequested);
+        self.engine.send(Command::Restart(start));
     }
 
     /// 動いている ASIO の入力のペアを替えて始め直す。押せるのは動いているときだけ。
@@ -1519,7 +1529,11 @@ impl Render for MainView {
                                                 let entity = entity.clone();
                                                 move |_, cx| {
                                                     entity.update(cx, |this, cx| {
-                                                        this.start_chosen(cx);
+                                                        if this.phase == Phase::Running {
+                                                            this.restart_chosen(cx);
+                                                        } else {
+                                                            this.start_chosen(cx);
+                                                        }
                                                         cx.notify();
                                                     })
                                                 }
@@ -1570,4 +1584,12 @@ impl Render for MainView {
 /// 並びの中の位置（無ければ先頭）。
 fn index_of<T: PartialEq>(all: &[T], item: T) -> usize {
     all.iter().position(|x| *x == item).unwrap_or(0)
+}
+
+/// 音づくりのスライダー：動かしている間は送るだけ、離したら送って保存する。
+fn sound_command(event: &SliderEvent, change: impl Fn(f32) -> Change) -> Command {
+    match event {
+        SliderEvent::Change(value) => Command::PreviewSound(change(value.end())),
+        SliderEvent::Release(value) => Command::SetSound(change(value.end())),
+    }
 }
