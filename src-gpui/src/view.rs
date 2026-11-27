@@ -174,8 +174,7 @@ impl MainView {
         });
         cx.subscribe(&input_gain, |this, _, event: &SliderEvent, _| {
             let (SliderEvent::Change(value) | SliderEvent::Release(value)) = event;
-            this.engine
-                .send(Command::SetInputGain(value.start() / 100.0));
+            this.engine.send(Command::SetInputGain(value.end() / 100.0));
         })
         .detach();
         cx.subscribe(&output_gain, |this, _, event: &SliderEvent, _| {
@@ -815,6 +814,7 @@ impl MainView {
             self.engine.send(Command::LiveOutput(None));
             self.engine.send(Command::Mix(MixAction::Read));
             self.engine.send(Command::PostMix(PostAction::Read, None));
+            self.engine.send(Command::ReadSound);
         }
         if page == Page::Sound {
             self.engine.send(Command::ReadSound);
@@ -1048,15 +1048,34 @@ impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let entity = cx.entity();
-        let rail = shell::rail(self.page, lang, {
-            let entity = entity.clone();
-            move |page, _, cx| {
-                entity.update(cx, |this, cx| {
-                    this.open(page);
-                    cx.notify();
-                })
-            }
-        });
+        let help = self.page == Page::Settings && self.settings_section == Section::Help;
+        let rail = shell::rail(
+            self.page,
+            help,
+            lang,
+            {
+                let entity = entity.clone();
+                move |page, _, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.open(page);
+                        if page == Page::Settings && this.settings_section == Section::Help {
+                            this.open_section(Section::default());
+                        }
+                        cx.notify();
+                    })
+                }
+            },
+            {
+                let entity = entity.clone();
+                move |_, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.open(Page::Settings);
+                        this.open_section(Section::Help);
+                        cx.notify();
+                    })
+                }
+            },
+        );
         let children = match self.page {
             Page::Sound => Some(shell::Children {
                 labels: Part::ALL.map(|p| core(lang, p.label())).to_vec(),
@@ -1282,6 +1301,26 @@ impl Render for MainView {
                                                         }),
                                                 )
                                             })
+                                            .when(!self.music, |this| {
+                                                let entity = entity.clone();
+                                                this.children(
+                                                    self.sound
+                                                        .render_quick(
+                                                            lang,
+                                                            send.clone(),
+                                                            move |part, _, cx| {
+                                                                entity.update(cx, |this, cx| {
+                                                                    this.sound_part = part;
+                                                                    this.open(Page::Sound);
+                                                                    cx.notify();
+                                                                })
+                                                            },
+                                                        )
+                                                        .map(|card| {
+                                                            div().max_w(px(560.)).child(card)
+                                                        }),
+                                                )
+                                            })
                                             .child(div().max_w(px(560.)).child(self.prep.render(
                                                 lang,
                                                 {
@@ -1324,20 +1363,26 @@ impl Render for MainView {
                                             .flex()
                                             .flex_col()
                                             .gap_3()
-                                            .child(div().max_w(px(560.)).child(self.mix.render(
-                                                lang,
-                                                self.live.ready(),
-                                                cx,
-                                                send.clone(),
-                                            )))
-                                            .child(div().max_w(px(560.)).child(self.post.render(
-                                                lang,
-                                                self.mix.active(),
-                                                !self.phase.can_start(),
-                                                self.vst.scanning(),
-                                                cx,
-                                                send,
-                                            ))),
+                                            .when(!self.music || self.mix.in_use(), |this| {
+                                                this.child(div().max_w(px(560.)).child(
+                                                    self.mix.render(
+                                                        lang,
+                                                        self.live.ready(),
+                                                        cx,
+                                                        send.clone(),
+                                                    ),
+                                                ))
+                                                .child(div().max_w(px(560.)).child(
+                                                    self.post.render(
+                                                        lang,
+                                                        self.mix.active(),
+                                                        !self.phase.can_start(),
+                                                        self.vst.scanning(),
+                                                        cx,
+                                                        send,
+                                                    ),
+                                                ))
+                                            }),
                                     )),
                                 Page::Settings => this.child(settings::render(
                                     match self.settings_section {

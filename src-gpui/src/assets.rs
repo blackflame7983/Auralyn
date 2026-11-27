@@ -37,6 +37,8 @@ icon_assets!(
         Cast,
         SquarePen,
         Trash,
+        Lock,
+        LockOpen,
     ]
 );
 

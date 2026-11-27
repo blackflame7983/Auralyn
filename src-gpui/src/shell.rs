@@ -6,6 +6,7 @@ use std::rc::Rc;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Disableable as _, Icon, Selectable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -86,11 +87,14 @@ impl Page {
     }
 }
 
-/// 左のレール。窓の高さいっぱいで、縦にはスクロールしない。
+/// 左のレール。窓の高さいっぱいで、縦にはスクロールしない。下の端に、困ったとき（ヘルプ）の入口を置く。
+/// `help` は困ったときを開いているか（そのときは設定でなくヘルプを今の行き先として示す）。
 pub fn rail(
     current: Page,
+    help: bool,
     lang: Lang,
     on_select: impl Fn(Page, &mut Window, &mut App) + 'static,
+    on_help: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let on_select = Rc::new(on_select);
     div()
@@ -109,40 +113,64 @@ pub fn rail(
         .border_color(color::border())
         .bg(color::card())
         .children(Page::ALL.map(|page| {
-            let active = page == current;
             let on_select = on_select.clone();
-            Button::new(page.id())
-                .ghost()
-                .selected(active)
-                .accessibility_label(page.name(lang))
-                .when(page.name(lang) != page.label(lang), |this| {
-                    this.tooltip(page.name(lang))
-                })
-                .w_full()
-                .h(px(RAIL_ITEM_HEIGHT))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap_0p5()
-                        .text_xs()
-                        .when(active, |this| this.font_weight(FontWeight::BOLD))
-                        .text_color(if active {
-                            color::foreground()
-                        } else {
-                            color::muted()
-                        })
-                        // 今の行き先は塗り・太字・アイコンの色で示す（色だけで伝えない）。
-                        .child(
-                            Icon::new(page.icon())
-                                .size_6()
-                                .when(active, |this| this.text_color(color::primary())),
-                        )
-                        .child(page.label(lang)),
-                )
-                .on_click(move |_, window, cx| on_select(page, window, cx))
+            rail_item(
+                page.id(),
+                page.icon(),
+                page.label(lang),
+                page.name(lang),
+                page == current && !help,
+            )
+            .on_click(move |_, window, cx| on_select(page, window, cx))
         }))
+        .child(div().flex_1())
+        .child(
+            rail_item(
+                "rail-help",
+                IconName::LifeBuoy,
+                core(lang, keys::RAIL_HELP),
+                core(lang, keys::RAIL_HELP),
+                help,
+            )
+            .on_click(move |_, window, cx| on_help(window, cx)),
+        )
+}
+
+/// レールの1項目。今の行き先は塗り・太字・アイコンの色で示す（色だけで伝えない）。
+fn rail_item(
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    name: &'static str,
+    active: bool,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .selected(active)
+        .accessibility_label(name)
+        .when(name != label, |this| this.tooltip(name))
+        .w_full()
+        .h(px(RAIL_ITEM_HEIGHT))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap_0p5()
+                .text_xs()
+                .when(active, |this| this.font_weight(FontWeight::BOLD))
+                .text_color(if active {
+                    color::foreground()
+                } else {
+                    color::muted()
+                })
+                .child(
+                    Icon::new(icon)
+                        .size_6()
+                        .when(active, |this| this.text_color(color::primary())),
+                )
+                .child(label),
+        )
 }
 
 /// 今の行き先の中の子（音づくり・設定）。名前は訳したもの。
@@ -250,17 +278,28 @@ pub fn band(
         .children(badges.into_iter().map(badge))
         .child(
             div()
+                .id("band-route")
                 .flex_1()
                 .min_w_0()
                 .truncate()
                 .text_sm()
                 .text_color(color::muted())
-                .children(route),
+                // 細い窓では切れるので、ツールチップで全部を出す。
+                .when_some(route, |this, route| {
+                    let full = route.clone();
+                    this.child(route)
+                        .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+                }),
         )
         .child(
+            // 止まっているときの開始は主な操作なので目立たせる。止めるボタンは短い札にし、説明はツールチップへ。
             Button::new("band-control")
                 .label(button_label(phase, lang))
-                .outline()
+                .when(phase.can_start(), |this| this.primary())
+                .when(!phase.can_start(), |this| this.outline())
+                .when(phase == Phase::Running, |this| {
+                    this.tooltip(core(lang, keys::STOP))
+                })
                 .loading(phase.busy())
                 .disabled(phase.busy())
                 .on_click(move |_, window, cx| on_press(window, cx)),
@@ -315,7 +354,7 @@ fn button_label(phase: Phase, lang: Lang) -> &'static str {
         match phase {
             Phase::Unconfigured | Phase::Stopped => keys::START,
             Phase::Starting => keys::STARTING,
-            Phase::Running => keys::STOP,
+            Phase::Running => keys::STOP_SHORT,
             Phase::Stopping => keys::STOPPING,
         },
     )

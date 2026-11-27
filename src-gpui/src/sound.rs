@@ -5,9 +5,10 @@
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::sound::{self, Change, Knob, NoiseMode, Preset, Sound};
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::slider::{Slider, SliderState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::Disableable as _;
+use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -159,6 +160,117 @@ impl SoundPage {
         })
     }
 
+    /// ホームに置く日常の音調整：ノイズ低減と声を整えるの ON/OFF と今の種類。細かい調整は音づくりへ（`on_open`）。
+    /// まだ読めていなければ出さない。
+    pub fn render_quick(
+        &self,
+        lang: Lang,
+        send: OnCommand,
+        on_open: impl Fn(Part, &mut Window, &mut App) + 'static,
+    ) -> Option<Card> {
+        let current = self.current?;
+        let on_open = std::rc::Rc::new(on_open);
+        let set = move |change: Change, cx: &mut App| send(Command::SetSound(change), cx);
+        let noise_kind = Some(core(
+            lang,
+            match current.noise_mode {
+                Some(NoiseMode::Low) => keys::NOISE_LOW,
+                Some(NoiseMode::High) => keys::NOISE_HIGH,
+                Some(NoiseMode::Measured) => keys::NOISE_MEASURED,
+                Some(NoiseMode::Venue) => keys::NOISE_VENUE,
+                None => keys::NOISE_MODE_FIRST,
+            },
+        ));
+        let preset = current.preset.and_then(|preset| {
+            PRESETS
+                .iter()
+                .find(|(p, _)| *p == preset)
+                .map(|(_, key)| core(lang, key))
+        });
+        let row = |id: &'static str,
+                   icon: IconName,
+                   title: &'static str,
+                   kind: Option<&'static str>,
+                   part: Part,
+                   switch: Switch| {
+            let on_open = on_open.clone();
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(icon).text_color(color::primary()))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
+                        .when_some(kind, |this, kind| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(color::muted())
+                                    .truncate()
+                                    .child(kind),
+                            )
+                        }),
+                )
+                .child(switch)
+                .child(
+                    Button::new(SharedString::from(format!("{id}-open")))
+                        .icon(IconName::ChevronRight)
+                        .ghost()
+                        .small()
+                        .tooltip(core_with(lang, keys::QUICK_ADJUST, &[("name", &title)]))
+                        .accessibility_label(core_with(
+                            lang,
+                            keys::QUICK_ADJUST,
+                            &[("name", &title)],
+                        ))
+                        .on_click(move |_, window, cx| on_open(part, window, cx)),
+                )
+        };
+        let noise = core(lang, keys::NOISE);
+        let effects = core(lang, keys::EFFECTS);
+        Some(
+            Card::new(
+                core(lang, keys::SHELL_SOUND),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(row(
+                        "quick-noise",
+                        IconName::Wind,
+                        noise,
+                        noise_kind,
+                        Part::Noise,
+                        Switch::new("quick-noise-on")
+                            .checked(current.noise_on)
+                            .accessibility_label(noise)
+                            .disabled(current.noise_mode.is_none())
+                            .on_click({
+                                let set = set.clone();
+                                move |on, _, cx| set(Change::NoiseOn(*on), cx)
+                            }),
+                    ))
+                    .child(row(
+                        "quick-effects",
+                        IconName::WandSparkles,
+                        effects,
+                        preset,
+                        Part::Voice,
+                        Switch::new("quick-effects-on")
+                            .checked(current.effects_on)
+                            .accessibility_label(effects)
+                            .on_click(move |on, _, cx| set(Change::EffectsOn(*on), cx)),
+                    )),
+            )
+            .icon(IconName::AudioLines),
+        )
+    }
+
     /// `locked` は操作ロック中（制限を変えさせない）。
     pub fn render(
         &self,
@@ -183,12 +295,15 @@ impl SoundPage {
             .flex_col()
             .gap_6()
             .max_w(px(560.))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(color::muted())
-                    .child(core(lang, keys::OFF_UNTIL_ON)),
-            )
+            // ON/OFF のある区画（ノイズ低減・声を整える）だけの補足。
+            .when(matches!(part, Part::Noise | Part::Voice), |this| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(color::muted())
+                        .child(core(lang, keys::OFF_UNTIL_ON)),
+                )
+            })
             .when(part == Part::Noise, |this| {
                 this.child(section(
                     lang,
