@@ -553,7 +553,7 @@ impl PrepPanel {
                     div().child(
                         Button::new(SharedString::from(format!("prep-unconfirm-{stage:?}")))
                             .label(core(lang, keys::PREP_UNCONFIRM))
-                            .ghost()
+                            .outline()
                             .on_click(unconfirm),
                     ),
                 )

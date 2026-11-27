@@ -49,9 +49,11 @@ impl MainView {
             .child(core(lang, keys::EMERGENCY))
             .when(muted, |this| {
                 this.child(
+                    // 赤い地に赤い字は明るい外観で読みにくいので、字は本文の色にする（赤は枠と地で伝える）。
                     div()
                         .text_xs()
-                        .text_color(color::destructive_text())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(color::foreground())
                         .child(core(lang, keys::MUTED_SHORT)),
                 )
             })

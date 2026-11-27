@@ -18,7 +18,7 @@ use crate::color;
 use crate::desktop::Registered;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, with_hint, OnCommand};
+use crate::part::{card, note, with_hint, Fold, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
@@ -322,7 +322,8 @@ pub fn diagnostics(lang: Lang, stats: Option<&Stats>, send: OnCommand) -> impl I
 }
 
 /// 配信ミックスの診断。診断と一緒に読む（「読み直す」で両方）。読めない項目は「-」。
-pub fn mix_diagnostics(lang: Lang, mix: &diagnostics::Mix) -> impl IntoElement {
+/// 問い合わせ向けの細かい数なので、普段は畳む（`fold`）。
+pub fn mix_diagnostics(lang: Lang, mix: &diagnostics::Mix, fold: &Fold) -> impl IntoElement {
     fn text(value: Option<impl ToString>) -> String {
         value.map_or_else(|| "-".to_owned(), |v| v.to_string())
     }
@@ -362,6 +363,8 @@ pub fn mix_diagnostics(lang: Lang, mix: &diagnostics::Mix) -> impl IntoElement {
             .gap_1()
             .children(rows.map(|(name, value)| row(lang, name, value))),
     )
+    // 取り込みが失敗しているときは畳まない（畳んだ中に隠れると気づけない）。
+    .fold(fold, mix.failed == Some(true))
 }
 
 /// 読み込みを止めた VST のリセット。`cleared` は直前の結果（失敗なら理由）。

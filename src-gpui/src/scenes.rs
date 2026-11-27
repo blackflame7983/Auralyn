@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::live_modes::Mode;
 use auralyn_ui_model::scene_routing::{Action, Issue, Routing, Strategy};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::Disableable as _;
@@ -194,7 +194,7 @@ impl ScenePanel {
                                         keys::SCENE_REMOVE,
                                         &[("n", &(index + 1))],
                                     ))
-                                    .ghost()
+                                    .outline()
                                     .on_click(move |_, window, cx| {
                                         on_remove(Edit::Remove(index), window, cx)
                                     }),
@@ -204,7 +204,7 @@ impl ScenePanel {
                         let on = on.clone();
                         Button::new("scene-add")
                             .label(core(lang, keys::SCENE_ADD))
-                            .ghost()
+                            .outline()
                             .on_click(move |_, window, cx| on(Edit::Add, window, cx))
                     }))
             })

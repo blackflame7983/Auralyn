@@ -141,6 +141,8 @@ pub struct MainView {
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     mix_stats: diagnostics::Mix,
+    /// 配信ミックスの診断の開閉（普段は畳む）。
+    mix_diag_fold: crate::part::Fold,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
     cleared: Option<Result<(), String>>,
     sound: SoundPage,
@@ -158,6 +160,7 @@ impl MainView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        desktop::set_dark_title(window, color::theme() != Theme::Light);
         let input_gain = cx.new(|_| {
             SliderState::new()
                 .min(0.0)
@@ -298,6 +301,13 @@ impl MainView {
             },
         )
         .detach();
+        // Windows の明暗が変わると、GPUI は外観の知らせのあとでタイトルバーを OS の明暗に塗り直すので、次の描画でテーマの明暗に戻す。
+        cx.observe_window_appearance(window, |_, window, _| {
+            window.on_next_frame(|window, _| {
+                desktop::set_dark_title(window, color::theme() != Theme::Light)
+            });
+        })
+        .detach();
         // 最初はホームを出すので、配信ミックスに要るもの（機器・配信用の出力・ミックスとミックス後の VST の状態）を読んでおく。
         for command in [
             Command::ListDevices,
@@ -408,6 +418,7 @@ impl MainView {
             recovery: None,
             stats: None,
             mix_stats: diagnostics::Mix::default(),
+            mix_diag_fold: Default::default(),
             cleared: None,
             sound,
             obs,
@@ -1010,11 +1021,12 @@ impl MainView {
     }
 
     /// テーマを替えて保存する。保存できなくても、この起動の間は替えたままにする。
-    fn set_theme(&mut self, theme: Theme, cx: &mut App) {
+    fn set_theme(&mut self, theme: Theme, window: &Window, cx: &mut App) {
         if theme == color::theme() {
             return;
         }
         color::set_theme(theme, cx);
+        desktop::set_dark_title(window, theme != Theme::Light);
         let result = theme_file::save(&self.config_dir, theme);
         self.report_save(keys::THEME_SAVE_FAILED, result);
     }
@@ -1411,9 +1423,9 @@ impl Render for MainView {
                                             }))
                                             .child(settings::appearance(lang, color::theme(), {
                                                 let entity = entity.clone();
-                                                move |theme, _, cx| {
+                                                move |theme, window, cx| {
                                                     entity.update(cx, |this, cx| {
-                                                        this.set_theme(theme, cx);
+                                                        this.set_theme(theme, window, cx);
                                                         cx.notify();
                                                     })
                                                 }
@@ -1461,7 +1473,7 @@ impl Render for MainView {
                                                 self.stats.as_ref(),
                                                 send.clone(),
                                             ))
-                                            .child(settings::mix_diagnostics(lang, &self.mix_stats))
+                                            .child(settings::mix_diagnostics(lang, &self.mix_stats, &self.mix_diag_fold))
                                             .child(settings::plugins(
                                                 lang,
                                                 self.cleared.as_ref(),

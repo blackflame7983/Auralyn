@@ -244,7 +244,7 @@ impl PostMixPanel {
                             let send = send.clone();
                             Button::new("post-scan")
                                 .label(core(lang, keys::POST_SCAN))
-                                .ghost()
+                                .outline()
                                 .small()
                                 .loading(scanning)
                                 .disabled(scanning || audio_running)

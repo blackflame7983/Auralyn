@@ -114,6 +114,8 @@ fn main() {
                 }
             });
             color::set_theme(theme, cx);
+            // 動きを減らす設定なら、画面の切り替え・区画の開閉のふわっとした動きを止める。
+            cx.set_reduce_motion(desktop::reduce_motion());
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,

@@ -155,7 +155,7 @@ impl SetupPanel {
                         .child(
                             Button::new("setup-connect")
                                 .label(core(lang, keys::SETUP_OTHER))
-                                .ghost()
+                                .outline()
                                 .on_click(move |_, window, cx| on_connect(window, cx)),
                         ),
                 ),
