@@ -185,8 +185,12 @@ impl ModesPanel {
             )))
             .child(refresh(lang, send.clone()))
         })
-        .child(self.render_save(modes, lang, send.clone()))
-        .child(protect(modes, lang, send))
+        .child(self.render_save(modes, lang, send))
+    }
+
+    /// 右の列に置く操作ロック。どの画面からでも1手でロック・解除できる。状態をまだ読めていなければ出さない。
+    pub fn render_lock(&self, lang: Lang, send: OnCommand) -> Option<impl IntoElement> {
+        self.current().map(|modes| protect(modes, lang, send))
     }
 
     /// 今の音づくりを歌・雑談として登録する。雑談で残響が ON なら、切ってから登録するかを聞く。
@@ -278,43 +282,40 @@ impl ModesPanel {
     }
 }
 
-/// 操作ロック。ロック中は機器や VST の構成を変えられない（停止・緊急ミュートは使える）。
+/// 操作ロック。ロック中は機器や VST の構成を変えられない（停止・緊急ミュートは使える）。説明はツールチップに出す。
 fn protect(modes: &LiveModes, lang: Lang, send: OnCommand) -> impl IntoElement {
     let armed = modes.armed;
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .child(
-            div().child(
-                Button::new("mode-protect")
-                    .label(core(
-                        lang,
-                        if armed {
-                            keys::MODES_PROTECTING
-                        } else {
-                            keys::MODES_PROTECT
-                        },
-                    ))
-                    .outline()
-                    .small()
-                    .selected(armed)
-                    .disabled(!modes.can_protect())
-                    .on_click(move |_, _, cx| {
-                        send(Command::Modes(ModeAction::Protect(!armed)), cx)
-                    }),
-            ),
-        )
-        .child(note(core(
+    let hint = core(
+        lang,
+        if armed {
+            keys::MODES_UNLOCK_HINT
+        } else if modes.running {
+            keys::MODES_PROTECT_HINT
+        } else {
+            keys::MODES_PROTECT_NEEDS_AUDIO
+        },
+    );
+    Button::new("mode-protect")
+        .label(core(
             lang,
             if armed {
-                keys::MODES_UNLOCK_HINT
-            } else if modes.running {
-                keys::MODES_PROTECT_HINT
+                keys::MODES_PROTECTING
             } else {
-                keys::MODES_PROTECT_NEEDS_AUDIO
+                keys::MODES_PROTECT
             },
-        )))
+        ))
+        .icon(if armed {
+            IconName::Lock
+        } else {
+            IconName::LockOpen
+        })
+        .outline()
+        .w_full()
+        .selected(armed)
+        .toggled(armed)
+        .disabled(!modes.can_protect())
+        .tooltip(hint)
+        .on_click(move |_, _, cx| send(Command::Modes(ModeAction::Protect(!armed)), cx))
 }
 
 fn refresh(lang: Lang, send: OnCommand) -> impl IntoElement {

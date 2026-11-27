@@ -210,6 +210,15 @@ impl MainView {
             .child(self.render_input(cx))
             .child(self.render_output(cx))
             .child(self.render_compare(cx))
+            .children(self.modes.render_lock(lang, {
+                let entity = cx.entity();
+                Rc::new(move |command, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.send(command);
+                        cx.notify();
+                    })
+                })
+            }))
     }
 }
 

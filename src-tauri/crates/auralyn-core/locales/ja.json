@@ -3695,7 +3695,7 @@
   "gpuiShell.modesRegisterNote": "いまかかっている声を整える処理と残響を登録します。雑談では残響を OFF にして登録します。",
   "gpuiShell.modesSwitching": "切り替えています。",
   "gpuiShell.modesLinked": "VST と一緒に切り替えるよう結び付けたモードは、まだこの画面では切り替えられません。",
-  "gpuiShell.modesLocked": "操作ロック中のため、この操作はできません。音づくりの画面の「操作をロック」で解除してから、もう一度操作してください。",
+  "gpuiShell.modesLocked": "操作ロック中のため、この操作はできません。右の列の「ロック中」を押して解除してから、もう一度操作してください。",
   "gpuiShell.themeSaveFailed": "テーマを保存できませんでした。この画面では切り替わりますが、次回起動時には戻る場合があります。",
   "gpuiShell.recoverySafety": "保存した VST の並びは消しません。除いた VST や、VST なしで始め直したときの VST は「読めていない」枠として並びに残り、VST の画面の「読めていない VST を読み直す」か、次にアプリを起動したときに読み直します。原因の VST を外すときは、VST の画面で枠を削除してください。始め直したあとも、音や受け側に届いているかは別に確かめてください。",
   "gpuiShell.reloadMissing": "読めていない VST を読み直す",

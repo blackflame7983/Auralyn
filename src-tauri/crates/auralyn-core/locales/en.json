@@ -3695,7 +3695,7 @@
   "gpuiShell.modesRegisterNote": "Registers the voice shaping and reverb in use now. For talk, the reverb is registered as off.",
   "gpuiShell.modesSwitching": "Switching.",
   "gpuiShell.modesLinked": "Modes linked to switch together with VSTs can't be switched on this screen yet.",
-  "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock with “Lock controls” on the Sound page, then try again.",
+  "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock it with the lock button in the right column, then try again.",
   "gpuiShell.themeSaveFailed": "The theme changed for this session, but could not be saved. It may reset when you reopen the app.",
   "gpuiShell.recoverySafety": "Your saved VST rack is kept. Excluded VSTs, or all VSTs when you resume without them, stay in the rack as not-loaded slots and are loaded again with \"Load not-loaded VSTs again\" on the VST page, or the next time the app starts. To drop the VST that caused it, delete its slot on the VST page. After resuming, check the audio and the receiving app separately.",
   "gpuiShell.reloadMissing": "Load not-loaded VSTs again",
