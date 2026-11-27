@@ -80,6 +80,24 @@ mod imp {
         }
     }
 
+    /// Windows の「アニメーション効果」が切られているか。読めなければ動かす（GPUI の既定と同じ）。
+    pub fn reduce_motion() -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SystemParametersInfoW, SPI_GETCLIENTAREAANIMATION,
+        };
+        let mut enabled: windows_sys::core::BOOL = 1;
+        // SAFETY: SPI_GETCLIENTAREAANIMATION は pvparam に BOOL を1つ書くだけ。`enabled` はこの関数の間生きている。
+        let ok = unsafe {
+            SystemParametersInfoW(
+                SPI_GETCLIENTAREAANIMATION,
+                0,
+                (&mut enabled as *mut windows_sys::core::BOOL).cast(),
+                0,
+            )
+        };
+        ok != 0 && enabled == 0
+    }
+
     pub struct Desktop {
         _tray: Option<TrayIcon>,
         show: MenuItem,
@@ -244,9 +262,13 @@ mod imp {
     }
 
     pub fn set_shown(_window: &gpui_kit::Window, _shown: bool) {}
+
+    pub fn reduce_motion() -> bool {
+        false
+    }
 }
 
-pub use imp::{set_shown, Desktop};
+pub use imp::{reduce_motion, set_shown, Desktop};
 
 impl Desktop {
     /// 登録できなかったショートカットがあるか。
