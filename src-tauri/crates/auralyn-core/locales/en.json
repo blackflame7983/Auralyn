@@ -3700,5 +3700,11 @@
   "gpuiShell.recoverySafety": "Your saved VST rack is kept. Excluded VSTs, or all VSTs when you resume without them, stay in the rack as not-loaded slots and are loaded again with \"Load not-loaded VSTs again\" on the VST page, or the next time the app starts. To drop the VST that caused it, delete its slot on the VST page. After resuming, check the audio and the receiving app separately.",
   "gpuiShell.reloadMissing": "Load not-loaded VSTs again",
   "gpuiShell.reloadMissingHint": "Tries again to load VSTs that were excluded or could not be loaded. If one of them caused the crash, the audio engine may stop again. Uninstalled or moved VSTs cannot load until you reinstall them or move them back.",
-  "gpuiShell.themeNote": "Only the colors change here. The cut corners and italic headings of Gaming are only in the previous version."
+  "gpuiShell.themeNote": "Only the colors change here. The cut corners and italic headings of Gaming are only in the previous version.",
+  "gpuiShell.channelHeard": "Signal on: {pairs}",
+  "gpuiShell.channelSilent": "No signal on any input",
+  "gpuiShell.channelWaiting": "Checking input signals",
+  "gpuiShell.channelSuggest": "No signal on the selected {current}",
+  "gpuiShell.channelUse": "Switch to {pair}",
+  "gpuiShell.channelUseHint": "Restarts audio on the input pair that has signal. The new assignment is saved and used next time."
 }

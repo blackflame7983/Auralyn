@@ -411,6 +411,12 @@ pub mod keys {
     pub const CHANNEL_INPUT: &str = "settings.channel.input";
     pub const CHANNEL_TITLE: &str = "settings.InputChannelSelector.205";
     pub const CHANNEL_UNVERIFIED: &str = "settings.InputChannelSelector.unverified";
+    pub const CHANNEL_HEARD: &str = "gpuiShell.channelHeard";
+    pub const CHANNEL_SILENT: &str = "gpuiShell.channelSilent";
+    pub const CHANNEL_WAITING: &str = "gpuiShell.channelWaiting";
+    pub const CHANNEL_SUGGEST: &str = "gpuiShell.channelSuggest";
+    pub const CHANNEL_USE: &str = "gpuiShell.channelUse";
+    pub const CHANNEL_USE_HINT: &str = "gpuiShell.channelUseHint";
     pub const APPEARANCE: &str = "settings.appearance";
     pub const THEME_TITLE: &str = "settings.AudioSettingsModal.130";
     pub const THEME_LIGHT: &str = "header.light";
@@ -684,7 +690,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 671] = [
+    pub const ALL: [&str; 677] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1163,6 +1169,12 @@ pub mod keys {
         CHANNEL_INPUT,
         CHANNEL_TITLE,
         CHANNEL_UNVERIFIED,
+        CHANNEL_HEARD,
+        CHANNEL_SILENT,
+        CHANNEL_WAITING,
+        CHANNEL_SUGGEST,
+        CHANNEL_USE,
+        CHANNEL_USE_HINT,
         APPEARANCE,
         THEME_TITLE,
         THEME_LIGHT,

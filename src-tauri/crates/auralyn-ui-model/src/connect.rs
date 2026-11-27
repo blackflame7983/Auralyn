@@ -161,11 +161,7 @@ pub fn first_pair(channels: u16) -> [usize; 2] {
 /// 保存した同じドライバーなら保存した割り当て（返し方が無ければ従来の返し方）、違う機器なら最初のペアを同じ番号の出力へ。
 pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
     let first = first_pair(input.channels);
-    let same = saved.filter(|saved| {
-        saved.host == input.host
-            && (saved.input_id.is_some() && saved.input_id == input.id
-                || saved.input.as_deref() == Some(input.name.as_str()))
-    });
+    let same = saved.filter(|saved| is_saved_input(saved, input));
     match same {
         Some(saved) => saved.routing.unwrap_or(Routing {
             input: Some(first),
@@ -176,6 +172,22 @@ pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
             output: Output::Independent(first),
         },
     }
+}
+
+/// 保存した接続の入力の機器か（ID か名前が同じ、同じ接続方式の機器）。
+pub fn is_saved_input(saved: &Saved, device: &Device) -> bool {
+    saved.host == device.host
+        && (saved.input_id.is_some() && saved.input_id == device.id
+            || saved.input.as_deref() == Some(device.name.as_str()))
+}
+
+/// 動いている接続が ASIO の機器（アプリの音声でない）なら、その入力のペア。割り当てが無ければエンジンと同じく 1-2。
+pub fn running_asio_pair(
+    host: &str,
+    from_app: bool,
+    input: Option<[usize; 2]>,
+) -> Option<[usize; 2]> {
+    (shares_device(&canonical_host(host)) && !from_app).then(|| input.unwrap_or([0, 1]))
 }
 
 const ASIO: &str = "ASIO";
@@ -341,6 +353,14 @@ pub fn shared_output<'a>(outputs: &[&'a Device], input: &Device) -> Option<&'a D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_asio_pair_defaults_to_the_first_pair() {
+        assert_eq!(running_asio_pair("ASIO", false, Some([6, 7])), Some([6, 7]));
+        assert_eq!(running_asio_pair("Asio", false, None), Some([0, 1]));
+        assert_eq!(running_asio_pair("ASIO", true, Some([6, 7])), None);
+        assert_eq!(running_asio_pair("Wasapi", false, None), None);
+    }
 
     #[test]
     fn host_names_from_the_engine_are_unified() {

@@ -45,6 +45,7 @@ use crate::sound::{Part, SoundPage};
 use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
+use auralyn_ui_model::channel_signal::Signal;
 use auralyn_ui_model::connect::{Input, Purpose, SYSTEM_ROUTING};
 use auralyn_ui_model::diagnostics::{self, Stats};
 use auralyn_ui_model::flow::Flow;
@@ -100,6 +101,15 @@ pub struct MainView {
     modes_polled: Instant,
     /// 配信用の出力を最後に読み直した時刻。
     live_polled: Instant,
+    /// 接続の画面で、動いている ASIO の入力の信号を見ている（エンジンに監視を頼んでいる）。
+    channel_scan: bool,
+    channel_signal: Signal,
+    /// いま音が来ているチャンネル。変わったときだけ描き直す。
+    channel_heard: Vec<usize>,
+    /// 動いている接続が ASIO の機器なら、その入力のペア（開始の知らせで受ける）。
+    asio_pair: Option<[usize; 2]>,
+    /// 入力のペアを替えて始め直している。途中の止まった知らせでは止まった表示にしない。
+    restarting: bool,
     /// 窓をトレイへ隠している。隠れている間はメーターを計算しない（DESIGN.md 10.6）。
     hidden: Rc<Cell<bool>>,
     input_gain: Entity<SliderState>,
@@ -379,6 +389,11 @@ impl MainView {
             peak_polled: now,
             modes_polled: now,
             live_polled: now,
+            channel_scan: false,
+            channel_signal: Signal::default(),
+            channel_heard: Vec::new(),
+            asio_pair: None,
+            restarting: false,
             hidden,
             input_gain,
             output_gain,
@@ -435,6 +450,19 @@ impl MainView {
                 self.engine.send(command);
             }
         }
+        // 接続の画面で ASIO が動いている間だけ、入力チャンネルごとの信号を送らせる。
+        let scan = self.page == Page::Connect
+            && !self.hidden.get()
+            && self.phase == Phase::Running
+            && self.asio_pair.is_some();
+        if scan != self.channel_scan {
+            self.channel_scan = scan;
+            self.channel_signal.clear();
+            self.engine.send(Command::ChannelScan(scan));
+        }
+        // 保持の時間が切れて「来ていない」に変わったときも描き直す。
+        let heard = self.channel_signal.heard(Instant::now());
+        changed |= std::mem::replace(&mut self.channel_heard, heard) != self.channel_heard;
         // 接続の画面を出している間は、配信用の出力が届いているかを読み直す。
         if self.page == Page::Connect
             && !self.hidden.get()
@@ -542,7 +570,13 @@ impl MainView {
             // 落ちたあと、まだ始め直していないのに届いた開始は、落ちる前の開始の知らせ（落ちた知らせと別のスレッドから届く）。
             Notice::Started { .. }
                 if self.recovery.is_some() && !matches!(self.phase, Phase::Starting) => {}
-            Notice::Started { input, output } => {
+            Notice::Started {
+                input,
+                output,
+                asio_pair,
+            } => {
+                self.asio_pair = asio_pair;
+                self.restarting = false;
                 self.input_name = input;
                 self.output_name = output;
                 self.first_run = false;
@@ -556,8 +590,12 @@ impl MainView {
                 self.reread_peak();
                 self.reread_mix();
             }
+            Notice::Stopped if self.restarting => {}
             Notice::Stopped => {
                 self.audio_stopped();
+            }
+            Notice::ChannelLevels(levels) => {
+                self.channel_signal.record(&levels, Instant::now());
             }
             Notice::StreamError(message) => {
                 self.audio_stopped();
@@ -681,6 +719,12 @@ impl MainView {
 
     /// 状態を進め、音が流れ始めた・止まったときだけメーターを合わせる（停止の失敗で実行中に戻ったときも含む）。
     fn advance(&mut self, event: SessionEvent) {
+        if matches!(
+            event,
+            SessionEvent::Started | SessionEvent::StartFailed | SessionEvent::NoSavedConfig
+        ) {
+            self.restarting = false;
+        }
         let was_running = self.phase.running();
         self.phase = self.phase.next(event);
         match (was_running, self.phase.running()) {
@@ -718,6 +762,8 @@ impl MainView {
 
     /// 音が止まった（止めた・途切れた・エンジンが落ちた）。
     fn audio_stopped(&mut self) {
+        self.restarting = false;
+        self.asio_pair = None;
         self.prep.audio_changed();
         self.advance(SessionEvent::Stopped);
         self.voice.audio_stopped();
@@ -872,6 +918,17 @@ impl MainView {
             buffer_size,
             routing: self.connect.routing(cx),
         });
+    }
+
+    /// 動いている ASIO の入力のペアを替えて始め直す。押せるのは動いているときだけ。
+    fn use_input_pair(&mut self, pair: [usize; 2]) {
+        if self.phase != Phase::Running {
+            return;
+        }
+        self.message = None;
+        self.restarting = true;
+        self.advance(SessionEvent::RestartRequested);
+        self.engine.send(Command::UseInputPair(pair));
     }
 
     /// 選んだ入力・出力先で開始する。押せるのは止まっているときだけ。
@@ -1365,34 +1422,52 @@ impl Render for MainView {
                                     self.connect.render(
                                         self.phase,
                                         lang,
+                                        self.asio_pair
+                                            .filter(|_| self.channel_scan)
+                                            .map(|current| crate::connect::InputSignal {
+                                                current,
+                                                heard: (!self.channel_signal.is_empty())
+                                                    .then_some(self.channel_heard.as_slice()),
+                                            }),
                                         cx,
-                                        {
-                                            let entity = entity.clone();
-                                            move |_, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.start_chosen(cx);
-                                                    cx.notify();
-                                                })
-                                            }
-                                        },
-                                        {
-                                            let entity = entity.clone();
-                                            move |_, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.send(Command::Mix(MixAction::Apps));
-                                                    cx.notify();
-                                                })
-                                            }
-                                        },
-                                        move |window, cx| {
-                                            entity.update(cx, |this, cx| {
-                                                this.connect.switch_purpose(window, cx);
-                                                // 選択を替えても選んだ通知は出ないので、アプリの一覧はここで読む。
-                                                if this.connect.uses_app(cx) {
-                                                    this.send(Command::Mix(MixAction::Apps));
+                                        crate::connect::Actions {
+                                            on_start: Box::new({
+                                                let entity = entity.clone();
+                                                move |_, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.start_chosen(cx);
+                                                        cx.notify();
+                                                    })
                                                 }
-                                                cx.notify();
-                                            })
+                                            }),
+                                            on_apps: Box::new({
+                                                let entity = entity.clone();
+                                                move |_, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.send(Command::Mix(MixAction::Apps));
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            }),
+                                            on_switch: Box::new({
+                                                let entity = entity.clone();
+                                                move |window, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.connect.switch_purpose(window, cx);
+                                                        // 選択を替えても選んだ通知は出ないので、アプリの一覧はここで読む。
+                                                        if this.connect.uses_app(cx) {
+                                                            this.send(Command::Mix(MixAction::Apps));
+                                                        }
+                                                        cx.notify();
+                                                    })
+                                                }
+                                            }),
+                                            on_use_pair: Rc::new(move |pair, _, cx| {
+                                                entity.update(cx, |this, cx| {
+                                                    this.use_input_pair(pair);
+                                                    cx.notify();
+                                                })
+                                            }),
                                         },
                                     ),
                                     self.live.render(lang, send),
