@@ -141,6 +141,8 @@ pub struct MainView {
     /// 設定の画面の稼働統計。`None` は読めていない・読めなかった。
     stats: Option<Stats>,
     mix_stats: diagnostics::Mix,
+    /// 配信ミックスの診断の開閉（普段は畳む）。
+    mix_diag_fold: crate::part::Fold,
     /// 読み込みを止めた VST のリセットの直前の結果（失敗なら理由。スキャン中は断られる）。
     cleared: Option<Result<(), String>>,
     sound: SoundPage,
@@ -408,6 +410,7 @@ impl MainView {
             recovery: None,
             stats: None,
             mix_stats: diagnostics::Mix::default(),
+            mix_diag_fold: Default::default(),
             cleared: None,
             sound,
             obs,
@@ -1461,7 +1464,7 @@ impl Render for MainView {
                                                 self.stats.as_ref(),
                                                 send.clone(),
                                             ))
-                                            .child(settings::mix_diagnostics(lang, &self.mix_stats))
+                                            .child(settings::mix_diagnostics(lang, &self.mix_stats, &self.mix_diag_fold))
                                             .child(settings::plugins(
                                                 lang,
                                                 self.cleared.as_ref(),
