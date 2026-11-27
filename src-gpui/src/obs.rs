@@ -384,7 +384,7 @@ impl ObsPanel {
                             this.child(
                                 Button::new("obs-forget")
                                     .label(core(lang, keys::OBS_FORGET))
-                                    .ghost()
+                                    .outline()
                                     .disabled(!editable)
                                     .on_click(move |_, _, cx| on(Order::Forget, cx)),
                             )

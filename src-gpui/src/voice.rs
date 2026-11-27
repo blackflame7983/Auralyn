@@ -357,7 +357,7 @@ impl VoicePanel {
                         let send = send.clone();
                         Button::new("listen-devices")
                             .label(core(lang, keys::LISTEN_REFRESH))
-                            .ghost()
+                            .outline()
                             .disabled(playing)
                             .on_click(move |_, _, cx| send(Command::Listen(Listen::Devices), cx))
                     }),

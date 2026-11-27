@@ -5,7 +5,7 @@
 
 use auralyn_ui_model::profile::{self, Entry, ImportIssue, NameIssue};
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariant};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::component::{Disableable as _, WindowExt as _};
@@ -191,7 +191,7 @@ impl SetupsPanel {
                             this.child(
                                 Button::new("setup-restore")
                                     .label(core(lang, keys::SETUPS_RESTORE))
-                                    .ghost()
+                                    .outline()
                                     .on_click(move |_, _, cx| apply(name.clone(), true, cx)),
                             )
                         }),
@@ -207,7 +207,7 @@ impl SetupsPanel {
                             let send = send.clone();
                             Button::new("setup-export")
                                 .label(core(lang, keys::SETUPS_EXPORT))
-                                .ghost()
+                                .outline()
                                 .disabled(chosen.is_none())
                                 .on_click(move |_, _, cx| {
                                     if let Some(name) = chosen.clone() {
@@ -224,7 +224,7 @@ impl SetupsPanel {
                             let send = send.clone();
                             Button::new("setup-import")
                                 .label(core(lang, keys::SETUPS_IMPORT))
-                                .ghost()
+                                .outline()
                                 .on_click(move |_, _, cx| {
                                     let send = send.clone();
                                     open_file(cx, move |path, cx| {
@@ -237,7 +237,7 @@ impl SetupsPanel {
                             let send = send.clone();
                             Button::new("setup-delete")
                                 .label(core(lang, keys::SETUPS_DELETE))
-                                .ghost()
+                                .outline()
                                 .disabled(chosen.is_none())
                                 .on_click(move |_, window, cx| {
                                     if let Some(name) = chosen.clone() {

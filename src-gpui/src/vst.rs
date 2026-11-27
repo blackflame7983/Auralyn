@@ -255,7 +255,7 @@ impl VstPage {
                         let send = send.clone();
                         Button::new("vst-refresh")
                             .label(core(lang, keys::VST_REFRESH))
-                            .ghost()
+                            .outline()
                             .loading(scanning)
                             .disabled(scanning)
                             .on_click(move |_, _, cx| send(Command::ScanPlugins, cx))

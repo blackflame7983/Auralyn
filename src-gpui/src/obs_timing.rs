@@ -8,7 +8,8 @@ use std::rc::Rc;
 use auralyn_ui_model::obs_timing::{
     result_offset, Blocked, Comparison, Direction, Form, Role, MAX_NOTE_CHARS,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{Disableable as _, Selectable as _};
@@ -151,7 +152,12 @@ impl TimingPanel {
             let picked = self.picked.clone();
             Button::new("obs-timing-open")
                 .label(core(lang, keys::OBS_TIMING_TITLE))
-                .ghost()
+                .icon(if open {
+                    IconName::ChevronUp
+                } else {
+                    IconName::ChevronDown
+                })
+                .outline()
                 .selected(open)
                 .on_click(move |_, window, _| {
                     let mut picked = picked.borrow_mut();

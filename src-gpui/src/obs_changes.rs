@@ -200,7 +200,7 @@ impl Changes {
                         let on = on.clone();
                         Button::new("obs-plan-cancel")
                             .label(core(lang, keys::OBS_SETUP_CANCEL))
-                            .ghost()
+                            .outline()
                             .disabled(self.busy())
                             .on_click(move |_, _, cx| on(Order::Setup(Setup::Discard), cx))
                     }),
@@ -246,7 +246,7 @@ impl Changes {
                 let on = on.clone();
                 Button::new("obs-history")
                     .label(core(lang, keys::OBS_SETUP_REFRESH))
-                    .ghost()
+                    .outline()
                     .disabled(self.busy())
                     .on_click(move |_, _, cx| on(Order::Setup(Setup::History), cx))
             }))
@@ -312,7 +312,7 @@ impl Changes {
                                 let on = on.clone();
                                 Button::new(SharedString::from(format!("obs-forget-{id}")))
                                     .label(core_with(lang, keys::OBS_SETUP_FORGET, &[("id", &id)]))
-                                    .ghost()
+                                    .outline()
                                     .disabled(self.busy())
                                     .on_click(move |_, window, cx| {
                                         let on = on.clone();

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::live_modes::{self, LiveModes, Mode};
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -273,7 +273,7 @@ impl ModesPanel {
                             .child(
                                 Button::new("mode-save-cancel")
                                     .label(core(lang, keys::MODES_CANCEL))
-                                    .ghost()
+                                    .outline()
                                     .small()
                                     .on_click(move |_, _, _| asking.set(false)),
                             ),

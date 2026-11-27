@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::scan_folders::{self, Reject, STANDARD};
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -142,7 +142,12 @@ impl ScanFolders {
                     keys::SCAN_FOLDER_COUNT,
                     &[("count", &count)],
                 ))
-                .ghost()
+                .icon(if open {
+                    IconName::ChevronUp
+                } else {
+                    IconName::ChevronDown
+                })
+                .outline()
                 .small()
                 .on_click(toggle),
             div().when(open, |this| {
