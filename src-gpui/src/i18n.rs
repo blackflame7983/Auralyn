@@ -411,6 +411,7 @@ pub mod keys {
     pub const CHANNEL_TITLE: &str = "settings.InputChannelSelector.205";
     pub const CHANNEL_UNVERIFIED: &str = "settings.InputChannelSelector.unverified";
     pub const ACTION_FAILED: &str = "gpuiShell.actionFailed";
+    pub const CLOSE: &str = "licenses.close";
     pub const SCAN_FAILED: &str = "pluginNotices.scanFailed";
     pub const CHANNEL_HEARD: &str = "gpuiShell.channelHeard";
     pub const CHANNEL_SILENT: &str = "gpuiShell.channelSilent";
@@ -691,7 +692,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 678] = [
+    pub const ALL: [&str; 679] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1170,6 +1171,7 @@ pub mod keys {
         CHANNEL_TITLE,
         CHANNEL_UNVERIFIED,
         ACTION_FAILED,
+        CLOSE,
         SCAN_FAILED,
         CHANNEL_HEARD,
         CHANNEL_SILENT,

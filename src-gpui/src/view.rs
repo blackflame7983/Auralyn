@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::Button;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -1126,15 +1127,41 @@ impl Render for MainView {
                     .flex_col()
                     .child(band)
                     .when_some(self.message.clone(), |this, message| {
+                        // GPUI Kit の Alert の閉じる印はキーで届かないので、自前の帯に読み上げの名前を付けた閉じるボタンを置く。
                         let entity = entity.clone();
-                        this.child(Alert::warning("message", message).banner().on_close(
-                            move |_, _, cx| {
-                                entity.update(cx, |this, cx| {
-                                    this.message = None;
-                                    cx.notify();
-                                })
-                            },
-                        ))
+                        this.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .id("message")
+                                .role(Role::Alert)
+                                .gap_2()
+                                .pl_4()
+                                .py_1()
+                                .border_b_1()
+                                .border_color(color::warning().opacity(0.4))
+                                .bg(color::warning().opacity(0.1))
+                                .child(
+                                    Icon::new(IconName::TriangleAlert)
+                                        .text_color(color::warning()),
+                                )
+                                .child(div().flex_1().min_w_0().text_sm().child(message))
+                                .child(
+                                    Button::new("message-close")
+                                        .icon(IconName::Close)
+                                        .ghost()
+                                        .small()
+                                        .mr_2()
+                                        .tooltip(core(lang, keys::CLOSE))
+                                        .accessibility_label(core(lang, keys::CLOSE))
+                                        .on_click(move |_, _, cx| {
+                                            entity.update(cx, |this, cx| {
+                                                this.message = None;
+                                                cx.notify();
+                                            })
+                                        }),
+                                ),
+                        )
                     })
                     .child(
                         div().flex_1().min_h_0().flex().children(subnav).child(
