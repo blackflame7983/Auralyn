@@ -774,9 +774,6 @@ impl MainView {
 
     /// 設定のタブを移るとき。システムのタブは、開いた時点の統計と VST のリセットの結果を読み直す。
     fn open_section(&mut self, section: Section) {
-        if self.settings_section != section {
-            self.page_epoch += 1;
-        }
         self.settings_section = section;
         if section == Section::System {
             self.cleared = None;

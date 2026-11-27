@@ -80,7 +80,7 @@ impl LimiterPanel {
             keys::PEAK_TITLE
         };
         let notes = peak::notes(self.peak);
-        let attention = locked || notes.contains(&peak::Note::NotApplied);
+        let attention = peak::keeps_open(self.peak, locked);
         let notes: Vec<&str> = notes
             .into_iter()
             .map(|note| {
