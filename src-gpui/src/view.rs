@@ -41,7 +41,7 @@ use crate::settings::{self, Section};
 use crate::setup::SetupPanel;
 use crate::setups::SetupsPanel;
 use crate::shell::{self, Page};
-use crate::sound::SoundPage;
+use crate::sound::{Part, SoundPage};
 use crate::theme_file;
 use crate::voice::VoicePanel;
 use crate::vst::VstPage;
@@ -76,8 +76,12 @@ pub struct MainView {
     page: Page,
     /// 画面を開いた回数。変わるたびに中身を下からふわっと出す。
     page_epoch: u64,
+    /// 行き先（レール）を替えた回数。子の列を出し直すのに使う。
+    page_opened: u64,
     /// 設定の画面で開いているタブ。
     settings_section: Section,
+    /// 音づくりの中で開いている行き先。窓を閉じるまで覚え、保存しない。
+    sound_part: Part,
     phase: Phase,
     muted: bool,
     bypassed: bool,
@@ -358,7 +362,9 @@ impl MainView {
             lang,
             page: Page::Home,
             page_epoch: 0,
+            page_opened: 0,
             settings_section: Section::default(),
+            sound_part: Part::default(),
             phase: Phase::LAUNCH,
             muted: false,
             bypassed: false,
@@ -741,6 +747,7 @@ impl MainView {
         }
         if self.page != page {
             self.page_epoch += 1;
+            self.page_opened += 1;
         }
         self.page = page;
         // 開くたびに頼む。2回目からはエンジンが覚えた一覧を返すので軽い。前回の失敗と、開始で変わった保存した設定も、これで読み直す。
@@ -773,7 +780,30 @@ impl MainView {
     }
 
     /// 設定のタブを移るとき。システムのタブは、開いた時点の統計と VST のリセットの結果を読み直す。
+    /// レールの子を開く（今の行き先が音づくりか設定のとき）。
+    fn open_child(&mut self, index: usize) {
+        match self.page {
+            Page::Sound => {
+                if let Some(&part) = Part::ALL.get(index) {
+                    if part != self.sound_part {
+                        self.page_epoch += 1;
+                    }
+                    self.sound_part = part;
+                }
+            }
+            Page::Settings => {
+                if let Some(&section) = Section::ALL.get(index) {
+                    self.open_section(section);
+                }
+            }
+            Page::Home | Page::Vst | Page::Connect => {}
+        }
+    }
+
     fn open_section(&mut self, section: Section) {
+        if section != self.settings_section {
+            self.page_epoch += 1;
+        }
         self.settings_section = section;
         if section == Section::System {
             self.cleared = None;
@@ -959,6 +989,31 @@ impl Render for MainView {
                 })
             }
         });
+        let children = match self.page {
+            Page::Sound => Some(shell::Children {
+                labels: Part::ALL.map(|p| core(lang, p.label())).to_vec(),
+                selected: index_of(&Part::ALL, self.sound_part),
+            }),
+            Page::Settings => Some(shell::Children {
+                labels: Section::ALL.map(|s| core(lang, s.label())).to_vec(),
+                selected: index_of(&Section::ALL, self.settings_section),
+            }),
+            Page::Home | Page::Vst | Page::Connect => None,
+        };
+        let subnav = children.map(|children| {
+            let entity = entity.clone();
+            shell::subnav(
+                self.page.label(lang),
+                children,
+                self.page_opened,
+                move |index, _, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.open_child(index);
+                        cx.notify();
+                    })
+                },
+            )
+        });
         let route = match (self.phase.running(), &self.input_name, &self.output_name) {
             // 周波数の札（「 [44/48/96 kHz]」）は帯に収まらず機器名が切れるので外す。
             (true, Some(input), Some(output)) => Some(
@@ -996,6 +1051,7 @@ impl Render for MainView {
             .text_color(color::foreground())
             .font_family("Yu Gothic UI")
             .child(rail)
+            .children(subnav)
             .child(
                 div()
                     .flex_1()
@@ -1142,15 +1198,20 @@ impl Render for MainView {
                                                     let entity = entity.clone();
                                                     Rc::new(move |goto, _, cx| {
                                                         entity.update(cx, |this, cx| {
-                                                            if goto == Goto::Obs {
-                                                                this.settings_section =
-                                                                    Section::Obs;
+                                                            match goto {
+                                                                Goto::Connect => {
+                                                                    this.open(Page::Connect)
+                                                                }
+                                                                Goto::Sound(part) => {
+                                                                    this.sound_part = part;
+                                                                    this.open(Page::Sound)
+                                                                }
+                                                                Goto::Obs => {
+                                                                    this.settings_section =
+                                                                        Section::Obs;
+                                                                    this.open(Page::Settings)
+                                                                }
                                                             }
-                                                            this.open(match goto {
-                                                                Goto::Connect => Page::Connect,
-                                                                Goto::Sound => Page::Sound,
-                                                                Goto::Obs => Page::Settings,
-                                                            });
                                                             cx.notify();
                                                         })
                                                     })
@@ -1176,17 +1237,6 @@ impl Render for MainView {
                                             ))),
                                     )),
                                 Page::Settings => this.child(settings::render(
-                                    lang,
-                                    self.settings_section,
-                                    {
-                                        let entity = entity.clone();
-                                        move |section, _, cx| {
-                                            entity.update(cx, |this, cx| {
-                                                this.open_section(section);
-                                                cx.notify();
-                                            })
-                                        }
-                                    },
                                     match self.settings_section {
                                         Section::Appearance => div()
                                             .flex()
@@ -1271,6 +1321,7 @@ impl Render for MainView {
                                             .child(settings::glossary(lang))
                                             .into_any_element(),
                                     },
+                                    lang,
                                 )),
                                 Page::Vst => this.child(crate::part::columns(
                                     self.vst.render(lang, cx, send.clone()),
@@ -1285,21 +1336,24 @@ impl Render for MainView {
                                             send,
                                         )),
                                 )),
-                                Page::Sound => this.child(crate::part::columns(
-                                    self.sound
-                                        .render(lang, self.modes.armed(), cx, send.clone()),
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_3()
-                                        .child(self.modes.render(lang, send.clone()))
-                                        .child(self.voice.render(
-                                            lang,
-                                            self.phase == Phase::Running,
-                                            cx,
-                                            send,
-                                        )),
-                                )),
+                                Page::Sound => this.child(match self.sound_part {
+                                    Part::Modes => {
+                                        div().max_w(px(560.)).child(self.modes.render(lang, send))
+                                    }
+                                    Part::Check => div().max_w(px(560.)).child(self.voice.render(
+                                        lang,
+                                        self.phase == Phase::Running,
+                                        cx,
+                                        send,
+                                    )),
+                                    part => div().child(self.sound.render(
+                                        lang,
+                                        part,
+                                        self.modes.armed(),
+                                        cx,
+                                        send,
+                                    )),
+                                }),
                                 Page::Connect => this.child(crate::part::columns(
                                     self.connect.render(
                                         self.phase,
@@ -1344,4 +1398,9 @@ impl Render for MainView {
             )
             .child(self.render_safety_column(cx))
     }
+}
+
+/// 並びの中の位置（無ければ先頭）。
+fn index_of<T: PartialEq>(all: &[T], item: T) -> usize {
+    all.iter().position(|x| *x == item).unwrap_or(0)
 }

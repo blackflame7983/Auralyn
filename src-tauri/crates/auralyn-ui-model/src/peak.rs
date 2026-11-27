@@ -93,35 +93,9 @@ pub fn notes(peak: Option<Peak>) -> Vec<Note> {
     }
 }
 
-/// 区画を畳まずに開いておくか。スイッチが押せない（読めない・ロック中）か、ON なのに効いていないときは、
-/// 理由が畳んだ中に隠れないようにする。
-pub fn keeps_open(peak: Option<Peak>, locked: bool) -> bool {
-    locked
-        || notes(peak)
-            .iter()
-            .any(|note| matches!(note, Note::Unknown | Note::NotApplied))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stays_open_while_the_switch_cannot_be_used_or_does_not_apply() {
-        assert!(keeps_open(None, false));
-        assert!(keeps_open(peak(true, false), true));
-        assert!(!keeps_open(peak(true, false), false));
-        assert!(!keeps_open(peak(false, true), false));
-        let not_applied = peak(true, false).map(|peak| Peak {
-            lookahead: Some(Lookahead {
-                applied: false,
-                reduction_db: 0.0,
-                samples: 0,
-            }),
-            ..peak
-        });
-        assert!(keeps_open(not_applied, false));
-    }
 
     fn peak(running: bool, pending: bool) -> Option<Peak> {
         Some(Peak {
