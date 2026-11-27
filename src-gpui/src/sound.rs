@@ -16,7 +16,7 @@ use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::limiter::LimiterPanel;
 use crate::measure::MeasurePanel;
-use crate::part::{choices, note, paragraphs, with_hint, Card, OnCommand};
+use crate::part::{choices, note, paragraphs, with_hint, Card, Fold, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -47,6 +47,9 @@ pub struct SoundPage {
     pub true_peak: LimiterPanel,
     /// 周囲の音の測定。
     pub measure: MeasurePanel,
+    /// 残響と歯擦音の区画は、普段は畳んで ON/OFF だけを出す。
+    reverb_fold: Fold,
+    deesser_fold: Fold,
 }
 
 impl SoundPage {
@@ -59,6 +62,8 @@ impl SoundPage {
             peak: LimiterPanel::new(Limit::Sample, cx),
             true_peak: LimiterPanel::new(Limit::TruePeak, cx),
             measure: MeasurePanel::default(),
+            reverb_fold: Fold::default(),
+            deesser_fold: Fold::default(),
         }
     }
 
@@ -149,6 +154,7 @@ impl SoundPage {
             .child(section(
                 lang,
                 IconName::Wind,
+                None,
                 keys::NOISE,
                 &[keys::NOISE_LEAD, keys::NOISE_MIX],
                 Switch::new("noise-on")
@@ -266,6 +272,7 @@ impl SoundPage {
             .child(section(
                 lang,
                 IconName::WandSparkles,
+                None,
                 keys::EFFECTS,
                 &[keys::EFFECTS_LEAD, keys::EFFECTS_AMOUNT_MEANS],
                 Switch::new("effects-on")
@@ -305,6 +312,7 @@ impl SoundPage {
             .child(section(
                 lang,
                 IconName::Orbit,
+                Some(&self.reverb_fold),
                 keys::REVERB,
                 &[keys::REVERB_LEAD],
                 Switch::new("reverb-on")
@@ -322,6 +330,7 @@ impl SoundPage {
             .child(section(
                 lang,
                 IconName::Speech,
+                Some(&self.deesser_fold),
                 keys::DEESSER,
                 &[keys::DEESSER_HINT],
                 Switch::new("deesser-on")
@@ -339,6 +348,7 @@ impl SoundPage {
 fn section(
     lang: Lang,
     icon: IconName,
+    fold: Option<&Fold>,
     title: &'static str,
     lead: &[&'static str],
     switch: Switch,
@@ -348,6 +358,7 @@ fn section(
         .icon(icon)
         .hint(lang, paragraphs(lang, lead))
         .trailing(switch)
+        .when_some(fold, |card, fold| card.fold(fold, false))
 }
 
 /// 範囲と刻み（`peak` の定数の形）のスライダー。

@@ -19,7 +19,7 @@ use crate::color;
 use crate::desktop::Registered;
 use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, with_hint, OnCommand};
+use crate::part::{card, note, reveal, with_hint, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
@@ -82,7 +82,10 @@ pub fn render(
                     }
                 }),
         )
-        .child(body)
+        .child(reveal(
+            ElementId::NamedInteger("settings-body".into(), selected as u64),
+            div().child(body),
+        ))
         .child(note(format!(
             "{} {}",
             core(lang, keys::VERSION).trim(),

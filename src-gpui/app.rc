@@ -1,0 +1,2 @@
+// GPUI は窓とタスクバーのアイコンに、実行ファイルのアイコン資源の 1 番を使う。
+1 ICON "../src-tauri/icons/icon.ico"
