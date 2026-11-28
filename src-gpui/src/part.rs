@@ -330,13 +330,16 @@ pub fn choices<T: Copy + PartialEq + 'static>(
     current: Option<T>,
     on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let id: SharedString = id.into();
     let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
-    RadioGroup::vertical(id.clone())
+    let id: SharedString = id.into();
+    RadioGroup::vertical(id)
         .selected_index(values.iter().position(|value| current == Some(*value)))
-        .children(options.iter().enumerate().map(|(index, (_, label))| {
-            Radio::new(SharedString::from(format!("{id}-{index}"))).label(core(lang, label))
-        }))
+        .children(
+            options
+                .iter()
+                .enumerate()
+                .map(|(index, (_, label))| Radio::new(index).label(core(lang, label))),
+        )
         .on_change(move |index, window, cx| {
             if let Some(value) = values.get(*index) {
                 on_pick(*value, window, cx);
@@ -353,19 +356,17 @@ pub fn segment<T: Copy + PartialEq + 'static>(
     on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let id: SharedString = id.into();
-    let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
-    ButtonGroup::new(id.clone())
+    let on_pick = Rc::new(on_pick);
+    ButtonGroup::new(id)
         .outline()
         .children(options.iter().enumerate().map(|(index, (value, label))| {
-            Button::new(SharedString::from(format!("{id}-{index}")))
+            let value = *value;
+            let on_pick = on_pick.clone();
+            Button::new(index)
                 .label(core(lang, label))
-                .selected(current == Some(*value))
+                .selected(current == Some(value))
+                .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
-        .on_click(move |clicked, window, cx| {
-            if let Some(value) = clicked.first().and_then(|index| values.get(*index)) {
-                on_pick(*value, window, cx);
-            }
-        })
 }
 
 /// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に1行で出し、収まらなければ省いて全文をツールチップに出す（下の行を押し下げない）。
