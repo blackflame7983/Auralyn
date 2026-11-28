@@ -843,5 +843,8 @@
   "gpuiShell.reasonMixChannels": "Choose input channels to apply",
   "gpuiShell.reasonListenStale": "Record again to play",
   "gpuiShell.connectAdvanced": "Quality and latency",
-  "gpuiShell.obsChangesCard": "OBS settings"
+  "gpuiShell.obsChangesCard": "OBS settings",
+  "gpuiShell.reasonLocked": "Unavailable while locked",
+  "gpuiShell.vstMutedBand": "VST muted",
+  "gpuiShell.vstMutedOpen": "Open the muted VST"
 }

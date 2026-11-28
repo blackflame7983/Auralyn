@@ -343,6 +343,7 @@ impl LivePanel {
                             }),
                     )
                     .child(action(
+                        "live-save-reason",
                         Button::new("live-save")
                             .label(core(lang, keys::LIVE_SAVE))
                             .primary()

@@ -4,7 +4,9 @@
 //! ASIO で動いている間は、どの入力に音が来ているかを出し、選んでいるペアが無音なら音が来ているペアへの切り替えを勧める。
 
 use auralyn_ui_model::channel_signal;
-use auralyn_ui_model::connect::{self, AppSource, Device, Input, Output, Purpose, Routing, Saved};
+use auralyn_ui_model::connect::{
+    self, AppSource, Device, Input, Output, Purpose, RestartBlocker, Routing, Saved,
+};
 use auralyn_ui_model::mix;
 use auralyn_ui_model::session::Phase;
 use gpui_kit::assets::IconName;
@@ -15,6 +17,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
+use crate::engine::StartWith;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::part::{hint, note, reveal, shift, with_hint, Fold};
 
@@ -55,6 +58,9 @@ pub struct ConnectPage {
     pub remembered: Vec<Saved>,
     /// 周波数・バッファの欄を開いているか。
     advanced: Fold,
+    /// 最後に始めた接続（動いている間は動いている接続）。選択がこれと同じなら始め直せない。
+    /// `saved` は使い道を切り替えると別の接続になるので、分けて持つ。
+    pub running: Option<Saved>,
 }
 
 /// 出力の返し方の札と説明。並びは `Output::row`。
@@ -93,6 +99,7 @@ impl ConnectPage {
             apps_failed: None,
             remembered: Vec::new(),
             advanced: Fold::default(),
+            running: None,
         }
     }
 
@@ -298,7 +305,7 @@ impl ConnectPage {
     }
 
     /// 開始に使う入力・使い道・出力先。選び終わっていなければ `None`。
-    pub fn start_choice(&self, cx: &App) -> Option<(Input, Purpose, Device)> {
+    fn start_choice(&self, cx: &App) -> Option<(Input, Purpose, Device)> {
         let purpose = self.chosen_purpose(cx);
         if self.uses_app(cx) {
             let (candidate_id, source) = self.app_source(cx)?;
@@ -497,11 +504,26 @@ impl ConnectPage {
         Some((input.clone(), output.clone()))
     }
 
+    /// 選んだ機器・周波数・バッファ。選び終わっていなければ `None`。
+    pub fn start_with(&self, cx: &App) -> Option<StartWith> {
+        let (input, purpose, output) = self.start_choice(cx)?;
+        let (sample_rate, buffer_size) = self.values(cx);
+        Some(StartWith {
+            input,
+            purpose,
+            output,
+            sample_rate,
+            buffer_size,
+            routing: self.routing(cx),
+        })
+    }
+
     /// 開始のボタンは止まっているときだけ押せる（動いている機器を替える手順は、まだ無い）。
     /// `signal` は動いている ASIO の入力の信号を見ている間だけ渡す。
     pub fn render(
         &self,
         phase: Phase,
+        locked: bool,
         lang: Lang,
         signal: Option<InputSignal>,
         cx: &App,
@@ -518,7 +540,15 @@ impl ConnectPage {
         let app = self.uses_app(cx);
         let stopped = phase.can_start();
         let running = phase == Phase::Running;
-        let unchosen = self.start_choice(cx).is_none();
+        let chosen = self.start_with(cx);
+        let unchosen = chosen.is_none();
+        let blocker = chosen.filter(|_| running).and_then(|chosen| {
+            let unchanged = self
+                .running
+                .as_ref()
+                .is_some_and(|saved| connect::same_as_saved(&chosen, saved));
+            connect::restart_blocker(unchanged, locked)
+        });
         let empty = core(lang, keys::NO_DEVICES);
         div()
             .flex()
@@ -633,12 +663,19 @@ impl ConnectPage {
                                 IconName::Play
                             })
                             .primary()
-                            .disabled(!(stopped || running) || unchosen)
+                            .disabled(!(stopped || running) || unchosen || blocker.is_some())
                             .on_click(move |_, window, cx| on_start(window, cx)),
                     )
                     .map(|this| {
                         if running {
-                            this.child(note(core(lang, keys::RESTART_NOTE)))
+                            this.child(note(core(
+                                lang,
+                                match blocker {
+                                    Some(RestartBlocker::Unchanged) => keys::REASON_UNCHANGED,
+                                    Some(RestartBlocker::Locked) => keys::REASON_LOCKED,
+                                    None => keys::RESTART_NOTE,
+                                },
+                            )))
                         } else if unchosen {
                             this.child(note(core(lang, keys::FIRST_START_HINT)))
                         } else {

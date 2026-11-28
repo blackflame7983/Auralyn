@@ -71,9 +71,44 @@ impl Phase {
     }
 }
 
+/// 比較（効果を外して聴く）を入れられない理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompareBlocker {
+    Stopped,
+    Locked,
+}
+
+/// 比較を `bypass` にできない理由。戻す（効果を戻す）のはいつでもできる。
+/// 入れるのは音が流れているときだけで、本番中（操作ロック中）は入れない。
+pub fn compare_blocker(bypass: bool, running: bool, locked: bool) -> Option<CompareBlocker> {
+    if !bypass {
+        None
+    } else if !running {
+        Some(CompareBlocker::Stopped)
+    } else if locked {
+        Some(CompareBlocker::Locked)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compare_can_always_be_undone_but_not_started_while_locked() {
+        assert_eq!(compare_blocker(false, false, true), None);
+        assert_eq!(
+            compare_blocker(true, false, false),
+            Some(CompareBlocker::Stopped)
+        );
+        assert_eq!(
+            compare_blocker(true, true, true),
+            Some(CompareBlocker::Locked)
+        );
+        assert_eq!(compare_blocker(true, true, false), None);
+    }
 
     #[test]
     fn restart_waits_for_the_start_result() {

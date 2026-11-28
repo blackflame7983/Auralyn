@@ -11,7 +11,7 @@ use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitl
 use gpui_kit::component::select::{SearchableVec, Select, SelectItem, SelectState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _, WindowExt as _};
+use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -201,6 +201,11 @@ impl VstPage {
     ) {
         self.gains.sync(&rack, VOICE, window, cx, send);
         self.rack = rack;
+    }
+
+    /// 音を消している VST がある。
+    pub fn silenced(&self) -> bool {
+        self.rack.iter().any(Slot::silenced)
     }
 
     pub fn set_catalog(&mut self, candidates: &[Candidate], window: &mut Window, cx: &mut App) {
@@ -507,9 +512,16 @@ fn volume(
                 ops.prefix, slot.id
             )))
             .label(core(lang, keys::VST_MUTE))
-            .outline()
+            // 音を消しているときは危険の色にし、通常のトグルと見分ける。
+            .map(|this| {
+                if slot.muted {
+                    this.danger()
+                } else {
+                    this.outline()
+                }
+            })
             .small()
-            .selected(slot.muted)
+            .toggled(slot.muted)
             .accessibility_label(named(keys::VST_MUTE_NAMED))
             .on_click(move |_, _, cx| send(command.clone(), cx)),
         )

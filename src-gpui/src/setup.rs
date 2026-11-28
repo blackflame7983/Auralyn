@@ -141,6 +141,7 @@ impl SetupPanel {
                     }
                 })
                 .child(action(
+                    "setup-start-reason",
                     div()
                         .flex()
                         .flex_wrap()

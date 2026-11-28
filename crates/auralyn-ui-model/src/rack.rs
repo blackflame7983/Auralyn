@@ -78,9 +78,22 @@ pub fn gain_percent(gain: f32) -> f32 {
     (gain.clamp(0.0, MAX_GAIN) * 100.0).round()
 }
 
+/// その枠が音を消しているか。読めていない枠と、通していない（外した）枠は音に関わらない。
+pub fn silences(loaded: bool, enabled: bool, muted: bool) -> bool {
+    loaded && enabled && muted
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_loaded_enabled_muted_slot_silences() {
+        assert!(silences(true, true, true));
+        assert!(!silences(false, true, true));
+        assert!(!silences(true, false, true));
+        assert!(!silences(true, true, false));
+    }
 
     fn candidate(name: &str, vendor: &str, category: Option<&str>) -> Candidate {
         Candidate {

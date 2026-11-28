@@ -1,8 +1,9 @@
 //! 右の列：緊急ミュート・入力・出力・聴き比べのメーターと操作。
 
 use super::*;
+use auralyn_ui_model::session::CompareBlocker;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::Disableable as _;
+use gpui_kit::component::{Disableable as _, Selectable as _};
 
 impl MainView {
     fn render_mute(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -102,13 +103,8 @@ impl MainView {
                     .map(|this| match tag {
                         Some(OutputTag::Muted) => this.child(
                             // 押すと音を戻す入口：ミュート中なら解除し、音量 0 なら 100% に戻す（両方なら両方）。
-                            div()
-                                .id("output-muted")
-                                .role(Role::Button)
+                            crate::part::alert_pill("output-muted", core(lang, keys::OUTPUT_MUTED))
                                 .aria_label(hint)
-                                .focusable()
-                                .tab_stop(true)
-                                .cursor_pointer()
                                 .tooltip(move |window, cx| Tooltip::new(hint).build(window, cx))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     if this.muted {
@@ -119,19 +115,7 @@ impl MainView {
                                     }
                                     cx.notify();
                                 }))
-                                .focus_visible(|style| style.border_color(color::primary()))
-                                .hover(|style| style.bg(color::warning().opacity(0.2)))
-                                .ml_auto()
-                                .px_1p5()
-                                .py_0p5()
-                                .rounded_full()
-                                .border_1()
-                                .border_color(color::warning().opacity(0.5))
-                                .bg(color::warning().opacity(0.1))
-                                .text_xs()
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(color::warning())
-                                .child(core(lang, keys::OUTPUT_MUTED)),
+                                .ml_auto(),
                         ),
                         Some(OutputTag::Verdict(verdict)) => {
                             let (text, dot) = match verdict {
@@ -195,6 +179,11 @@ impl MainView {
     fn render_compare(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let bypassed = self.bypassed;
+        let blocker = compare_blocker(!bypassed, self.phase == Phase::Running, self.modes.armed())
+            .map(|blocker| match blocker {
+                CompareBlocker::Stopped => keys::REASON_START_AUDIO,
+                CompareBlocker::Locked => keys::REASON_LOCKED,
+            });
         div()
             .flex()
             .flex_col()
@@ -203,8 +192,9 @@ impl MainView {
                 Button::new("compare")
                     .label(core(lang, keys::COMPARE))
                     .outline()
+                    .selected(bypassed)
                     .toggled(bypassed)
-                    .disabled(!bypassed && self.phase != Phase::Running)
+                    .disabled(blocker.is_some())
                     .w_full()
                     .on_click(cx.listener(move |this, _, _, _| {
                         this.engine.send(Command::SetBypass(!bypassed));
@@ -213,16 +203,15 @@ impl MainView {
             .map(|this| {
                 let text = if bypassed {
                     Some(keys::COMPARE_ON)
-                } else if self.phase != Phase::Running {
-                    Some(keys::REASON_START_AUDIO)
                 } else {
-                    None
+                    blocker
                 };
                 // 文が無いときも1行分を空けておき、下のロックを動かさない。
                 this.child(
                     div()
                         .min_h(px(COMPARE_NOTE_HEIGHT))
                         .line_height(px(COMPARE_NOTE_HEIGHT))
+                        .truncate()
                         .text_xs()
                         .text_color(color::muted())
                         .children(text.map(|key| core(lang, key))),
