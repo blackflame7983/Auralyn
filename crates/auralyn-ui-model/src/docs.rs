@@ -1,7 +1,7 @@
-//! 公式サイトの利用者向けドキュメントへのリンク（`docs/USER_DOCS.md` の約束。Tauri 版 `src/lib/userDocs.ts` と同じ URL）。
+//! 公式サイトの利用者向けドキュメントへのリンク（`docs/USER_DOCS.md` の約束）。
 //! 行き先は `user-docs/links.json` にあるものだけを使い、試験で確かめる。
 
-/// 困ったときの症状。順は Tauri 版の使い方と同じ。
+/// 困ったときの症状。並びは使い方の順。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trouble {
     Silent,
@@ -72,7 +72,7 @@ pub fn url(target: &str, english: bool) -> String {
     url
 }
 
-/// 用語集の1語：見出し・印（`term-…`）・最初の段落（Tauri 版 `parseGlossary` と同じ取り出し方）。
+/// 用語集の1語：見出し・印（`term-…`）・最初の段落。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Term {
     pub title: String,

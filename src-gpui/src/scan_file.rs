@@ -1,5 +1,4 @@
 //! VST を探す追加のフォルダーの保存。GPUI 版は自分のファイル（`gpui_scan_folders.json`）に書く
-//! （Tauri 版は画面（WebView）の中に保存していて読めない）。
 
 use std::path::Path;
 
@@ -21,7 +20,7 @@ pub fn save(config_dir: &Path, folders: &[String]) -> std::io::Result<()> {
     )
 }
 
-/// 文字列でないものは飛ばす（Tauri 版と同じ）。
+/// 文字列でないものは飛ばす。
 fn parse(text: &str) -> Vec<String> {
     let items = serde_json::from_str::<Vec<serde_json::Value>>(text).unwrap_or_default();
     sanitize(

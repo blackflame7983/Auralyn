@@ -65,7 +65,7 @@ pub fn reordered<T: Clone>(items: &[(T, bool)], index: usize, up: bool) -> Optio
     ))
 }
 
-/// VST ごとの音量の上限（200%）。Tauri 版のスライダーと同じ。
+/// VST ごとの音量の上限（200%）。
 pub const MAX_GAIN: f32 = 2.0;
 
 /// 音量の百分率（スライダーの値）を、エンジンへ送る倍率にする。0〜200% に収める。

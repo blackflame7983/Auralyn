@@ -45,7 +45,7 @@ ON定常時は原音の早い到達も処理音へ揃うため、モニター/�
 
 ## 実機なしの検証
 
-`src-tauri`で以下を使用する。デバイス/OBSを起動する統合テストは含めない。
+`crates/vst-host`で以下を使用する。デバイス/OBSを起動する統合テストは含めない。
 
 ```powershell
 cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence
@@ -89,7 +89,7 @@ Windows 11 Pro・Ryzen 7 7800X3D・Rust 1.92.0/MSVC、opt-level=3/LTO/panic=abor
 メモリは準備時に確保する履歴容量と処理区間の割当ゼロを確認した範囲であり、
 Engine全体のCPU/RSS/Private Bytesや長時間運転の証拠にはしない。
 
-ローカルの `src-tauri/target/nr-alignment-offline/` に比較用ソース/lock、
+ローカルの `target/nr-alignment-offline/` に比較用ソース/lock、
 非instrumented版と割当監査版を別々に保存し、`quality.json` / `performance.json` に結果を保持。
 生音声・実行ファイルはGit管理/Issue添付へ含めない。配布sidecarの起動や実機ストリームの開始は行っていない。
 

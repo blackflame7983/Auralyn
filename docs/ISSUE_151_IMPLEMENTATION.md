@@ -11,7 +11,7 @@
 
 ## 処理と復旧
 
-Hostの状態機械（`src-tauri/src/audio/mode_vst.rs`）はバックグラウンドで進行し、UIの表示やポーリングを実行条件にしない。既存の稼働中Engineを使い、元ラックの順序・各VSTの内部state・有効/ミュート/ゲイン・内蔵処理を取得して世代とrevisionを照合する。変更前に復旧原本を `live-mode-vst-journal.json` へ永続化する。
+Hostの状態機械（`crates/vst-host/src/audio/mode_vst.rs`）はバックグラウンドで進行し、UIの表示やポーリングを実行条件にしない。既存の稼働中Engineを使い、元ラックの順序・各VSTの内部state・有効/ミュート/ゲイン・内蔵処理を取得して世代とrevisionを照合する。変更前に復旧原本を `live-mode-vst-journal.json` へ永続化する。
 
 Engineの専用無音ゲートは、実際の出力callback末尾のACKを待ってからラック変更を許可する。全VSTの復元と内蔵処理の反映を照合した後も、入力の履歴破棄と停止ACK、monitor/workerの古いキュー排出、物理出力側の排出を順に確認してから解除する。途中に到着した入力callbackは次の履歴破棄済みcallbackのACKを待つ。通常のミュート意図と切替用ゲートは別に保持する。
 

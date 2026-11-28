@@ -9,12 +9,12 @@ use gpui_kit::*;
 use crate::color;
 use crate::i18n::{core, keys, Lang};
 
-/// 帯の波形の段の高さ。凡例の段（20px）と合わせて 72px（`SoundFlow.tsx`）。
+/// 帯の波形の段の高さ。凡例の段（20px）と合わせて 72px。
 const WAVE_HEIGHT: f32 = 52.;
 /// 加工前の包絡線の太さと不透明度。凡例の線と揃える（#582）。
 const BEFORE_LINE_WIDTH: f32 = 1.5;
 const BEFORE_LINE_ALPHA: f32 = 0.7;
-/// 加工後の塗りの不透明度（`soundFlowDraw.ts` の 0.95）。
+/// 加工後の塗りの不透明度。
 const AFTER_ALPHA: f32 = 0.95;
 /// 話し声のちょうど良い大きさの帯の不透明度。波形より目立たせない。
 const BAND_ALPHA: f32 = 0.12;
@@ -119,8 +119,8 @@ fn legend(lang: Lang) -> impl IntoElement {
         )
 }
 
-/// 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる（`soundFlowDraw.ts` の `drawFlowWave`）。
-/// 塗りは横の緑→青緑で、Tauri 版の縦の青緑→緑→青緑とは違う（GPUI の `linear_gradient` は2色まで。docs/gpui/decisions.md）。
+/// 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる。
+/// 塗りは横の緑→青緑（GPUI の `linear_gradient` は2色まで。docs/gpui/decisions.md）。
 /// サンプルが1つのときは、加工後を長方形、加工前を横の直線2本にする。
 fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &mut Window) {
     let Some(first) = samples.first() else {

@@ -1,5 +1,5 @@
 //! ミックス後の VST：声とオケを混ぜた後の配信音だけを仕上げる、声用とは別の並び。
-//! 何ができるか・いつできるかは Tauri 版（`PostMixPanel.tsx`・`audio/post_mix.rs`）に揃える。
+//! 何ができるか・いつできるかは `audio/post_mix.rs` に揃える。
 
 /// エンジンから読んだ状態（並びそのものは別に届く）。
 #[derive(Clone, Debug, PartialEq)]
@@ -19,7 +19,7 @@ pub struct PostMix {
     pub error: Option<String>,
 }
 
-/// 有効にできない理由（並べた順に確かめる。Tauri 版と同じ）。
+/// 有効にできない理由（並べた順に確かめる）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Block {
     /// オケを適用していない。

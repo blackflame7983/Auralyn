@@ -1,7 +1,6 @@
-//! グローバルショートカット。保存は Tauri 版と同じ `shortcuts.json`（`[{"action": "muteToggle", "shortcut": "Alt+KeyM"}]`）。
-//! 読み方・既定・確かめ方は Tauri 版（`src-tauri/src/shortcuts.rs`）に揃える。
+//! グローバルショートカット。保存は `shortcuts.json`（`[{"action": "muteToggle", "shortcut": "Alt+KeyM"}]`）。
 
-/// 登録できる数の上限（Tauri 版と同じ）。
+/// 登録できる数の上限。
 pub const MAX: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,7 +44,7 @@ pub struct Binding {
     pub shortcut: String,
 }
 
-/// 読めなかった理由と、そのもとの値。どれでも、Tauri 版と同じく1つも登録しない。
+/// 読めなかった理由と、そのもとの値。どれでも1つも登録しない。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Issue {
     TooMany(usize),
@@ -68,7 +67,7 @@ impl Issue {
     }
 }
 
-/// ファイルが無いときの既定（Tauri 版と同じ）。
+/// ファイルが無いときの既定。
 pub fn defaults() -> Vec<Binding> {
     vec![
         Binding {
@@ -82,7 +81,7 @@ pub fn defaults() -> Vec<Binding> {
     ]
 }
 
-/// 保存から読んだ組（操作の名前・キー）を確かめる（Tauri 版の `validate` と同じ）。
+/// 保存から読んだ組（操作の名前・キー）を確かめる。
 /// `key` はキーを読み、同じ組合せなら同じ値を返す（書き方の違う `Alt+M` と `Alt+KeyM` も同じにする）。読めなければ `None`。
 /// GPUI 版で使わない操作のキーも確かめる。
 pub fn check<K: PartialEq>(
@@ -110,7 +109,7 @@ pub fn check<K: PartialEq>(
     Ok(bindings.into_iter().map(|(binding, _)| binding).collect())
 }
 
-/// 保存値（`Control+Alt+KeyM`）を、キーボードの刻印に近い表記（`Ctrl + Alt + M`）にする（Tauri 版の `formatShortcut` と同じ）。
+/// 保存値（`Control+Alt+KeyM`）を、キーボードの刻印に近い表記（`Ctrl + Alt + M`）にする。
 pub fn label(shortcut: &str) -> String {
     let mut parts: Vec<&str> = shortcut.split('+').collect();
     let key = parts.pop().unwrap_or_default();
@@ -140,7 +139,7 @@ pub fn label(shortcut: &str) -> String {
         .join(" + ")
 }
 
-/// 出力音量を 1% 上げ下げした値（0〜2 に収める。Tauri 版と同じ）。
+/// 出力音量を 1% 上げ下げした値（0〜2 に収める）。
 pub fn gain_step(current: f32, up: bool) -> f32 {
     (current + if up { 0.01 } else { -0.01 }).clamp(0.0, 2.0)
 }
@@ -169,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_bindings_are_checked_like_tauri() {
+    fn saved_bindings_are_checked() {
         assert_eq!(
             check(vec![pair("muteOn", "Control+Alt+KeyM")], key),
             Ok(vec![Binding {

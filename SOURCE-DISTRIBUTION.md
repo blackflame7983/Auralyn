@@ -4,6 +4,11 @@ Auralyn is distributed under GPL-3.0-only. Every official binary release must
 provide equivalent, no-additional-charge access to the Corresponding Source
 from the same GitHub Release page.
 
+Status (2026-11-28): the Tauri-based packaging and release uploader were removed
+together with the Tauri UI. The GPUI-based application has no release packaging
+yet, so no new version is published until that packaging, including the source
+assets below, is rebuilt. The requirements in this document still apply to it.
+
 ## Release assets
 
 For version `x.y.z`, the public release must contain all of the following:
@@ -15,18 +20,17 @@ For version `x.y.z`, the public release must contain all of the following:
   checksum, and generation time
 - `LICENSE`, `NOTICE.md`, and `SOURCE-DISTRIBUTION.md`: license text, legal
   notices, and the source-access instructions shown next to the binary
-- the installer, updater signature, and `latest.json`
+- the installer and any updater metadata
 
-The release uploader first verifies a clean worktree, rebuilds the signed
-binary from that HEAD, and then generates these source assets automatically.
-It refuses to continue when the Git worktree has tracked or untracked changes.
+The release process must verify a clean worktree, rebuild the signed binary
+from that HEAD, and then generate these source assets from the same HEAD. It
+must refuse to continue when the Git worktree has tracked or untracked changes.
 
 ## Building from source
 
 Prerequisites:
 
 - Windows 11 x64
-- Node.js and npm
 - Rust 1.100.0 (pinned by `rust-toolchain.toml`; `rustup` installs it automatically) with the `x86_64-pc-windows-msvc` target
 - Visual Studio Build Tools with the MSVC and Windows SDK components
 - LLVM/Clang required by `asio-sys`
@@ -34,14 +38,13 @@ Prerequisites:
 Build steps:
 
 ```powershell
-npm ci
-npm run gen-cargo-licenses
 $env:CPAL_ASIO_DIR = (Resolve-Path '.\third_party\Steinberg-ASIO-SDK-2.3.4')
-npm run tauri build
+cargo build --release --locked
 ```
 
-`package-lock.json` and `src-tauri/Cargo.lock` are part of the Corresponding
-Source and pin the JavaScript and Rust dependency graphs for each release.
+This builds `auralyn-gpui.exe`, `audio_engine.exe`, and `plugin_scanner.exe`
+into `target\release`. The root `Cargo.lock` is part of the Corresponding
+Source and pins the Rust dependency graph for each release.
 
 The Rust dependency `nnnoiseless` uses the modified local source at
 `third_party/nnnoiseless-0.5.2`. This directory, including its model data,
@@ -57,10 +60,10 @@ and `PATCHES.md` in the same source archive. The existing source archive uses
 the full Git tree, so this tracked local dependency requires no extra download.
 The dependency version and the ASIO SDK selection remain unchanged.
 
-The release workflow downloads the Steinberg ASIO SDK from
-`https://www.steinberg.net/asiosdk`, verifies the SHA-256 pinned in
-`config/release-policy.json`, sets `CPAL_ASIO_DIR` for the signed build, and
-copies the SDK's `common` and `host` source trees plus license files into
+`scripts/prepare-asio-sdk.cjs` downloads the Steinberg ASIO SDK from
+`https://www.steinberg.net/asiosdk` and verifies the SHA-256 pinned in
+`config/asio-sdk.json`. The release process must set `CPAL_ASIO_DIR` to that
+SDK for the signed build and copy the SDK's `common` and `host` source trees plus license files into
 `third_party/Steinberg-ASIO-SDK-2.3.4` in the Source ZIP. This ensures the
 ASIO source in the archive is the same source selected for the binary build.
 
@@ -75,6 +78,6 @@ An independently distributed GPL-2.0-or-later OBS source plugin is proposed in
 GPL-3.0-only Auralyn process through local IPC, with no libobs linkage in Auralyn.
 The plugin needs its own exact-commit source archive, dependency notices,
 checksums, source manifest, and build instructions beside its binary.
-The current release uploader and policy do not package or publish this plugin.
+No current release process packages or publishes this plugin.
 Implementation and distribution changes follow design agreement; this section
 does not change the current application's license or source release gates.

@@ -1,4 +1,4 @@
-//! VST の画面の「探すフォルダー」（Tauri 版の `ScanFolders`）。標準の2つに足すフォルダーを選び、変えたら探し直す。
+//! VST の画面の「探すフォルダー」。標準の2つに足すフォルダーを選び、変えたら探し直す。
 //! 規則は `auralyn-ui-model` の `scan_folders`、保存は `scan_file`。使えなかったフォルダーはスキャンの結果で届く。
 
 use std::cell::RefCell;

@@ -1,4 +1,4 @@
-//! ボイスチェック録音のオフライン品質分析（Tauri メインプロセス専用）
+//! ボイスチェック録音のオフライン品質分析（画面のプロセス専用）
 
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use serde::Serialize;

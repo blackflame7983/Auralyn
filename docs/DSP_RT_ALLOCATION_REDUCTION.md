@@ -60,8 +60,8 @@ dev比較版によりnnnoiselessの同一内容の行が1件増えるだけで�
 - アプリのRtNoiseReducerを8k／44.1k／48k／96k／192kで、0／1／440／480／511／2000サンプルの後にresetする。
   各8192ステレオサンプルを新品のreducerと比較してビット一致。部分フレームの履歴も初期化され、対象処理・resetで確保・解放0回だった。
 
-原本との差分とログはignoredのsrc-tauri/target/dsp-rt-*へ保存する。比較テストは
-src-tauri/src/audio_engine/core/dsp_rt_tests.rsに保持する。
+原本との差分とログはignoredのtarget/dsp-rt-*へ保存する。比較テストは
+crates/vst-host/src/audio_engine/core/dsp_rt_tests.rsに保持する。
 
 ## ローカル検証結果
 
@@ -86,9 +86,9 @@ resetの全フィールドとnewの初期値、FFTの960点・481複素数・for
 検証の不足として、同じ係数のownedモデルだけでは標準モデルへの置換を検出できなかったため、独自モデル・借用モデルの保持とClone後の寿命を上記のテストで補強した。
 ソース配布テストもPATCHES.md・UPSTREAM_HASHES.jsonのバイト一致を追加し、変更記録の同梱を確認した。
 レビューではRustの54テスト、all-targets check・厳格Clippy、配布の27テスト・release:checkを再実行し成功した。
-ログはsrc-tauri/target/dsp-rt-review-*に保存した。製品コードに追加修正はなく、build・GUI開閉は実装時の同一製品ソースによる確認結果で、レビューでは再実行していない。
+ログはtarget/dsp-rt-review-*に保存した。製品コードに追加修正はなく、build・GUI開閉は実装時の同一製品ソースによる確認結果で、レビューでは再実行していない。
 
-提出前の独立検証でも54テスト・配布27テスト・check・厳格Clippy・debugビルドが成功した（ログはsrc-tauri/target/dsp-delivery-*）。
+提出前の独立検証でも54テスト・配布27テスト・check・厳格Clippy・debugビルドが成功した（ログはtarget/dsp-delivery-*）。
 同梱ファイルのステージ後、通常のdiff --checkは未変更のupstream train/dump_rnn.pyの末尾空行1件を検出した。
 原本ハッシュ一致を保持するため整形せず、この1ファイルを除いた候補全体の差分チェックは成功した。
 
@@ -120,10 +120,10 @@ rustc／cargo 1.92.0、LLVM 21.1.3、x86_64-pc-windows-msvc。
 したがってrelease最適化での出力・割当検証と、製品のpanic=abortビルド成功を区別する。
 panic=abortの製品バイナリ内での実行時割当検査まで済んだとは扱わない。
 
-ログ・48ファイルずつの記録・直接比較結果comparison.jsonはignoredの`src-tauri/target/dsp-release-verification/`へ保存した。
+ログ・48ファイルずつの記録・直接比較結果comparison.jsonはignoredの`target/dsp-release-verification/`へ保存した。
 配布用`src-tauri/bin/`のsidecarは変更していない。
 
-再確認するときは`src-tauri`で次を実行する。実行ごとに新しい記録先を作り、Cargoの失敗時には比較へ進まない。
+再確認するときは`crates/vst-host`で次を実行する。実行ごとに新しい記録先を作り、Cargoの失敗時には比較へ進まない。
 比較スクリプトは既知の48ケースの名前・各ファイルの正確なサイズ・全バイトを検査し、不一致なら終了コード1を返す。
 同一ディレクトリ同士、両側での欠落や空ファイル、余分な古い記録も拒否する。
 環境変数を指定しなければ記録ファイルは出力しない。設定の上書きがある環境では`-vv`で実際の最適化フラグも再確認する。
@@ -158,7 +158,7 @@ panic=abortは製品ビルド確認まで、動作・割当検査はunwindの最
 新しい空の記録先でdebug DSP 5件・release全51件を実行し、48ファイル・3,060,836バイトの完全一致を再確認した。
 記録先を指定しないrelease DSP 5件も成功し、記録の有無にかかわらず測定対象の確保・解放は0回だった。
 `npm run test:release`は追加分を含む33件、`npm run release:check`はPASS。
-レビューのログと記録はignoredの`src-tauri/target/dsp-release-review-*`に保存した。
+レビューのログと記録はignoredの`target/dsp-release-review-*`に保存した。
 Rust実装・テストの測定区間・係数は追加変更していないため、製品ビルドとcheck・厳格Clippyは前段の同一ソースの結果を引き継ぐ。
 
 実装・レビュー段階ではcommit・push・PR作成を行わず、提出はユーザーの明示承認後に行う。

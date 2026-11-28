@@ -2,320 +2,52 @@
 
 本アプリケーションの品質、安定性、および使いやすさを確認するための自動・手動テストの手順です。
 
-日常の入口は`npm run verify -- --changed`、全フロントは`--full`、Rustの関連検証は`--static --rust`。
-準備・出力・既存負債の扱いは[GARDENING](GARDENING.md)、機能からの探索は[feature-map](feature-map.md)を参照する。
+日常の入口は`npm run verify -- --changed`、全体は`--full`、Rustの関連検証は`--static --rust`。
+準備・出力・既存負債の扱いは[GARDENING](GARDENING.md)、機能からの探索は[feature-map](feature-map.md)、画面（GPUI 版）の確かめ方は [src-gpui/README.md](../src-gpui/README.md) を参照する。
 
 類似アプリとの比較やリソース使用量を含む評価の軸は [EVALUATION_CRITERIA.md](EVALUATION_CRITERIA.md) に定める。
 
 検証用のビルド・一時領域の作成と終了後の整理は [ビルド領域・容量管理](BUILD_GUIDE.md#ビルド領域容量管理) に従う。並行検証に必要な隔離と証跡を保ち、再生成可能な成果物を作業ごとに残し続けない。
 
-## Tauri MCP による実アプリの確認
-
-通常の `npm run tauri dev` と配布設定は、意図的に `withGlobalTauri: false` とする。MCPによるWebView操作・撮影には、debugビルド限定のbridgeとグローバルAPIを有効にする上書きが必要である。[セキュリティ設定](SECURITY_RUNTIME.md)を参照し、通常設定やcapabilityを変更しない。既存アプリが動作中なら音声や保存状態への影響を確認してから扱う。
-
-リポジトリルートで、必要なsidecarを `npm run rebuild-engine` で準備した後、専用のターミナルで次を起動する。
-
-```powershell
-npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json
-```
-
-別のターミナルでCLIのセッションを開始し、状態の `connected: true` を確認する。開始コマンドの成功だけでは接続を意味しない。CLIには複数のbinがあるため、パッケージと実行binの両方を指定する。以下は確認済みのCLI版 `0.13.2` の例。
-
-```powershell
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session status --json
-```
-
-接続後、保存先と操作対象を確認して撮影・操作する。次の例はアプリの設定を開いた状態で、外観タブへ切り替える。複数アプリがある場合は起動したHostに対応するポートを特定し、各操作の `--app-identifier` に指定する。9223が使用中ならbridgeの実際のポートを確認して接続する。
-
-```powershell
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-screenshot --file before.png
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-interact --action click --selector '[role=tab][id$="-trigger-appearance"]'
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-screenshot --file after.png
-npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session stop --app-identifier 9223
-```
-
-撮影は表示中の範囲をファイルに保存する。操作は音声開始や設定変更を含み得るため対象を確認する。MCPクライアントから使う場合のサーバー入口は `npm run mcp:tauri`。実アプリの画面確認は実音声・聴感の合格とは分けて記録する。
-
-NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRESSION.md)の A-1・A-3・A-5 と二系統／処理分離を確認し、条件・結果・未実施を記録する。初回基準や実機・素材がない場合は未確認として残し、準備や自動試験の成功を歌枠の合格にしない。
-
-## 旧の通知とコマンドの応答の到着順の測定（W5）
-
-目的は、(a) Rust が `emit` を呼んだ順序、(b) WebView が通知を受け取った順序、(c) WebView が `invoke` の応答を受け取った順序を、**分けて記録し、照合する**こと。コードの読み取りでは (a) しか分からない（互換の契約 5章・9章）。測定は実際の Tauri と音声機器を使うので、開始・停止を行ってよい環境で、操作の対象を確認してから行う。結果を、IPCモックの試験や聴感の合格とは分けて記録する。
-
-`window.__TAURI_INTERNALS__.invoke` は Tauri 2 では書き換えられないので、WebView 側の計測点はアプリのコードに置く。`src/lib/w5Probe.ts` が、開発ビルド（`import.meta.env.DEV`）だけで、次を `window.__auralynW5` へ順に並べる。本番ビルドでは分岐ごと消える（`w5Probe.test.ts` が本番での無効を確かめる。コードが消えることは、`vite build` の出力に `__auralynW5` が残らないことで確かめる）。
-
-- `invoke-called`／`invoke-resolved`／`invoke-rejected`：`audioApi.start`・`stop`・`restart` が `invoke` を呼んだ時点と、応答（拒否）を受けた時点。
-- `listen-registered`／`listen-failed`：旧の通知（`audio-conditions-changed`、`audio-started`、`audio-stopped`、`audio-stream-error`、`audio-error`、`audio-engine-exited`、`live-modes-invalidated`）の購読が登録できた時点。
-- `event`：その通知を受け取った時点。
-
-各行は `{ i, kind, name, unix_us }`。`i` は WebView 内の記録の順、`unix_us` は壁時計で、Rust の記録と同じ基準。
-
-1. **起動する前に、Host と子（サイドカー）の版をそろえる。この手順は、上の一般の起動手順（`npm run rebuild-engine` を含む）の代わりに、独立して行う。** 背景：Host は自分と同じフォルダー（`$env:CARGO_TARGET_DIR\debug\audio_engine.exe`）の子を最初に使う（`audio.rs` の `spawn_engine_process` の探索順）。そのファイルは、Host のビルド（`build.rs` の `tauri-build`）が、`externalBin` の元ファイル（`src-tauri/bin/audio_engine-x86_64-pc-windows-msvc.exe` と `plugin_scanner-x86_64-pc-windows-msvc.exe`）から上書きでコピーする。`externalBin` の元ファイルが1本でも無いと、どの `cargo build` でも `build.rs` が失敗する（`npm run rebuild-engine` の中の `cargo build` も同じ）。`tauri dev` の `beforeDevCommand` はサイドカーをビルドしない。古い子が残っていると、今の Host は旧い形の `Stopped`（`payload` がない）をパースエラーとして捨て、`audio-stopped` が出ない（過去にこれで誤った結果を得た）。**実測した構成は、debug の Host と release の子の組み合わせ**。リポジトリのルートの PowerShell 7 で、次を順に実行する。各段は、前の段が成功したときだけ進む（`throw` で止まる）。
-
-   ```powershell
-   # (a) 共有の target を絶対パスで指定し、externalBin を空にする（scripts/test-native-e2e.mjs と同じ既存の方法）。
-   $env:CARGO_TARGET_DIR = Join-Path $PWD 'src-tauri\target'
-   $env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'
-   # (b) 元ファイルが2本そろっていなければ（最初の環境）、サイドカーを2本作って置く。debug 版が入るが、(d) で audio_engine を上書きする。
-   $bin = 'src-tauri\bin'
-   if (-not ((Test-Path "$bin\audio_engine-x86_64-pc-windows-msvc.exe") -and (Test-Path "$bin\plugin_scanner-x86_64-pc-windows-msvc.exe"))) {
-     npm run rebuild-engine; if ($LASTEXITCODE -ne 0) { throw 'rebuild-engine failed' }
-   }
-   # (c) release の子を作る。
-   cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin audio_engine
-   if ($LASTEXITCODE -ne 0) { throw 'release build failed' }
-   $release = Join-Path $env:CARGO_TARGET_DIR 'release\audio_engine.exe'
-   # (d) release の子を Tauri がコピーする元へ置き、更新時刻を今にする（Cargo は更新時刻で build.rs の再実行を判断する。古い時刻のままだと再実行されず、debug フォルダーの子が古いまま残ることがある）。
-   $src = "$bin\audio_engine-x86_64-pc-windows-msvc.exe"
-   Copy-Item $release $src -Force -ErrorAction Stop
-   (Get-Item $src -ErrorAction Stop).LastWriteTime = Get-Date
-   $srcHash = (Get-FileHash $src -ErrorAction Stop).Hash
-   $releaseHash = (Get-FileHash $release -ErrorAction Stop).Hash
-   if (-not $srcHash -or $srcHash -ne $releaseHash) { throw 'copy mismatch' }
-   # (e) externalBin の上書きを解除し、トレースを有効にして Host を起動する（Host のビルドが、(d) の子を debug フォルダーへコピーする）。
-   Remove-Item Env:TAURI_CONFIG
-   $env:AURALYN_EMIT_TRACE = '1'
-   # --no-watch：監視モードではコンパイルに失敗しても終わらず、終了コードで止められないため。
-   npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json *> w5-dev.log
-   if (-not $? -or $LASTEXITCODE -ne 0) { throw 'tauri dev failed: see w5-dev.log' }
-   ```
-
-   `rebuild-engine` の `cargo build` は環境変数を引き継ぐので、(a) の `TAURI_CONFIG` が効き、元ファイルが無くても `build.rs` は失敗しない。`AURALYN_EMIT_TRACE` は測定用で、既定では無効（`emit` ごとの追加の費用は、無効のときは真偽値の読み取り1回）。
-
-   (f) **起動した後で、実際の子を照合する。** 別のターミナルで次を実行し、`True` と、`debug\audio_engine.exe` のパスが出ることを確かめる。ログ（`w5-dev.log`）に `Engine IPC parse error` が1件でもあれば、その回の結果は使わない。ハッシュが合わなければ、Host を止めて (d) からやり直す。
-
-   ```powershell
-   $release = Join-Path $PWD 'src-tauri\target\release\audio_engine.exe'  # リポジトリのルートで実行する
-   $debugDir = Join-Path $PWD 'src-tauri\target\debug'
-   $hostProc = @(Get-CimInstance Win32_Process -Filter "Name='AuralynHost.exe'" | Where-Object { $_.ExecutablePath -eq (Join-Path $debugDir 'AuralynHost.exe') })
-   if ($hostProc.Count -ne 1) { throw "expected one debug Host, found $($hostProc.Count)" }
-   $child = @(Get-CimInstance Win32_Process -Filter "Name='audio_engine.exe' AND ParentProcessId=$($hostProc[0].ProcessId)" | Where-Object { $_.CommandLine -notmatch '--post-mix-worker' })  # 配信VST用の子を除く
-   if ($child.Count -ne 1) { throw "expected one child of the Host, found $($child.Count)" }
-   $child[0].ExecutablePath
-   (Get-FileHash $child[0].ExecutablePath -ErrorAction Stop).Hash -eq (Get-FileHash $release -ErrorAction Stop).Hash
-   ```
-
-   子の生の IPC の行は、同じファイルを単独で起動して標準入力へ命令（`{"type":"Stop"}` など）を送ると読める。`cargo test`、`cargo build --bin audio_engine`、`npm run rebuild-engine` は、debug フォルダーの子を debug の子に戻すので、測定の間は実行しない。debug の子が WASAPI の実機を開く `Start` で `thread 'main' has overflowed its stack`（0xC00000FD）により落ちる問題は、出力 callback の状態を `Box` の `OutputCallback` に移して直した（#829）。確かめ方：`npm run rebuild-engine` で debug の子を作り、単独で起動して標準入力へ `{"type":"Start","payload":{"input_source":null,"host":"WASAPI","input":null,"output":null,"input_id":null,"output_id":null,"buffer_size":512,"sample_rate":48000,"initial_controls":null,"channel_routing":null}}` を1行送る。落ちずに `Started`、または出力のストリームを作った後の `Error`（入力の音声の到着を確認できない、など）の応答が返ればよい。機器の解決の失敗など、出力を作る前の `Error` では、直した箇所を通ったことにならない。確認が済んだら `{"type":"Stop"}` を送る（音が出る可能性がある）。上の W5 の実測は release の子で行ったもので、debug の子での測定は未実施。
-2. 起動したら、「Tauri MCP による実アプリの確認」のうち、**CLI のセッションを開始して `connected: true` を確かめる部分だけ**を行う。その節の起動手順（`npm run rebuild-engine` と `tauri dev`）は実行しない（release の子を debug の子で上書きするため）。
-3. Rust 側の記録は、ログの `emit-trace` の行。`seq` は呼んだ順の通し番号、`kind=emit` は `emit` を呼ぶ直前、`kind=return` は `start_audio`・`stop_audio`・`restart_audio_engine` が結果を返す直前、`unix_us` は壁時計、`thread` は呼んだスレッド。
-4. WebView 側の記録は、アプリを開いた時点で入っている。購読の登録の完了（`listen-registered`）が揃ってから測る。`window.__auralynW5.length` を、場面の前後に控える。
-5. 画面から次の場面を、それぞれ10回以上行う（同じ機器・同じ設定）。呼ぶのは、画面と同じ `audioApi`（開発ビルドでは、WebView から `import('/src/api/audio.ts')` で得られる）。A：開始の成功＝`audioApi.start(host, input, output, bufferSize, sampleRate, inputId, outputId, undefined, routing)`（保存した設定の値）。B：開始の失敗＝同じ `start` の入力と出力を `'no-such-device'` にし、機器 ID と `routing` を渡さない。C：停止（接続あり）＝`audioApi.stop()`。D：停止（接続なし）＝開発セッションで子のプロセスを終了させ、**次の2つの両方**を確かめてから（reader が無効になったこと＝`audio-engine-exited` と `audio-error` を WebView が受け取ったこと、**かつ**、対象の子の PID が OS 上で終わったこと＝`Get-Process -Id <PID>` が見つからないこと。通知を受け取っても、`try_wait()` が終了をまだ返さなければ、停止は終了済みの接続の後始末の経路（`reap_confirmed_stopped_connection`）に入らない） `audioApi.stop()`。次の回のために、`start` で子を起動し直す。E：再起動＝A と同じ引数の `audioApi.restart(...)`。**観測の区間は、始まりを `invoke-called`、終わりを各呼び出しの応答（`invoke-resolved` または `invoke-rejected`）の 700ms 後**とし、その間に届いた通知を、その場面に数える。
-6. `JSON.stringify(window.__auralynW5)` を `webview-execute-js` で読み、`emit-trace` の行と、名前の出現順で突き合わせる。記録するのは、(a) Rust が呼んだ順（`seq`）、(b) 通知を WebView が受け取った順（`event` の `i`）、(c) 応答を受け取った順（`invoke-resolved`。**開始の失敗（B）の応答は `invoke-rejected`**。成功だけでなく、拒否の応答も同じ列で照合する）、(d) (a) と (b)、(a) と (c) が食い違った回数と場面。`emit` を呼んだのに `event` が来なかった通知は、欠落として別に数える。同じ場面の `unix_us` の差（Rust の `emit` から `event` まで、`return` から `invoke-resolved`／`invoke-rejected` まで）も控える。`audio-stopped` は、**B と C に限って**、`audio-conditions-changed` の後、応答の前に届くことを確かめる。**D では出ない**（子へ `Stop` を送らず、`kill_engine` の経路を通る）。A と E でも出ない。
-7. 結果は互換の契約（9章）へ、機器・設定・回数とあわせて追記する。測定前は「未測定」とする。
-
-ホームの状態別主操作（#160〜#163）は `e2e/browser/home-actions.spec.ts` で確認する。960×640 の開始操作、機器IDの引継ぎ、開始失敗と開始後の設定失敗、設定からの復旧後の警告解除、送り先選択へのスクロール・キーボードフォーカス、3テーマのセグメント寸法と注意域メーターを扱う。本番保護中の経路維持と入力ペアの再適用禁止は `src/lib/__tests__/startHomeAudio.test.ts` で確認する。これらはIPCモック・ローカル試験であり、実機での開始・実音声の到達は別途確認する。
-
-ASIOの入出力（#205〜#207）は `e2e/browser/asio-routing.spec.ts` で、入力3/4と独立出力1/2、同番号へ返すinsert、保存後の再表示を確認する。設定画面のDOM試験では初回接続・旧設定の互換モード・同名機器ID・保存のみの再試行を扱う。`useAudioConnectionController.test.tsx` は実レート／バッファの同期で選択機器が戻らないことも確認する。Rustの `channel_routing_tests` と `queue_diagnostics` は開始前の範囲検証、異なる入出力数、最初のフレームの転送先とRT無割当を確認する。
-
-新規ASIO接続は最初の入力ペアと独立出力1/2を既定とし、既存の出力設定がないデータは従来の返却方法を維持する。能力未取得の機器は開始時に検証し、信号検出だけで入力を変更しない。実機では、入力3/4→出力1/2、insert3/4→3/4、mono、旧保存設定からの起動、プロファイル／配信設定の適用・復元を別途確認する。ブラウザ試験はドライバーの動作や聴感の証拠には含めない。
-
-ASIOのnative形式はF32・I16・I24・I32を扱う。整数形式はストリームの構築前に変換領域を確保し、音声callbackで再確保しない。`native_stream` の試験で端値・非有限値・上限超過時の無音化と失敗通知を確認する。変換器の単体成功を、その形式の実ドライバー開始成功へ読み替えない。F64は固定版CPALのASIO構築で未対応であるため拒否する。既定レート0は欠測として扱い、失敗時に無効な既定値へ再試行しない。
-
-WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個分の入力到着を待ってから出力を開始する。待機は100 ms～1秒で打ち切り、入力失敗・未到着では出力を開始しない。ASIOの共有driverは従来の出力→入力順を維持する。要求サイズと実際のcallbackサイズは異なる場合があり、この準備だけで開始時・稼働後の不足や物理遅延が解消したとは扱わない。開始応答時間、キュー滞留時間、ゼロ埋めの総数・開始区間・その後の増分を同じ機器で反復比較する。
-
-性能比較は [NATIVE_PERFORMANCE_COMPARE.md](NATIVE_PERFORMANCE_COMPARE.md) に従い、同じdev/release構成・機器・rate/buffer・処理・ミュート条件で版を交互に各3回以上測定する。Host全体はWebViewとengineを含む子プロセスも観測する。ビルドや別の試験を同時に走らせず、private/working setの標本最大とOSのプロセス単体の生涯ピークを区別する。`glitch_count` は出力処理の入口間隔が期待周期の1.5倍を超えた回数であり、実際の音切れ数ではない。無音と処理停止の区別、および直近60秒の遅着・underflowは [ISSUE_449_IMPLEMENTATION.md](ISSUE_449_IMPLEMENTATION.md) を参照する。整数変換時間は現在の `callback_diagnostics.processing_us` に含まれないため、CPU全体と併記する。
-
 ## 自動テストの層と実行方法
 
-- `npm run test:user-docs`：日英10ページ、見出しの印、リンク、UI名、表記、使い方の全用語を照合する（起動が書き込み制限で失敗する場合は `npm run test:user-docs -- --configLoader runner`）。
+- 利用者向けドキュメント（`user-docs/`）の日英・リンク・UI名の照合は、Tauri 版の Vitest と一緒に 2026-11-28 に無くなった。いまは `auralyn-ui-model` の `docs.rs` の試験が `links.json` の行き先だけを確かめる。
 
 ### Pull Requestの自動チェック
 
-`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` と `src-gpui/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` と `cargo audit --file src-gpui/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
+`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で直下の `Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
 
-`.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
-Node.js 24・Python 3.12とlockfileを使い、設定指紋・ESLint・Ruff・検査器の試験、全Vitest、TypeScript、UI用語、Vite、配布スクリプト試験、配布方針チェックを `checks`（Windows）で実行する。
-`rust`（Linux）は `src-tauri` と `src-gpui` の書式検査、`auralyn-core` と `auralyn-ui-model` の Clippy と試験を実行する。
-最後の `frontend` は `checks` と `rust` の両方の成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
-ブラウザ試験は、GPUI 版へ移るため 2026-11-25 に CI から外した（利用者の判断。Tauri 版の画面だけを見るため）。手元では `npm run test:e2e` や `--feature <名前> --browser` で回せる。必須チェック `frontend` は、`checks`（`verify --full`）と `rust`（Linux の Rust 検査）の両方の成功で決まる。手元は既定1並列で、`--workers=2` で2並列にできる。
-並列数・重複ケースの判断と代替ツールの試作は [2026-11-06の比較記録](CI_BROWSER_STUDY_2026-11-06.md) を参照する。
-ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
+`.github/workflows/frontend-quality.yml` はPR、main更新、手動実行で検査を回す（名前は既存の必須チェックに合わせて残している）。
+`checks`（Windows）は Node.js 24・Python 3.12 で `npm run verify -- --full`（設定指紋・Ruff・Rust 例外台帳・検査器の試験・UI用語・制御文字・スクリプト試験）を実行する。
+`rust`（Linux）は直下の `cargo fmt --all -- --check` と、`auralyn-core`・`auralyn-ui-model` の Clippy と試験を実行する。
+最後の `frontend` は `checks` と `rust` の両方の成功を要求し、失敗・取消・skipを成功扱いにしない。
 CIで失敗した検証CLIの詳細は`test-results/gardening`から7日間のartifactへ保存する。
 既存証拠を含む `test-results` の初期化を避け、公開・デバイス開始・通常設定の変更は行わない。
 
-これらのjobは `auralyn-core`・`auralyn-ui-model` 以外のRustビルド（Tauri本体、vst-host、GPUI 版）、実Tauri、GPUI 版の実機、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
+これらのjobは `auralyn-core`・`auralyn-ui-model` 以外のRustビルド（vst-host、GPUI 版）、GPUI 版の実機、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
 workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
 Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
 
-`npm run lint:terms` は、`src-tauri/crates/auralyn-core/locales/{ja,en}.json` の日本語と英語を `config/ui-terms.json` と照合する。使わないと決めた語、かぎかっこや空白だけを挟んだ同じ語句の重なり（英語は同じ単語の連続）、用語集の使う語から離れた定義を、人の評価より前に止める。CI の frontend 品質では `checks` がこの検査を実行する。
+`npm run lint:terms` は、`crates/auralyn-core/locales/{ja,en}.json` の日本語と英語を `config/ui-terms.json` と照合する。使わないと決めた語、かぎかっこや空白だけを挟んだ同じ語句の重なり（英語は同じ単語の連続）、用語集の使う語から離れた定義を、人の評価より前に止める。
 
 直すときは、失敗したキーの文言を `docs/DESIGN.md` 4章の使う語へ合わせる。その語が文脈上正しいときは、`config/ui-terms.json` の `allow` に `key`、`term`、`reason` を足す。用語を足したり変えたりしたときは、4章の表と `terms` の `use` を両方更新する。`use` が4章の使う語の列に無いと検査は失敗する。
 
-`npm run lint:preview-urls` は、`e2e/` の `*.spec.ts`（画面記録の `*-shots.spec.ts` を除く）の文字列とテンプレートの断片に、`?mock=`・`?screen=`・`&screen=` が無いか調べる。コメントと正規表現リテラルは対象外。複数の文字列をつないで組み立てた URL は見つけられない。これらは開発サーバーだけにあり、CI の本番ビルドでは開けないため、試験の模擬応答（`tauriFixture`）と UI 操作で画面を開く。`npm run verify -- --static` は `terms` の次の段でこの検査を実行する。
-
 | 層 | 目的 | 実行 |
 | --- | --- | --- |
-| 単体（Node / Rust） | 計算・変換・バリデーション・IPC引数・状態遷移 | `npm run test:unit`、下記Rust検証 |
-| DOM / コンポーネント（jsdom） | UI操作・表示・操作禁止・非同期応答。Storageやwindowイベントを使うロジックも含む | `npm run test:dom` |
-| 実ブラウザ（IPCモック） | CSS・実際のスクロール・重なり・hit test・キーボード操作 | `npm run test:e2e` |
-| 実Tauri / 実sidecar（IPCモックなし） | UIからRustへの保存、Host終了・再起動後の復元、実エンジン応答と画面反映 | `npm run test:e2e:native` |
-
-`npm test -- --run --maxWorkers=4` はNodeとjsdomの両方を実行する。
-
-`scripts/native-obs-timeout-check.cjs <製品Host.exe> <新規出力先>` は、音声停止・一時利用領域で実OBS接続待ち中の設定画面closeと別IPCの応答を検査する。相手はloopbackの無応答handshakeで、実OBS・通常資格情報を使わない。DOMの非表示回帰試験、物理トレイ復帰、聴感の確認とは別の証拠である。
-
-更新ありのCSP経路は `scripts/native-updater-fixture-check.cjs prepare|dry-run|run <新規updater-fixture-名前>` を使う専用fixtureで確認できる。`prepare` は試験用鍵・asInvokerのmarker用PE・feed/configを作る。秘密鍵はcommitや検証artifactへ含めない。`run` 前に生成configを `TAURI_CONFIG` に指定してcustom-protocolのrelease Hostとsidecarをビルドし、fixtureのbinへ同じbuildをコピーする。製品CSPを変更しない。`AURALYN_TEST_PYTHON` はインストール済みPythonの絶対パスを明示する。`dry-run` はレジストリを変更せず、`run` は専用GUIDのUninstall metadataを一時作成し、値・型・子キーの一致を照合して単一削除する。通常のインストール先や既存レジストリ値を使わない。生成物は毎回新規とし、失敗時も所有記録と通常profileの前後hashを確認する。
-
-署名CLIのhelpは環境変数の値を表示しうるため、署名鍵のある親環境のままCLIを起動しない。fixtureハーネスは子の環境をallowlist化し、signerの出力を破棄する。`run` の成功は署名付き試験PEの取得・起動までで、実NSISによる新版導入・再起動・設定保持の合格ではない。
-同時worker数は既定で4に制限する。CPU数が多い環境でもDOM環境を過剰に同時起動せず、必要ならCLIの `--maxWorkers` で変更する。
-Node対象は `vitest.config.ts` に明示し、DOM・Storageを使うテストへブラウザの偽物を足してNode化しない。
-単純なReact setterの確認を増やさず、アプリ固有の設定タブ選択などの契約を検証する。
-ロジックの境界値と、その結果を受けた画面の反応は異なる責務なので両方を維持する。
-
-入力名によるマイク候補の判定は `wizardModel.test.ts` のNode試験に集約し、画面では未選択時の操作禁止と明示選択を確認する。
-ショートカットの件数上限は保存済み8件から9件目を入力して確認し、既存8件を毎回画面から作り直さない。
-ボイスチェックのpoll競合は仮想時計で検証する。要求待ち中のpoll抑止に加え、応答後にpollが動くことも確認する。
-保存とエンジン再起動は別実装なので、移行の開始・チャンネル設定・確認完了の失敗条件は両入口で維持する。
-
-初回は `npm ci` と `npx playwright install chromium` を実行する。
-実ブラウザ試験は専用ポート1427のViteを起動し、既存サーバーを流用しない。
-900×600のライト・ダーク・ゲーミング、1024×768の200%ページ拡大で、初回画面・設定・ライセンスの操作とフォーカス復帰を検証する。
-200%ページ拡大はWindowsの実DPI変更とは別の検証である。
-未定義IPCとブラウザの実行時例外は失敗にし、モックの既定成功で隠さない。
-右の列の入出力メーターは、パネルを重ねても隠れない。出力の dBFS はピーク保持、バーは平滑化値である。大型メーターは置かない。
-入力・出力音量、緊急ミュート、モード初回取得の通信失敗を注入し、保存値の保護、次の行動、再試行を確認する。モックでの失敗注入は実機障害の証拠とは分ける。
-通常画面の評価ではミュート・復元警告のない条件を別に用意し、警告を隠して正常扱いにしない。既存の監査画像を保護する場合はPlaywrightの `--output` に新しい専用サブディレクトリを指定する。
-失敗時のtraceはignoredの `test-results/` に出力する。
-
-実Tauri試験はWindows 11 x64、Rust・C++ Build Tools・ASIO SDKを含む通常の開発環境が必要。
-実行スクリプトが現行ソースからHost・engine・scannerをビルドし、同じビルドの3実行ファイルを専用領域へコピーする。
-Tauriの追加設定で識別子・全アプリ保存先・WebView2を一時領域へ分離し、明示開始待ちで起動する。
-言語選択を実UIから保存し、Rustの保存ファイルとHostの再起動後の復元を検証する。
-診断の更新も実エンジン応答と照合し、存在しないコマンドが拒否されることを確認する。
-IPCの置換や音声ストリームの開始は行わない。通常アプリのcapability・設定・OBS設定は変更しない。
-終了用capabilityはE2Eの追加設定だけに付ける。
-調査用の隔離領域はコンソールに表示して保持する。
-Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異なるdebug設定・Tauri設定で通常の成果物を入れ替えないよう分離する。
-初回は専用領域へのビルド時間とディスク容量が必要になる。任意の `CARGO_TARGET_DIR` を指定した場合は、その場所をそのまま使う。
-毎回の保存先隔離に伴うTauri設定の変化は残るため、実Tauri試験の再ビルドがすべて省略されるわけではない。
-ブラウザ用と実Tauri用は同じ専用Viteポートを使うため、同時には実行しない。
-
-### 開発プレビューの模擬応答（`?mock=`）
-
-ブラウザ画面試験のIPCモックの本体は `src/dev/tauriMock.ts` にあり、`e2e/browser/tauriFixture.ts` と開発プレビューで共有する。開発サーバー（`npm run dev`）で `http://localhost:1420/?mock=<状態>` を開くと、Tauriなしのブラウザで画面を再現できる。用途は Pencil（pen.dev）などのデザインツールへの取り込みと見た目の確認で、音声処理・IPC・実機の受入には使わない。
-
-- 状態は `live-home`（実行中・登録済みモード）、`live-home-builtin`（内蔵エフェクトON）、`stopped-home`（停止中）、`first-run`（初回セットアップ）。定義は `src/dev/previewMock.ts`。クエリを足さないときの意味は変えない。`devices=realistic` は言語に依存しない機器名（既定の `devices` は `legacy` で、実行中は `CABLE Output` / `スピーカー`、未設定の試験は `Test microphone` / `Test headphones`）。`registered=0` または `registered=1` は、その状態の歌・雑談の登録だけを上書きする。`purpose=music` は表示用途を音楽鑑賞にして保存し、`purpose=voice` はその保存値を消す。`purpose` を省いたときは、開く前からある表示用途を残す。
-- 画面は `?screen=` で最初から開く。`settings-audio`（接続のページ）、`settings-sound`（音づくり）、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`（設定の各区分）、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst`（`vst-panel` も同じページを開く）。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。接続・音づくり・設定は中央のページで、`[data-settings-page]` に出る。診断情報や確認などのモーダルは `#root` の外に出るため、取り込みは `body` を使う。
-- 設定済みの状態では、開いたブラウザの localStorage にセットアップ完了と機器設定を書き込む。状態が持つ保存値以外は、切り替えるたびに消す。プレビュー専用のブラウザで使う。
-- 未定義のIPCはプレビューでは失敗させず `window.__e2eUnexpected` に記録する。試験（`strict: true`）では従来どおり失敗させる。
-- 読込は `vite.config.ts` の serve 専用プラグインで行い、本番ビルドには含まれない。Tauri上（`__TAURI_INTERNALS__` がある場合）では何もしない。
-- Pencil へは、内蔵ブラウザで上記URLを開いて `#root` を取り込む。取り込み幅はブラウザの表示幅に従うため、幅を揃えたいときは CDP の `Emulation.setDeviceMetricsOverride` で指定してから取り込む。取り込んだものは静的な写しで、コードとは同期しない。
-- 段階 H（広い窓）の出し分けと拡大は `e2e/browser/large-window.spec.ts` で確かめる。寸法の正本は `src/lib/largeWindow.ts`。画面記録は `RENEWAL_H_SHOTS=1` のときだけ `e2e/browser/design-renewal-h-shots.spec.ts` が `docs/verification/design-renewal-h/` を上書きする。通常の `npm run test:e2e` では撮らない。`RENEWAL_SHOTS` とは別の変数にする。
-
-### 利用者目線の評価の撮影
-
-開発プレビューを決まった窓で撮り、PNG と画面の文字（`document.body.innerText`）を評価者に渡す手順です。音声処理・実機の受入には使いません。通常の `npm run test:e2e` には含まれません。撮影ファイルは `e2e/ux-eval/capture.ts` で、Playwright の設定は `playwright.ux-eval.config.ts` です。既定の設定の `testDir` は `e2e/browser` なので、このファイルは拾われません。
-
-```powershell
-npm run capture:ux-eval
-```
-
-撮影は、`CI` や `E2E_PREVIEW` が立っていても、いつも開発サーバー（`npm run dev`、`http://127.0.0.1:1427`）を起動します。`?mock=` の模擬は開発サーバーにしか入らないためです。ほかの試験が 1427 を使っているときは、`UX_EVAL_PORT` で別のポートを指定します。
-
-出力先は `test-results/ux-eval/<日付>-<ブランチ名の最後の区間>-<短いSHA>/` です。日付は実行したマシンのローカル日付、SHA は `git rev-parse --short=8 HEAD` の8文字です。ブランチ `codex/ux-eval-capture-716` なら区間は `ux-eval-capture-716` です。フォルダーごと別の場所にするときは、環境変数 `UX_EVAL_OUT` にそのパスを指定します。
-
-中は4つです。各フォルダーに `README.md` があり、ファイル名と状態を一覧にします。
-
-| フォルダー | 窓 |
-| --- | --- |
-| `w900` | 900×600 |
-| `w1024` | 1024×768 |
-| `w1280` | 1280×800 |
-| `w1440` | 1440×900 |
-
-`w1440` は、ヘルプにある「窓が広いときは接続の列がホームの右に開く」を撮るためです。幅の境は 1400px（`docs/DESIGN.md` 10.8、`src/lib/largeWindow.ts` の `connectColumnMinWidth`）です。
-
-各ショットは同名の `.png` と `.txt` です。撮る前に「音声エンジンを起動しています…」（英語は `Starting the audio engine…`）が消えるのを待ち、開いたページまたはダイアログが見えるまで待ちます。スクリーンショットは `animations: 'disabled'` です。撮る前に、撮影の都合の表示が出ていないことも確かめます（どの画面にも「そろえる」が無いこと。`voice-check` は録音の操作が使え、録音前に試聴の欄と「試聴の準備ができませんでした」が出ないこと）。テーマは `vst_host_theme`、言語は `vst_host_locale` を、ページを開く前に書きます。URL だけではテーマと言語は変わりません。
-
-機器名はすべて `devices=realistic` です。入力の候補は `Yeti Stereo Microphone` と `CABLE Output (VB-Audio Virtual Cable)`、出力の候補は `CABLE Input (VB-Audio Virtual Cable)` と `USB Headphones` です。配信の保存値は Yeti → CABLE Input、音楽鑑賞の保存値は CABLE Output → USB Headphones です。名前は言語に依存しません。`devices` を付けないプレビューと既存のブラウザ試験は、これまでどおり `CABLE Output` と `スピーカー` です。
-
-| ファイル | 模擬 | 画面 | 用途 | 実行 | 登録 | 言語 | テーマ |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `setup-first` | `first-run` | セットアップ | 配信 | 未設定 | 未登録 | 日本語 | ダーク |
-| `home-voice` | `live-home` `registered=0` | ホーム | 配信 | 実行中 | 未登録（見出しは「いまの声」） | 日本語 | ダーク |
-| `home-voice-registered` | `live-home` | ホーム | 配信 | 実行中 | 登録済み（見出しは「いまの調整」） | 日本語 | ダーク |
-| `home-voice-unmuted` | `live-home` | ホーム | 配信 | 実行中 | 登録済み（出力ミュートを解除してから撮る） | 日本語 | ダーク |
-| `home-voice-builtin` | `live-home-builtin` | ホーム | 配信 | 実行中 | 登録済み（声を整える ON） | 日本語 | ダーク |
-| `home-stopped` | `stopped-home` `registered=0` | ホーム | 配信 | 停止中 | 未登録 | 日本語 | ダーク |
-| `home-voice-gaming` | `live-home` | ホーム | 配信 | 実行中 | 登録済み | 日本語 | ゲーミング |
-| `home-voice-light-en` | `live-home` | ホーム | 配信 | 実行中 | 登録済み | 英語 | ライト |
-| `home-music` | `live-home` `purpose=music` | ホーム | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
-| `home-music-stopped` | `stopped-home` `purpose=music` | ホーム | 音楽鑑賞 | 停止中 | 登録済み | 日本語 | ダーク |
-| `home-music-en` | `live-home` `purpose=music` | ホーム | 音楽鑑賞 | 実行中 | 登録済み | 英語 | ダーク |
-| `vst` | `live-home` | VST | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `vst-music` | `live-home` `purpose=music` | VST | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
-| `sound` | `live-home` | 音づくり | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `sound-music` | `live-home` `purpose=music` | 音づくり | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
-| `audio` | `live-home` | 接続 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `setup-music-input` | `first-run` | セットアップの入力の手順（音楽鑑賞を選んで進む。`wizard.musicInputHint` が見える） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
-| `setup-music-output` | `first-run` | セットアップの出力の手順（同上） | 音楽鑑賞 | 未設定 | 未登録 | 日本語 | ダーク |
-| `audio-music` | `live-home` `purpose=music` | 接続（「仮想ケーブルを使う場合の接続」を開いて、`processInput.cableHelpMusic` が見える） | 音楽鑑賞 | 実行中 | 登録済み | 日本語 | ダーク |
-| `appearance` | `live-home` | 外観 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `obs` | `live-home` | OBS連携 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `system` | `live-home` | システム | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `shortcuts` | `live-home` | ホットキー | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `stream-mix` | `live-home` | 配信ミックス | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `stream-mix-en` | `live-home` | 配信ミックス | 配信 | 実行中 | 登録済み | 英語 | ダーク |
-| `plugin-browser` | `live-home` | VSTを追加 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `voice-check` | `live-home` | ボイスチェック | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `presets` | `live-home` | 設定の保存・復帰 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `troubleshoot` | `live-home` | 音のトラブルを診断 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `help` | `live-home` | 使い方 | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `template-wizard` | `live-home` | 構成テンプレート | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-| `obs-guide` | `live-home` | OBS連携ガイド | 配信 | 実行中 | 登録済み | 日本語 | ダーク |
-
-上の表で `registered` や `purpose` を書いていない行は、その `mock` の既定です。`live-home` と `stopped-home` と `live-home-builtin` は登録済み、`first-run` は未登録です。音楽鑑賞の見出しは「音楽鑑賞」（英語は `Music listening`）で、歌・雑談の札は出ません。
-
-#### 模擬データの限界
-
-この撮影は Tauri も音声機器も動かしません。次は模擬の都合です。アプリの不具合として数えないでください。
-
-- **ノイズ低減のモードを返さない。** `get_engine_runtime_stats` は `noiseReductionMode` を含めません。弱・強は、エンジンが返したモードとしては選ばれません。
-- **出力ミュートの初期値。** 模擬の `muted` は `true` で始まります。統計が届くと、いまの状態に「音を送っていません」（音楽鑑賞は「音を出していません」）、右の列の札に「出力ミュート・音量ゼロ」（英語は `Not sending sound`・`Muted / 0%`）が出ます（#766）。撮影は統計を待ってから撮るので、この2つが出ます。解除した状態は `home-voice-unmuted` だけです。ミュート中は、実エンジンの緊急ミュート（`audio_engine/core/startup.rs`）と同じく、出力のレベルが 0 になります。右の列の出力ピークは `−∞ dBFS` で、「送る音」（音楽鑑賞は「出力の大きさ」）のバーは動きません。入力のレベルは動き続けます。解除すると出力のレベルが戻り、出力音量を掛けた値になります（`tauriMock.ts` の `__e2eMeterLevels`）。
-- **ボイスチェックの試聴先は、評価用の機器名（`devices=realistic`）のときだけ返す。** `voice_check_preview` の `open`・`status`・`devices`・`stop`・`close` に答え、試聴先として `CABLE Input (VB-Audio Virtual Cable)` と `USB Headphones` を返します。録音前のボイスチェックは試聴の準備が成功し、試聴の欄は出ません。録音・再生（`start`、`prepare_*` など）は模擬しないので、録音したあとの画面（試聴の欄、比較、波形）は撮れません。`devices` を付けないプレビューと既存のブラウザ試験は、これまでどおり未定義の IPC で、試聴の準備に失敗します。「試聴の準備ができませんでした」が出たら、撮影の不備です。
-- **入力の使い道は、ホームの表示と同じ。** `realisticAudioConfig` は保存値へ `inputSource` を書き、`purpose=music` なら入力の使い道も音楽鑑賞です。接続の「ホームの表示は「…」ですが、入力の使い道は「…」です。」と「そろえる」は、撮影のどの画像にも出ません。実際に不一致が起きたときの文は、ユニット試験で確かめます。
-- **声の流れが平ら。** 撮影スクリプトが、実行中の画面へ入力の線形 0.1（`-20.0 dBFS`）のレベルを一定で流します。帯が真っすぐでも、ピークがその値のままでも、処理が止まっている証拠にはしません。
-- **ダイアログを直接開いたときの焦点の輪。** 撮影は `?screen=` でダイアログやページを直接開きます。利用者のクリックを通らないので、ブラウザはキーボード操作の扱いにして、先頭の操作（ダイアログの×、ページの見出しなど）に `:focus-visible` の輪を出します。マウスでダイアログを開いたときは出ません。不具合として数えないでください。
-- **音楽鑑賞のセットアップの仮想ケーブルの案内は、2か所にあります。** 初回のセットアップの最初の画面「何に使いますか？」の予告は OBS・Discord の側だけです。音楽鑑賞を選んで進むと、入力の手順（2番目）と出力の手順（3番目）に、それぞれの手順で操作する場所を示す文（入力は `wizard.musicInputHint`、出力は `wizard.musicOutputHint`）が出ます。`setup-music-input` と `setup-music-output` が、`first-run` から音楽鑑賞のカードを選んで進み、それぞれの文が見えている状態を撮ります。接続のページの音の元には、閉じた折りたたみ「仮想ケーブルを使う場合の接続」があり、中に `processInput.cableHelpMusic`（CABLE Input と CABLE Output の設定のしかた）があります。`audio-music` が、その折りたたみを開いた状態を撮ります。
-
-評価者へ渡す依頼文と決定済みの一覧（`test-results/ux-eval/<フォルダー>/PROMPT.md` と `DECIDED.md`）は、リポジトリに正本がありません。評価のたびに、撮影フォルダーの中へ作ります。上の項目は、そこへ写してください。
-
-### 画面の状態をまとめて開く（screen-matrix）
-
-ある状態を直したときに、別の状態や別の窓で表示が崩れても次の目視まで気づけないのを、手元の実行で止める試験です。`e2e/browser/screen-matrix.spec.ts`。`npm run test:e2e` に含まれます（CI では 2026-11-25 から回していない）。
-
-ホームは、実行中（`?mock=live-home`）・停止中（`?mock=stopped-home`）・未設定 × 配信・音楽鑑賞 × 900×600・1024×768・1280×800・1440×900 × 日本語・英語をすべて開きます。1440×900 は接続の列が常に開く広い窓で、英語の見出しと診断の入口が重なった崩れ（#762）を止めます。配信ミックスも、900×600・1280×800 に 1440×900 を足して開きます。未設定の名前はプレビューの定義に無いので、URL は `?mock=unconfigured` とし、`unconfigured-live.spec.ts` と同じくセットアップ済みで機器設定が無い保存値にします。ほかのページ（音づくり、VST、接続、設定の外観・ホットキー・OBS連携・システム）は実行中だけ、使い方 × 言語 × 900×600 と 1280×800 です。開発サーバーでは `html[data-auralyn-preview]` を待ちます。CI の本番ビルドにはこの印が無いので、無いときは左のレールから同じ画面を開きます。セットアップの最初の画面は、未設定で初めて開いたときに自動で開く状態を、`/` から日英 × 4つの窓（ホームと同じ）で開きます（URL に `?mock=` を付けません）。入場の動きが終わってから測ります。出力のミュートは `setOutputMuted`（`e2eHooks.ts`）で外します。測る前に `e2e/browser/helpers/waitForStableLayout.ts` で、フォントと主な区画の位置が連続3フレーム動いていないことを待ちます。
-
-見えている要素だけを調べます。`aria-hidden` や `inert` の中、大きさ 0、不透明度 0、`visibility: hidden`、閉じた `details`、読み上げ専用の文は除きます。この判定は `helpers/visibility.ts` に1つだけあり、画面の検査（`screenAudit.ts`）と文字の折り返しの検査（`shortLines.ts`）が同じものを使います。折り返しの検査は、さらに親の `overflow: hidden` / `clip` で切り取られた文字を除き、診断の文字列も見えている文字だけから組みます。スクロール領域（`auto` / `scroll`）の中の文字は、スクロールで届くので数えます。ダイアログが開いている画面は、最前面のダイアログだけを調べます（`shortLineRoot`）。この判定の単体試験は `short-lines-helper.spec.ts` と `screen-audit-helper.spec.ts` です。違反は1件1行で、画面・状態・使い方・窓・言語・種類・短いセレクタ・文字の先頭を出します。
-
-- **重なり。** 見えている操作（ボタン、リンク、入力、選択、`role` が button / switch / slider / tab）が、直下に文字がある要素と 2×2px を超えて重なり、親子でないとき。省略で隠れている文字の範囲は、見えている箱の内側だけを見ます。
-- **はみ出し。** 文字を持つ要素で `scrollWidth` が `clientWidth + 1` より大きく、`overflow` が `hidden` か `clip` のとき。`title` に全文があるものは除きます。
-- **短いラベルの折り返し。** ボタン、見出し（`h1`〜`h4`）、`label`、`data-audit-short` の、直下の文字が3行以上のとき。名前と補足を縦に積んだものは、それぞれの塊で数えます。
-- **1〜2文字だけの行。** 日本語のときだけ。画面全体の文字を1文字ずつ描画位置で行に分け、3文字以上ある文のまとまりで、1〜2文字しかない行が出たもの（「反映しま／す。」のような末尾の取り残し。`helpers/shortLines.ts` の `shortWrappedLineDetails`、#708）。英語は語単位で折れるので数えません。語の途中で折れても、残りが3文字以上の行は、この検査では見つかりません。
-- **文節で折り返さない日本語（セットアップの最初の画面だけ）。** 日本語を含み、複数行になるブロックで `word-break` が `auto-phrase` でないもの。「音楽を聴／く」「加工／した声」のように、行末が語や文節の途中になる折り返しを、文言が変わっても捕まえます（`unphrasedJapaneseBlocks`）。ほかの画面は、文節で折り返す仕組みをまだ入れていないので対象にしません。
-- **同じ文の重複。** 見えている文字を「。」「.」「!」「?」で分け、10文字以上で助詞か英語の機能語がある文が2回以上のとき。ボタン名や行ごとの同じ操作名は数えない。ダイアログが開いているときは、その中だけを数えます。
-- **空の枠と、何も続かない区切り。** カード（`rounded-card`、`sound-module-card`、`page-section`、ホーム直下の `section`）で、高さ 40px 以上なのに見出し以外の文字・操作・`canvas`・メーターが無いもの。見出しが枠をほぼ占め、その空きが 24px 未満かつ枠の半分未満の名前の行は空にしない。セットアップのカードの記号の台（`setup-choice-icon`）だけは、描かれている `svg` が直下にあれば空の枠にしない（#720）。アイコンは装飾で `aria-hidden` が付くので、読み上げではなく、描かれているかで見る。大きさで逃がさないのは、幅の広い空のカードや、拡大表示（150%）の台まで見逃す・誤って拾うため。状態の行が無い音調整のカードは、名前の行の塊が約 6rem に収まり、その下の空きが枠の半分以上のときも空の枠にする。実行中のカードは状態の行があるので、隣に合わせて伸びてもこの条件では空にしない（#673）。ただし VST が0件の外部VSTのカード（`data-empty-vst`）は実行中も中身の高さにするため、状態の行があり中身の塊が高くても、中身の下に枠の半分以上の空きが残れば空の枠にする（#769）。`hr`、`role=separator`、枠線だけの要素で、後ろに見える中身が無いもの。
-- **用途の混ざり。** 音楽鑑賞のときだけ。日本語は「配信」「OBS」「通話」「歌」「雑談」。英語は語の先頭が Stream、Broadcast、OBS、Sing、Talk。
-
-違反が出たら、表示を直します。検査が間違っているときは `e2e/browser/helpers/screenAudit.ts` を直し、直した理由を残します。まだ直さない崩れは `e2e/browser/screen-matrix.known.ts` の `knownViolations` に、当てはまる画面・状態・使い方・窓・言語と、`match`（セレクタか文字の断片）と Issue 番号を1件足します。Issue が無いものは `issue: 'new'` にします。登録した組み合わせでその違反が出なくなると、「直ったので例外を外してください」で失敗します。その行を一覧から外します。音楽鑑賞でも正しく出る語は、Issue ではなく `purposeAllowances` に `reason` を付けて足します。その文が画面から無くなったときも、同じ失敗で外すよう知らせます。
-
-画面に足してよい印は、次の属性だけです。見た目は変えません。
-
-- `data-audit-overlay` は、切替の途中で重ねる欄など、意図した重なりです。この中の操作は重なり検査から外します。
-- `data-audit-truncate` は、省略してよい文字です。はみ出し検査から外します。
-- `data-audit-short` は、ボタン・見出し・label 以外で、3行以上の折り返しを調べたい短いラベルです。
+| 画面の規則（Rust） | メーターの読み・判定・候補の絞り込みなど、GPUI に依存しない規則 | `cargo test -p auralyn-ui-model` |
+| 中核（Rust） | 計算・変換・バリデーション・IPC引数・状態遷移 | `crates/vst-host` の `cargo test --locked --lib`、下記の統合試験 |
+| 画面（GPUI） | 画面の組み立て・部品の試験 | `cargo test -p auralyn-gpui`（Windows） |
+| 実機 | 実際の描画・フォーカス・狭い窓・日英・実音声 | Windows の実機。手順は [src-gpui/README.md](../src-gpui/README.md) |
 
 ### 変更中の確認と全体確認
 
-変更中は対象のテストファイルを `npm test -- --run <対象ファイル> --maxWorkers=4` で実行し、完了時に変更範囲に必要な全体確認を行う。
 Rustの単体処理を変更中は `cargo test --locked --lib <対象名>` を使い、IPC・プロセス寿命を変更した場合は対応する統合試験も実行する。
-ビルド時間とテスト本体の時間は分けて記録する。フロントだけのビルド確認には `npx vite build` を使う。
+ビルド時間とテスト本体の時間は分けて記録する。
 外部キューの契約試験やクラス名の確認は件数だけを理由に削除せず、実処理・実画面で同じ契約を検出できることを確認してから整理する。
 
 ### 実sidecarのプロセス境界と実機試験
 
-`src-tauri` で `cargo test --locked --test integration_test --test repro_ott` を実行すると、
+`crates/vst-host`で `cargo test --locked --test integration_test --test repro_ott` を実行すると、
 現行Cargo成果物のsidecarへ実IPCで要求し、未対応hostの拒否、空ラックの順序変更、停止、stdin EOF後の正常終了を確認する。
 応答欠落・想定外応答・エラーイベント・強制終了が必要な状態は失敗にする。失敗時も起動した子プロセスを回収する。
 実機録音とOTTエディタのテストは理由付きignoreとし、通常の自動テスト成功へ含めない。
@@ -339,8 +71,8 @@ GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を�
 差し替えは `#[cfg(test)]` の `engine_life::seam` だけ（Job の作成・割り当て・再開の戻り値・`try_wait`・時計。試験のスレッドごと）。本番に差し替え口はない。
 
 ```powershell
-Set-Location D:\Programming\App\VSTHost\src-tauri
-$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
+Set-Location D:\Programming\App\VSTHost\crates\vst-host
+$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\target'
 cargo test --locked --lib audio::engine_life_tests
 cargo test --locked --lib audio::post_mix::life_tests
 ```
@@ -374,23 +106,23 @@ cargo test --locked --lib audio::post_mix::life_tests
 
 使った成果物（実行後に、ファイルから読み直した記録）：
 
-- Host：`D:\Programming\App\VSTHost\src-tauri\target\debug\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 `FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E`）。`tauri dev` が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（`spawn_engine_binary` への分割と `apply_creation_flags`）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
-- 子：`D:\Programming\App\VSTHost\src-tauri\target\debug\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 `D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D`）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。`audio_engine` と `bin` のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
-- 実行したコマンド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target`、`$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'`、`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`、`npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223`。
+- Host：`D:\Programming\App\VSTHost\target\debug\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 21:54:12、47357440 バイト、SHA-256 `FFEDB027A2666C725376548F8D2CA14419A403FEE2AE0C07736B9C9AC8CD675E`）。`tauri dev` が作業ツリーからビルドした（2分24秒）。ソースは 8a826618 に、のちに 6d8ea1f4 でコミットした未コミットの変更（`spawn_engine_binary` への分割と `apply_creation_flags`）を足したもの。ビルド時点の差分の SHA は記録なし。実行後に Host は作り直していない。
+- 子：`D:\Programming\App\VSTHost\target\debug\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 15:23:31、5642240 バイト、SHA-256 `D209780413B2A2024278BB479B8692C04819C988C78F901185CAE7C3C33B439D`）。この確認では作り直していない（改名して戻しただけで、内容は同じ）。ビルド時のコミットは記録なし。`audio_engine` と `bin` のソースが最後に変わったコミットは ef32e034（2026-11-20）で、それ以降は変更がないため、そのソースと同じ内容と推定する。release の子は使っていない。
+- 実行したコマンド：`$env:CARGO_TARGET_DIR = <リポジトリ>\target`、`$env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'`、`npm run tauri -- dev --no-watch --config src-tauri/tauri.debug-global.conf.json`、`npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223`。
 
 - (a) 起動：主の子（PID 5140）が起動し、`IsProcessInJob` が真。`stop_audio` の後に `post_mix` の `restore_saved` で配信ミックスの子（`--post-mix-worker`）が起動し、同じく Job に入っていた。起動の失敗：主の子を `Stop-Process` し、`audio_engine.exe` を一時的に改名すると、`get_audio_devices` は「Audio Engine binary not found」で失敗した。元の名前へ戻した後の同じ操作は成功し、新しい子が起動した。この失敗は、子が見つからない経路（Job の失敗の経路ではない。Job・割り当て・再開の失敗は注入の試験で確認した）。
 - (b) 通常の終了：主の子（PID 54892）が動き、`get_audio_devices`（再検出）が作る `--scan` の孫（PID 26372）が生きている状態で、`quit_app` を実行した。孫は一瞬で終わるため、監視のジョブが現れた瞬間に `NtSuspendProcess` で止めて生かした（孫は実プロセス）。監視のジョブが起動時に取った Process のハンドル（開始時刻つき）で、Host の終了コード 0、子と孫の終了を確認した。残ったプロセスはなかった。
 - (c) 強制の終了：別の起動（Host 56820、主の子 47596、孫 55820＝止めた `--scan`）で、`Stop-Process -Id <Host> -Force` により Host だけを終了した（終了コード -1）。同じ方法で、子と孫がどちらも終了したことを確認した。
 - 実行後、`AuralynHost`・`audio_engine` のプロセス、`.hold` に改名したファイルの残りはない。
-- MSIX：行っていない。`docs/MSIX_PROTOTYPE.md` の手順は、署名用の証明書の作成と、LocalMachine の信頼するストアへの登録（管理者の操作）、`Add-AppxPackage` が要る。システムの設定を変えるので実施していない。必要なのは、(1) 試験用の証明書の信頼登録（管理者）、(2) 署名済みの MSIX のインストール、(3) 同じ確認（ネストした Job の下での主・配信ミックスの起動、通常と強制の終了）。
+- MSIX：行っていない。当時の `docs/MSIX_PROTOTYPE.md`（2026-11-28 に削除）の手順は、署名用の証明書の作成と、LocalMachine の信頼するストアへの登録（管理者の操作）、`Add-AppxPackage` が要る。システムの設定を変えるので実施していない。必要なのは、(1) 試験用の証明書の信頼登録（管理者）、(2) 署名済みの MSIX のインストール、(3) 同じ確認（ネストした Job の下での主・配信ミックスの起動、通常と強制の終了）。
 
 #### 配布用ビルド（release の Host と、その横の release の子）での確認の結果（2026-11-21）
 
 インストーラー（NSIS）では確認していない。理由：インストーラーは PC にインストールするため、利用者がふだん使っている Auralyn を上書きするおそれがある。代わりに、`npm run tauri -- build --no-bundle` で作った release の Host と、その同じフォルダーに置かれた release の子（インストール後と同じ並び）を、ビルド先から直接起動した。`--no-bundle` にした理由：`createUpdaterArtifacts` が有効で、NSIS の成果物の段階は署名の鍵を要するため。インストーラーの生成、署名、MSIX、インストール先のパス（`Program Files` 配下など）での確認は未実施。
 
-- ビルド：`$env:CARGO_TARGET_DIR = <リポジトリ>\src-tauri\target` のもとで `npm run tauri -- build --no-bundle`（`beforeBuildCommand` の `npm run build` が release の `audio_engine` と `plugin_scanner` を作る）。`Built application at: ...\target\release\AuralynHost.exe`、終了コード 0。ビルド時のコミットは 2a41e452（作業ツリーの未コミットの差分は、試験・文書だけ。製品のコードは同じ）。
-- Host：`D:\Programming\App\VSTHost\src-tauri\target\release\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:38:58、18089984 バイト、SHA-256 `B8C7ADE3DA013F827066DD12E9D354A4AA278228035732557B296B498CC86538`）。
-- 子：`D:\Programming\App\VSTHost\src-tauri\target\release\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:37:12、5662208 バイト、SHA-256 `4367FE1657593F0BE0B80EA5F3982F7891EC163B8F56EA762E82B1FA5A19F458`）。実行中のプロセスの `ExecutablePath` がこのファイルであることを確認した。参考：`src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe` の SHA-256 は `D43D30471C835A4AAFAB2B3BA1FD425B782749A84ECB45F41A8CF4B7B3078F75` で、上のファイルとは一致しなかった（原因は調べていない。確認に使ったのは上の `release\audio_engine.exe`）。
+- ビルド：`$env:CARGO_TARGET_DIR = <リポジトリ>\target` のもとで `npm run tauri -- build --no-bundle`（`beforeBuildCommand` の `npm run build` が release の `audio_engine` と `plugin_scanner` を作る）。`Built application at: ...\target\release\AuralynHost.exe`、終了コード 0。ビルド時のコミットは 2a41e452（作業ツリーの未コミットの差分は、試験・文書だけ。製品のコードは同じ）。
+- Host：`D:\Programming\App\VSTHost\target\release\AuralynHost.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:38:58、18089984 バイト、SHA-256 `B8C7ADE3DA013F827066DD12E9D354A4AA278228035732557B296B498CC86538`）。
+- 子：`D:\Programming\App\VSTHost\target\release\audio_engine.exe`（ファイルの版 1.1.0、更新時刻 2026-11-21 22:37:12、5662208 バイト、SHA-256 `4367FE1657593F0BE0B80EA5F3982F7891EC163B8F56EA762E82B1FA5A19F458`）。実行中のプロセスの `ExecutablePath` がこのファイルであることを確認した。参考：`src-tauri\bin\audio_engine-x86_64-pc-windows-msvc.exe` の SHA-256 は `D43D30471C835A4AAFAB2B3BA1FD425B782749A84ECB45F41A8CF4B7B3078F75` で、上のファイルとは一致しなかった（原因は調べていない。確認に使ったのは上の `release\audio_engine.exe`）。
 - 起動と操作：`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` を設定して Host を直接起動し、WebView2 の DevTools プロトコル（`Runtime.evaluate`）で `window.__TAURI_INTERNALS__.invoke` を実行した（release にはデバッグ用の bridge がないため）。
 - (a) 起動：主の子が起動し Job に入っていた。`stop_audio` の後、`post_mix` の `restore_saved` で配信ミックスの子が起動し、同じく Job に入っていた。子を終了して `audio_engine.exe` を一時的に改名すると `get_audio_devices` は「Audio Engine binary not found」で失敗し、戻した後の同じ操作は成功して新しい子が起動し、Job に入っていた（子が見つからない経路。Job の失敗の経路は注入の試験で確認した）。
 - (b) 通常の終了：Host 40428、主の子 46860、`--scan` の孫 53860（現れた瞬間に `NtSuspendProcess` で止めて生かした実プロセス）。`quit_app` の後、Host の終了コード 0、子と孫が終了した。ハンドルは、起動のときに取った Process（開始時刻つき）。
@@ -400,20 +132,20 @@ cargo test --locked --lib audio::post_mix::life_tests
 
 ### 落ちる・固まるVSTでの実機の確認（#462）
 
-試験用の VST3「Auralyn Crash Test」（`src-tauri/examples/crash_vst3.rs`。配布しない）は、指定した操作で `abort` する、または止まらずに回り続ける。指定は `%TEMP%\auralyn-crash-vst3.txt`（前後の空白は無視）に書く。
+試験用の VST3「Auralyn Crash Test」（`crates/vst-host/examples/crash_vst3.rs`。配布しない）は、指定した操作で `abort` する、または止まらずに回り続ける。指定は `%TEMP%\auralyn-crash-vst3.txt`（前後の空白は無視）に書く。
 
 - 操作名：`load`・`set_state`・`get_state`・`open_editor`・`processing_setup`・`process`。`hang:<操作名>` なら落ちずに固まる。ファイルがない・一致しないときは普通に動く。
 - 落とすのは、実行ファイル名が `audio_engine` で始まるプロセスの中だけ（スキャナーでは落とさない）。`process` は `setupProcessing` でファイルを読んで控えるので、音声スレッドではファイルを読まない。
 
 ```powershell
-$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\src-tauri\target'
-cargo build --manifest-path src-tauri/Cargo.toml --locked --example crash_vst3 --release
+$env:CARGO_TARGET_DIR = 'D:\Programming\App\VSTHost\target'
+cargo build --manifest-path crates/vst-host/Cargo.toml --locked --example crash_vst3 --release
 $bundle = "$env:CARGO_TARGET_DIR\crash-vst3\Auralyn Crash Test.vst3\Contents\x86_64-win"
 New-Item -ItemType Directory -Force $bundle | Out-Null
 Copy-Item "$env:CARGO_TARGET_DIR\release\examples\crash_vst3.dll" "$bundle\Auralyn Crash Test.vst3" -Force
 ```
 
-Auralyn の「VSTを追加」の「探すフォルダー」へ `...\src-tauri\target\crash-vst3` を足すと見つかる。`C:\Program Files` へは置かない。DLL は音声エンジンが読んでいる間は上書きできない（アプリを終了してから写す）。確認の結果は [ISSUE_462_ACCEPTANCE_2026-11-24.md](verification/ISSUE_462_ACCEPTANCE_2026-11-24.md)。
+Auralyn の「VSTを追加」の「探すフォルダー」へ `...\target\crash-vst3` を足すと見つかる。`C:\Program Files` へは置かない。DLL は音声エンジンが読んでいる間は上書きできない（アプリを終了してから写す）。確認の結果は [ISSUE_462_ACCEPTANCE_2026-11-24.md](verification/ISSUE_462_ACCEPTANCE_2026-11-24.md)。
 
 ### 自発的に状態が変わるVSTの確認（#465）
 
@@ -421,10 +153,10 @@ Auralyn の「VSTを追加」の「探すフォルダー」へ `...\src-tauri\ta
 本体と同じカタログクラス選択・bus交渉・遅延接続・処理準備を使うが、音声デバイスとエディターは開かず、出力音声は破棄する。
 `externalBin`には追加せず、配布物には含めない。新しいcrate依存は不要。
 
-PowerShellの例（既存の `src-tauri/target` に出力する）：
+PowerShellの例（既存の `target` に出力する）：
 
 ```powershell
-Set-Location D:\Programming\App\VSTHost\src-tauri
+Set-Location D:\Programming\App\VSTHost\crates\vst-host
 cargo run --locked --bin vst_state_drift -- --help
 cargo run --locked --bin vst_state_drift -- --plugin 'C:\Program Files\Common Files\VST3\TDR Nova.vst3' --seconds 60 --interval 5 --signal noise
 # 音声時間10秒分を待機なしで処理し、JSONで報告する。
@@ -480,15 +212,13 @@ Auralynには「未保存の印」の表示はないため、#465の完了条件
 | 変更範囲 | 必要な確認 |
 | --- | --- |
 | 文書・規約 | 実装との整合、参照リンク、`git diff --check` |
-| バージョン・配布スクリプト | `npm run test:release`、`npm run release:check`、番号変更のdry-run |
-| React / TS / UI依存 | `npm test -- --run`、`npx tsc --noEmit`、`npx vite build`、変更画面の操作確認 |
-| Rust / IPC | `cargo test --locked`、`cargo check --locked --all-targets`、`cargo clippy --locked --all-targets`（`src-tauri`で実行）。対象テストに実機・プラグインが必要か事前確認 |
+| 画面（GPUI） | `npm run verify -- --static --rust`、Windows の実機で変更画面の操作・フォーカス・狭い窓・日英 |
+| Rust / IPC | `cargo test --locked`、`cargo check --locked --all-targets`、`cargo clippy --locked --all-targets`（`crates/vst-host`で実行）。対象テストに実機・プラグインが必要か事前確認 |
 | 音声系 / native window依存 | Rust検証に加え、WASAPI / ASIO、44.1k / 48k、異なるバッファ、デバイス切替、VST追加・削除・復元、GUI開閉・DPI、連続運転で音切れ・CPU・遅延・音質を更新前後比較 |
 | インストーラー / updater | 署名ビルド、旧版からの更新、設定・プリセット移行、Source ZIP・SHA-256・manifest整合、公開後の取得確認 |
 
-`npx vite build` はフロントのみです。`npm run build` はrelease sidecarのRustビルドとNSIS画像生成も実行し、`npm run tauri build` がインストーラーまで生成します。
 実行していない実機・インストール・OBS・公開確認は「未確認」と報告してください。
-依存更新時は `npm audit` と必要に応じた RustSec 監査も行います。自動テスト成功だけで音声・配布の互換性を保証しません。
+依存更新時は RustSec 監査も行います。自動テスト成功だけで音声・配布の互換性を保証しません。
 
 DSPの初回処理・resetをpanic=abortで計測する手順は[DSP_ABORT_VERIFICATION.md](DSP_ABORT_VERIFICATION.md)を参照する。
 検証用featureを明示したexampleだけを実行し、音声デバイスやストリームを起動しない。
@@ -507,9 +237,11 @@ OTT 1.37 / Windows 11 x64 / 96 DPIで、InitDll未実行時に要求サイズが
 - 閉じる・再表示、リサイズ、表示中削除、削除後の再ロードを繰り返す。
 - TDR Novaなど別のプラグインで、描画と開閉・リサイズ・削除を再確認する。
 
-OTTをインストールした環境では、`src-tauri`で `cargo test --locked --test ott_module_lifetime -- --ignored` を明示実行し、複数インスタンスの遅延解放とDLL共有寿命を確認する。メモリ内の無音だけを処理し、実機ストリームは開始しない。通常のテスト実行ではignoreされる。
+OTTをインストールした環境では、`crates/vst-host`で `cargo test --locked --test ott_module_lifetime -- --ignored` を明示実行し、複数インスタンスの遅延解放とDLL共有寿命を確認する。メモリ内の無音だけを処理し、実機ストリームは開始しない。通常のテスト実行ではignoreされる。
 
 100%以外の実DPI・異なるOTT版・長時間音声中の挙動は別途検証する。
+
+以下の「回帰確認」の節（UI監査・再レビュー・デザイン監査・各 Issue）は、Tauri 版の画面で確かめた項目の記録。画面の部品名や `npm test` は Tauri 版のもので、GPUI 版の合格を表さない。GPUI 版では、同じ利用者の目的を GPUI の画面と実機で確かめる。
 
 ## UI監査 F01〜F05 の回帰確認
 
@@ -641,7 +373,7 @@ IPC をモックしているため、実機・OBS との疎通は以下の手動
 ## OBS 設定変更の確認・復元
 
 自動回帰テストは `src/components/features/AudioSettings/__tests__/ObsSafeSetup.test.tsx` と
-`src-tauri/src/obs_setup.rs`。UI は IPC モック、Rust は設定読み書きの模擬実装で検証する。
+`crates/vst-host/src/obs_setup.rs`。UI は IPC モック、Rust は設定読み書きの模擬実装で検証する。
 実際の OBS・認証・切断タイミングの確認とは分ける。
 
 - 「変更予定を確認する」で現在値・変更後の値を表示し、キャンセルで OBS の設定が変わらない。
@@ -786,7 +518,7 @@ API／hook／画面のモック試験と、実機の同位置切替・短いフ�
 npm test -- --run --maxWorkers=4
 npx tsc --noEmit
 npx vite build
-# 以下はsrc-tauriで実行
+# 以下はcrates/vst-hostで実行
 cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence
 cargo check --locked --all-targets
 cargo clippy --locked --all-targets
@@ -833,7 +565,7 @@ Win32で強制表示する末尾の復帰は実際のトレイクリックの受
 製品UIと分離した検証exampleを`process-loopback-probe` featureでビルドする。
 取得・取消・対象終了・録音の保護と、原音の二重再生を防ぐ経路の合否を別々に扱う。
 コマンドと実機確認の境界は[段階0の記録](PROCESS_LOOPBACK_STAGE0.md)を参照する。
-単体試験は`src-tauri`で`cargo test --locked --example process_loopback_probe --features process-loopback-probe`。
+単体試験は`crates/vst-host`で`cargo test --locked --example process_loopback_probe --features process-loopback-probe`。
 実機runnerの実行は音声ストリームを開始するため、通常の自動テストへ追加しない。
 既存runnerの`single_endpoint_gate`は、アプリのセッションミュート／音量ゼロを使った当初の同一再生先での試験である。別再生先への割当てや出力デバイス側のミュートは実行しない。
 [見直した計画](plans/PROCESS_LOOPBACK_AND_MIXING.md)では、別再生先での原音抑止と取得の両立、使えない環境での仮想ケーブル入力を追加の検証対象にする。

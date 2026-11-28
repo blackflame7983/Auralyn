@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(events[2].1, serde_json::json!(3));
     }
 
-    // 画面の層の口へは、Tauri の emit と同じ名前・本文（serde_json::to_string）・順で届く。
+    // 画面の層の口へは、名前・本文（serde_json::to_string）・順のまま届く。
     #[test]
     fn a_core_sink_receives_the_same_names_bodies_and_order() {
         #[derive(Serialize, Clone)]

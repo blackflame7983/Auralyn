@@ -1,5 +1,5 @@
 //! 「接続の確認」の利用場所・入力の種類・送り先の保存。GPUI 版は自分のファイル（`gpui_preparation.json`）に書く
-//! （Tauri 版は画面（WebView）の中に保存していて読めない）。確認の記録は保存しない（このセッションだけ）。
+//! 確認の記録は保存しない（このセッションだけ）。
 
 use std::path::Path;
 
@@ -33,7 +33,7 @@ fn to_json(context: &Context) -> serde_json::Value {
     })
 }
 
-/// 知らない値は既定にする（Tauri 版と同じ）。
+/// 知らない値は既定にする。
 fn parse(text: &str) -> Option<Context> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     if value.get("version")?.as_u64()? != 1 {

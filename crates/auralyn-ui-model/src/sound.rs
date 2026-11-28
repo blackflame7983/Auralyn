@@ -143,7 +143,7 @@ pub struct DeEsser {
 }
 
 impl Default for DeEsser {
-    /// Tauri 版の初めの量と同じ 50%。
+    /// 初めの量は 50%。
     fn default() -> Self {
         Self {
             on: false,
@@ -284,7 +284,7 @@ pub struct EffectsRequest {
     pub deesser: Option<Option<f32>>,
 }
 
-/// 抑制の強さの既定（Tauri 版と同じ 80%）。統計が 0 以下（まだ設定していない）のときに使う。
+/// 抑制の強さの既定（80%）。統計が 0 以下（まだ設定していない）のときに使う。
 const DEFAULT_STRENGTH: f32 = 0.8;
 
 /// 音づくりの設定。

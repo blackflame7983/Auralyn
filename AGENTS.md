@@ -5,7 +5,7 @@
 - 現在のGit状態と実装を確認し、目的別の`codex/`ブランチで作業する。未コミット・未追跡・ignoredファイルと別作業の成果物を保護する。
 - 機能から探すときは[feature-map](docs/feature-map.md)、設計は[CODING_GUIDELINES](docs/CODING_GUIDELINES.md)、検査の詳細は[GARDENING](docs/GARDENING.md)を読む。
 - バージョン判定・タグ・リリース提案の正本は [docs/VERSIONING.md](docs/VERSIONING.md)。バージョンに関する旧スキルやモデル別説明より優先する。
-- 配布条件は `docs/RELEASE_PLAN.md`、`SOURCE-DISTRIBUTION.md`、`config/release-policy.json` を参照する。
+- 配布条件は `docs/RELEASE_PLAN.md`、`SOURCE-DISTRIBUTION.md`、`config/asio-sdk.json` を参照する。GPUI 版の配布手順はまだ無い（Tauri 版の配布は 2026-11-28 に取り除いた）。
 - ビルドと検証は `docs/BUILD_GUIDE.md` と `docs/TESTING.md`。依存更新の判断は `docs/DEPENDENCY_MAINTENANCE.md`。
 - 利用者向けドキュメント（`user-docs/`、アプリのヘルプ、公式サイトへの同期）の正本は [docs/USER_DOCS.md](docs/USER_DOCS.md)。
 - `docs/plans/` の計画や過去のチェック済み記録を、現在の実装・検証済みの証拠として扱わない。
@@ -14,8 +14,8 @@
 
 - 基準：GPUI Kit 0.11.0（`gpui-pre` 0.3.14、`gpui-component` 0.11.0）、Windows 10/11。ほかの版や Zed 本体の `gpui` の API を書かない。API は記憶や例ではなく、この版の依存クレートのソースで確かめる。
 - 分からないことは推測で実装しない。未決の問いとして挙げる。
-- 画面は `src-gpui/`（`src-tauri` とは別のワークスペース）。書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。作って分かったことはここへ足す。
-- 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `src-tauri/crates/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
+- 画面は `src-gpui/`。リポジトリ直下が1つの Cargo ワークスペース（`crates/auralyn-core`・`crates/auralyn-ui-model`・`crates/vst-host`・`src-gpui`）。書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。作って分かったことはここへ足す。
+- 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `crates/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
 - GPUI 版の確認は Windows の実機で行い、確かめ方は [src-gpui/README.md](src-gpui/README.md)。実機の合否は、確かめた日・手順・結果を PR に書く。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は取り除いた（2026-11-28）。
 
 ## 作業の進め方

@@ -1,6 +1,6 @@
-//! トレイとグローバルショートカット。GPUI には無いので、Tauri が内部で使うのと同じ crate（tray-icon・global-hotkey）を
+//! トレイとグローバルショートカット。GPUI には無いので、crate（tray-icon・global-hotkey）を
 //! GPUI の主スレッドで作る。Windows の主スレッドのメッセージループを GPUI と共有できるかを確かめる。
-//! 窓の × ではトレイへ隠す（Tauri 版と同じ。音は止めない）。GPUI に窓を隠す手段が無いので、Win32 の ShowWindow を使う。
+//! 窓の × ではトレイへ隠す（音は止めない）。GPUI に窓を隠す手段が無いので、Win32 の ShowWindow を使う。
 
 use std::path::Path;
 
@@ -20,8 +20,8 @@ pub struct Registered {
     pub error: Option<String>,
 }
 
-/// Tauri 版と同じ `shortcuts.json` を読む。無ければ既定。書き換えは Tauri 版の設定で行う（GPUI 版は読むだけ）。
-/// `key` はキーを読む（[`shortcuts::check`]）。余分な項目がある組は、Tauri 版と同じく読めないものとする。
+/// `shortcuts.json` を読む。無ければ既定。書き換える画面はまだ無い（読むだけ）。
+/// `key` はキーを読む（[`shortcuts::check`]）。余分な項目がある組は読めないものとする。
 fn load<K: PartialEq>(
     config_dir: &Path,
     key: impl Fn(&str) -> Option<K>,

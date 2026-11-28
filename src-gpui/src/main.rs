@@ -1,8 +1,8 @@
 //! Auralyn の GPUI 版。今は右の列（本番中の操作）と、ホームの音の流れの帯を持つ。決定と知見は docs/gpui/。
 //!
 //! 使い方：`auralyn-gpui [--lang ja|en] [--config-dir <フォルダ>]`
-//! 言語を指定しなければ、保存した表示言語（Tauri 版と共通）で開く。
-//! 既定の設定のフォルダは、Tauri 版と同じ `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
+//! 言語を指定しなければ、保存した表示言語で開く。
+//! 既定の設定のフォルダは `%APPDATA%\com.kuro7983.auralynhost`。保存した最後の音声の設定で開始する。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod assets;
@@ -104,7 +104,7 @@ fn main() {
             typeface::install(cx);
             // 部品に組み込みの文言（選ぶ欄の「選択してください」など）も同じ言語にする。
             gpui_kit::component::set_locale(locale_file::code(lang));
-            // 保存が無ければ Tauri 版と同じく Windows の明暗に合わせる（ライトならライト、ほかはオーロラ）。
+            // 保存が無ければ  Windows の明暗に合わせる（ライトならライト、ほかはオーロラ）。
             let theme = theme.unwrap_or(match cx.window_appearance() {
                 WindowAppearance::Light | WindowAppearance::VibrantLight => {
                     auralyn_core::design::Theme::Light

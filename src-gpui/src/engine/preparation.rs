@@ -1,4 +1,4 @@
-//! ホームの「接続の確認」のために、音声の状態を読む（Tauri 版の `buildPreparationObservation`）。
+//! ホームの「接続の確認」のために、音声の状態を読む。
 //! 読む間に条件が変われば、読めなかったことにする（古い条件で確認を記録しない）。
 
 use auralyn_ui_model::preparation::{availability, Availability, Facts};

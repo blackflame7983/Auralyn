@@ -1,4 +1,4 @@
-//! ホームの「接続の確認」（Tauri 版の `PreparationPanel`）。音づくり・ボイスチェック・送り先を利用者が確かめたことを記録し、
+//! ホームの「接続の確認」。音づくり・ボイスチェック・送り先を利用者が確かめたことを記録し、
 //! 音声の条件が変わったら「設定が変わりました」に戻す。規則は `auralyn-ui-model` の `preparation`、状態はエンジンの `preparation`。
 
 use std::cell::Cell;
@@ -24,7 +24,7 @@ use crate::part::{choices, note};
 use crate::settings::Section;
 use crate::sound::Part;
 
-/// Tauri 版と同じ、見ている間の読み直しの間隔。
+/// 見ている間の読み直しの間隔。
 const POLL: Duration = Duration::from_secs(2);
 
 pub type OnAction = Rc<dyn Fn(Action, &mut Window, &mut App)>;

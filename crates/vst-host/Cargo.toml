@@ -1,6 +1,6 @@
 [package]
 name = "vst-host"
-version = "1.1.0"
+version.workspace = true
 description = "リアルタイム音声処理特化型の軽量VST3ホストアプリケーション"
 authors = ["kuro7983"]
 publish = false

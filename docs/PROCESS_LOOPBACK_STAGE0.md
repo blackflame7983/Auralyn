@@ -11,11 +11,11 @@
 
 ## 実装したもの
 
-- `src-tauri/examples/process_loopback_probe.rs` と同名ディレクトリ：製品の開始処理と分離したCLI。全ての有効な再生エンドポイントからの候補列挙、PID＋生成時刻の照合、プロセスツリーの取得を行う。
+- `crates/vst-host/examples/process_loopback_probe.rs` と同名ディレクトリ：製品の開始処理と分離したCLI。全ての有効な再生エンドポイントからの候補列挙、PID＋生成時刻の照合、プロセスツリーの取得を行う。
 - 既存の`windows` 0.62.2による`ActivateAudioInterfaceAsync`と、`#[implement]`によるagileな完了通知。開始待ちの期限は5秒とする。
 - 取消・期限切れ後の通知は採用しない。OSのactivationを強制取消できたとは扱わず、引数は遅い完了まで保持する。未完了の要求は同一probe内で一つに制限し、再試行で資源を無制限に増やさない。
 - 48kHz・stereo・f32のPCMを有界キューで録音workerへ渡す。録音先は新規ファイルだけを受け付け、既存の録音を上書きしない。
-- [実機runner](../scripts/verify_process_loopback_probe.py)：専用ディレクトリへコピーしたsourceだけを起動・取得・回収する。合成信号と生ログはignoredの`src-tauri/target/process-loopback-probe/`へ保存する。
+- [実機runner](../scripts/verify_process_loopback_probe.py)：専用ディレクトリへコピーしたsourceだけを起動・取得・回収する。合成信号と生ログはignoredの`target/process-loopback-probe/`へ保存する。
 
 当初はexampleだけでAPIを検証した。追加検証後は、同じ既存の`windows`／`windows-core` 0.62.2を製品の入力adapterにも使用する。解決版やCPALの更新は行っていない。
 `process-loopback-probe` featureは、試験用exampleを明示的にビルドするための入口として残す。
@@ -27,20 +27,20 @@ sourceが音量ミキサーで変更するのは、自分自身の試験用セ�
 リポジトリルートからビルドする。
 
 ```powershell
-cargo build --locked --manifest-path src-tauri/Cargo.toml --example process_loopback_probe --features process-loopback-probe
+cargo build --locked --manifest-path crates/vst-host/Cargo.toml --example process_loopback_probe --features process-loopback-probe
 ```
 
 以下は音声デバイスを開始しない単体試験で、PCM処理のRust側の確保・解放、無音パケット、不正パケット、取消後の通知と引数の寿命を確認する。
 
 ```powershell
-cargo test --locked --manifest-path src-tauri/Cargo.toml --example process_loopback_probe --features process-loopback-probe
-cargo clippy --locked --manifest-path src-tauri/Cargo.toml --example process_loopback_probe --features process-loopback-probe -- -D warnings
+cargo test --locked --manifest-path crates/vst-host/Cargo.toml --example process_loopback_probe --features process-loopback-probe
+cargo clippy --locked --manifest-path crates/vst-host/Cargo.toml --example process_loopback_probe --features process-loopback-probe -- -D warnings
 ```
 
 候補一覧の取得はキャプチャを開始しない。
 
 ```powershell
-src-tauri/target/debug/examples/process_loopback_probe.exe list
+target/debug/examples/process_loopback_probe.exe list
 ```
 
 実機試験は以下のコマンドで明示的に開始する。
@@ -81,7 +81,7 @@ sourceは既定再生先一つだけを使っており、物理出力が一台�
 取得開始前の音や実際の耳までを測った結果ではなく、音切れゼロ・聴感・長時間の保証には使わない。
 PID生成時刻の不一致、開始前の取消、既存WAVへの上書きは拒否された。
 250ms後に取消する試験では取得経過249msで終了し、対象プロセスの終了でも取得が終了した。取消要求から停止までの遅延を計測した値ではない。
-最終の生ログはignoredの`src-tauri/target/process-loopback-probe/verify-326e8f36f5/summary.json`にある。
+最終の生ログはignoredの`target/process-loopback-probe/verify-326e8f36f5/summary.json`にある。
 実測したprobeのSHA-256は`c2e4f4285f210b87228adbec454ebace8ee9e2f2279900a7f72d52d9775fbf67`。配布版の識別ではない。
 
 初回の寿命試験では、`PROPVARIANT`の自動解放がRust所有のBLOBを解放し、heap corruptionを検出した。
@@ -109,10 +109,10 @@ Python runnerの構文と文書リンクも確認した。製品UI、実Tauri、
 
 | 条件 | 観測 | 証拠（ignored） |
 | --- | --- | --- |
-| FS2333、997 Hz、3秒 | 143,520フレーム、142,013非ゼロ、破棄・不連続・timestamp error各0 | `src-tauri/target/process-loopback-probe/route-ba28a862ae/summary.json` |
-| Realtek Digital Output、659 Hz、5秒 | 239,040フレーム、237,536非ゼロ。別sourceの997 Hzを同時再生した1秒区間のFFTでは、997 Hz帯は659 Hzに対して約−175 dB | `src-tauri/target/process-loopback-probe/route-4113b2a8e0/summary.json` |
+| FS2333、997 Hz、3秒 | 143,520フレーム、142,013非ゼロ、破棄・不連続・timestamp error各0 | `target/process-loopback-probe/route-ba28a862ae/summary.json` |
+| Realtek Digital Output、659 Hz、5秒 | 239,040フレーム、237,536非ゼロ。別sourceの997 Hzを同時再生した1秒区間のFFTでは、997 Hz帯は659 Hzに対して約−175 dB | `target/process-loopback-probe/route-4113b2a8e0/summary.json` |
 | 同上→本人用のVoicemeeter Input | SRC経由236,640フレーム、最大キュー2,400、欠落・破棄0、出力失敗なし | 同上 |
-| FS2333、30分 | 86,394,720フレーム、86,389,976非ゼロ。破棄・不連続・timestamp error・非有限値各0 | `src-tauri/target/process-loopback-probe/long-route-20261102/summary.json` |
+| FS2333、30分 | 86,394,720フレーム、86,389,976非ゼロ。破棄・不連続・timestamp error・非有限値各0 | `target/process-loopback-probe/long-route-20261102/summary.json` |
 
 30分の集計を上記のignored領域へ複写し、WAVと生ログの原本はCドライブの専用一時領域に保持した。
 30分は取得側の試験であり、製品のSRC・VSTを含めた長時間運転ではない。

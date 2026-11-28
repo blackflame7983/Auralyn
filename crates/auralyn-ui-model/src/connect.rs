@@ -1,7 +1,7 @@
 //! 接続の画面：接続方式・マイク・出力先の選び方。
 //!
 //! 機器の一覧と保存した設定から、最初に選んでおく項目を決める。ASIO はドライバー1つが入出力の両方を受け持つ。
-//! 周波数とバッファの候補は、機器が知らせた範囲で絞る（Tauri 版の `sampleRateOptions`・`useAudioDeviceSelection` と同じ考え方）。
+//! 周波数とバッファの候補は、機器が知らせた範囲で絞る。
 
 /// エンジンが見つけた機器。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub struct Saved {
     pub app: Option<AppSource>,
 }
 
-/// 入力の使い道（Tauri 版と同じ2つ）。音楽なら声向けの処理を省く。
+/// 入力の使い道（2つ）。音楽なら声向けの処理を省く。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Purpose {
     #[default]
@@ -48,7 +48,7 @@ pub enum Purpose {
 impl Purpose {
     pub const ALL: [Purpose; 2] = [Purpose::Voice, Purpose::Music];
 
-    /// 切り替え先（Tauri 版の使い道の切り替えと同じく2つを行き来する）。
+    /// 切り替え先。
     pub fn other(self) -> Purpose {
         match self {
             Purpose::Voice => Purpose::Music,
@@ -75,7 +75,7 @@ pub enum Input {
     },
 }
 
-/// アプリの音声を選べる接続方式（Tauri 版と同じく WASAPI だけ）。
+/// アプリの音声を選べる接続方式（WASAPI だけ）。
 pub fn allows_app(host: &str) -> bool {
     host.eq_ignore_ascii_case("WASAPI")
 }
@@ -85,7 +85,7 @@ pub fn starts_with_app(saved: Option<&Saved>, host: &str) -> bool {
     saved.is_some_and(|s| s.app.is_some() && s.host == host) && allows_app(host)
 }
 
-/// ASIO の出力の返し方（Tauri 版 `OutputRouting` と同じ3つ）。
+/// ASIO の出力の返し方（3つ）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Output {
     /// 保存済みの接続を維持する。同じ番号の出力があればそこへ、なければ出力 1/2。
@@ -105,7 +105,7 @@ pub struct Routing {
 }
 
 impl Output {
-    /// 選択欄の並び（Tauri 版と同じ：指定・Insert・従来）での位置。
+    /// 選択欄の並び（指定・Insert・従来）での位置。
     pub fn row(self) -> usize {
         match self {
             Output::Independent(_) => 0,
@@ -136,7 +136,7 @@ pub fn by_label<'a>(
     choices.get(row).copied()
 }
 
-/// 入力・出力のペアの候補（Tauri 版と同じ）。端数の最後は左右同じ（モノラル）。`keep` が候補に無ければ足す
+/// 入力・出力のペアの候補。端数の最後は左右同じ（モノラル）。`keep` が候補に無ければ足す
 /// （チャンネル数が分からなくても、保存した番号を消さない）。
 pub fn pairs(channels: u16, keep: Option<[usize; 2]>) -> Vec<[usize; 2]> {
     let mut pairs = crate::mix::pairs(channels);
@@ -146,7 +146,7 @@ pub fn pairs(channels: u16, keep: Option<[usize; 2]>) -> Vec<[usize; 2]> {
     pairs
 }
 
-/// ASIO 以外で送る割り当て（Tauri 版と同じ。入力 1/2 を出力 1/2 へ）。
+/// ASIO 以外で送る割り当て（入力 1/2 を出力 1/2 へ）。
 pub const SYSTEM_ROUTING: Routing = Routing {
     input: Some([0, 1]),
     output: Output::Independent([0, 1]),
@@ -157,7 +157,7 @@ pub fn first_pair(channels: u16) -> [usize; 2] {
     [0, usize::from(channels != 1)]
 }
 
-/// 機器を選んだときに最初に入れておく割り当て（Tauri 版と同じ）。
+/// 機器を選んだときに最初に入れておく割り当て。
 /// 保存した同じドライバーなら保存した割り当て（返し方が無ければ従来の返し方）、違う機器なら最初のペアを同じ番号の出力へ。
 pub fn initial_routing(saved: Option<&Saved>, input: &Device) -> Routing {
     let first = first_pair(input.channels);

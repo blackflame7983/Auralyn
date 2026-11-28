@@ -28,13 +28,13 @@ npm run tauri dev
 
 起動ログの `[AudioEngine] exe=... modified=...` と、再ビルドした実行ファイルが一致することを確認する。ログには機器名・パスが含まれるため、共有前に必要部分だけ抜き出す。
 
-ビルド先ドライブの容量が不足している場合は、既存キャッシュを削除せず、空きのあるドライブへ `CARGO_TARGET_DIR` を指定する。現在の `npm run rebuild-engine` は既定の `src-tauri/target/debug` からコピーするため、この場合は代わりに次を使う。アプリを終了し、既存の `src-tauri/bin` のsidecarを別の場所へ控えてから行う。
+ビルド先ドライブの容量が不足している場合は、既存キャッシュを削除せず、空きのあるドライブへ `CARGO_TARGET_DIR` を指定する。現在の `npm run rebuild-engine` は既定の `target/debug` からコピーするため、この場合は代わりに次を使う。アプリを終了し、既存の `src-tauri/bin` のsidecarを別の場所へ控えてから行う。
 
 ```powershell
 $env:CARGO_TARGET_DIR = 'C:/auralyn-build'
 $env:CARGO_PROFILE_DEV_DEBUG = '0'
 $env:CARGO_INCREMENTAL = '0'
-cargo build --manifest-path src-tauri/Cargo.toml --locked --bin audio_engine --bin plugin_scanner
+cargo build --manifest-path crates/vst-host/Cargo.toml --locked --bin audio_engine --bin plugin_scanner
 # 成功した場合だけコピーする。
 if ($LASTEXITCODE -ne 0) { throw 'sidecar build failed' }
 Copy-Item "$env:CARGO_TARGET_DIR/debug/audio_engine.exe" 'src-tauri/bin/audio_engine-x86_64-pc-windows-msvc.exe'

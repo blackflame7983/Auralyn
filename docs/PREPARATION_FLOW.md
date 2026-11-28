@@ -70,7 +70,7 @@ DSP・モデル・NRの強度や発声保護・音声コールバックは変更
 購読世代の異なる古い応答は表示に反映しない。
 
 緊急ミュートと出力音量の変化は、2秒の再取得を待たずに取り直す。
-実エンジンは、実行中のコマンド（set_global_mute、set_output_gain など）の前後に audio-conditions-changed を送る（src-tauri/src/audio/conditions.rs の command_changes）。
+実エンジンは、実行中のコマンド（set_global_mute、set_output_gain など）の前後に audio-conditions-changed を送る（crates/vst-host/src/audio/conditions.rs の command_changes）。
 この通知の1回目はコマンドの実行前に出るので、確定した状態は、緊急ミュートの global-mute-changed と、
 設定の完了後にフロントが出す出力音量の output-gain-sync（スライダー、ホットキー、プロファイル・バンドルの適用の確定後）でも取り直す。
 通知のたびに世代を進めて古い応答を捨て、連続する通知（スライダー）は200msの間隔で1回にまとめる。

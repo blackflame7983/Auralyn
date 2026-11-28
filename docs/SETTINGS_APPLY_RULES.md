@@ -1,5 +1,7 @@
 # 設定の反映・保存ルール
 
+> 規則は GPUI 版にも当てはめる。文中の `src/` のファイルへのリンクは、2026-11-28 に取り除いた Tauri 版の実装を指す。
+
 設定画面では、**何を変え、いつ反映され、どこに残るか**を、操作する場所で示す。
 全項目を一つの保存ボタンへ集めず、即時調整・明示適用・音声処理再起動時の反映を使い分ける。
 
@@ -95,7 +97,7 @@ OFF時は「保存値だけ編集できる」と「編集できない」を分�
 - 即時調整・下書き・モード：[SoundSettings.tsx](../src/components/features/AudioSettings/SoundSettings.tsx)、[useSingingDraft.ts](../src/hooks/useSingingDraft.ts)、[LiveModeControls.tsx](../src/components/features/AudioSettings/LiveModeControls.tsx)。
 - OBSとキー登録：[ObsConnectionSettings.tsx](../src/components/features/AudioSettings/ObsConnectionSettings.tsx)、[ObsModeRoutingSettings.tsx](../src/components/features/AudioSettings/ObsModeRoutingSettings.tsx)、[ShortcutsPanel.tsx](../src/components/features/AudioSettings/ShortcutsPanel.tsx)。
 - 表示とシステム：[DisplayPurposeSelector.tsx](../src/components/features/AudioSettings/DisplayPurposeSelector.tsx)、[UpdatePreferences.tsx](../src/components/features/AudioSettings/UpdatePreferences.tsx)、[SystemSettings.tsx](../src/components/features/AudioSettings/SystemSettings.tsx)。
-- Host内の高度な設定：[audio.rs の set_engine_tuning_config](../src-tauri/src/audio.rs)。UIの成功通知は登録要求の完了を示し、現在稼働中のスレッド設定を測定した証拠ではない。
+- Host内の高度な設定：[audio.rs の set_engine_tuning_config](../crates/vst-host/src/audio.rs)。UIの成功通知は登録要求の完了を示し、現在稼働中のスレッド設定を測定した証拠ではない。
 
 ## 4. 成功・失敗・競合を対象ごとに示す
 

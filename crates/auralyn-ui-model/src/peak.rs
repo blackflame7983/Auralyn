@@ -1,6 +1,6 @@
 //! 大きな音を抑える（ピーク保護）と、配信用の true-peak 制限。エンジンの状態から、画面に出す注記を決める。
 //!
-//! 設定はアプリの中だけで持ち、再起動すると OFF と既定の値に戻る（Tauri 版と同じ）。
+//! 設定はアプリの中だけで持ち、再起動すると OFF と既定の値に戻る。
 
 /// どちらの制限か。天井と復帰時間の範囲はどちらも同じ。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub fn snap((min, max, step): (f32, f32, f32), value: f32) -> f32 {
 }
 
 /// 画面を見ている間、500ms ごとに読み直すか。反映待ちのあいだと、ON の true-peak 制限
-/// （「いま抑えた量」はホストが読むたびに戻すので、Tauri 版と同じく読み続けないと古い値が残る）。
+/// （「いま抑えた量」はホストが読むたびに戻すので読み続けないと古い値が残る）。
 pub fn polls(peak: Option<Peak>) -> bool {
     peak.is_some_and(|peak| peak.pending || (peak.enabled && peak.lookahead.is_some()))
 }

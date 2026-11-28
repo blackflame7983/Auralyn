@@ -1,4 +1,4 @@
-//! 配信用の出力（Tauri 版と同じ `AudioHost::live_output`。保存も同じ `live_output.json`）。
+//! 配信用の出力（`AudioHost::live_output`。保存も同じ `live_output.json`）。
 
 use super::*;
 use auralyn_ui_model::live_output::{Draft, Live};
@@ -15,7 +15,7 @@ impl Control {
         let result = match draft {
             None => self.host.live_output(None),
             Some(draft) => self.host.live_output(None).and_then(|status| {
-                // 分けるときは、自分用の歌・雑談の加工が要る。無ければ Tauri 版の既定で入れる（ある値は変えない）。
+                // 分けるときは、自分用の歌・雑談の加工が要る。無ければ既定で入れる（ある値は変えない）。
                 let (singing, talk) = if draft.split {
                     (
                         status
@@ -77,7 +77,7 @@ fn view(status: &LiveStatus) -> Live {
     }
 }
 
-/// 自分用の歌（`singing`）・雑談の加工の既定（Tauri 版の `LiveOutputPanel` と同じ。歌だけ軽い残響）。
+/// 自分用の歌（`singing`）・雑談の加工の既定。
 fn monitor(singing: bool) -> BuiltinConfig {
     BuiltinConfig {
         active: true,

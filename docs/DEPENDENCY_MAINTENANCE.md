@@ -1,5 +1,7 @@
 # 依存関係の整備方針と初回棚卸し
 
+2026-11-28 に Tauri 版の画面と配布を取り除いた。いまの依存は、直下の Cargo ワークスペース（`Cargo.lock` は1つ）と、検査だけに使う npm（依存なし）・Python（Ruff）である。下の npm・React・Tauri・Vite の節は当時の記録であり、いまの依存を表さない。
+
 ## 2026-11-17 ガード・検証ツールの追加
 
 開発依存としてESLint 10.15.0、typescript-eslint 8.72.2、eslint-plugin-react-hooks 7.1.1、fast-check 4.10.2を固定版で追加した。Pythonの静的解析は`requirements-dev.txt`のRuff 0.17.5を使う。
@@ -11,8 +13,6 @@
 
 調査日: 2026-10-15。初回は規約・開発ツールの整備と更新検討を実施。同日の追加依頼による npm audit 限定更新、React・UI系更新、Tauri関連更新、音声系の段階更新、RustSec指摘への限定更新の結果は末尾に記録する。ライブラリ置換は未実施。
 番号は調査時点の値であり、着手時にレジストリと公式リリースノートを再確認する。
-
-2026-10-27のVite 7基準測定・Vite 8更新は[VITE8_MIGRATION.md](VITE8_MIGRATION.md)を参照する。
 
 同日の後続監査対応で、Vitestを4.1.12へ限定更新し、NSIS画像生成のJimp利用を
 既存のbmp-ts 1.0.9への直接呼び出しへ置換した。Jimp経由のZod 3は依存木から除去した。
@@ -26,16 +26,16 @@ Zodのメジャーoverride、Jimpの旧版への変更、Rust変更、署名付�
 ## 継続する判断基準
 
 1. 先に現在の lockfile、実際の利用箇所、対応環境、テスト結果を確認する。manifest の要求範囲と解決済みバージョンを混同しない。
-2. セキュリティ修正、既存範囲内の更新、メジャー移行、代替導入を分ける。`npm audit fix --force` や全依存の一括最新版化は使わない。
+2. セキュリティ修正、既存範囲内の更新、メジャー移行、代替導入を分ける。全依存の一括最新版化は使わない。
 3. 代替は解決する課題、保守状況、ライセンス・配布条件、移行費用、測定可能な改善で判断する。「新しい」「AI が知っている」だけでは採用しない。
-4. npm は `npm ci`、Cargo は `--locked` を基本とし、更新時は両 lockfile の差分を確認する。Rust の最小対応バージョンと native / ASIO SDK の制約を確認する。
-5. 開発依存の指摘と、配布アプリで到達可能な問題を区別する。`npm audit` はアドバイザリへの一致であり、攻撃の成立や Rust 側の安全性を証明しない。
-6. npm / Cargo のライセンス一覧を再生成・確認し、ローカルパスが混入していないか、GPL配布・対応ソースの条件を満たすかを確認する。
+4. Cargo は `--locked` を基本とし、更新時は `Cargo.lock` の差分を確認する。GPUI Kit の版（AGENTS.md の基準）を依存更新に混ぜない。Rust の最小対応バージョンと native / ASIO SDK の制約を確認する。
+5. 開発依存の指摘と、配布アプリで到達可能な問題を区別する。監査はアドバイザリへの一致であり、攻撃の成立や安全性を証明しない。
+6. Cargo のライセンス一覧を確認し、ローカルパスが混入していないか、GPL配布・対応ソースの条件を満たすかを確認する。
 7. アプリ番号は [VERSIONING.md](VERSIONING.md) で別途判断する。更新を検討しただけでは番号を変更しない。
 
 ## RustSec の継続監査
 
-依存更新時とリリース前は、最新の RustSec Advisory Database を取得して `cargo audit --file src-tauri/Cargo.lock` と `cargo audit --file src-gpui/Cargo.lock`（GPUI 版）を必ず実行し、結果と残る指摘を記録する。インストールは `cargo install cargo-audit --version 0.22.2 --locked`。PR・main 更新・週次・手動の CI でも同じ2つの lockfile を監査する。ASIO SDK やアプリのビルドは不要。
+依存更新時とリリース前は、最新の RustSec Advisory Database を取得して 直下で `cargo audit --file Cargo.lock` を必ず実行し、結果と残る指摘を記録する。インストールは `cargo install cargo-audit --version 0.22.2 --locked`。PR・main 更新・週次・手動の CI でも同じ lockfile を監査する。ASIO SDK やアプリのビルドは不要。
 
 脆弱性が見つかった場合は逆依存と修正版を調査し、更新後に再監査する。例外は advisory ID ごとに影響の根拠、理由、対応担当と期限を記録して再評価し、一括無視しない。警告も内容と利用経路を確認する。監査は既知の advisory と lockfile の照合であり、攻撃成立や安全性の証明ではない。署名・インストーラー・実機の検証とは別に実施する。
 
@@ -223,7 +223,7 @@ npm側はTauri以外の全lockfileエントリが作業前と同一。Rustの音
 - `process:allow-restart`
 
 個別のdownload / install / exit権限やremote URL権限は追加していない。既存のUIでユーザーが操作した更新・再起動を許可する変更であり、この検証中にインストール・再起動は実行していない。
-その後、上の帯の状態の札のメニュー「Auralyn を終了」（`src/api/quit.ts`、#722）を足した。プラグインの `process:allow-exit` は画面から任意の終了コードで終了できる権限になるため付けず、引数のない専用コマンド `quit_app`（`src-tauri/src/lib.rs`）を呼ぶ。中身はトレイの「終了」と同じ `app.exit(0)` で、両方が同じ関数を使う。利用者がメニューで選んだときだけ呼ぶ。`capabilities/default.json` に `process:allow-exit` が戻らないことは Rust の試験で確かめる。
+その後、上の帯の状態の札のメニュー「Auralyn を終了」（`src/api/quit.ts`、#722）を足した。プラグインの `process:allow-exit` は画面から任意の終了コードで終了できる権限になるため付けず、引数のない専用コマンド `quit_app`（`crates/vst-host/src/lib.rs`）を呼ぶ。中身はトレイの「終了」と同じ `app.exit(0)` で、両方が同じ関数を使う。利用者がメニューで選んだときだけ呼ぶ。`capabilities/default.json` に `process:allow-exit` が戻らないことは Rust の試験で確かめる。
 本番のアプリID・公開先・署名公開鍵・バージョンなどの `tauri.conf.json` は作業前と同一。
 
 ### 検証結果と残件
@@ -232,7 +232,7 @@ npm側はTauri以外の全lockfileエントリが作業前と同一。Rustの音
 - `npm test -- --run`: 33件成功。`npm run test:release`: 23件成功。`npm audit --json`: 0件。
 - `cargo check --locked --all-targets`、`cargo build --locked --bins`: 成功。capability追加後も通常構成で再確認した。
 - `cargo test --locked --lib`: 31件成功。実デバイス起動・録音・実VST GUIを使うintegration_test / repro_ottは実行していない。
-- `cargo clippy --locked --all-targets`: 失敗。`src-tauri/src/vst_host/instance.rs:3301` のpublic関数からraw pointerを渡す処理が `clippy::not_unsafe_ptr_arg_deref` に抵触。更新前のCargo.toml / Cargo.lockと同じソースを使った隔離コピーの `cargo clippy --locked --lib` でも同じエラーを再現した。音声・VST実装の変更やlint抑制は行っていない。
+- `cargo clippy --locked --all-targets`: 失敗。`crates/vst-host/src/vst_host/instance.rs:3301` のpublic関数からraw pointerを渡す処理が `clippy::not_unsafe_ptr_arg_deref` に抵触。更新前のCargo.toml / Cargo.lockと同じソースを使った隔離コピーの `cargo clippy --locked --lib` でも同じエラーを再現した。音声・VST実装の変更やlint抑制は行っていない。
 - npmライセンス一覧と `cargo about generate --locked --fail` によるWindows向けCargoライセンス一覧を再生成し、更新版の収録を確認した。
 - Tauri CLI 2.12.3でdebugアプリを起動。検証用identifier / productName、子プロセスのAPPDATA、WebView2の保存先を分離した一時configを使用し、通常の保存設定を使っていない。
 - ビルド済みの新しいaudio_engine / plugin_scannerを一時externalBin構成へコピーして起動確認した。既存 `src-tauri/bin` の配布用sidecarは上書きしていない。音声ストリーム・録音は開始せず、warmupと `get_audio_state` のIPC応答（config:null）まで確認。
@@ -274,7 +274,7 @@ Tauriを含むその他のパッケージのバージョンと依存参照先は
 - `cargo clippy --locked --all-targets`: 成功。前の作業で修正したraw pointerのエラーも再発していない。既存警告は残る。
 - 最終構成で `cargo check --locked --all-targets`、`cargo build --locked --bins`、`cargo about generate --locked --fail`、`npm run release:check`、`git diff --check` が成功。
 - 新規テストは `rustfmt --edition 2021 --check` が成功。全体の既存未整形箇所は前の作業から残り、今回まとめて整形していない。
-- 更新前、CPAL単独更新後、ringbuf更新後を別のエンジンバイナリで比較した。既存の配布用 `src-tauri/bin` を上書きせず、検証物はignoredな `src-tauri/target/audio-update-baseline` に保存した。検証用プロセスは終了済み。
+- 更新前、CPAL単独更新後、ringbuf更新後を別のエンジンバイナリで比較した。既存の配布用 `src-tauri/bin` を上書きせず、検証物はignoredな `target/audio-update-baseline` に保存した。検証用プロセスは終了済み。
 - 仮想WASAPI入力 `CABLE Output` と出力 `CABLE In 16ch` を使用し、出力をミュート。44.1kHz / 48kHz指定、256 / 512フレーム、開始・停止・再設定、処理中のTDR Nova追加、状態保存・復元、削除と遅延解放を確認した。デバイス列挙は3構成とも42件。
 - 更新前は44.1kHz指定が48kHzへフォールバックした。CPAL単独更新後と最終構成は同じデバイスで実際に44.1kHzを適用でき、48kHz入力からのリサンプリング経路も動作した。48kHz指定も適用できた。要求値と実レートを区別する。
 - Voicemeeter Virtual ASIOは更新前後とも開始できたが、48kHz指定時の実レートはドライバ側の96kHzだった。ASIOで48kHzを確認したとは扱わない。
@@ -450,9 +450,9 @@ npm 10.9.4 で `npm install` / `npm uninstall` を行うと `libc` 欄が再び�
 
 Rust を 1.99.1（stable）から 1.100.0 へ上げ、版を固定した。理由は利用者の決定 J-16（`docs/plans/audio-session-controller.md` 16.1）。次の F1a-1 で 1.100.0 で安定化した `std::os::windows::process::ChildExt::main_thread_handle` を使うため。この変更では、その API はまだ使わない。
 
-- 固定の方法：リポジトリ直下に `rust-toolchain.toml`（`channel = "1.100.0"`、`components = ["clippy", "rustfmt"]`、`profile = "minimal"`）を置く。rustup は作業ディレクトリから親へたどって探すため、ルートと `src-tauri/` のどちらで cargo を動かしても、npm のスクリプト経由でも同じ版が選ばれる。あわせて `src-tauri/Cargo.toml` の `[package]` に `rust-version = "1.100"` を足した。手元の既定（`rustup default`）は変えていない。
-- 1.100.0 の clippy が、既存の検査 `needless_bool` で `src-tauri/src/vst_host/instance.rs` の `needs_deferred_connection` に1件出たため、`allow` を足さず式に直した（挙動は同じ）。このファイルのハッシュが変わるため、Rust 例外台帳の該当指紋と、台帳の承認済み指紋（`config/gardening-policy.json`）だけを更新した。allow/expect の件数（2）は変わらない。
-- 確認したこと：`npm run verify -- --static --rust`（lint・型・clippy `-D warnings`・fmt・RT の試験）、`cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence`（1018件成功・7件は理由付き ignore）、`cargo test --locked --test integration_test --test repro_ott`。いずれも `CARGO_TARGET_DIR` は共有の `src-tauri/target`。
+- 固定の方法：リポジトリ直下に `rust-toolchain.toml`（`channel = "1.100.0"`、`components = ["clippy", "rustfmt"]`、`profile = "minimal"`）を置く。rustup は作業ディレクトリから親へたどって探すため、ルートと `src-tauri/` のどちらで cargo を動かしても、npm のスクリプト経由でも同じ版が選ばれる。あわせて `crates/vst-host/Cargo.toml` の `[package]` に `rust-version = "1.100"` を足した。手元の既定（`rustup default`）は変えていない。
+- 1.100.0 の clippy が、既存の検査 `needless_bool` で `crates/vst-host/src/vst_host/instance.rs` の `needs_deferred_connection` に1件出たため、`allow` を足さず式に直した（挙動は同じ）。このファイルのハッシュが変わるため、Rust 例外台帳の該当指紋と、台帳の承認済み指紋（`config/gardening-policy.json`）だけを更新した。allow/expect の件数（2）は変わらない。
+- 確認したこと：`npm run verify -- --static --rust`（lint・型・clippy `-D warnings`・fmt・RT の試験）、`cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence`（1018件成功・7件は理由付き ignore）、`cargo test --locked --test integration_test --test repro_ott`。いずれも `CARGO_TARGET_DIR` は共有の `target`。
 - 確認していないこと：理由付き ignore の実機試験、実音声・聴感・長時間運転、署名済み配布物のビルド、CI での確認（CI は Rust をビルドしておらず、rustsec の監査だけ）。1.100.0 でのリリースビルドの成果物の比較もしていない。
 
 ## 2026-11-22 RustSec の指摘への限定更新（url）
@@ -460,5 +460,5 @@ Rust を 1.99.1（stable）から 1.100.0 へ上げ、版を固定した。理�
 CI の RustSec の監査が、新しく公開された RUSTSEC-2026-0592（`url` 2.5.8。入れ子の `blob:` URL に対して `Url::origin()` が stack overflow する。対処は 2.5.9 以上）で失敗したため、`url` だけを上げた。
 
 - 変更：`cargo update -p url --precise 2.5.9`。`Cargo.lock` で `url` 2.5.8 → 2.5.9、`form_urlencoded` 1.2.2 → 1.2.3（`url` の依存として一緒に上がる）。`Cargo.toml` は変えていない。`cargo update` の再解決で `cssparser-macros` の参照先が `syn 3.0.9` に変わったが、更新の範囲を `url` に限るため `syn 2.0.114` に戻し、`--locked` で通ることを確かめた。`npm run gen-cargo-licenses` で `src/assets/licenses-cargo.json` の2件（`url`・`form_urlencoded`）の版を同期した。
-- 確認したこと：`cargo audit --file src-tauri/Cargo.lock`（cargo-audit 0.22.2）で脆弱性 0 件、既存の許可済みの警告 8 件は変わらない。`cargo test --locked --lib`（1123件成功・7件は理由付き ignore）。`CARGO_TARGET_DIR` は共有の `src-tauri/target`。
+- 確認したこと：`cargo audit --file Cargo.lock`（cargo-audit 0.22.2）で脆弱性 0 件、既存の許可済みの警告 8 件は変わらない。`cargo test --locked --lib`（1123件成功・7件は理由付き ignore）。`CARGO_TARGET_DIR` は共有の `target`。
 - 確認していないこと：実音声・署名済み配布物のビルド。Auralyn が `blob:` URL を `Url::origin()` に渡す経路は確かめていない（到達の可否によらず、監査の失敗を解くために上げた）。

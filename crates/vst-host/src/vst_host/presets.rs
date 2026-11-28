@@ -103,7 +103,7 @@ pub struct ProfileSaveCategories {
     pub include_builtin_fx: bool,
 }
 
-/// フロントから渡すオーディオ補足（ゲイン・チャンネルは localStorage 管理のため）
+/// 画面から渡すオーディオ補足（ゲイン・チャンネルは構成の外で持つため）
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileAudioExtras {

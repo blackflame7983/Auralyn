@@ -19,10 +19,10 @@
   - 重要: プラグインスキャンは `plugin_scanner.exe` サブプロセスで実施（メインプロセスでスキャンしない）。
 
 参考実装（既存）:
-- エンジンクラッシュ検知とイベント通知: `vst-host/src-tauri/src/audio.rs`
+- エンジンクラッシュ検知とイベント通知: `vst-host/crates/vst-host/src/audio.rs`
   - stdout監視が終了したら `audio-error` イベントをemitして、保留中コマンドを中断している。
-- プリセット保存/読込: `vst-host/src-tauri/src/vst_host/presets.rs` と `vst-host/src/hooks/usePlugins.ts`
-- システムVST3スキャン + ブラックリスト: `vst-host/src-tauri/src/vst_host/scanner.rs` と `vst-host/src-tauri/src/vst_host/blacklist.rs`
+- プリセット保存/読込: `vst-host/crates/vst-host/src/vst_host/presets.rs` と `vst-host/src/hooks/usePlugins.ts`
+- システムVST3スキャン + ブラックリスト: `vst-host/crates/vst-host/src/vst_host/scanner.rs` と `vst-host/crates/vst-host/src/vst_host/blacklist.rs`
 
 ### 2.2 既存UI要素（再利用できる）
 - 設定UI（タブ構成）: `vst-host/src/components/features/AudioSettings/AudioSettingsModal.tsx`
@@ -88,8 +88,8 @@ Windowsのみを前提に、以下のいずれか。
 
 ### 4.1.3.1 想定変更箇所（粒度: ファイル単位）
 - Rust:
-  - `vst-host/src-tauri/src/lib.rs` に `#[tauri::command]` を追加（`invoke_handler` へ登録）
-  - 実装は `vst-host/src-tauri/src/autostart.rs` のように分離（レジストリアクセスを1箇所に閉じ込める）
+  - `vst-host/crates/vst-host/src/lib.rs` に `#[tauri::command]` を追加（`invoke_handler` へ登録）
+  - 実装は `vst-host/crates/vst-host/src/autostart.rs` のように分離（レジストリアクセスを1箇所に閉じ込める）
   - 依存追加（どちらか）:
     - `winreg` crate を追加する、または
     - 既存の `windows` crate に `Win32_System_Registry` feature を追加する
@@ -234,7 +234,7 @@ MVP案:
   - `vst-host/src/App.tsx`: `audio-error` の受信時に「復旧UI（モーダル/トースト+ボタン）」を出す
   - `vst-host/src/hooks/usePlugins.ts`: 「直近操作（最後に追加したpath）」の追跡と、復旧時の“スキップ”ロジック
 - Backend（必要なら）:
-  - 実行時ブラックリストを `app_config_dir` に保存する場合は、`vst-host/src-tauri/src/vst_host/blacklist.rs` と同様の仕組みを“runtime用”に追加
+  - 実行時ブラックリストを `app_config_dir` に保存する場合は、`vst-host/crates/vst-host/src/vst_host/blacklist.rs` と同様の仕組みを“runtime用”に追加
   - ただしMVPはフロント側の「最後の追加をスキップ」で成立しやすい（まずは小さく入れる）
 
 ---

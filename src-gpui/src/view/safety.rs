@@ -377,7 +377,7 @@ fn reset_to_100(state: &Entity<SliderState>, window: &mut Window, cx: &mut App) 
 }
 
 /// 音量のスライダー。上の行に名前と今の値（%）、100% でないときは 100% に戻すボタン。下の行にスライダーを幅いっぱいに置く。
-/// スライダーのダブルクリックでも 100% に戻す（Tauri 版と同じ）。
+/// スライダーのダブルクリックでも 100% に戻す。
 fn slider_row(
     id: &'static str,
     label: &'static str,

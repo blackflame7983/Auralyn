@@ -25,7 +25,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 残る56箇所にはDefault、条件統合、引数数・型の複雑さ、DSPループ、浮動小数点精度、min/maxのclamp化などがある。今回の修正を実機音声・性能・全プラグインの保証とは扱わない。
 実機WASAPI / ASIO、音質・CPU・遅延・長時間運転、高DPI、全VST、署名済み配布は未検証。システム全体のVST再スキャンは行わず、既存設定・ブラックリストを保持した。
 
-ログはignoredの `src-tauri/target/clippy-style-*` に保存する。commit・push・PR作成は行わない。
+ログはignoredの `target/clippy-style-*` に保存する。commit・push・PR作成は行わない。
 
 ## 差分レビュー（2026-10-16）
 
@@ -68,7 +68,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 - 7型のnew()本体が基準HEADと一致すること、core・devices・editors・voice_check・obsはDefault追加以外に差分がないこと、audio_analysisの解析関数以下が完全一致することをソース照合で確認した。
 - `git diff --check`成功。対象ファイルの全体rustfmt検査は既存の未整形箇所で失敗する。rustfmtの提案行と今回追加・変更した行に重複がないことを確認し、一括整形は行わない。
 
-今回のログはignoredの `src-tauri/target/clippy-maintenance-*` に保存する。GUIの再操作、OBS接続、システム全体のデバイス・VST探索、実機WASAPI / ASIO、音質・CPU・遅延・長時間運転、高DPI、全VST、署名配布は未検証。依存・配布sidecar・アプリ番号の変更、commit・push・PR作成は行わない。
+今回のログはignoredの `target/clippy-maintenance-*` に保存する。GUIの再操作、OBS接続、システム全体のデバイス・VST探索、実機WASAPI / ASIO、音質・CPU・遅延・長時間運転、高DPI、全VST、署名配布は未検証。依存・配布sidecar・アプリ番号の変更、commit・push・PR作成は行わない。
 
 ### 初期化・探索順・文面の差分レビュー（2026-10-16）
 
@@ -80,7 +80,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 - デバイス未検出メッセージのRust文字列リテラルは改行・エスケープを含め完全一致し、format!の置換指定も含まない。to_string化で表示内容は変わらない。
 - 末尾へ移したテストモジュールの内容も一致する。
 
-上記のソース照合と `git diff --check` を今回実行し、結果をignoredの `src-tauri/target/clippy-maintenance-review-equivalence.log` に保存した。同じRust差分のテスト42件、check・Clippy・buildの成功ログを確認し、警告44箇所も再集計した。ソースの追加修正や新たな懸念がないため、同一テスト・ビルドは反復していない。配布版レイアウトでの実起動、実機音声等の未検証範囲と既存の整形問題は引き続き残る。
+上記のソース照合と `git diff --check` を今回実行し、結果をignoredの `target/clippy-maintenance-review-equivalence.log` に保存した。同じRust差分のテスト42件、check・Clippy・buildの成功ログを確認し、警告44箇所も再集計した。ソースの追加修正や新たな懸念がないため、同一テスト・ビルドは反復していない。配布版レイアウトでの実起動、実機音声等の未検証範囲と既存の整形問題は引き続き残る。
 
 ## 非RT条件分岐・IPC行解析の限定修正（2026-10-16）
 
@@ -109,7 +109,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 
 残る36箇所は条件分岐9、ループ・数値処理21、API・型6。DSP・RT処理内の条件や、エンジン開始に関わる条件は今回対象外とした。DSP係数・音声処理、デバイス名照合、依存manifest / lockfile、配布sidecar、アプリ番号は変更しない。
 
-ログ・隔離probeのソースと結果はignoredの `src-tauri/target/clippy-non-rt-*` に保存する。実OBS接続・通知、実ホットキー操作、実機デバイス列挙・WASAPI / ASIO、実アプリ全体のIPC、GUI、高DPI、長時間・音質・CPU・遅延、署名配布は未検証。commit・push・PR作成は行わない。
+ログ・隔離probeのソースと結果はignoredの `target/clippy-non-rt-*` に保存する。実OBS接続・通知、実ホットキー操作、実機デバイス列挙・WASAPI / ASIO、実アプリ全体のIPC、GUI、高DPI、長時間・音質・CPU・遅延、署名配布は未検証。commit・push・PR作成は行わない。
 
 ### 非RT分岐・失敗経路の差分レビュー（2026-10-16）
 
@@ -124,7 +124,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 
 ホットキー分岐も現在ソースと基準HEADから抽出し、Pressed／キー一致／state有無／lock成否／mute成否の32通りを模擬オブジェクトで比較した。matches・state・lock・muteの呼出し回数、guard・state・errorのDrop順が一致した。既存のデバイスprobeが現在のclosureを対象としていることも照合した。
 
-結果はignoredの `src-tauri/target/clippy-non-rt-review-{io,hotkey}.{rs,log}` とexeに保存する。`git diff --check`成功。同一Rust差分のテスト42件・check・Clippy・build成功ログと警告36箇所を再確認した。製品コードに追加修正や新たな懸念がないため、同一テスト・ビルドは反復していない。実OBS・実ホットキー・実ドライバ・アプリ全体のIPC等の未検証範囲、既存の整形問題は上記のとおり。
+結果はignoredの `target/clippy-non-rt-review-{io,hotkey}.{rs,log}` とexeに保存する。`git diff --check`成功。同一Rust差分のテスト42件・check・Clippy・build成功ログと警告36箇所を再確認した。製品コードに追加修正や新たな懸念がないため、同一テスト・ビルドは反復していない。実OBS・実ホットキー・実ドライバ・アプリ全体のIPC等の未検証範囲、既存の整形問題は上記のとおり。
 
 ## API・型の限定整理（2026-10-16）
 
@@ -154,7 +154,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 - Clippyは最初のprimary spanをコード・ファイル・行で重複除去して36 → 34。type_complexity 2箇所を解消し、コード・ファイル別の警告数にも新規増加なし。残りは条件分岐9、ループ・数値処理21、API・型4。
 - `git diff --check`成功。対象ファイルの全体rustfmt検査は既存の2つのlog::debug書式で失敗する。今回変更した型注釈・宣言には整形差分なし。一括整形は含めない。
 
-ログはignoredの `src-tauri/target/clippy-api-types-*` に保存する。実機デバイス列挙、実ドライバの診断JSON、GUI・実アプリ全体のIPC、実機音声・性能・高DPI・署名配布は未検証。音声/VST実装の差分がないため、実OTT寿命テストの再実行は行わない。commit・push・PR作成は行わない。
+ログはignoredの `target/clippy-api-types-*` に保存する。実機デバイス列挙、実ドライバの診断JSON、GUI・実アプリ全体のIPC、実機音声・性能・高DPI・署名配布は未検証。音声/VST実装の差分がないため、実OTT寿命テストの再実行は行わない。commit・push・PR作成は行わない。
 
 ### 型別名の差分レビュー（2026-10-16）
 
@@ -165,7 +165,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 - JSONは従来のDeviceInfoを構築してserde_json::to_stringする。DeviceInfoのフィールド型・順序・deriveと、値の設定・重複名処理・最後のJSON出力はすべて同一。型別名を直接シリアライズする変更ではない。実機デバイスを列挙してのJSON比較は行っていない。
 - 別名は外部へ公開せず、公開関数・Tauriコマンドのシグネチャと呼出側も変更していない。API関連の保留4箇所はそのままとする。
 
-今回、完全一致のソース照合と `git diff --check` を実行した。照合結果はignoredの `src-tauri/target/clippy-api-types-review-equivalence.log` に保存する。同一Rust差分のテスト41件・check・Clippy・build成功ログを確認し、警告34箇所も再集計した。追加コード修正や新たな懸念がないため、同一テスト・ビルドの反復、新規の実装をなぞるテストは行わない。既存の整形問題と実機等の未検証範囲は上記のとおり。
+今回、完全一致のソース照合と `git diff --check` を実行した。照合結果はignoredの `target/clippy-api-types-review-equivalence.log` に保存する。同一Rust差分のテスト41件・check・Clippy・build成功ログを確認し、警告34箇所も再集計した。追加コード修正や新たな懸念がないため、同一テスト・ビルドの反復、新規の実装をなぞるテストは行わない。既存の整形問題と実機等の未検証範囲は上記のとおり。
 
 ## 残る警告のまとめ対応（2026-10-16）
 
@@ -202,7 +202,7 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 
 全体rustfmt検査には従来からの未整形箇所が残るため、変更箇所だけを整えた。実機WASAPI／ASIOのストリーム、実音声の音質・CPU・遅延・長時間動作、高DPI、インストーラ・署名配布は未検証。ライブラリの大幅移行やDSP係数の変更は含めない。
 
-ログ・比較probeはignoredの `src-tauri/target/clippy-remaining-*`、GUIログ・画像は `src-tauri/target/clippy-remaining-editor/` に保存する。この段階ではcommit・push・PR作成を行わない。
+ログ・比較probeはignoredの `target/clippy-remaining-*`、GUIログ・画像は `target/clippy-remaining-editor/` に保存する。この段階ではcommit・push・PR作成を行わない。
 
 ### 全差分のレビュー（2026-10-16）
 
@@ -218,4 +218,4 @@ config探索71条件、所有値を含むIPC送信の成功／失敗2条件、Ad
 
 DSP・Smootherの定義と、旧／新のmono／stereoループ・退役・ゲイン処理が既存probeと一致することを再照合してからprobeを再実行した。128条件のDSP出力・回数・warm時無割当、退役198条件とゲイン16条件、100万通りのclamp比較が成功した。独立プロセスのcold比較も確保50回・解放5回、同一出力ハッシュ・呼出回数で一致した。
 
-結果と再現用コードはignoredの `src-tauri/target/clippy-remaining-review*` に保存する。同一製品コードの45テスト・strict Clippy警告0・check・build・GUI成功ログを再確認した。製品コードを追加変更していないため、それらの一括再実行は行っていない。`git diff --check`は今回も成功。DSP係数・音声処理の仕様は変更せず、commit・push・PR作成は行わない。実機音声・性能等の未検証範囲と既存のRT制約は上記のとおり。
+結果と再現用コードはignoredの `target/clippy-remaining-review*` に保存する。同一製品コードの45テスト・strict Clippy警告0・check・build・GUI成功ログを再確認した。製品コードを追加変更していないため、それらの一括再実行は行っていない。`git diff --check`は今回も成功。DSP係数・音声処理の仕様は変更せず、commit・push・PR作成は行わない。実機音声・性能等の未検証範囲と既存のRT制約は上記のとおり。

@@ -1,5 +1,5 @@
 //! 音づくりの画面の「歌・雑談モード」：今の音づくりを歌・雑談として登録し、本番中に切り替える。操作ロックもここ。
-//! 判断の規則は `auralyn-ui-model` の `live_modes`（Tauri 版と同じ）。VST を一緒に切り替える組み合わせは、まだ扱わない。
+//! 判断の規則は `auralyn-ui-model` の `live_modes`。VST を一緒に切り替える組み合わせは、まだ扱わない。
 
 use std::cell::Cell;
 use std::rc::Rc;

@@ -1,4 +1,4 @@
-//! ホームの「接続の確認」：音づくり・ボイスチェック・送り先を利用者が確かめた記録と、設定が変わったときの失効（Tauri 版の `preparation`）。
+//! ホームの「接続の確認」：音づくり・ボイスチェック・送り先を利用者が確かめた記録と、設定が変わったときの失効。
 //! 確かめた時点の音声の条件を「鍵」の文字列で持ち、読み直した鍵と違えば失効にする。鍵の中身はエンジンを読む側が作る。
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub enum Location {
 impl Location {
     pub const ALL: [Location; 2] = [Location::Home, Location::Venue];
 
-    /// 保存に使う名前（Tauri 版と同じ）。
+    /// 保存に使う名前。
     pub fn key(self) -> &'static str {
         match self {
             Location::Home => "home",
@@ -68,7 +68,7 @@ pub fn from_key<T: Copy>(all: &[T], key: impl Fn(T) -> &'static str, text: &str)
     all.iter().copied().find(|value| key(*value) == text)
 }
 
-/// はじめての設定で選んだ使い道を、送り先にする（Tauri 版も同じ保存を共有する）。
+/// はじめての設定で選んだ使い道を、送り先にする。
 impl From<crate::setup::Goal> for Usage {
     fn from(goal: crate::setup::Goal) -> Self {
         match goal {
@@ -99,7 +99,7 @@ pub fn normalize_receiver(text: &str) -> String {
 }
 
 impl Context {
-    /// 送り先の種類を替える。名前は前の送り先のものなので消す（Tauri 版と同じ）。
+    /// 送り先の種類を替える。名前は前の送り先のものなので消す。
     pub fn with_usage(&self, usage: Usage) -> Context {
         Context {
             usage: Some(usage),

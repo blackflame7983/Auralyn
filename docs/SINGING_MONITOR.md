@@ -73,7 +73,7 @@ OBSガイドの出力・モニタリングから、マイク入力、自分が�
 
 | ファイル | SHA-256 |
 | --- | --- |
-| `src-tauri/target/debug/AuralynHost.exe` | `f187db313480f3c9e23a8858aba7737b4f13c4f85a5c1fa696d168f6a1212c91` |
+| `target/debug/AuralynHost.exe` | `f187db313480f3c9e23a8858aba7737b4f13c4f85a5c1fa696d168f6a1212c91` |
 | `src-tauri/bin/audio_engine-x86_64-pc-windows-msvc.exe` | `ecd4a71811d5728ff3cd0e5197700786340e49638e5886e6222dff25aeae1069` |
 | `src-tauri/bin/plugin_scanner-x86_64-pc-windows-msvc.exe` | `1480d869667e41616f663f6dba9b6929290ef40b74f191fa8b7093a007865df4` |
 

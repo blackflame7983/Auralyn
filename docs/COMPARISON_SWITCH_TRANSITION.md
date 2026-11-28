@@ -10,7 +10,7 @@
 処理前後のレベルや位相、VSTの遅延が異なると、境界のサンプル値が急に変わり得る。
 実際の聴感ノイズの原因をすべて確定したわけではないが、この段差を抑える処理を加えた。
 
-新しい処理は[comparison.rs](../src-tauri/src/audio_engine/comparison.rs)で状態を持つ。
+新しい処理は[comparison.rs](../crates/vst-host/src/audio_engine/comparison.rs)で状態を持つ。
 
 1. 元の経路を維持したまま、5 ms以上かけて音量を0へ下げる。終端はcallbackの末尾に揃える。
 2. 次のcallbackで、無音からVST通過／省略の経路を変更する。

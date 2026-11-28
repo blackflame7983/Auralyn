@@ -49,7 +49,7 @@ OBS同期は録画で利用者が測った差を使う。これらの値を自�
 
 ## #48の独立数値study
 
-ignoredの `src-tauri/target/issue-backlog-noise-study-report.md` とmanifestに出典・再現コマンド・hashを記録した。
+ignoredの `target/issue-backlog-noise-study-report.md` とmanifestに出典・再現コマンド・hashを記録した。
 44.1/48/96k、合成信号546条件の出力はfiniteだった。reset・OFF→ON・同値ONは各rateで別途比較した。
 特定coded-noiseのwet相関lagとcold impulse peakは約19.98msだったが、即時dryとの混合では最大相関lagが0になる条件もある。
 非線形・状態依存処理の信号別観測であり、NR全体の固定遅延や公開総遅延20msとはしない。

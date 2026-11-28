@@ -1,4 +1,4 @@
-//! 歌・雑談モード（Tauri 版 `useLiveModes`・`LiveModeControls` と同じ判断）。
+//! 歌・雑談モード。
 //! モードは「今の音づくり（内蔵の処理）」を歌・雑談として保存しておき、本番中に切り替えるもの。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +26,7 @@ impl Transaction {
         !matches!(self.phase.as_str(), "failed" | "recovery_required")
     }
 
-    /// 新しい切り替え・保存を断る（Tauri 版 `transactionBlocksChanges`）。
+    /// 新しい切り替え・保存を断る。
     pub fn blocks_changes(&self) -> bool {
         self.phase != "failed" || self.recovery_available
     }
@@ -45,7 +45,7 @@ pub struct LiveModes {
     /// 歌・雑談として保存してあるか。
     pub singing_saved: bool,
     pub talk_saved: bool,
-    /// Tauri 版で VST の構成を結び付けたモード。切り替えると VST も入れ替わるので、この版では選ばせない。
+    /// 以前の版で VST の構成を結び付けたモード。切り替えると VST も入れ替わるので、選ばせない。
     pub singing_linked: bool,
     pub talk_linked: bool,
     /// 本番保護（ON の間は VST の変更などをホストが断る）。
@@ -98,7 +98,7 @@ impl LiveModes {
             .is_some_and(|t| t.recovery_available && !t.busy())
     }
 
-    /// 選ばれて見えるモード。かけ終わったときだけで、手で変えた後や途中はどちらも選ばない（Tauri 版と同じ）。
+    /// 選ばれて見えるモード。かけ終わったときだけで、手で変えた後や途中はどちらも選ばない。
     pub fn selected(&self) -> Option<Mode> {
         self.applied.filter(|_| self.phase == "settled")
     }
@@ -109,7 +109,7 @@ impl LiveModes {
             || self.transaction.as_ref().is_some_and(Transaction::busy)
     }
 
-    /// 定期的に読み直すか（Tauri 版 `useLiveModes` と同じ：登録があるか、切り替えの途中）。
+    /// 定期的に読み直すか（登録があるか、切り替えの途中）。
     pub fn polls(&self) -> bool {
         self.singing_saved || self.talk_saved || self.switching() || self.transaction.is_some()
     }
@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pending_or_recoverable_transaction_blocks_changes_as_in_the_tauri_version() {
+    fn a_pending_or_recoverable_transaction_blocks_changes() {
         for (phase, recovery, blocked) in [
             ("applying", false, true),
             ("failed", false, false),
