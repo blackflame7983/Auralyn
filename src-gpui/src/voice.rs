@@ -423,7 +423,7 @@ impl VoicePanel {
                     let looped = self.looped.get();
                     Button::new("listen-play")
                         .label(core(lang, keys::LISTEN_PLAY))
-                        .outline()
+                        .primary()
                         .disabled(play.is_none())
                         .on_click(move |_, _, cx| {
                             if let (Some(recording_id), Some(device_id)) = (play, device_id.clone())

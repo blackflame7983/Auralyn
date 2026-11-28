@@ -163,7 +163,7 @@ impl Changes {
             .flex_col()
             .gap_2()
             .p_3()
-            .rounded(px(6.))
+            .rounded(px(crate::color::radius("sm")))
             .border_1()
             .border_color(crate::color::border())
             .when_some(message, |this, message| {
@@ -258,7 +258,7 @@ impl Changes {
                     .flex_col()
                     .gap_1()
                     .p_3()
-                    .rounded(px(6.))
+                    .rounded(px(crate::color::radius("sm")))
                     .border_1()
                     .border_color(crate::color::border())
                     .child(div().text_sm().child(format!(

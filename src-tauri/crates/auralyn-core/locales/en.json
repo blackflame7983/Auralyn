@@ -3716,5 +3716,7 @@
   "gpuiShell.restartNote": "Stops the audio and starts again with the chosen devices. Sound drops out briefly.",
   "gpuiShell.usageLoad": "Use these devices",
   "gpuiShell.setupsApplied": "Applied “{name}”",
-  "gpuiShell.setupsRestored": "Restored the state before applying"
+  "gpuiShell.setupsRestored": "Restored the state before applying",
+  "gpuiShell.unmute": "Unmute",
+  "gpuiShell.themeGamingBody": "Near-black background with magenta accents."
 }

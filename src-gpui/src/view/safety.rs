@@ -1,6 +1,7 @@
 //! 右の列：緊急ミュート・入力・出力・聴き比べのメーターと操作。
 
 use super::*;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::Disableable as _;
 
 impl MainView {
@@ -93,7 +94,38 @@ impl MainView {
                     .child(heading(core(lang, keys::OUTPUT_HEADING)))
                     .map(|this| match tag {
                         Some(OutputTag::Muted) => this.child(
+                            // 押すと音を戻す入口：ミュート中なら解除、音量 0 なら 100% に戻す。
                             div()
+                                .id("output-muted")
+                                .role(Role::Button)
+                                .aria_label(core(lang, keys::OUTPUT_MUTED))
+                                .focusable()
+                                .tab_stop(true)
+                                .cursor_pointer()
+                                .tooltip({
+                                    let hint = core(
+                                        lang,
+                                        if self.muted {
+                                            keys::UNMUTE
+                                        } else {
+                                            keys::RESET_TO_100
+                                        },
+                                    );
+                                    move |window, cx| Tooltip::new(hint).build(window, cx)
+                                })
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if this.muted {
+                                        this.toggle_mute();
+                                    } else {
+                                        this.output_gain.update(cx, |state, cx| {
+                                            state.set_value(100.0, window, cx)
+                                        });
+                                        this.engine.send(Command::SetOutputGain(1.0));
+                                    }
+                                    cx.notify();
+                                }))
+                                .focus_visible(|style| style.border_color(color::primary()))
+                                .hover(|style| style.bg(color::warning().opacity(0.2)))
                                 .ml_auto()
                                 .px_1p5()
                                 .py_0p5()

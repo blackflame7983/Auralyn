@@ -458,7 +458,7 @@ fn row(
         .gap_2()
         .px_3()
         .py_2()
-        .rounded(px(6.))
+        .rounded(px(crate::color::radius("sm")))
         .border_1()
         .border_color(color::border())
         .bg(color::card())

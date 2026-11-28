@@ -418,6 +418,7 @@ pub mod keys {
     pub const ACTION_FAILED: &str = "gpuiShell.actionFailed";
     pub const CLOSE: &str = "licenses.close";
     pub const RESET_TO_100: &str = "gpuiShell.resetTo100";
+    pub const UNMUTE: &str = "gpuiShell.unmute";
     pub const RESET_NAMED: &str = "gpuiShell.resetNamed";
     pub const QUICK_ADJUST: &str = "gpuiShell.quickAdjust";
     pub const SCAN_FAILED: &str = "pluginNotices.scanFailed";
@@ -434,7 +435,7 @@ pub mod keys {
     pub const THEME_GAMING: &str = "header.gaming";
     pub const THEME_LIGHT_BODY: &str = "settings.AudioSettingsModal.131";
     pub const THEME_DARK_BODY: &str = "settings.AudioSettingsModal.132";
-    pub const THEME_GAMING_BODY: &str = "settings.AudioSettingsModal.133";
+    pub const THEME_GAMING_BODY: &str = "gpuiShell.themeGamingBody";
     pub const THEME_NOTE: &str = "gpuiShell.themeNote";
     pub const THEME_SAVE_FAILED: &str = "gpuiShell.themeSaveFailed";
     pub const SOURCE: &str = "processInput.source";
@@ -700,7 +701,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 687] = [
+    pub const ALL: [&str; 688] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -1184,6 +1185,7 @@ pub mod keys {
         ACTION_FAILED,
         CLOSE,
         RESET_TO_100,
+        UNMUTE,
         STOP_SHORT,
         RAIL_HELP,
         RESET_NAMED,
