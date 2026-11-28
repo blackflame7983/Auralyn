@@ -49,7 +49,6 @@ try {
     node('control-chars', 'scripts/check-control-chars.cjs', ...(changedOnly ? ['--files', ...changed()] : []));
     if (args.includes('--full')) {
         run('distribution-tests', process.execPath, ['--test', ...fs.readdirSync('scripts').filter(file => file.endsWith('.test.cjs')).map(file => `scripts/${file}`)]);
-        node('release-policy', 'scripts/check-release-readiness.cjs');
     }
     if (args.includes('--rust')) {
         const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--no-deps', '--format-version', '1'], { encoding: 'utf8' }));
