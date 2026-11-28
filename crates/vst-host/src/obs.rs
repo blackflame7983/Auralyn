@@ -431,7 +431,7 @@ async fn connect_client(host: &str, port: u16, password: Option<String>) -> Resu
         .map_err(|e| format!("Failed to connect to OBS: {}", e))
 }
 
-/// 画面へ知らせる口。名前は `obs://...`、中身は JSON。Tauri と GPUI の両方から使う。
+/// 画面へ知らせる口。名前は `obs://...`、中身は JSON。
 pub trait Notify: Fn(&'static str, serde_json::Value) + Send + Sync + 'static {}
 impl<F: Fn(&'static str, serde_json::Value) + Send + Sync + 'static> Notify for F {}
 

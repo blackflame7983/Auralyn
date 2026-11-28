@@ -65,7 +65,7 @@ impl LimiterPanel {
         peak::polls(self.peak)
     }
 
-    /// `locked` は操作ロック中。エンジンが断るので、先に操作を止めて理由を出す（Tauri 版と同じ）。
+    /// `locked` は操作ロック中。エンジンが断るので、先に操作を止めて理由を出す。
     pub fn render(&self, lang: Lang, locked: bool, cx: &App, send: OnCommand) -> impl IntoElement {
         let limit = self.limit;
         let true_peak = limit == Limit::TruePeak;

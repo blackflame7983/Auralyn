@@ -1,4 +1,4 @@
-//! はじめての設定：使い道を選び、マイクと出力先を勧める。勧め方は Tauri 版のセットアップ（`wizardModel.ts`・`useSetupWizard.ts`・`audioDevices.ts`）に揃える。
+//! はじめての設定：使い道を選び、マイクと出力先を勧める。
 //! ここでは WASAPI だけを扱う（ASIO は接続の画面で選ぶ）。
 
 use crate::connect::Device;
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn mic_is_a_whole_word_as_in_the_tauri_version() {
+    fn mic_is_a_whole_word() {
         let devices = [
             device("Mic_In", true, false),
             device("USB Mic", true, false),

@@ -1,4 +1,4 @@
-//! 日英の文言。正本は `locales/ja.json`・`locales/en.json` で、TypeScript の画面も同じファイルを読む。
+//! 日英の文言。正本は `locales/ja.json`・`locales/en.json`。
 use serde::de::{Deserializer, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ impl Catalog {
         }
     }
 
-    /// `{name}` を `args` の値に置き換えた文言。`args` に無い差し込みはそのまま残す（TypeScript の `message()` と同じ）。
+    /// `{name}` を `args` の値に置き換えた文言。`args` に無い差し込みはそのまま残す。
     pub fn text(
         &self,
         locale: Locale,
@@ -127,7 +127,7 @@ pub fn text(locale: Locale, key: &str, args: &[(&str, &dyn fmt::Display)]) -> Op
     catalog().text(locale, key, args)
 }
 
-/// 差し込みの名前は TypeScript の `\w` と同じく ASCII の英数字と `_`。
+/// 差し込みの名前は ASCII の英数字と `_`。
 fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }

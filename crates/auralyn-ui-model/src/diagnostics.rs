@@ -1,6 +1,6 @@
 //! 設定の画面の診断：音声処理の稼働統計（読み込み済みの VST の数・最大ジッター・グリッチ回数・直近の遅着と音切れの可能性）。
 
-/// 直近の遅着がこの回数以上なら多いと知らせる（Tauri 版・`processing_watch.rs` と同じ境界）。
+/// 直近の遅着がこの回数以上なら多いと知らせる（`processing_watch.rs` と同じ境界）。
 pub const RECENT_LATE_WARN: u64 = 10;
 pub const RECENT_UNDERFLOW_WARN: u64 = 3;
 
@@ -30,13 +30,13 @@ pub struct Stats {
 }
 
 impl Stats {
-    /// 最大ジッターの表示（Tauri 版と同じ「1.23 ms」）。
+    /// 最大ジッターの表示（「1.23 ms」）。
     pub fn jitter(&self) -> String {
         format!("{:.2} ms", self.max_jitter_us as f64 / 1000.0)
     }
 }
 
-/// 配信ミックス（オケ・配信音を仕上げる VST）の診断。Tauri 版の「オケ・配信VSTの診断」と同じ項目。
+/// 配信ミックス（オケ・配信音を仕上げる VST）の診断。
 /// 読めなかった項目（止まっている・使っていない）は `None`。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Mix {

@@ -64,9 +64,9 @@ mod safety;
 
 /// 描画の周期。全メーターで1つを共有する（10.6 の最後の項）。
 const FRAME: Duration = Duration::from_millis(16);
-/// ピーク保護の反映待ちを読み直す間隔（Tauri 版の `usePeakProtectionSync` と同じ）。
+/// ピーク保護の反映待ちを読み直す間隔。
 const PEAK_POLL: Duration = Duration::from_millis(500);
-/// 配信用の出力の状態を読み直す間隔（Tauri 版の `LiveOutputPanel` と同じ）。
+/// 配信用の出力の状態を読み直す間隔。
 const LIVE_POLL: Duration = Duration::from_secs(1);
 /// 右の列の幅（`src/index.css` の `--safety-column-width`）。
 const SAFETY_COLUMN_WIDTH: f32 = 212.;
@@ -262,7 +262,7 @@ impl MainView {
             window,
             |this, _, _: &SelectEvent<Vec<SharedString>>, window, cx| {
                 this.connect.devices_changed(window, cx);
-                // アプリの音声を選んだら、一覧をすぐ読む（Tauri 版と同じ）。
+                // アプリの音声を選んだら、一覧をすぐ読む。
                 if this.connect.uses_app(cx) {
                     this.send(Command::Mix(MixAction::Apps));
                 }
@@ -339,7 +339,7 @@ impl MainView {
         );
         let scenes = ScenePanel::new(&config_dir, window, cx);
         let prep = PrepPanel::new(&config_dir, window, cx);
-        // 窓の × ではトレイへ隠し、音は止めない（Tauri 版と同じ）。トレイが無ければ戻す手段が無いので、閉じて終わる。
+        // 窓の × ではトレイへ隠し、音は止めない。トレイが無ければ戻す手段が無いので、閉じて終わる。
         let hidden = Rc::new(Cell::new(false));
         if desktop.tray_error.is_none() {
             let hidden = hidden.clone();
@@ -474,13 +474,13 @@ impl MainView {
             self.live_polled = Instant::now();
             self.engine.send(Command::LiveOutput(None));
         }
-        // 歌・雑談と操作ロックは上の帯に出すので、窓が見えている間は Tauri 版と同じ 500ms ごとに読み直す
+        // 歌・雑談と操作ロックは上の帯に出すので、窓が見えている間は  500ms ごとに読み直す
         // （手で音を変えていまの調整になったときや、ショートカットでの切り替えも追う）。登録が無ければ読まない。
         if !self.hidden.get() && self.modes.polls() && self.modes_polled.elapsed() >= PEAK_POLL {
             self.modes_polled = Instant::now();
             self.engine.send(Command::Modes(ModeAction::Read));
         }
-        // 反映待ちのあいだと ON の true-peak 制限は、Tauri 版と同じ 500ms ごとに読み直す（`peak::polls`）。
+        // 反映待ちのあいだと ON の true-peak 制限は 500ms ごとに読み直す（`peak::polls`）。
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
             for limit in Limit::ALL {
                 if !self.hidden.get()
@@ -521,7 +521,7 @@ impl MainView {
             }
             changed = true;
         }
-        // 隠れている間は録らない（Tauri 版と同じ）。
+        // 隠れている間は録らない。
         if self.hidden.get() {
             for command in self.voice.leave() {
                 self.engine.send(command);
@@ -896,7 +896,7 @@ impl MainView {
         if matches!(command, Command::ScanPlugins) {
             self.vst.scan_started();
         }
-        // ピーク保護・true-peak 制限は「接続の確認」の鍵に出ないので、変えたら確認をやり直す（Tauri 版と同じ）。
+        // ピーク保護・true-peak 制限は「接続の確認」の鍵に出ないので、変えたら確認をやり直す。
         if matches!(
             command,
             Command::SetPeak(..) | Command::SetPeakLimits { .. }
@@ -988,7 +988,7 @@ impl MainView {
         self.engine.send(Command::SetMute(!self.muted));
     }
 
-    /// グローバルショートカットの操作（Tauri 版と同じ動き）。比較は音声が動いているときだけ切り替える。
+    /// グローバルショートカットの操作（動き）。比較は音声が動いているときだけ切り替える。
     fn shortcut(&mut self, action: shortcuts::Action, window: &mut Window, cx: &mut App) {
         use shortcuts::Action as A;
         match action {

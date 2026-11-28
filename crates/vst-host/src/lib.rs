@@ -12,7 +12,7 @@ pub mod post_mix {
 pub mod mixing {
     pub use crate::audio::mixing::{Request, Snapshot};
 
-    /// オケに選べる起動中のアプリ（Tauri 版の `get_process_input_sources` が画面へ返すものと同じ形）。
+    /// オケに選べる起動中のアプリ。
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct App {
@@ -31,13 +31,13 @@ pub mod mixing {
         pub muted: bool,
     }
 
-    /// 一覧を読む。候補の中身は crate の外へ出さず、Tauri 版の画面と同じく直列化した形で受け取る。
+    /// 一覧を読む。候補の中身は crate の外へ出さず、直列化した形で受け取る。
     pub fn apps(host: &mut crate::audio::AudioHost) -> anyhow::Result<Vec<App>> {
         let listed = serde_json::to_value(host.process_input_sources()?)?;
         Ok(serde_json::from_value(listed)?)
     }
 }
-/// 入力の元（マイク・仮想ケーブルか、アプリの音声か）を選んで開始する（Tauri 版の `start_audio` と同じ手順）。
+/// 入力の元（マイク・仮想ケーブルか、アプリの音声か）を選んで開始する。
 pub mod input {
     pub use crate::input_source::{Config, ProcessConfig, Purpose, Request};
 
@@ -88,7 +88,7 @@ pub mod obs_timing {
         crate::obs_setup::timing_targets(state, &conditions.0).await
     }
 }
-/// GPUI 版から機器の一覧を、子の走査を待たずに取る口（Tauri 版の `enumerate_devices_async` と同じ begin/poll）。
+/// GPUI 版から機器の一覧を、子の走査を待たずに取る口（begin/poll）。
 pub mod devices {
     use crate::audio::{AudioDeviceList, AudioHost, DeviceScanStart, DeviceScanTicket};
 

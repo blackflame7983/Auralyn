@@ -1,5 +1,5 @@
 //! テーマの保存。GPUI 版は自分のファイル（`gpui_theme.json`）に書く。
-//! Tauri 版はテーマを画面（WebView）の中だけに保存していて読めないので、無ければ Windows の明暗に合わせて始める。
+//! 無ければ Windows の明暗に合わせて始める。
 
 use std::path::Path;
 

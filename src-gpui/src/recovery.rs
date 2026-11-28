@@ -1,4 +1,4 @@
-//! ホームの「音声エンジンが停止しました」：落ちた理由と、始め直す方法を選ぶカード（Tauri 版の復旧画面と同じ選択肢）。
+//! ホームの「音声エンジンが停止しました」：落ちた理由と、始め直す方法を選ぶカード。
 //! 判断は `auralyn-ui-model` の `recovery`。どの方法でも、保存した VST の並びは消さない。
 
 use std::rc::Rc;
@@ -79,7 +79,7 @@ fn label(choice: &Choice, device: bool) -> &'static str {
     }
 }
 
-/// 落ちた理由の一文（Tauri 版の `renderAudioEngineExit` と同じ）。
+/// 落ちた理由の一文。
 fn summary(exit: &Exit, lang: Lang) -> String {
     let named =
         |name: Option<String>, fallback| name.unwrap_or_else(|| core(lang, fallback).to_owned());

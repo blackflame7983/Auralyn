@@ -537,7 +537,7 @@ impl MixPanel {
                     .flatten()
                     .map(warning),
                 )
-                // 保存が読めない・書き換えられたときは、読み直すまで変えられない（Tauri 版の「読み直す」）。
+                // 保存が読めない・書き換えられたときは、読み直すまで変えられない。
                 .when(mix.error.is_some(), |this| {
                     let send = send.clone();
                     this.child(

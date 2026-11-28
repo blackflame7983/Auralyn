@@ -1,4 +1,4 @@
-//! 音楽鑑賞のホームの案内（Tauri 版の `MusicSourceHint`・`cablePlaybackName`）。
+//! 音楽鑑賞のホームの案内。
 //! 再生元（仮想ケーブルなど）から音が届かない状態が続いたら、再生アプリの出力先を伝える。
 
 use std::time::{Duration, Instant};
@@ -8,7 +8,7 @@ use crate::meter::State;
 /// 届かない状態がこの時間続いたときだけ出す（曲の合間の無音では出さない）。
 pub const SOURCE_HINT_AFTER: Duration = Duration::from_secs(5);
 
-/// 名前の末尾の「 [48kHz]」「 [44/48/96kHz]」のような周波数の札を除く（札のあとに空白があれば除かない。Tauri 版と同じ）。
+/// 名前の末尾の「 [48kHz]」「 [44/48/96kHz]」のような周波数の札を除く（札のあとに空白があれば除かない）。
 pub fn without_rate(name: &str) -> &str {
     let Some(body) = name
         .len()

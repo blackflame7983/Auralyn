@@ -1,7 +1,7 @@
 //! ホームの「配信音を仕上げる VST」：声とオケを混ぜた後の配信音だけに掛ける、声用とは別の並び。
 //! 規則は `auralyn-ui-model` の `post_mix`、エンジン側は `engine/post_mix.rs`。並びの部品は VST の画面（`vst.rs`）と同じ。
 //! 追加・削除・並べ替え・有効の切り替えは音声を止めてから。ON/OFF・ミュート・音量・編集は動かしたままできる。
-//! 並びと VST の中の設定は「保存」で保存する（Tauri 版と同じ。起動し直したあとは「保存した VST を復元」で読み込む）。
+//! 並びと VST の中の設定は「保存」で保存する（起動し直したあとは「保存した VST を復元」で読み込む）。
 //! 保存が読めないときは「保存設定を復旧する」で、今の保存を脇へ保管して無効にする。
 
 use auralyn_ui_model::post_mix::{Block, PostMix};
@@ -167,7 +167,7 @@ impl PostMixPanel {
                     this.child(warning(core(lang, keys::POST_ERROR).to_owned()))
                         .when_some(post.error.clone(), |this, error| this.child(note(error)))
                 })
-                // 保存が読めないと、読み直しも保存もできない。今の保存を脇へ保管して無効にする（Tauri 版の「保存設定を復旧する」）。
+                // 保存が読めないと、読み直しも保存もできない。今の保存を脇へ保管して無効にする。
                 .when(post.error.is_some(), |this| {
                     let send = send.clone();
                     this.child(

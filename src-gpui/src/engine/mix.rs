@@ -1,4 +1,4 @@
-//! 配信ミックス（声にオケを混ぜる。オケは入力機器かアプリの音）。Tauri 版と同じ `AudioHost::mixing` を使い、保存も同じ `mixing.json`。
+//! 配信ミックス（声にオケを混ぜる。オケは入力機器かアプリの音）。`AudioHost::mixing` を使い、保存も同じ `mixing.json`。
 //! 変更の操作には、最後に読んだ世代（epoch・revision）を付ける。ずれていれば断られるので、読み直して画面へ送る。
 
 use super::*;
@@ -31,7 +31,7 @@ pub enum MixAction {
     },
     /// オケに選べる起動中のアプリを読む。
     Apps,
-    /// 混ぜるのをやめる（保存も消える。Tauri 版と同じ）。
+    /// 混ぜるのをやめる（保存も消える）。
     Disable,
     /// 保存を読み直す（保存が読めない・書き換えられたあと。音声を止めているときだけ）。
     Reload,
@@ -135,7 +135,7 @@ impl Control {
     }
 
     /// 音量・ミュート・返し・時間差を変える。時間差を変えたら今の機材の組み合わせで記録を置き換え、
-    /// 変えなければ前の記録を保つ（Tauri 版と同じ）。`None` は何も変えずに、今の機材で記録し直す（確認済みにする）。
+    /// 変えなければ前の記録を保つ。`None` は何も変えずに、今の機材で記録し直す（確認済みにする）。
     fn set_levels(&mut self, change: Option<MixChange>) -> anyhow::Result<MixSnapshot> {
         let confirm = change.is_none();
         let previous = self
@@ -166,8 +166,8 @@ impl Control {
         })
     }
 
-    /// 今の機材の組み合わせ（Tauri 版 `currentOffsetContext` と同じ作り方）。`source` は適用中のオケの取り込み口。
-    /// 声にアプリの音を使っている・まだ開始していないときは `None`。配信用の出力を読めなければ `Err`（Tauri 版も止める）。
+    /// 今の機材の組み合わせ。`source` は適用中のオケの取り込み口。
+    /// 声にアプリの音を使っている・まだ開始していないときは `None`。配信用の出力を読めなければ `Err`。
     fn offset_context(&mut self, source: &EngineSource) -> anyhow::Result<Option<OffsetContext>> {
         let Some(audio) = self.host.get_state().config else {
             return Ok(None);
@@ -184,7 +184,7 @@ impl Control {
         let (Some(voice_input_id), Some(output_id), Some(voice_channels)) = ids else {
             return Ok(None);
         };
-        // 区切り文字を含む ID でもぶつからないよう JSON の配列にする（Tauri 版と同じ文字列になる）。
+        // 区切り文字を含む ID でもぶつからないよう JSON の配列にする（保存済みの値と同じ文字列になる）。
         let accompaniment = match source {
             EngineSource::Device(device) => serde_json::json!([
                 "device",

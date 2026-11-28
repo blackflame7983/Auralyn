@@ -1,5 +1,4 @@
 //! 音の流れの帯（DESIGN.md 10.5）。加工前と加工後の音量を重ねて、時間の流れで見せる。
-//! `src/components/features/Home/SoundFlow.tsx`・`useSoundFlowCanvas.ts`・`soundFlowDraw.ts` の規則を写したもの。
 //! 加工後は、出力音量・ピーク保護・ミュートの前の値（レベル通知の `processed`）を使う。出力のメーターは音量とミュートで変わり、加工の比較にならないため。
 
 use std::collections::VecDeque;

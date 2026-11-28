@@ -222,7 +222,7 @@ impl Control {
         self.save(false);
     }
 
-    /// `.vst3` のバンドル（フォルダ）を渡されたら、Tauri 版のスキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
+    /// `.vst3` のバンドル（フォルダ）を渡されたら、スキャンと同じく中の実体（Contents/x86_64-win）を探して読む。
     /// 読めたら、子が付けた ID と名前と、読んだ実体のパス。
     pub(super) fn load(
         &mut self,

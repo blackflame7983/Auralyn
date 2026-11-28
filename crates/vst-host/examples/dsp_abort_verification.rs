@@ -1,6 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 通常のテストハーネスを使わず、製品と同じpanic方式でメモリ内のDSPだけを検証する。
-    // デバイス列挙・ストリーム開始・Tauri起動・VSTロードは呼び出さない。
+    // デバイス列挙・ストリーム開始・画面の起動・VSTロードは呼び出さない。
     if cfg!(debug_assertions) || !cfg!(panic = "abort") {
         return Err("release・panic=abort構成が必要です".into());
     }

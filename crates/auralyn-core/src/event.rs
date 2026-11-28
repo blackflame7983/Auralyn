@@ -1,7 +1,7 @@
 //! 中核から画面の層へ出す出来事。
 //!
 //! 出来事は名前と JSON の本文の組。本文は `serde_json::to_string` で1回だけ作り、
-//! 画面の層はそれをそのまま渡す（Tauri は `emit_str`、GPUI はチャネルから受けて `payload` で読む）。
+//! 画面の層はそれをそのまま渡す（GPUI はチャネルから受けて `payload` で読む）。
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt;

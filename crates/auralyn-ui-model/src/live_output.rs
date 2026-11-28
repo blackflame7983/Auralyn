@@ -1,5 +1,5 @@
 //! 配信用の出力：加工後の声を、自分用（通常の出力）とは別の WASAPI 出力へも送る（OBS はその出力に対応する入力を取り込む）。
-//! 選べる機器・値の範囲・確認の約束は Tauri 版（`LiveOutputPanel.tsx`・`audio_engine/live_output.rs`）に揃える。
+//! 選べる機器・値の範囲・確認の約束は `audio_engine/live_output.rs` に揃える。
 
 use crate::connect::Device;
 
@@ -29,7 +29,7 @@ pub struct Draft {
     pub split: bool,
 }
 
-/// 1つの変更。どれを変えても、保存の前の確認はやり直す（Tauri 版と同じ）。
+/// 1つの変更。どれを変えても、保存の前の確認はやり直す。
 #[derive(Clone, Debug, PartialEq)]
 pub enum Change {
     Device(Option<String>),
@@ -49,7 +49,7 @@ impl Draft {
             }
         };
         match change {
-            // 出力を外したら、分けるのもやめる（Tauri 版と同じ）。
+            // 出力を外したら、分けるのもやめる。
             Change::Device(device_id) => Self {
                 split: self.split && device_id.is_some(),
                 device_id,
@@ -84,7 +84,7 @@ pub struct Live {
     pub active: bool,
     /// 配信用の出力が止まった。
     pub failed: bool,
-    /// 配信用の出力を開けないなどの理由（Tauri 版と同じく、あれば止まったものとして扱う）。
+    /// 配信用の出力を開けないなどの理由（あれば止まったものとして扱う）。
     pub error: Option<String>,
 }
 

@@ -1,8 +1,8 @@
-//! OBS との接続を、画面とは別のスレッドで扱う。接続は Tauri 版と同じ `vst_host_lib::obs`（obws と tokio）を使い、
+//! OBS との接続を、画面とは別のスレッドで扱う。接続は  `vst_host_lib::obs`（obws と tokio）を使い、
 //! パスワードは同じ `obs-credentials.dpapi`（Windows のユーザー単位で保護）へ保存する。
 //!
 //! 命令は1本のスレッドが受付順に実行する（接続と切断が入れ替わらない）。到達確認の間（最大十数秒）は、
-//! 切断もその後に待つ（Tauri 版のように途中で中止はしない。テスト音は確認の終わりに必ず止める）。OBS 側から切れたら `Reply::Lost` を送る
+//! 切断もその後に待つ。OBS 側から切れたら `Reply::Lost` を送る
 //! （自分で切断したときは送らない）。
 
 use std::path::{Path, PathBuf};
@@ -246,7 +246,7 @@ fn timing_request(timing: Timing) -> TimingPreviewRequest {
     }
 }
 
-/// Tauri 版の `connect_obs` と同じ：パスワードが無ければ保存したものを使い、つながったら保存する。保存できなければ切る。
+/// ：パスワードが無ければ保存したものを使い、つながったら保存する。保存できなければ切る。
 async fn connect(
     file: &Path,
     state: &ObsState,

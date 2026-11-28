@@ -1,12 +1,12 @@
 //! ボイスチェックの試聴：配信の送り先とは別の出力先で、録った声（加工前・加工後）を鳴らす。
-//! 中核の `voice_check_preview`（Tauri 版の「加工前と加工後を聴く」と同じセッション）を使う。
+//! 中核の `voice_check_preview`を使う。
 
 use super::*;
 use vst_host_lib::audio_engine::voice_check::preview::{
     Action, Options, Request, Snapshot, Source as PreviewSource,
 };
 
-/// 試聴のセッション。開くたびに番号を進め、変更の操作ごとに操作の番号を進める（Tauri 版と同じ約束）。
+/// 試聴のセッション。開くたびに番号を進め、変更の操作ごとに操作の番号を進める（約束）。
 #[derive(Default)]
 pub(super) struct Session {
     id: u64,

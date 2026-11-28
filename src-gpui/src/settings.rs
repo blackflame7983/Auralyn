@@ -22,7 +22,7 @@ use crate::part::{card, note, with_hint, Fold, OnCommand};
 
 const LANGS: [(Lang, &str); 2] = [(Lang::Ja, "日本語"), (Lang::En, "English")];
 
-/// 設定の画面の区切り（Tauri 版の設定と同じ名前を使う）。
+/// 設定の画面の区切り。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Section {
     #[default]
@@ -115,7 +115,7 @@ const THEMES: [(Theme, &str, &str); 3] = [
     (Theme::Gaming, keys::THEME_GAMING, keys::THEME_GAMING_BODY),
 ];
 
-/// 外観：テーマを選ぶ（Tauri 版と同じ3つ）。この版は色だけを替える。
+/// 外観：テーマを選ぶ（3つ）。この版は色だけを替える。
 pub fn appearance(
     lang: Lang,
     theme: Theme,
@@ -228,7 +228,7 @@ pub fn shortcuts(lang: Lang, saved: &[Registered], error: Option<&str>) -> impl 
                             }),
                     )
             }))
-            .child(note(core(lang, keys::SHORTCUTS_EDIT_IN_TAURI))),
+            .child(note(core(lang, keys::SHORTCUTS_READ_ONLY))),
     )
     .icon(IconName::Keyboard)
 }
@@ -438,7 +438,7 @@ fn row(lang: Lang, name: &'static str, value: String) -> impl IntoElement {
         .child(div().min_w_0().child(value))
 }
 
-/// 困ったとき：症状ごとに次の1手と、ドキュメントの該当箇所へのリンク（Tauri 版の使い方の「困ったとき」）。
+/// 困ったとき：症状ごとに次の1手と、ドキュメントの該当箇所へのリンク。
 /// `tray` は通知領域のアイコンがあるか。無ければ × で終わるので「閉じても音が続く」は出さない。
 pub fn trouble(lang: Lang, tray: bool) -> impl IntoElement {
     let english = lang == Lang::En;

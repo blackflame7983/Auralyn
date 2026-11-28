@@ -233,7 +233,7 @@ pub mod keys {
     pub const SHORTCUTS_TITLE: &str = "settings.ShortcutsPanel.378";
     pub const SHORTCUTS_EMPTY: &str = "shortcuts.captureEmpty";
     pub const SHORTCUTS_UNREADABLE: &str = "gpuiShell.shortcutsUnreadable";
-    pub const SHORTCUTS_EDIT_IN_TAURI: &str = "gpuiShell.shortcutsEditInTauri";
+    pub const SHORTCUTS_READ_ONLY: &str = "gpuiShell.shortcutsReadOnly";
     pub const SHORTCUT_MUTE_TOGGLE: &str = "settings.ShortcutsPanel.363";
     pub const SHORTCUT_MUTE_ON: &str = "settings.ShortcutsPanel.364";
     pub const SHORTCUT_MUTE_OFF: &str = "settings.ShortcutsPanel.365";
@@ -1059,7 +1059,7 @@ pub mod keys {
         SHORTCUTS_TITLE,
         SHORTCUTS_EMPTY,
         SHORTCUTS_UNREADABLE,
-        SHORTCUTS_EDIT_IN_TAURI,
+        SHORTCUTS_READ_ONLY,
         SHORTCUT_MUTE_TOGGLE,
         SHORTCUT_MUTE_ON,
         SHORTCUT_MUTE_OFF,

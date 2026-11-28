@@ -1,9 +1,9 @@
-//! 保存した構成（Tauri 版と同じ `presets/` のファイル）：一覧に出すもの、保存する名前。
+//! 保存した構成（`presets/` のファイル）：一覧に出すもの、保存する名前。
 //!
 //! GPUI 版が読み書きするのは、VST の並び・ノイズ低減・声を整える設定だけ（接続は変えない）。
 //! そのどれも持たない構成（接続だけの構成）は、適用しても何も変わらないので一覧に出さない。
 
-/// 適用の前に自動で取る退避の名前（Tauri 版の `presets::BACKUP_PROFILE_NAME` と同じ）。
+/// 適用の前に自動で取る退避の名前。
 pub const BACKUP_NAME: &str = "__backup_previous";
 
 /// 構成の一覧の1行。
@@ -68,7 +68,7 @@ pub fn save_name(input: &str, entries: &[Entry]) -> Result<String, NameIssue> {
 pub enum ImportIssue {
     /// 構成のファイルとして読めない（名前が無いときも）。
     Invalid,
-    /// 同じ名前の構成がある（Tauri 版と違い、上書きしない）。
+    /// 同じ名前の構成がある（上書きしない）。
     Exists(String),
     /// 接続だけの構成。GPUI 版では一覧に出ず、適用しても何も変わらない。
     NothingToApply,

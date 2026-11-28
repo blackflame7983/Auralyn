@@ -1,6 +1,6 @@
 //! 配信ミックス：声に、別の入力（オケ）を混ぜる。オケの取り込み口は WASAPI の入力機器（仮想ケーブルなど）の2チャンネル。
 //! アプリの音も取り込める（アプリの音を1つの出力先に出し、Windows でその出力先をミュートしておく）。
-//! 選び方と値の範囲、時間差を確かめた機材の比べ方は Tauri 版（`MixingPanel.tsx`・`offsetContext.ts`・`audio_engine/mixing`）に揃える。
+//! 選び方と値の範囲、時間差を確かめた機材の比べ方は `audio_engine/mixing` に揃える。
 
 use crate::connect::Device;
 
@@ -175,11 +175,11 @@ pub struct Mix {
     /// オケが流れている。
     pub running: bool,
     pub failed: bool,
-    /// 保存の読み込みなどの問題（Tauri 版の文言のまま）。
+    /// 保存の読み込みなどの問題。
     pub error: Option<String>,
 }
 
-/// 時間差を合わせたときの機材の組み合わせ（Tauri 版 `offsetContext.ts` と同じ作り方で、保存も同じ）。
+/// 時間差を合わせたときの機材の組み合わせ（保存済みの記録と同じ作り方）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OffsetContext {
     pub voice_input_id: String,
@@ -213,7 +213,7 @@ pub enum OffsetStatus {
     Unknown,
 }
 
-/// 機器の識別：ID、無ければ `name:名前`（Tauri 版と同じ）。
+/// 機器の識別：ID、無ければ `name:名前`。
 pub fn identity(id: Option<&str>, name: Option<&str>) -> Option<String> {
     let id = id.map(str::trim).filter(|id| !id.is_empty());
     let name = name.map(str::trim).filter(|name| !name.is_empty());
@@ -273,7 +273,7 @@ pub fn parse_offset(text: &str) -> Option<i32> {
 }
 
 impl Mix {
-    /// 音量を変えられるのは、適用中のときだけ（Tauri 版と同じ）。
+    /// 音量を変えられるのは、適用中のときだけ。
     pub fn can_change_levels(&self) -> bool {
         self.active.is_some()
     }

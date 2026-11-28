@@ -1,6 +1,6 @@
 //! 旧 API の互換（`9567061a` の振る舞い）の試験。F1a-0：現行の振る舞いを固定するもので、修正前の実装でも通る。
 //! 行 ID は docs/plans/audio-session-acceptance.md の K 群と、F1a で固定する行（A・B・C・D 群）。
-//! 通知の順序は、実際の読み取りスレッドが`emit`を呼んだ順序（Rust 側の事実。WebView に届く順序ではない）。
+//! 通知の順序は、実際の読み取りスレッドが`emit`を呼んだ順序（Rust 側の事実）。
 use super::compat_support::*;
 use super::*;
 

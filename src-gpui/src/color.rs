@@ -42,7 +42,7 @@ fn paint_parts(kit: &mut ThemeColor) {
     kit.foreground = foreground();
     kit.border = border();
     kit.window_border = border();
-    // 部品は input を枠だけでなく欄の地（30%）にも使うので、枠の色を渡す（Tauri 版の欄の地は background）。
+    // 部品は input を枠だけでなく欄の地（30%）にも使うので、枠の色を渡す。
     kit.input = border();
     kit.ring = token("ring");
     kit.caret = primary;

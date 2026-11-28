@@ -1,4 +1,4 @@
-//! 音声エンジンが落ちたあとの復旧（Tauri 版の `RecoveryModal` と `audioEngineExit.ts` と同じ判断）。
+//! 音声エンジンが落ちたあとの復旧。
 //! 落ちた理由の一文と、出す選択肢を決める。保存した VST の並びは、どの選択肢でも消さない。
 
 /// 音声エンジンが落ちたときの記録（ホストの `audio-engine-exited` の中身）。
@@ -76,7 +76,7 @@ impl VstOp {
     }
 }
 
-/// 復旧の選択肢。並びは Tauri 版と同じ。
+/// 復旧の選択肢。並びはこの順。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Choice {
     /// 落ちる直前に操作していた VST を読まずに（並びには残して）始め直す。

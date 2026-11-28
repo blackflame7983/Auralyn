@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-/// 音が来ているとみなすピーク（Tauri 版の信号表示と同じ）。
+/// 音が来ているとみなすピーク。
 pub const THRESHOLD: f32 = 0.05;
 /// 最後に音が来てから、来ているとみなし続ける時間。
 pub const HOLD: Duration = Duration::from_secs(2);

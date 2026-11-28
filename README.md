@@ -162,7 +162,7 @@ ASIO SDK は GPLv3 の選択肢に基づいて利用しています（版と SHA
 
 公式バイナリと同一コミットの対応ソース ZIP・SHA-256・manifest は、同じ GitHub Release から無償で取得できます。詳細は [SOURCE-DISTRIBUTION.md](SOURCE-DISTRIBUTION.md)を参照してください。
 
-[GPUI](https://www.gpui.rs/) · [Rust](https://www.rust-lang.org/) · [vst3-rs](https://crates.io/crates/vst3) · [cpal](https://crates.io/crates/cpal) · [nnnoiseless](https://crates.io/crates/nnnoiseless) と、そのほかのオープンソースプロジェクトに支えられています。全ライセンスと権利表示はアプリの「設定 → ライセンス情報」から確認できます。
+[GPUI](https://www.gpui.rs/) · [Rust](https://www.rust-lang.org/) · [vst3-rs](https://crates.io/crates/vst3) · [cpal](https://crates.io/crates/cpal) · [nnnoiseless](https://crates.io/crates/nnnoiseless) と、そのほかのオープンソースプロジェクトに支えられています。権利表示は [NOTICE.md](NOTICE.md) にあります（新しい画面には、まだライセンス一覧の画面がありません）。
 
 VST® は Steinberg Media Technologies GmbH の登録商標です。<br>
 ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.

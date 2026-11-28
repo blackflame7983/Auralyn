@@ -1,4 +1,4 @@
-//! OBS のシーン連動（Tauri 版 `useLiveSceneRouting`・`ObsModeRoutingSettings` と同じ判断）。
+//! OBS のシーン連動。
 //! シーンが替わったら、同じ名前の構成を読むか、割り当てた歌・雑談モードへ切り替える。方式は1つだけ。
 //! 接続・再接続のときは切り替えず、OBS で実際にシーンが替わったときだけ動く。
 
@@ -17,7 +17,7 @@ pub enum Strategy {
 impl Strategy {
     pub const ALL: [Strategy; 3] = [Strategy::None, Strategy::Profile, Strategy::Mode];
 
-    /// 保存するときの名前（Tauri 版と同じ）。
+    /// 保存するときの名前。
     pub fn key(self) -> &'static str {
         match self {
             Strategy::None => "none",
@@ -42,7 +42,7 @@ pub fn mode_from_key(key: &str) -> Option<Mode> {
     Mode::ALL.into_iter().find(|m| mode_key(*m) == key)
 }
 
-/// 保存した連動。無ければ連動しない（Tauri 版の「未設定なら同名の構成」は、GPUI 版では引き継がない）。
+/// 保存した連動。無ければ連動しない。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Routing {
     pub strategy: Strategy,
@@ -122,7 +122,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keys_round_trip_and_match_the_tauri_names() {
+    fn keys_round_trip_and_match_the_saved_names() {
         for strategy in Strategy::ALL {
             assert_eq!(Strategy::from_key(strategy.key()), Some(strategy));
         }

@@ -1,5 +1,5 @@
 //! OBS の変更確認（`obs_setup`）の説明文。ホストは `UiText`（コードと値）で返すので、`obsTyped.<コード>` の文言へ値を差し込む。
-//! Tauri 版の `obsUiText.ts` と同じく、分からないコード・値の欠けた文言は訳さず、ホストの原文（日本語）を「原文の詳細」として出す。
+//! く、分からないコード・値の欠けた文言は訳さず、ホストの原文（日本語）を「原文の詳細」として出す。
 
 use std::collections::BTreeMap;
 
@@ -84,7 +84,7 @@ fn on_off(lang: Lang, value: bool) -> String {
     .unwrap_or_default()
 }
 
-/// 小数は 3 桁までにして、末尾の 0 は付けない（Tauri 版の `numeric` と同じ）。
+/// 小数は 3 桁までにして、末尾の 0 は付けない。
 fn number(n: &serde_json::Number) -> String {
     let value = n.as_f64().unwrap_or_default();
     let rounded = (value * 1000.0).round() / 1000.0 + 0.0;
