@@ -72,7 +72,6 @@ impl MainView {
                 "input-gain",
                 core(lang, keys::MIC_VOLUME),
                 &self.input_gain,
-                Command::SetInputGain,
                 lang,
                 cx,
             ))
@@ -116,10 +115,7 @@ impl MainView {
                                         this.toggle_mute();
                                     }
                                     if volume_zero {
-                                        this.output_gain.update(cx, |state, cx| {
-                                            state.set_value(100.0, window, cx)
-                                        });
-                                        this.engine.send(Command::SetOutputGain(1.0));
+                                        reset_to_100(&this.output_gain, window, cx);
                                     }
                                     cx.notify();
                                 }))
@@ -191,7 +187,6 @@ impl MainView {
                 "output-gain",
                 core(lang, keys::OUTPUT_VOLUME),
                 &self.output_gain,
-                Command::SetOutputGain,
                 lang,
                 cx,
             ))
@@ -363,13 +358,20 @@ fn meter_bar(id: &'static str, reading: &Meter, lang: Lang) -> impl IntoElement 
         })
 }
 
+/// 音量を 100% に戻す。`SliderEvent::Change` を出すので、エンジンへは動かしたときと同じ購読から送られる。
+fn reset_to_100(state: &Entity<SliderState>, window: &mut Window, cx: &mut App) {
+    state.update(cx, |state, cx| {
+        state.set_value(100.0, window, cx);
+        cx.emit(SliderEvent::Change(state.value()));
+    });
+}
+
 /// 音量のスライダー。上の行に名前と今の値（%）、100% でないときは 100% に戻すボタン。下の行にスライダーを幅いっぱいに置く。
-/// 戻すときはスライダーの値を替えて、変わった知らせ（`SliderEvent`）と同じ命令をエンジンへ送る。
+/// スライダーのダブルクリックでも 100% に戻す（Tauri 版と同じ）。
 fn slider_row(
     id: &'static str,
     label: &'static str,
     state: &Entity<SliderState>,
-    gain: fn(f32) -> Command,
     lang: Lang,
     cx: &mut Context<MainView>,
 ) -> impl IntoElement {
@@ -385,6 +387,8 @@ fn slider_row(
                 .flex()
                 .items_center()
                 .gap_1()
+                // 戻すボタン（xsmall = 20px）が出ても消えても行の高さを変えない。
+                .h_5()
                 .text_xs()
                 .child(
                     div()
@@ -406,11 +410,7 @@ fn slider_row(
                                 keys::RESET_NAMED,
                                 &[("name", &label)],
                             ))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                reset.update(cx, |state, cx| state.set_value(100.0, window, cx));
-                                this.engine.send(gain(1.0));
-                                cx.notify();
-                            })),
+                            .on_click(move |_, window, cx| reset_to_100(&reset, window, cx)),
                     )
                 })
                 .child(
@@ -420,5 +420,16 @@ fn slider_row(
                         .child(format!("{percent}%")),
                 ),
         )
-        .child(Slider::new(state).horizontal().accessibility_label(label))
+        .child(
+            div()
+                .on_mouse_up(MouseButton::Left, {
+                    let state = state.clone();
+                    move |event, window, cx| {
+                        if event.click_count == 2 {
+                            reset_to_100(&state, window, cx);
+                        }
+                    }
+                })
+                .child(Slider::new(state).horizontal().accessibility_label(label)),
+        )
 }
