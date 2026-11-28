@@ -616,6 +616,7 @@ impl MixPanel {
                                 .items_center()
                                 .gap_2()
                                 .child(action(
+                                    "mix-apply-reason",
                                     Button::new("mix-apply")
                                         .label(core(lang, keys::MIX_APPLY))
                                         .primary()

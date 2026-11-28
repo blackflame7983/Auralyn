@@ -369,8 +369,33 @@ pub fn segment<T: Copy + PartialEq + 'static>(
         }))
 }
 
+/// 押すと音を戻す・原因を開く、注意の札（出力のミュート・VST のミュート）。キーでも押せる。
+pub fn alert_pill(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .role(Role::Button)
+        .focusable()
+        .tab_stop(true)
+        .cursor_pointer()
+        .focus_visible(|style| style.border_color(color::primary()))
+        .hover(|style| style.bg(color::warning().opacity(0.2)))
+        .flex_none()
+        .px_1p5()
+        .py_0p5()
+        .rounded_full()
+        .border_1()
+        .border_color(color::warning().opacity(0.5))
+        .bg(color::warning().opacity(0.1))
+        .text_xs()
+        .font_weight(FontWeight::BOLD)
+        .text_color(color::warning())
+        .child(text.into())
+}
+
 /// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に1行で出し、収まらなければ省いて全文をツールチップに出す（下の行を押し下げない）。
+/// `id` は理由の欄の ID（同じ画面に同じ理由が2つ出ても重ならないように）。
 pub fn action<R: Into<SharedString>>(
+    id: impl Into<ElementId>,
     button: impl IntoElement,
     reason: Option<R>,
 ) -> impl IntoElement {
@@ -383,7 +408,7 @@ pub fn action<R: Into<SharedString>>(
             let reason: SharedString = reason.into();
             this.child(
                 div()
-                    .id(ElementId::Name(reason.clone()))
+                    .id(id)
                     .flex_1()
                     .min_w_0()
                     .text_sm()

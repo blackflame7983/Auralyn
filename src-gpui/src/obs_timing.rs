@@ -372,6 +372,7 @@ impl TimingPanel {
             .when_some(blocked, |this, key| this.child(note(core(lang, key))))
             .when_some(role, |this, role| this.child(div().text_sm().child(role)))
             .child(action(
+                "obs-timing-targets-reason",
                 {
                     let on = on.clone();
                     Button::new("obs-timing-targets")
@@ -400,6 +401,7 @@ impl TimingPanel {
                 this.child(div().text_sm().child(line))
             })
             .child(action(
+                "obs-timing-preview-reason",
                 {
                     let on = on.clone();
                     Button::new("obs-timing-preview")

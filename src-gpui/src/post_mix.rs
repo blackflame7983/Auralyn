@@ -84,6 +84,16 @@ impl PostMixPanel {
         self.post.as_ref().map(|post| post.seen.clone())
     }
 
+    /// 配信音に掛けていて、音を消している VST がある。
+    pub fn silenced(&self) -> bool {
+        self.post.as_ref().is_some_and(|post| post.enabled) && self.rack.iter().any(Slot::silenced)
+    }
+
+    /// 畳んでいたカードを開く（帯の「VST ミュート中」から来たとき）。
+    pub fn unfold(&self) {
+        self.fold.set(true);
+    }
+
     /// 変える操作の結果。
     pub fn done(&mut self, result: Result<(), String>) {
         self.failed = result.err();

@@ -255,10 +255,12 @@ pub fn subnav(
 
 /// 中央の先頭の帯。状態の札、歌・雑談や操作ロックの札、入出力の機器名（音が流れているときだけ渡す）、開始・停止のボタン。
 /// ボタンは今の状態で決まる（未設定・停止中なら開始、実行中なら停止）。
+/// `on_open_muted` は音を消している VST があるときだけ渡す（押すとその VST を開く）。
 pub fn band(
     phase: Phase,
     badges: Vec<SharedString>,
     route: Option<SharedString>,
+    on_open_muted: Option<impl Fn(&mut Window, &mut App) + 'static>,
     lang: Lang,
     on_press: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
@@ -276,6 +278,16 @@ pub fn band(
         .border_color(color::border())
         .child(status_chip(phase, lang))
         .children(badges.into_iter().map(badge))
+        .when_some(on_open_muted, |this, on_open| {
+            let text = core(lang, keys::VST_MUTED_BAND);
+            let hint = core(lang, keys::VST_MUTED_OPEN);
+            this.child(
+                crate::part::alert_pill("band-vst-muted", text)
+                    .aria_label(format!("{text} · {hint}"))
+                    .tooltip(move |window, cx| Tooltip::new(hint).build(window, cx))
+                    .on_click(move |_, window, cx| on_open(window, cx)),
+            )
+        })
         .child(
             div()
                 .id("band-route")

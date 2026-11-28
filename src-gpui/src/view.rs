@@ -56,7 +56,7 @@ use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdi
 use auralyn_ui_model::peak::Limit;
 use auralyn_ui_model::recovery::{Choice, Exit};
 use auralyn_ui_model::scene_routing::Action as SceneAction;
-use auralyn_ui_model::session::{Event as SessionEvent, Phase};
+use auralyn_ui_model::session::{compare_blocker, Event as SessionEvent, Phase};
 use auralyn_ui_model::shortcuts;
 use auralyn_ui_model::sound::{Change, Knob};
 
@@ -682,6 +682,7 @@ impl MainView {
                 self.setup.set_devices(&devices, window, cx);
                 self.live.set_devices(&devices, self.lang, window, cx);
                 self.connect.remembered = remembered;
+                self.connect.running = saved.clone();
                 self.music = saved.as_ref().is_some_and(|s| s.purpose == Purpose::Music);
                 self.from_app = saved.as_ref().is_some_and(|s| s.app.is_some());
                 self.connect
@@ -911,33 +912,19 @@ impl MainView {
         self.engine.send(command);
     }
 
-    /// 接続の画面で選んだ機器・周波数・バッファ。
-    fn chosen_start(&self, cx: &App) -> Option<StartWith> {
-        let (input, purpose, output) = self.connect.start_choice(cx)?;
-        let (sample_rate, buffer_size) = self.connect.values(cx);
-        Some(StartWith {
-            input,
-            purpose,
-            output,
-            sample_rate,
-            buffer_size,
-            routing: self.connect.routing(cx),
-        })
-    }
-
     /// 接続の画面で選んだ入力・出力先で開始する。
     fn start_chosen(&mut self, cx: &App) {
-        if let Some(start) = self.chosen_start(cx) {
+        if let Some(start) = self.connect.start_with(cx) {
             self.start_with(start);
         }
     }
 
     /// 動いている接続を、接続の画面で選び直した機器で始め直す。押せるのは動いているときだけ。
     fn restart_chosen(&mut self, cx: &App) {
-        if self.phase != Phase::Running {
+        if self.phase != Phase::Running || self.refuse_locked() {
             return;
         }
-        let Some(start) = self.chosen_start(cx) else {
+        let Some(start) = self.connect.start_with(cx) else {
             return;
         };
         self.message = None;
@@ -948,13 +935,22 @@ impl MainView {
 
     /// 動いている ASIO の入力のペアを替えて始め直す。押せるのは動いているときだけ。
     fn use_input_pair(&mut self, pair: [usize; 2]) {
-        if self.phase != Phase::Running {
+        if self.phase != Phase::Running || self.refuse_locked() {
             return;
         }
         self.message = None;
         self.restarting = true;
         self.advance(SessionEvent::RestartRequested);
         self.engine.send(Command::UseInputPair(pair));
+    }
+
+    /// 操作ロック中なら、始め直しを断ったことを上の帯に出す（本番中に音を途切れさせない）。
+    fn refuse_locked(&mut self) -> bool {
+        let locked = self.modes.armed();
+        if locked {
+            self.message = Some(core(self.lang, keys::MODES_LOCKED).to_owned());
+        }
+        locked
     }
 
     /// 選んだ入力・出力先で開始する。押せるのは止まっているときだけ。
@@ -988,19 +984,21 @@ impl MainView {
         self.engine.send(Command::SetMute(!self.muted));
     }
 
-    /// グローバルショートカットの操作（動き）。比較は音声が動いているときだけ切り替える。
+    /// グローバルショートカットの操作（動き）。比較は音声が動いているときだけ切り替え、ロック中は戻すことだけできる。
     fn shortcut(&mut self, action: shortcuts::Action, window: &mut Window, cx: &mut App) {
         use shortcuts::Action as A;
         match action {
             A::MuteToggle => self.toggle_mute(),
             A::MuteOn | A::MuteOff => self.engine.send(Command::SetMute(action == A::MuteOn)),
             A::BypassToggle | A::BypassOn | A::BypassOff => {
-                if self.phase == Phase::Running {
-                    self.engine.send(Command::SetBypass(match action {
-                        A::BypassOn => true,
-                        A::BypassOff => false,
-                        _ => !self.bypassed,
-                    }));
+                let bypass = match action {
+                    A::BypassOn => true,
+                    A::BypassOff => false,
+                    _ => !self.bypassed,
+                };
+                let running = self.phase == Phase::Running;
+                if running && compare_blocker(bypass, running, self.modes.armed()).is_none() {
+                    self.engine.send(Command::SetBypass(bypass));
                 }
             }
             A::GainUp | A::GainDown => {
@@ -1136,15 +1134,40 @@ impl Render for MainView {
             ),
             _ => None,
         };
-        let band = shell::band(self.phase, self.modes.badges(lang), route, lang, {
+        // 声の並びを先に開く（ミックス後の VST はホームにある）。
+        let muted_page = if self.vst.silenced() {
+            Some(Page::Vst)
+        } else {
+            (self.mix.active() && self.post.silenced()).then_some(Page::Home)
+        };
+        let on_open_muted = muted_page.map(|page| {
             let entity = entity.clone();
-            move |_, cx| {
+            move |_: &mut Window, cx: &mut App| {
                 entity.update(cx, |this, cx| {
-                    this.press_band();
+                    this.open(page);
+                    if page == Page::Home {
+                        this.post.unfold();
+                    }
                     cx.notify();
                 })
             }
         });
+        let band = shell::band(
+            self.phase,
+            self.modes.badges(lang),
+            route,
+            on_open_muted,
+            lang,
+            {
+                let entity = entity.clone();
+                move |_, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.press_band();
+                        cx.notify();
+                    })
+                }
+            },
+        );
         let send: OnCommand = {
             let entity = entity.clone();
             Rc::new(move |command, cx| {
@@ -1508,6 +1531,7 @@ impl Render for MainView {
                                 Page::Connect => this.child(crate::part::columns(
                                     self.connect.render(
                                         self.phase,
+                                        self.modes.armed(),
                                         lang,
                                         self.asio_pair
                                             .filter(|_| self.channel_scan)

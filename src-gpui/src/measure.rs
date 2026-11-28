@@ -129,6 +129,7 @@ impl MeasurePanel {
                         }),
                 )
                 .child(crate::part::action(
+                    "measure-use-reason",
                     button("measure-use", keys::MEASURE_USE, approve),
                     (!quiet).then(|| core(lang, keys::REASON_CONFIRM)),
                 ))

@@ -350,6 +350,77 @@ pub fn shared_output<'a>(outputs: &[&'a Device], input: &Device) -> Option<&'a D
         .find(|output| output.name == input.name)
 }
 
+/// 選んだ機器での開始。周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct StartWith {
+    /// マイク・仮想ケーブルか、アプリの音声。
+    pub input: Input,
+    pub purpose: Purpose,
+    pub output: Device,
+    pub sample_rate: Option<u32>,
+    pub buffer_size: Option<u32>,
+    /// チャンネルの割り当て。ASIO 以外は `SYSTEM_ROUTING`。
+    pub routing: Routing,
+}
+
+/// 保存した機器（id があれば id、無ければ名前）と同じ機器か。
+fn is_saved_device(id: Option<&str>, name: Option<&str>, device: &Device) -> bool {
+    match (id, device.id.as_deref()) {
+        (Some(saved), Some(id)) => saved == id,
+        _ => name == Some(device.name.as_str()),
+    }
+}
+
+/// 選んだ開始が、保存した接続（最後に始めた＝動いている接続）と同じか。
+/// アプリの候補 id は一覧を読み直すと変わるので、アプリはキーと出力先で比べる。
+/// 保存に無い値（ASIO の割り当てが無い、など）は違うものとして扱い、始め直しを止めない。
+pub fn same_as_saved(start: &StartWith, saved: &Saved) -> bool {
+    let input = match &start.input {
+        Input::Device(input) => {
+            saved.app.is_none()
+                && is_saved_device(saved.input_id.as_deref(), saved.input.as_deref(), input)
+        }
+        Input::App { source, .. } => saved
+            .app
+            .as_ref()
+            .is_some_and(|app| app.key == source.key && app.route == source.route),
+    };
+    let routing = if shares_device(&saved.host) {
+        saved.routing == Some(start.routing)
+    } else {
+        true
+    };
+    input
+        && routing
+        && start.output.host == saved.host
+        && start.purpose == saved.purpose
+        && is_saved_device(
+            saved.output_id.as_deref(),
+            saved.output.as_deref(),
+            &start.output,
+        )
+        && start.sample_rate == saved.sample_rate
+        && start.buffer_size == saved.buffer_size
+}
+
+/// 動いている接続を始め直せない理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestartBlocker {
+    Unchanged,
+    Locked,
+}
+
+/// 始め直せない最初の理由。変えていなければ、ロックより先にそれを伝える。
+pub fn restart_blocker(unchanged: bool, locked: bool) -> Option<RestartBlocker> {
+    if unchanged {
+        Some(RestartBlocker::Unchanged)
+    } else if locked {
+        Some(RestartBlocker::Locked)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -612,5 +683,112 @@ mod tests {
             initial_routing(Some(&unrouted), &interface).output,
             Output::Legacy
         );
+    }
+
+    #[test]
+    fn restart_needs_a_change_and_no_lock() {
+        assert_eq!(restart_blocker(true, true), Some(RestartBlocker::Unchanged));
+        assert_eq!(restart_blocker(false, true), Some(RestartBlocker::Locked));
+        assert_eq!(restart_blocker(false, false), None);
+    }
+
+    fn running() -> (StartWith, Saved) {
+        let start = StartWith {
+            input: Input::Device(device("WASAPI", "Mic A", true, false)),
+            purpose: Purpose::Voice,
+            output: device("WASAPI", "Speaker", false, true),
+            sample_rate: Some(48_000),
+            buffer_size: None,
+            routing: SYSTEM_ROUTING,
+        };
+        let saved = Saved {
+            host: "WASAPI".into(),
+            input: Some("Mic A".into()),
+            input_id: Some("WASAPI:Mic A".into()),
+            output: Some("Speaker".into()),
+            output_id: Some("WASAPI:Speaker".into()),
+            sample_rate: Some(48_000),
+            ..Saved::default()
+        };
+        (start, saved)
+    }
+
+    #[test]
+    fn unchanged_only_when_every_choice_matches_the_saved_connection() {
+        let (start, saved) = running();
+        assert!(same_as_saved(&start, &saved));
+        // 使い道だけ変えた。
+        let music = StartWith {
+            purpose: Purpose::Music,
+            ..start.clone()
+        };
+        assert!(!same_as_saved(&music, &saved));
+        // 保存した出力が無く、既定の出力に落ちて選ばれた（利用者がそこへ替えたいなら押せる）。
+        let fallback = StartWith {
+            output: device("WASAPI", "Cable", false, false),
+            ..start.clone()
+        };
+        assert!(!same_as_saved(&fallback, &saved));
+        // 保存した周波数が候補に無く「自動」になった。
+        let auto = StartWith {
+            sample_rate: None,
+            ..start.clone()
+        };
+        assert!(!same_as_saved(&auto, &saved));
+    }
+
+    #[test]
+    fn apps_compare_by_key_not_candidate_id() {
+        let (start, saved) = running();
+        let source = AppSource {
+            key: "game.exe".into(),
+            name: "Game".into(),
+            route: "Speaker".into(),
+        };
+        let app = |candidate_id: &str| StartWith {
+            input: Input::App {
+                candidate_id: candidate_id.into(),
+                source: source.clone(),
+            },
+            ..start.clone()
+        };
+        let saved = Saved {
+            app: Some(source.clone()),
+            ..saved
+        };
+        assert!(same_as_saved(&app("1"), &saved));
+        assert!(same_as_saved(&app("2"), &saved));
+        // アプリからマイクへ替えた。
+        assert!(!same_as_saved(&start, &saved));
+    }
+
+    #[test]
+    fn asio_without_saved_routing_counts_as_changed() {
+        let interface = device("ASIO", "Interface", true, false);
+        let start = StartWith {
+            input: Input::Device(interface.clone()),
+            purpose: Purpose::Voice,
+            output: Device {
+                is_input: false,
+                ..interface
+            },
+            sample_rate: None,
+            buffer_size: None,
+            routing: Routing::default(),
+        };
+        let saved = Saved {
+            host: "ASIO".into(),
+            input: Some("Interface".into()),
+            input_id: Some("ASIO:Interface".into()),
+            output: Some("Interface".into()),
+            output_id: Some("ASIO:Interface".into()),
+            ..Saved::default()
+        };
+        assert!(!same_as_saved(&start, &saved));
+        let routed = Saved {
+            routing: Some(Routing::default()),
+            ..saved
+        };
+        assert!(same_as_saved(&start, &routed));
     }
 }

@@ -43,6 +43,7 @@ mod mix;
 mod modes;
 mod post_mix;
 mod preparation;
+pub use auralyn_ui_model::connect::StartWith;
 pub use preparation::Observation;
 mod profile;
 mod slots;
@@ -394,6 +395,11 @@ pub struct Slot {
 }
 
 impl Slot {
+    /// 音を消している（読めていて、通していて、ミュートしている）。
+    pub fn silenced(&self) -> bool {
+        rack::silences(self.loaded, self.enabled, self.muted)
+    }
+
     fn request(&self) -> RestorePluginRequest {
         RestorePluginRequest {
             path: self.path.clone(),
@@ -1131,19 +1137,6 @@ fn names(config: &ActiveAudioConfig) -> (Option<String>, Option<String>) {
         app_name(config).or(config.input.clone()),
         config.output.clone(),
     )
-}
-
-/// 選んだ機器での開始。周波数とバッファは `None` なら自動（エンジンが機器に合わせて決める）。
-#[derive(Debug, Clone)]
-pub struct StartWith {
-    /// マイク・仮想ケーブルか、アプリの音声。
-    pub input: Input,
-    pub purpose: Purpose,
-    pub output: Device,
-    pub sample_rate: Option<u32>,
-    pub buffer_size: Option<u32>,
-    /// チャンネルの割り当て。ASIO 以外は `connect::SYSTEM_ROUTING`。
-    pub routing: Routing,
 }
 
 fn host_purpose(purpose: Purpose) -> input::Purpose {

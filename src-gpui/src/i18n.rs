@@ -727,13 +727,16 @@ pub mod keys {
     pub const REASON_TIMING_TRACK: &str = "gpuiShell.reasonTimingTrack";
     pub const REASON_TIMING_NOTE: &str = "gpuiShell.reasonTimingNote";
     pub const REASON_TIMING_TARGET: &str = "gpuiShell.reasonTimingTarget";
+    pub const REASON_LOCKED: &str = "gpuiShell.reasonLocked";
+    pub const VST_MUTED_BAND: &str = "gpuiShell.vstMutedBand";
+    pub const VST_MUTED_OPEN: &str = "gpuiShell.vstMutedOpen";
     pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     pub const CONNECT_ADVANCED: &str = "gpuiShell.connectAdvanced";
     pub const OBS_CHANGES_CARD: &str = "gpuiShell.obsChangesCard";
     pub const FLOW_COMFORT: &str = "home.levelOk";
     #[cfg(test)]
-    pub const ALL: [&str; 720] = [
+    pub const ALL: [&str; 723] = [
         REASON_CONFIRM,
         REASON_MIX_DEVICE,
         REASON_MIX_CHANNELS,
@@ -750,6 +753,9 @@ pub mod keys {
         REASON_TIMING_TRACK,
         REASON_TIMING_NOTE,
         REASON_TIMING_TARGET,
+        REASON_LOCKED,
+        VST_MUTED_BAND,
+        VST_MUTED_OPEN,
         MODES_FIRST,
         OPEN_CONNECT,
         CONNECT_ADVANCED,
