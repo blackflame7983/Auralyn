@@ -3747,5 +3747,21 @@
   "gpuiShell.removeShort": "Remove",
   "gpuiShell.resetShort": "Reset",
   "gpuiShell.mixRouteShort": "Send the player to another output and mute that output in Windows (not the app itself).",
-  "gpuiShell.listenShort": "Choose an output that streams and calls do not capture."
+  "gpuiShell.listenShort": "Choose an output that streams and calls do not capture.",
+  "gpuiShell.reasonConfirm": "Tick the confirmation to continue",
+  "gpuiShell.reasonPickSource": "Choose a source to apply",
+  "gpuiShell.reasonUnchanged": "No changes yet",
+  "gpuiShell.reasonStartAudio": "Start audio to use this",
+  "gpuiShell.reasonListenPick": "Choose where to listen and tick the confirmation to play",
+  "gpuiShell.reasonSetupPick": "Choose a microphone and an output to start",
+  "gpuiShell.reasonObsHost": "Enter a host name to connect",
+  "gpuiShell.reasonObsPort": "The port is a number from 1 to 65535",
+  "gpuiShell.reasonTimingDirection": "Choose which one was early to continue",
+  "gpuiShell.reasonTimingDifference": "Enter a difference from 1 to 20950 ms to continue",
+  "gpuiShell.reasonTimingFps": "Recording fps is from 1 to 240",
+  "gpuiShell.reasonTimingTrack": "The recording track is from 1 to 6",
+  "gpuiShell.reasonTimingNote": "Enter a note (up to 500 characters) to continue",
+  "gpuiShell.reasonTimingTarget": "Choose a target to review",
+  "gpuiShell.modesFirst": "Shape your sound in Shape voice first, then save it below to switch.",
+  "gpuiShell.openConnect": "Open Connection"
 }

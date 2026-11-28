@@ -271,6 +271,11 @@ impl ObsPanel {
         let use_saved = matches && self.use_saved.get();
         let password = self.password.read(cx).value();
         let request = obs::request(&host, &port_text, &password, use_saved, saved);
+        let connect_reason = match () {
+            _ if !editable || state == State::Connected || request.is_some() => None,
+            _ if host.trim().is_empty() => Some(keys::REASON_OBS_HOST),
+            _ => Some(keys::REASON_OBS_PORT),
+        };
         let status = match state {
             State::Checking => core(lang, keys::OBS_CHECKING).to_string(),
             State::Connecting => core(lang, keys::OBS_CONNECTING).to_string(),
@@ -388,6 +393,9 @@ impl ObsPanel {
                                     .disabled(!editable)
                                     .on_click(move |_, _, cx| on(Order::Forget, cx)),
                             )
+                        })
+                        .when_some(connect_reason, |this, key| {
+                            this.child(note(core(lang, key)))
                         }),
                 )
                 .when(state == State::Connected, |this| {

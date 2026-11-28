@@ -45,6 +45,17 @@ pub enum Blocked {
     AudioLate,
 }
 
+/// まだ足りない入力（上から順に埋めてもらう）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Missing {
+    Direction,
+    Difference,
+    Fps,
+    Track,
+    Note,
+    Checked,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Form {
     pub comparison: Comparison,
@@ -93,21 +104,43 @@ impl Form {
         })
     }
 
+    /// 最初に足りない入力。そろっているか、提案できない（`blocked`）ときは `None`。
+    pub fn missing(&self) -> Option<Missing> {
+        if self.blocked().is_some() {
+            return None;
+        }
+        let delay = self.difference.trim().parse::<i64>().ok();
+        if self.direction.is_none() {
+            Some(Missing::Direction)
+        } else if !delay.is_some_and(|delay| (1..=MAX_DELAY_MS).contains(&delay)) {
+            Some(Missing::Difference)
+        } else if optional(&self.fps, |fps: f64| {
+            fps.is_finite() && (1.0..=240.0).contains(&fps)
+        })
+        .is_none()
+        {
+            Some(Missing::Fps)
+        } else if optional(&self.track, |track: u8| (1..=6).contains(&track)).is_none() {
+            Some(Missing::Track)
+        } else if self.note.trim().is_empty() || self.note.chars().count() > MAX_NOTE_CHARS {
+            Some(Missing::Note)
+        } else if !self.checked {
+            Some(Missing::Checked)
+        } else {
+            None
+        }
+    }
+
     /// 入力がそろっていて範囲内なら、送れる形にする。
     pub fn measurement(&self) -> Option<Measurement> {
         self.role()?;
+        if self.missing().is_some() {
+            return None;
+        }
         let note = self.note.trim();
-        if !self.checked || note.is_empty() || self.note.chars().count() > MAX_NOTE_CHARS {
-            return None;
-        }
         let delay_ms: i64 = self.difference.trim().parse().ok()?;
-        if !(1..=MAX_DELAY_MS).contains(&delay_ms) {
-            return None;
-        }
-        let fps = optional(&self.fps, |fps: f64| {
-            fps.is_finite() && (1.0..=240.0).contains(&fps)
-        })?;
-        let track = optional(&self.track, |track: u8| (1..=6).contains(&track))?;
+        let fps = self.fps.trim().parse().ok();
+        let track = self.track.trim().parse().ok();
         let late = self.direction == Some(Direction::Late);
         Some(Measurement {
             delay_ms,
@@ -159,6 +192,35 @@ mod tests {
             (m.delay_ms, m.measured_ms, m.fps, m.track),
             (120, -120, None, None)
         );
+    }
+
+    #[test]
+    fn missing_names_the_first_empty_input_in_order() {
+        let mut form = Form::default();
+        assert_eq!(form.missing(), Some(Missing::Direction));
+        form.direction = Some(Direction::Early);
+        assert_eq!(form.missing(), Some(Missing::Difference));
+        form.difference = "0".into();
+        assert_eq!(form.missing(), Some(Missing::Difference));
+        form.difference = "120".into();
+        form.fps = "500".into();
+        assert_eq!(form.missing(), Some(Missing::Fps));
+        form.fps = "60".into();
+        form.track = "9".into();
+        assert_eq!(form.missing(), Some(Missing::Track));
+        form.track.clear();
+        assert_eq!(form.missing(), Some(Missing::Note));
+        form.note = "手拍子".into();
+        assert_eq!(form.missing(), Some(Missing::Checked));
+        assert_eq!(form.measurement(), None);
+        form.checked = true;
+        assert_eq!(form.missing(), None);
+        assert_eq!(
+            form.measurement().map(|m| (m.fps, m.track)),
+            Some((Some(60.0), None))
+        );
+        form.mixed = true;
+        assert_eq!((form.missing(), form.measurement()), (None, None));
     }
 
     #[test]

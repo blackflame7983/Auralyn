@@ -210,13 +210,22 @@ impl MainView {
                         this.engine.send(Command::SetBypass(!bypassed));
                     })),
             )
-            .when(bypassed, |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(color::muted())
-                        .child(core(lang, keys::COMPARE_ON)),
-                )
+            .map(|this| {
+                let text = if bypassed {
+                    Some(keys::COMPARE_ON)
+                } else if self.phase != Phase::Running {
+                    Some(keys::REASON_START_AUDIO)
+                } else {
+                    None
+                };
+                this.when_some(text, |this, key| {
+                    this.child(
+                        div()
+                            .text_xs()
+                            .text_color(color::muted())
+                            .child(core(lang, key)),
+                    )
+                })
             })
     }
 

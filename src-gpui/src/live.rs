@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::{note, with_hint, Card, OnCommand};
+use crate::part::{action, note, with_hint, Card, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -235,6 +235,12 @@ impl LivePanel {
             .as_ref()
             .zip(saved)
             .is_some_and(|(draft, saved)| live_output::can_save(draft, saved, confirmed));
+        let save_reason = match draft.as_ref().zip(saved) {
+            _ if saving || can_save => None,
+            Some((draft, saved)) if draft == saved => Some(keys::REASON_UNCHANGED),
+            Some(_) => Some(keys::REASON_CONFIRM),
+            None => None,
+        };
         let verdict = self.live.as_ref().map(Live::verdict);
         let refresh = {
             let send = send.clone();
@@ -333,7 +339,7 @@ impl LivePanel {
                                 }
                             }),
                     )
-                    .child(
+                    .child(action(
                         Button::new("live-save")
                             .label(core(lang, keys::LIVE_SAVE))
                             .primary()
@@ -346,7 +352,8 @@ impl LivePanel {
                                     window.refresh();
                                 }
                             }),
-                    )
+                        save_reason.map(|key| core(lang, key)),
+                    ))
                 }),
         )
         .icon(IconName::Radio)

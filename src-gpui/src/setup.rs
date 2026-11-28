@@ -158,7 +158,10 @@ impl SetupPanel {
                                 .outline()
                                 .on_click(move |_, window, cx| on_connect(window, cx)),
                         ),
-                ),
+                )
+                .when(!ready, |this| {
+                    this.child(note(core(lang, keys::REASON_SETUP_PICK)))
+                }),
         )
         .icon(IconName::Sparkles)
         .hint(lang, core(lang, keys::SETUP_LEAD))

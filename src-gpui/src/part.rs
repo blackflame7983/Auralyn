@@ -60,17 +60,40 @@ impl Fold {
 pub const REVEAL: Duration = Duration::from_millis(220);
 pub const REVEAL_RISE: f32 = 8.;
 
+/// 画面の中で切り替わる部分（入力の種類・開いた欄）の動き。画面を開くときより短く、小さくする。
+const SHIFT: Duration = Duration::from_millis(160);
+const SHIFT_RISE: f32 = 4.;
+
 /// 中身を下からふわっと出す。`id` が変わるたびに動き直す。
 pub fn reveal<E: IntoElement + Styled + 'static>(id: ElementId, element: E) -> impl IntoElement {
+    rise(id, element, REVEAL, REVEAL_RISE)
+}
+
+/// 画面の中で切り替わった部分を、控えめにふわっと出す。`id` に今の選択を含めると、選び直すたびに動く。
+pub fn shift<E: IntoElement + Styled + 'static>(id: ElementId, element: E) -> impl IntoElement {
+    rise(id, element, SHIFT, SHIFT_RISE)
+}
+
+fn rise<E: IntoElement + Styled + 'static>(
+    id: ElementId,
+    element: E,
+    duration: Duration,
+    distance: f32,
+) -> impl IntoElement {
     element.with_animation(
         id,
-        Animation::new(REVEAL).with_easing(ease_out_quint()),
-        |this, delta| {
+        Animation::new(duration).with_easing(ease_out_quint()),
+        move |this, delta| {
             this.opacity(delta)
                 .relative()
-                .top(px(REVEAL_RISE * (1. - delta)))
+                .top(px(distance * (1. - delta)))
         },
     )
+}
+
+/// 開いた回数で動き直す id。
+pub fn opened_id(name: &'static str, opened: u64) -> ElementId {
+    ElementId::NamedInteger(SharedString::new_static(name), opened)
 }
 
 impl Card {
@@ -326,4 +349,16 @@ pub fn choices<T: Copy + PartialEq + 'static>(
                 .toggled(current == Some(value))
                 .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
+}
+
+/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に出し、出ても消えても下の行を動かさない。
+pub fn action(button: impl IntoElement, reason: Option<&'static str>) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap_x_3()
+        .gap_y_1()
+        .child(button)
+        .when_some(reason, |this, reason| this.child(note(reason)))
 }

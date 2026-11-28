@@ -26,6 +26,8 @@ struct Folders {
     error: Option<&'static str>,
     /// 利用者が開閉を選んだ。`None` の間は、追加したフォルダーが使えなかったときだけ開く。
     open: Option<bool>,
+    /// 開いた回数。開くたびに中身をふわっと出す。
+    opened: u64,
 }
 
 /// 一覧の状態と保存先。クリックと Enter の両方から使うので、まとめて渡す。
@@ -130,7 +132,9 @@ impl ScanFolders {
         let toggle = {
             let state = self.store.folders.clone();
             move |_: &ClickEvent, window: &mut Window, _: &mut App| {
-                state.borrow_mut().open = Some(!open);
+                let mut state = state.borrow_mut();
+                state.opened += u64::from(!open);
+                state.open = Some(!open);
                 window.refresh();
             }
         };
@@ -152,7 +156,10 @@ impl ScanFolders {
                 .small()
                 .on_click(toggle),
             div().when(open, |this| {
-                this.child(self.render_body(lang, busy, &folders, send))
+                this.child(crate::part::reveal(
+                    crate::part::opened_id("scan-folders-body", folders.opened),
+                    div().child(self.render_body(lang, busy, &folders, send)),
+                ))
             }),
         )
         .icon(IconName::FolderSearch)

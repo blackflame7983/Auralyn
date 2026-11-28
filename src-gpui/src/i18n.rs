@@ -711,8 +711,40 @@ pub mod keys {
     pub const MIX_DIAG_TRANSPORT: &str = "mixingDiagnostics.transport";
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
+    pub const REASON_CONFIRM: &str = "gpuiShell.reasonConfirm";
+    pub const REASON_PICK_SOURCE: &str = "gpuiShell.reasonPickSource";
+    pub const REASON_UNCHANGED: &str = "gpuiShell.reasonUnchanged";
+    pub const REASON_START_AUDIO: &str = "gpuiShell.reasonStartAudio";
+    pub const REASON_LISTEN_PICK: &str = "gpuiShell.reasonListenPick";
+    pub const REASON_SETUP_PICK: &str = "gpuiShell.reasonSetupPick";
+    pub const REASON_OBS_HOST: &str = "gpuiShell.reasonObsHost";
+    pub const REASON_OBS_PORT: &str = "gpuiShell.reasonObsPort";
+    pub const REASON_TIMING_DIRECTION: &str = "gpuiShell.reasonTimingDirection";
+    pub const REASON_TIMING_DIFFERENCE: &str = "gpuiShell.reasonTimingDifference";
+    pub const REASON_TIMING_FPS: &str = "gpuiShell.reasonTimingFps";
+    pub const REASON_TIMING_TRACK: &str = "gpuiShell.reasonTimingTrack";
+    pub const REASON_TIMING_NOTE: &str = "gpuiShell.reasonTimingNote";
+    pub const REASON_TIMING_TARGET: &str = "gpuiShell.reasonTimingTarget";
+    pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
+    pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     #[cfg(test)]
-    pub const ALL: [&str; 699] = [
+    pub const ALL: [&str; 715] = [
+        REASON_CONFIRM,
+        REASON_PICK_SOURCE,
+        REASON_UNCHANGED,
+        REASON_START_AUDIO,
+        REASON_LISTEN_PICK,
+        REASON_SETUP_PICK,
+        REASON_OBS_HOST,
+        REASON_OBS_PORT,
+        REASON_TIMING_DIRECTION,
+        REASON_TIMING_DIFFERENCE,
+        REASON_TIMING_FPS,
+        REASON_TIMING_TRACK,
+        REASON_TIMING_NOTE,
+        REASON_TIMING_TARGET,
+        MODES_FIRST,
+        OPEN_CONNECT,
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
