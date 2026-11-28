@@ -611,7 +611,14 @@ impl ConnectPage {
                             )
                         } else {
                             field(
-                                core(lang, keys::MICROPHONE),
+                                core(
+                                    lang,
+                                    if self.chosen_purpose(cx) == Purpose::Music {
+                                        keys::SOURCE_HEADING
+                                    } else {
+                                        keys::MICROPHONE
+                                    },
+                                ),
                                 Select::new(&self.input).placeholder(empty),
                             )
                         })

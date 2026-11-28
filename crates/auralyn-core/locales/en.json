@@ -846,5 +846,12 @@
   "gpuiShell.obsChangesCard": "OBS settings",
   "gpuiShell.reasonLocked": "Unavailable while locked",
   "gpuiShell.vstMutedBand": "VST muted",
-  "gpuiShell.vstMutedOpen": "Open the muted VST"
+  "gpuiShell.vstMutedOpen": "Open the muted VST",
+  "gpuiShell.flowMusic": "Sound flow",
+  "gpuiShell.sourceHeading": "Playback source",
+  "gpuiShell.sourceVolume": "Source volume",
+  "gpuiShell.setupGoalMusic": "Listen to music",
+  "gpuiShell.setupPlayback": "Choose the playback input",
+  "gpuiShell.setupMusicHint": "Capture the player through a virtual cable or similar, and hear it through your VSTs.",
+  "gpuiShell.vstOpenPage": "Open VST page"
 }

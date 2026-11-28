@@ -846,5 +846,12 @@
   "gpuiShell.obsChangesCard": "OBSの設定",
   "gpuiShell.reasonLocked": "ロック中は使えません",
   "gpuiShell.vstMutedBand": "VST ミュート中",
-  "gpuiShell.vstMutedOpen": "ミュートした VST を開く"
+  "gpuiShell.vstMutedOpen": "ミュートした VST を開く",
+  "gpuiShell.flowMusic": "音の流れ",
+  "gpuiShell.sourceHeading": "再生元",
+  "gpuiShell.sourceVolume": "再生元の音量",
+  "gpuiShell.setupGoalMusic": "音楽を聴く",
+  "gpuiShell.setupPlayback": "再生の音の入力を選んでください",
+  "gpuiShell.setupMusicHint": "プレーヤーの音を仮想ケーブルなどで取り込み、VSTを通して聴きます。",
+  "gpuiShell.vstOpenPage": "VSTの画面へ"
 }

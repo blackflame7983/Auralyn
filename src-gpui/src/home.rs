@@ -4,6 +4,7 @@ use auralyn_ui_model::flow::{Flow, Mode, Sample};
 use auralyn_ui_model::meter;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::color;
@@ -22,13 +23,21 @@ const BAND_ALPHA: f32 = 0.12;
 const WAVE_SPAN: f32 = 0.92;
 
 /// 音の流れの帯。停止中と、まだ値が届いていないあいだは区画ごと出さない。
-pub fn sound_flow(flow: &Flow, lang: Lang) -> Option<impl IntoElement> {
+/// `music` のときは声と呼ばず、話し声の大きさの帯も敷かない（音楽の大きさの目安ではない）。
+pub fn sound_flow(flow: &Flow, music: bool, lang: Lang) -> Option<impl IntoElement> {
     let mode = flow.mode();
     if mode == Mode::Hidden {
         return None;
     }
     let samples: Vec<Sample> = flow.samples().collect();
-    let title = core(lang, keys::FLOW_VOICE);
+    let title = core(
+        lang,
+        if music {
+            keys::FLOW_MUSIC
+        } else {
+            keys::FLOW_VOICE
+        },
+    );
     Some(
         div()
             .id("sound-flow")
@@ -60,16 +69,18 @@ pub fn sound_flow(flow: &Flow, lang: Lang) -> Option<impl IntoElement> {
                     .child(
                         canvas(
                             |_, _, _| {},
-                            move |bounds, _, window, _| paint_wave(bounds, &samples, mode, window),
+                            move |bounds, _, window, _| {
+                                paint_wave(bounds, &samples, mode, !music, window)
+                            },
                         )
                         .size_full(),
                     ),
             )
-            .child(legend(lang)),
+            .child(legend(lang, !music)),
     )
 }
 
-fn legend(lang: Lang) -> impl IntoElement {
+fn legend(lang: Lang, band: bool) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -104,25 +115,33 @@ fn legend(lang: Lang) -> impl IntoElement {
                 )
                 .child(core(lang, keys::FLOW_AFTER)),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_1p5()
-                .child(
-                    div()
-                        .w(px(16.))
-                        .h(px(8.))
-                        .bg(color::primary().opacity(BAND_ALPHA)),
-                )
-                .child(core(lang, keys::FLOW_COMFORT)),
-        )
+        .when(band, |this| {
+            this.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(
+                        div()
+                            .w(px(16.))
+                            .h(px(8.))
+                            .bg(color::primary().opacity(BAND_ALPHA)),
+                    )
+                    .child(core(lang, keys::FLOW_COMFORT)),
+            )
+        })
 }
 
 /// 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる。
 /// 塗りは横の緑→青緑（GPUI の `linear_gradient` は2色まで。docs/gpui/decisions.md）。
 /// サンプルが1つのときは、加工後を長方形、加工前を横の直線2本にする。
-fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &mut Window) {
+fn paint_wave(
+    bounds: Bounds<Pixels>,
+    samples: &[Sample],
+    mode: Mode,
+    band: bool,
+    window: &mut Window,
+) {
     let Some(first) = samples.first() else {
         return;
     };
@@ -154,17 +173,19 @@ fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &m
     let after = |s: &Sample| s.after;
     let before = |s: &Sample| s.before;
     window.with_content_mask(Some(ContentMask { bounds }), |window| {
-        let (low, high) = meter::comfortable_band();
-        for sign in [-1., 1.] {
-            let edges = [low, high].map(|at| center + mid * (sign * at * WAVE_SPAN));
-            let top = edges[0].min(edges[1]);
-            window.paint_quad(fill(
-                Bounds::new(
-                    point(bounds.origin.x, top),
-                    size(width, (edges[0] - edges[1]).abs()),
-                ),
-                color::primary().opacity(BAND_ALPHA),
-            ));
+        if band {
+            let (low, high) = meter::comfortable_band();
+            for sign in [-1., 1.] {
+                let edges = [low, high].map(|at| center + mid * (sign * at * WAVE_SPAN));
+                let top = edges[0].min(edges[1]);
+                window.paint_quad(fill(
+                    Bounds::new(
+                        point(bounds.origin.x, top),
+                        size(width, (edges[0] - edges[1]).abs()),
+                    ),
+                    color::primary().opacity(BAND_ALPHA),
+                ));
+            }
         }
         let mut fill = PathBuilder::fill();
         let mut outline = points(after, -1.);

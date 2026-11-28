@@ -18,7 +18,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Slot};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{note, OnCommand};
+use crate::part::{card, note, OnCommand};
 
 /// 追加の候補の1行。検索は [`Candidate::matches`] に任せる。
 #[derive(Clone)]
@@ -219,6 +219,37 @@ impl VstPage {
 
     pub fn scan_failed(&mut self) {
         self.scanning = Some(false);
+    }
+
+    /// ホーム（音楽を聴くとき）の短い一覧：通す・外すと編集だけ。足す・並べ替えるのは VST の画面で。
+    pub fn render_quick(
+        &self,
+        lang: Lang,
+        send: OnCommand,
+        on_open: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> impl IntoElement {
+        card(
+            core(lang, keys::RAIL_VST),
+            Button::new("vst-quick-open")
+                .label(core(lang, keys::VST_OPEN_PAGE))
+                .ghost()
+                .small()
+                .on_click(move |_, window, cx| on_open(window, cx)),
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .when(self.rack.is_empty(), |this| {
+                    this.child(note(core(lang, keys::VST_EMPTY)))
+                })
+                .children(
+                    self.rack
+                        .iter()
+                        .enumerate()
+                        .map(|(index, slot)| quick_row(index, slot, lang, send.clone())),
+                ),
+        )
+        .icon(IconName::SlidersHorizontal)
     }
 
     pub fn render(&self, lang: Lang, cx: &App, send: OnCommand) -> impl IntoElement {
@@ -526,6 +557,80 @@ fn volume(
             .on_click(move |_, _, cx| send(command.clone(), cx)),
         )
 }
+
+/// ホームの短い一覧の1行：番号・名前（状態の札）・編集・通す/外す。行の高さは札や操作の有無で変えない。
+fn quick_row(index: usize, slot: &Slot, lang: Lang, send: OnCommand) -> impl IntoElement {
+    let name = slot.name.as_str();
+    let named = |key| core_with(lang, key, &[("arg0", &name)]);
+    let id = slot.id.clone();
+    let enabled = slot.enabled;
+    let edit = (VOICE.edit)(slot.id.clone());
+    let edit_send = send.clone();
+    let tag = if !slot.loaded {
+        Some(keys::VST_NOT_LOADED)
+    } else if slot.silenced() {
+        Some(keys::VST_MUTED)
+    } else {
+        None
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .h(px(QUICK_ROW_HEIGHT))
+        .child(
+            div()
+                .flex_none()
+                .w(px(20.))
+                .text_sm()
+                .text_color(color::muted())
+                .child(format!("{}", index + 1)),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_sm()
+                .when(!slot.loaded || !enabled, |this| {
+                    this.text_color(color::muted())
+                })
+                .child(name.to_owned()),
+        )
+        .when_some(tag, |this, tag| {
+            this.child(
+                div()
+                    .flex_none()
+                    .text_xs()
+                    .text_color(if slot.loaded {
+                        color::warning()
+                    } else {
+                        color::muted()
+                    })
+                    .child(core(lang, tag)),
+            )
+        })
+        .when(slot.loaded, |this| {
+            this.child(
+                Button::new(SharedString::from(format!("quick-edit-{}", slot.id)))
+                    .icon(IconName::SquarePen)
+                    .ghost()
+                    .small()
+                    .tooltip(named(keys::VST_EDIT_NAMED))
+                    .accessibility_label(named(keys::VST_EDIT_NAMED))
+                    .on_click(move |_, _, cx| edit_send(edit.clone(), cx)),
+            )
+            .child(
+                Switch::new(SharedString::from(format!("quick-enable-{}", slot.id)))
+                    .checked(enabled)
+                    .accessibility_label(named(keys::VST_ENABLE))
+                    .on_click(move |checked, _, cx| send((VOICE.enable)(id.clone(), *checked), cx)),
+            )
+        })
+}
+
+/// ホームの短い一覧の行の高さ（小さいボタンに合わせ、札や操作の有無で変えない）。
+const QUICK_ROW_HEIGHT: f32 = 28.;
 
 /// 削除の前に確かめる。VST の中の設定は戻せないので、押し間違いで消さない。
 fn confirm_remove(

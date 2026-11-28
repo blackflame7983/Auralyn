@@ -1,7 +1,7 @@
 //! はじめての設定：使い道を選び、マイクと出力先を勧める。
 //! ここでは WASAPI だけを扱う（ASIO は接続の画面で選ぶ）。
 
-use crate::connect::Device;
+use crate::connect::{Device, Purpose};
 
 /// 使い道。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,10 +12,21 @@ pub enum Goal {
     Chat,
     /// 自分で聴く（ヘッドホン・スピーカーへ出す）。
     Listen,
+    /// 再生の音（仮想ケーブル・ステレオミキサー）に VST を通して、ヘッドホン・スピーカーで聴く。
+    Music,
 }
 
 impl Goal {
-    pub const ALL: [Goal; 3] = [Goal::Obs, Goal::Chat, Goal::Listen];
+    pub const ALL: [Goal; 4] = [Goal::Obs, Goal::Chat, Goal::Listen, Goal::Music];
+
+    /// 入力の使い道。
+    pub fn purpose(self) -> Purpose {
+        if self == Goal::Music {
+            Purpose::Music
+        } else {
+            Purpose::Voice
+        }
+    }
 
     /// 仮想ケーブルへ送る使い道か。
     pub fn sends_to_cable(self) -> bool {
@@ -58,17 +69,28 @@ fn wasapi(devices: &[Device], is_input: bool) -> Vec<&Device> {
         .collect()
 }
 
-/// マイクに選べる入力：WASAPI の入力で、再生の音の取り込みでないもの。
-pub fn microphones(devices: &[Device]) -> Vec<&Device> {
+/// 入力に選べる機器：音楽を聴くなら再生の音の取り込み、ほかはマイク。
+pub fn inputs(goal: Goal, devices: &[Device]) -> Vec<&Device> {
     wasapi(devices, true)
         .into_iter()
-        .filter(|d| !is_playback_input(&d.name))
+        .filter(|d| is_playback_input(&d.name) == (goal == Goal::Music))
         .collect()
 }
 
-/// 出力先に選べる出力（WASAPI）。
-pub fn outputs(devices: &[Device]) -> Vec<&Device> {
+/// 勧める入力の位置。音楽は候補が1つだけならそれ、ほかは `recommend_microphone`。
+pub fn recommend_input(goal: Goal, inputs: &[&Device]) -> Option<usize> {
+    match goal {
+        Goal::Music => (inputs.len() == 1).then_some(0),
+        _ => recommend_microphone(inputs),
+    }
+}
+
+/// 出力先に選べる出力（WASAPI）。音楽を聴くときは仮想ケーブルを外す（再生の音の取り込み口へ戻すと、音が回り続ける）。
+pub fn outputs(goal: Goal, devices: &[Device]) -> Vec<&Device> {
     wasapi(devices, false)
+        .into_iter()
+        .filter(|d| goal != Goal::Music || !is_virtual_output(&d.name))
+        .collect()
 }
 
 /// 勧めるマイクの位置：名前からマイクと分かるものが1つだけならそれ、無ければ候補が1つだけならそれ。迷うなら勧めない。
@@ -142,11 +164,49 @@ mod tests {
             device("ステレオ ミキサー", true, false),
             device("Speakers", false, true),
         ];
-        let names: Vec<_> = microphones(&devices)
-            .iter()
-            .map(|d| d.name.as_str())
-            .collect();
-        assert_eq!(names, ["マイク (USB Audio)"]);
+        let names = |goal| -> Vec<_> {
+            inputs(goal, &devices)
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect()
+        };
+        assert_eq!(names(Goal::Obs), ["マイク (USB Audio)"]);
+        // 音楽を聴くときは、逆に再生の音の取り込みだけを出す。
+        assert_eq!(
+            names(Goal::Music),
+            [
+                "CABLE Output (VB-Audio Virtual Cable)",
+                "Stereo Mix (Realtek)",
+                "ステレオ ミキサー"
+            ]
+        );
+        assert_eq!(Goal::Music.purpose(), Purpose::Music);
+        assert_eq!(Goal::Listen.purpose(), Purpose::Voice);
+    }
+
+    #[test]
+    fn music_recommends_the_only_playback_input_and_the_default_speaker() {
+        let cable = device("CABLE Output", true, false);
+        let mix = device("Stereo Mix", true, false);
+        assert_eq!(recommend_input(Goal::Music, &[&cable]), Some(0));
+        assert_eq!(recommend_input(Goal::Music, &[&cable, &mix]), None);
+        let speaker = device("Speakers", false, true);
+        let cable_in = device("CABLE Input", false, false);
+        assert_eq!(
+            recommend_output(Goal::Music, &[&cable_in, &speaker]),
+            Some(1)
+        );
+        let devices = [speaker.clone(), cable_in.clone()];
+        let names = |goal| -> Vec<_> {
+            outputs(goal, &devices)
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect()
+        };
+        assert_eq!(names(Goal::Music), ["Speakers"]);
+        assert_eq!(names(Goal::Obs), ["Speakers", "CABLE Input"]);
+        // 音楽を聴くときは声の送り先（接続の確認）を使わない。
+        assert_eq!(crate::preparation::Usage::of_goal(Goal::Music), None);
     }
 
     #[test]

@@ -730,13 +730,20 @@ pub mod keys {
     pub const REASON_LOCKED: &str = "gpuiShell.reasonLocked";
     pub const VST_MUTED_BAND: &str = "gpuiShell.vstMutedBand";
     pub const VST_MUTED_OPEN: &str = "gpuiShell.vstMutedOpen";
+    pub const FLOW_MUSIC: &str = "gpuiShell.flowMusic";
+    pub const SOURCE_HEADING: &str = "gpuiShell.sourceHeading";
+    pub const SOURCE_VOLUME: &str = "gpuiShell.sourceVolume";
+    pub const SETUP_GOAL_MUSIC: &str = "gpuiShell.setupGoalMusic";
+    pub const SETUP_PLAYBACK: &str = "gpuiShell.setupPlayback";
+    pub const SETUP_MUSIC_HINT: &str = "gpuiShell.setupMusicHint";
+    pub const VST_OPEN_PAGE: &str = "gpuiShell.vstOpenPage";
     pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     pub const CONNECT_ADVANCED: &str = "gpuiShell.connectAdvanced";
     pub const OBS_CHANGES_CARD: &str = "gpuiShell.obsChangesCard";
     pub const FLOW_COMFORT: &str = "home.levelOk";
     #[cfg(test)]
-    pub const ALL: [&str; 723] = [
+    pub const ALL: [&str; 730] = [
         REASON_CONFIRM,
         REASON_MIX_DEVICE,
         REASON_MIX_CHANNELS,
@@ -756,6 +763,13 @@ pub mod keys {
         REASON_LOCKED,
         VST_MUTED_BAND,
         VST_MUTED_OPEN,
+        FLOW_MUSIC,
+        SOURCE_HEADING,
+        SOURCE_VOLUME,
+        SETUP_GOAL_MUSIC,
+        SETUP_PLAYBACK,
+        SETUP_MUSIC_HINT,
+        VST_OPEN_PAGE,
         MODES_FIRST,
         OPEN_CONNECT,
         CONNECT_ADVANCED,
