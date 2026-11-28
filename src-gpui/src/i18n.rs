@@ -714,7 +714,6 @@ pub mod keys {
     pub const REASON_CONFIRM: &str = "gpuiShell.reasonConfirm";
     pub const REASON_MIX_DEVICE: &str = "gpuiShell.reasonMixDevice";
     pub const REASON_MIX_CHANNELS: &str = "gpuiShell.reasonMixChannels";
-    pub const REASON_MIX_ROUTE: &str = "gpuiShell.reasonMixRoute";
     pub const REASON_LISTEN_STALE: &str = "gpuiShell.reasonListenStale";
     pub const REASON_UNCHANGED: &str = "gpuiShell.reasonUnchanged";
     pub const REASON_START_AUDIO: &str = "gpuiShell.reasonStartAudio";
@@ -731,11 +730,10 @@ pub mod keys {
     pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     #[cfg(test)]
-    pub const ALL: [&str; 718] = [
+    pub const ALL: [&str; 717] = [
         REASON_CONFIRM,
         REASON_MIX_DEVICE,
         REASON_MIX_CHANNELS,
-        REASON_MIX_ROUTE,
         REASON_LISTEN_STALE,
         REASON_UNCHANGED,
         REASON_START_AUDIO,

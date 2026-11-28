@@ -3765,6 +3765,5 @@
   "gpuiShell.openConnect": "接続の画面へ",
   "gpuiShell.reasonMixDevice": "機器を選ぶと適用できます",
   "gpuiShell.reasonMixChannels": "入力チャンネルを選ぶと適用できます",
-  "gpuiShell.reasonMixRoute": "原音の出力先を選ぶと適用できます",
   "gpuiShell.reasonListenStale": "録り直すと再生できます"
 }

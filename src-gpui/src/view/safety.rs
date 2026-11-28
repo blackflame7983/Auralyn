@@ -222,6 +222,7 @@ impl MainView {
                 this.child(
                     div()
                         .min_h(px(COMPARE_NOTE_HEIGHT))
+                        .line_height(px(COMPARE_NOTE_HEIGHT))
                         .text_xs()
                         .text_color(color::muted())
                         .children(text.map(|key| core(lang, key))),

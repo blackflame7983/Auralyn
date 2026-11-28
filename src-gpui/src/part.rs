@@ -8,6 +8,7 @@ use std::time::Duration;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -346,7 +347,7 @@ pub fn choices<T: Copy + PartialEq + 'static>(
         }))
 }
 
-/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に2行まで出し、折り返して下の行を押し下げない。
+/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に1行で出し、収まらなければ省いて全文をツールチップに出す（下の行を押し下げない）。
 pub fn action<R: Into<SharedString>>(
     button: impl IntoElement,
     reason: Option<R>,
@@ -357,14 +358,20 @@ pub fn action<R: Into<SharedString>>(
         .gap_3()
         .child(div().flex_none().child(button))
         .when_some(reason, |this, reason| {
+            let reason: SharedString = reason.into();
             this.child(
                 div()
+                    .id(ElementId::Name(reason.clone()))
                     .flex_1()
                     .min_w_0()
                     .text_sm()
                     .text_color(color::muted())
-                    .line_clamp(2)
-                    .child(reason.into()),
+                    .truncate()
+                    .tooltip({
+                        let reason = reason.clone();
+                        move |window, cx| Tooltip::new(reason.clone()).build(window, cx)
+                    })
+                    .child(reason),
             )
         })
 }

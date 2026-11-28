@@ -3765,6 +3765,5 @@
   "gpuiShell.openConnect": "Go to Connection",
   "gpuiShell.reasonMixDevice": "Choose a device to apply",
   "gpuiShell.reasonMixChannels": "Choose input channels to apply",
-  "gpuiShell.reasonMixRoute": "Choose the original output to apply",
   "gpuiShell.reasonListenStale": "Record again to play"
 }

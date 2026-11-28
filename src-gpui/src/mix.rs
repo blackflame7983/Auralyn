@@ -457,11 +457,7 @@ impl MixPanel {
         } else if self.selected(cx).is_none() {
             Some(keys::REASON_MIX_DEVICE)
         } else if chosen.is_none() {
-            Some(if app_chosen {
-                keys::REASON_MIX_ROUTE
-            } else {
-                keys::REASON_MIX_CHANNELS
-            })
+            Some(keys::REASON_MIX_CHANNELS)
         } else if !confirmed {
             Some(keys::REASON_CONFIRM)
         } else {

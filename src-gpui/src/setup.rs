@@ -143,6 +143,7 @@ impl SetupPanel {
                 .child(action(
                     div()
                         .flex()
+                        .flex_wrap()
                         .gap_2()
                         .child(
                             Button::new("setup-start")
