@@ -387,6 +387,8 @@ fn slider_row(
                 .flex()
                 .items_center()
                 .gap_1()
+                // 戻すボタン（xsmall = 20px）が出ても消えても行の高さを変えない。
+                .h_5()
                 .text_xs()
                 .child(
                     div()

@@ -42,3 +42,4 @@ GPUI で画面を書くときに、`src-gpui/`（右の列の試作から始め�
 - **`gpui_kit::assets::Assets` には Lucide の一部しか入っていない（0.11.0）。** `IconName` には全部の名前があるが、既定の組（`default-icons.txt`）に無いアイコン（`House`・`Cable` など）は、`Assets` だけでは何も描かれない。`icon_assets!` で使うものだけを足し、`Assets` と合わせた `AssetSource` を渡す（`src-gpui/src/assets.rs`）。全部入りの `AllAssets` は実行ファイルが大きくなる。
 - **動きを減らす設定は、アプリが `cx.set_reduce_motion` で渡す。** gpui-pre 0.3.14 は OS の設定を読まない。渡せば `with_animation` は1回きりの動きを最後の状態で描き、`.loading()` の回る印も止まる。Windows は `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`（`desktop::reduce_motion`、起動時に1回）。
 - **タイトルバーの明暗は、GPUI が OS の明暗で塗る。** 窓を作るときと、Windows の明暗が変わったとき（`WM_SETTINGCHANGE` の `ImmersiveColorSet`、外観の知らせを呼んだ**あと**）に `DWMWA_USE_IMMERSIVE_DARK_MODE` を書く。テーマに合わせるには `MainView::new`・テーマの変更・`observe_window_appearance` の `on_next_frame` で書き直す（知らせの中で書いても上書きされる）。
+- **出し入れする部品で行の高さが変わる。** 条件で出すボタン（`xsmall` は 20px）は文字の行（`text_xs` は約 16px）より高く、出たときだけ行が伸びて下がずれる。行の高さを `h_5()` などで固定するか、同じ大きさの場所を常に取る（2026-11-28、右列の 100% 戻し）。
