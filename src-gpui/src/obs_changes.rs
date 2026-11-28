@@ -301,7 +301,12 @@ impl Changes {
                             .child({
                                 let on = on.clone();
                                 Button::new(SharedString::from(format!("obs-undo-{id}")))
-                                    .label(core_with(lang, keys::OBS_SETUP_UNDO, &[("id", &id)]))
+                                    .label(core(lang, keys::UNDO_SHORT))
+                                    .accessibility_label(core_with(
+                                        lang,
+                                        keys::OBS_SETUP_UNDO,
+                                        &[("id", &id)],
+                                    ))
                                     .outline()
                                     .disabled(blocked || !h.restorable)
                                     .on_click(move |_, _, cx| {
@@ -311,7 +316,12 @@ impl Changes {
                             .child({
                                 let on = on.clone();
                                 Button::new(SharedString::from(format!("obs-forget-{id}")))
-                                    .label(core_with(lang, keys::OBS_SETUP_FORGET, &[("id", &id)]))
+                                    .label(core(lang, keys::FORGET_SHORT))
+                                    .accessibility_label(core_with(
+                                        lang,
+                                        keys::OBS_SETUP_FORGET,
+                                        &[("id", &id)],
+                                    ))
                                     .outline()
                                     .disabled(self.busy())
                                     .on_click(move |_, window, cx| {

@@ -189,7 +189,8 @@ impl ScenePanel {
                             ))
                             .child(
                                 Button::new(SharedString::from(format!("scene-remove-{index}")))
-                                    .label(core_with(
+                                    .label(core(lang, keys::REMOVE_SHORT))
+                                    .accessibility_label(core_with(
                                         lang,
                                         keys::SCENE_REMOVE,
                                         &[("n", &(index + 1))],
@@ -204,6 +205,7 @@ impl ScenePanel {
                         let on = on.clone();
                         Button::new("scene-add")
                             .label(core(lang, keys::SCENE_ADD))
+                            .accessibility_label(core(lang, keys::SCENE_ADD_NAMED))
                             .outline()
                             .on_click(move |_, window, cx| on(Edit::Add, window, cx))
                     }))
@@ -212,6 +214,7 @@ impl ScenePanel {
                 div().child(
                     Button::new("scene-save")
                         .label(core(lang, keys::SCENE_SAVE))
+                        .accessibility_label(core(lang, keys::SCENE_SAVE_NAMED))
                         .outline()
                         .on_click(move |_, window, cx| on(Edit::Save, window, cx)),
                 ),

@@ -16,7 +16,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Listen};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, paragraphs, save_as, OnCommand};
+use crate::part::{card, note, paragraphs, save_as, with_hint, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -339,7 +339,12 @@ impl VoicePanel {
                     .font_weight(FontWeight::MEDIUM)
                     .child(core(lang, keys::LISTEN_TITLE)),
             )
-            .child(note(core(lang, keys::LISTEN_LEAD)))
+            .child(with_hint(
+                "listen-lead-hint",
+                lang,
+                core(lang, keys::LISTEN_LEAD),
+                note(core(lang, keys::LISTEN_SHORT)),
+            ))
             .child(
                 div()
                     .flex()
@@ -357,6 +362,7 @@ impl VoicePanel {
                         let send = send.clone();
                         Button::new("listen-devices")
                             .label(core(lang, keys::LISTEN_REFRESH))
+                            .accessibility_label(core(lang, keys::LISTEN_REFRESH_NAMED))
                             .outline()
                             .disabled(playing)
                             .on_click(move |_, _, cx| send(Command::Listen(Listen::Devices), cx))
@@ -423,6 +429,7 @@ impl VoicePanel {
                     let looped = self.looped.get();
                     Button::new("listen-play")
                         .label(core(lang, keys::LISTEN_PLAY))
+                        .accessibility_label(core(lang, keys::LISTEN_PLAY_NAMED))
                         .primary()
                         .disabled(play.is_none())
                         .on_click(move |_, _, cx| {
