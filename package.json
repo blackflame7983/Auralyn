@@ -5,7 +5,6 @@
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
-    "rebuild-engine": "node scripts/rebuild-engine.js",
     "release:check": "node scripts/check-release-readiness.cjs",
     "release:source": "node scripts/generate-source-archive.cjs",
     "release:upload": "node scripts/upload-release-to-public-repo.cjs",

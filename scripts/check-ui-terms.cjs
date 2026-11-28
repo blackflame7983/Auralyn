@@ -234,7 +234,7 @@ function checkUiTerms({ messagesJson, designSource, termsConfig }) {
   return errors;
 }
 
-const LOCALES_DIR = path.join(ROOT, 'src-tauri', 'crates', 'auralyn-core', 'locales');
+const LOCALES_DIR = path.join(ROOT, 'crates', 'auralyn-core', 'locales');
 
 function readMessageFiles() {
   return {

@@ -1,0 +1,616 @@
+//! 互換の試験の台本つき子プロセス。台本どおりに応答する実プロセスを、実際の読み取りスレッドとつなぐ。
+//!
+//! 試験の実行ファイル自身を子として起動する。`scripted_engine_entry`は、環境変数がなければ何もしない。
+use super::*;
+use crate::ipc::{EngineEvent, OutputMessage};
+use std::collections::BTreeMap;
+use std::ops::Deref;
+use std::sync::atomic::AtomicU64;
+
+const ENV: &str = "AURALYN_SCRIPTED_ENGINE";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Step {
+    /// そのまま1行を書く。
+    Line(String),
+    SleepMs(u64),
+    /// 試験側が`Observer::release`で同じ名前の門を開けるまで、次の手順に進まない。
+    WaitGate(String),
+    /// 標準出力を閉じて、子を終了する。
+    Exit,
+    /// 孫のプロセス（長く待つだけの試験の実行ファイル）を作り、そのプロセス番号を指定のファイルへ書く。
+    SpawnGrandchild(PathBuf),
+    /// 標準入力を読むのをやめて、止まる（親の書き込みが詰まる）。標準出力は開いたまま。
+    StallStdin,
+    /// 標準出力だけを閉じる。子は生きていて、標準入力を読み続ける。
+    CloseStdout,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub(crate) struct Script {
+    log: PathBuf,
+    /// キーは命令の種類（`Start`）。`Start#2`は2回目の`Start`だけに使う。台本にない命令には`Success`を返す。
+    steps: BTreeMap<String, Vec<Step>>,
+}
+
+pub(crate) fn raw_line(text: &str) -> Step {
+    Step::Line(text.to_owned())
+}
+
+pub(crate) fn response_line(response: &IpcResponse) -> Step {
+    Step::Line(format!(
+        "IPC:{}",
+        serde_json::to_string(&OutputMessage::Response(response.clone())).unwrap()
+    ))
+}
+
+pub(crate) fn event_line(event: &EngineEvent) -> Step {
+    Step::Line(format!(
+        "IPC:{}",
+        serde_json::to_string(&OutputMessage::Event(event.clone())).unwrap()
+    ))
+}
+
+pub(crate) fn error_line(message: &str) -> Step {
+    response_line(&IpcResponse::Error(message.to_owned()))
+}
+
+pub(crate) fn started_response(generation: u64) -> IpcResponse {
+    IpcResponse::Started {
+        sample_rate: 48000,
+        buffer_size: 512,
+        routing: None,
+        input_id: None,
+        output_id: None,
+        stream_generation: Some(generation),
+    }
+}
+
+pub(crate) fn started_event(generation: u64) -> EngineEvent {
+    EngineEvent::Started {
+        sample_rate: 48000,
+        buffer_size: 512,
+        stream_generation: Some(generation),
+    }
+}
+
+pub(crate) fn stopped_event(generation: u64) -> EngineEvent {
+    EngineEvent::Stopped {
+        stream_generation: Some(generation),
+        ended_stream_generation: Some(generation),
+    }
+}
+
+/// 成功する開始。`Started`の通知、続けて`Response::Started`。
+pub(crate) fn start_steps(generation: u64) -> Vec<Step> {
+    vec![
+        event_line(&started_event(generation)),
+        response_line(&started_response(generation)),
+    ]
+}
+
+/// 停止。動いていなくても、`Stopped`の通知、続けて`Success`。
+pub(crate) fn stop_steps(generation: u64) -> Vec<Step> {
+    vec![
+        event_line(&stopped_event(generation)),
+        response_line(&IpcResponse::Success),
+    ]
+}
+
+pub(crate) fn auto_gain_status(running: bool, failed: bool) -> Step {
+    response_line(&IpcResponse::AutoGain(
+        crate::audio_engine::auto_gain::Snapshot {
+            revision: 3,
+            gain: 1.0,
+            confirmed_gain: 1.0,
+            settled: true,
+            running,
+            stream_failed: failed,
+            id: 0,
+            phase: "idle".into(),
+            progress: 0.,
+            proposal: None,
+            playing: false,
+            error: None,
+            devices: Vec::new(),
+            history_id: None,
+            history_epoch: None,
+            history_reason: Some(crate::audio_engine::history::Reason::NotCreated),
+            undo_available: false,
+            redo_available: false,
+        },
+    ))
+}
+
+fn gate_path(log: &std::path::Path, name: &str) -> PathBuf {
+    log.with_file_name(format!("gate-{name}"))
+}
+
+/// 子の側。`scripted_engine_entry`から呼ぶ。標準入力が閉じたら終了する。
+fn run_scripted_child(script: Script) {
+    let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+    // 孫は待たない。この子が終わったあとは、Job が回収する。
+    let mut grandchildren: Vec<Child> = Vec::new();
+    for line in std::io::BufRead::lines(std::io::stdin().lock()).map_while(Result::ok) {
+        if let Ok(mut log) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&script.log)
+        {
+            let _ = writeln!(log, "{line}");
+        }
+        let name = serde_json::from_str::<serde_json::Value>(&line)
+            .ok()
+            .and_then(|value| value.get("type")?.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let count = counts.entry(name.clone()).or_default();
+        *count += 1;
+        let steps = script
+            .steps
+            .get(&format!("{name}#{count}"))
+            .or_else(|| script.steps.get(&name))
+            .cloned()
+            .unwrap_or_else(|| vec![response_line(&IpcResponse::Success)]);
+        for step in steps {
+            match step {
+                Step::Line(text) => {
+                    let mut out = std::io::stdout().lock();
+                    let _ = writeln!(out, "{text}");
+                    let _ = out.flush();
+                }
+                Step::SleepMs(ms) => std::thread::sleep(std::time::Duration::from_millis(ms)),
+                Step::WaitGate(name) => {
+                    let gate = gate_path(&script.log, &name);
+                    while !gate.exists() {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                }
+                Step::Exit => std::process::exit(0),
+                Step::StallStdin => loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                },
+                Step::CloseStdout => {
+                    use std::os::windows::io::AsRawHandle;
+                    let handle = std::io::stdout().as_raw_handle();
+                    // SAFETY: 標準出力のハンドルはこの子の持ち物で、以後は書かない。
+                    let _ = unsafe {
+                        windows::Win32::Foundation::CloseHandle(windows::Win32::Foundation::HANDLE(
+                            handle,
+                        ))
+                    };
+                }
+                Step::SpawnGrandchild(pid_file) => {
+                    grandchildren.push(spawn_idle_process());
+                    let pid = grandchildren.last().unwrap().id();
+                    std::fs::write(pid_file, pid.to_string()).unwrap();
+                }
+            }
+        }
+    }
+    std::process::exit(0);
+}
+
+#[test]
+fn scripted_engine_entry() {
+    if let Ok(text) = std::env::var(ENV) {
+        run_scripted_child(serde_json::from_str(&text).unwrap());
+    }
+}
+
+const GRANDCHILD_ENV: &str = "AURALYN_IDLE_GRANDCHILD";
+
+/// 長く待つだけの試験の実行ファイル自身を、別のプロセスとして起動する。
+pub(crate) fn spawn_idle_process() -> Child {
+    let name = format!(
+        "{}::idle_grandchild_entry",
+        module_path!().split_once("::").unwrap().1
+    );
+    Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &name, "--nocapture"])
+        .env(GRANDCHILD_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
+/// 孫の側。環境変数がなければ何もしない。Job が終わらせなければ、2分で自分で終わる。
+#[test]
+fn idle_grandchild_entry() {
+    if std::env::var_os(GRANDCHILD_ENV).is_some() {
+        std::thread::sleep(std::time::Duration::from_secs(120));
+    }
+}
+
+/// 作った直後から子を預かる。どこで失敗しても（panic を含む）、Drop で kill して終了を待つ。
+/// 停止の状態で作った子を、割り当て・再開・ハンドルの取得の前に、試験の失敗で残さない。
+pub(crate) struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    pub(crate) fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    pub(crate) fn id(&self) -> u32 {
+        self.0.as_ref().expect("預かっている").id()
+    }
+
+    pub(crate) fn child(&self) -> &Child {
+        self.0.as_ref().expect("預かっている")
+    }
+
+    /// 以後の終了の処理は、受け取った側が持つ。
+    pub(crate) fn release(mut self) -> Child {
+        self.0.take().expect("預かっている")
+    }
+}
+
+/// 終了の確認の上限。
+const GUARD_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 終了を要求し、`try_wait` を `interval` ごとに繰り返して `limit` まで待つ。要求の失敗・待ちの失敗・時間切れは
+/// `Err` にする。時間切れのときは、もう一度終了を要求してから戻る（ハンドルは呼び出し側が持ったまま）。
+fn end_process<T, S>(
+    target: &mut T,
+    mut kill: impl FnMut(&mut T) -> std::io::Result<()>,
+    mut try_wait: impl FnMut(&mut T) -> std::io::Result<Option<S>>,
+    limit: std::time::Duration,
+    interval: std::time::Duration,
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の要求に失敗: {error}"));
+    }
+    let start = std::time::Instant::now();
+    loop {
+        match try_wait(target) {
+            Ok(Some(_)) => {
+                return if problems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(problems.join(" / "))
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                problems.push(format!("終了の確認に失敗: {error}"));
+                break;
+            }
+        }
+        if start.elapsed() >= limit {
+            problems.push(format!("{limit:?} 待っても終わらない"));
+            break;
+        }
+        std::thread::sleep(interval);
+    }
+    if let Err(error) = kill(target) {
+        problems.push(format!("終了の再要求に失敗: {error}"));
+    }
+    Err(problems.join(" / "))
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let Some(child) = self.0.as_mut() else {
+            return;
+        };
+        let pid = child.id();
+        let result = end_process(
+            child,
+            |c| c.kill(),
+            |c| c.try_wait(),
+            GUARD_LIMIT,
+            std::time::Duration::from_millis(20),
+        );
+        if let Err(problem) = result {
+            let message = format!("試験の子（PID {pid}）を片付けられない: {problem}");
+            // 試験が失敗して巻き戻っている最中の二重の panic を避ける。
+            if std::thread::panicking() {
+                eprintln!("{message}");
+            } else {
+                panic!("{message}");
+            }
+        }
+    }
+}
+
+/// 試験が持つプロセスのハンドル。親が死んでも、このハンドルで子の生死を確かめて片付けられる。
+pub(crate) struct ProcessProbe {
+    handle: windows::Win32::Foundation::HANDLE,
+}
+
+// SAFETY: ハンドルは所有者だけが閉じ、操作は OS の API に委ねる。
+unsafe impl Send for ProcessProbe {}
+// SAFETY: 共有の操作は待機・終了・閉じるだけで、OS の API が直列化する。
+unsafe impl Sync for ProcessProbe {}
+
+impl ProcessProbe {
+    pub(crate) fn open(pid: u32) -> Option<Self> {
+        use windows::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+        };
+        // SAFETY: 取得したハンドルは `ProcessProbe` が所有し、`Drop` で一度だけ閉じる。
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE | PROCESS_TERMINATE,
+                false,
+                pid,
+            )
+        }
+        .ok()?;
+        Some(Self { handle })
+    }
+
+    /// 終了するまで最大 `millis` ミリ秒待つ。
+    pub(crate) fn wait_exit(&self, millis: u32) -> bool {
+        use windows::Win32::Foundation::WAIT_OBJECT_0;
+        use windows::Win32::System::Threading::WaitForSingleObject;
+        // SAFETY: `self.handle` は生存中の有効なハンドル。
+        unsafe { WaitForSingleObject(self.handle, millis) == WAIT_OBJECT_0 }
+    }
+
+    pub(crate) fn exited(&self) -> bool {
+        self.wait_exit(0)
+    }
+
+    pub(crate) fn terminate(&self) {
+        // SAFETY: `self.handle` は生存中の有効なハンドル。
+        let _ = unsafe { windows::Win32::System::Threading::TerminateProcess(self.handle, 1) };
+    }
+}
+
+impl Drop for ProcessProbe {
+    fn drop(&mut self) {
+        // SAFETY: このハンドルを所有するのは自分だけで、ここで一度だけ閉じる。
+        let _ = unsafe { windows::Win32::Foundation::CloseHandle(self.handle) };
+    }
+}
+
+static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+
+/// 試験側から見える記録。子へ送った行、`emit`の呼び出し、起動の回数。
+pub(crate) struct Observer {
+    pub(crate) recorder: Arc<emit::Recorder>,
+    pub(crate) dir: PathBuf,
+    log: PathBuf,
+    spawned: Arc<AtomicU64>,
+    probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>>,
+}
+
+impl Observer {
+    /// 起動した子のハンドル（起動した順）。
+    pub(crate) fn probe(&self, index: usize) -> Arc<ProcessProbe> {
+        self.probes.lock().unwrap()[index].clone()
+    }
+
+    /// 子へ送った行から、命令の種類を送った順に返す。
+    pub(crate) fn sent(&self) -> Vec<String> {
+        self.sent_json()
+            .iter()
+            .map(|value| value["type"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    /// sent_after_start と同じく先頭の起動の確認を除いた、命令の本体（添字で読む試験用）。
+    pub(crate) fn sent_json_after_start(&self) -> Vec<serde_json::Value> {
+        let mut sent = self.sent_json();
+        if sent
+            .first()
+            .is_some_and(|value| value["type"] == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
+    /// 先頭の起動の確認（外の停止が重なった子だけが受ける StartIdentityCapability、J-24）を除く。
+    /// 負荷のもとでだけ入るので、命令の列を比べる試験が使う。
+    pub(crate) fn sent_after_start(&self) -> Vec<String> {
+        let mut sent = self.sent();
+        if sent
+            .first()
+            .is_some_and(|name| name == "StartIdentityCapability")
+        {
+            sent.remove(0);
+        }
+        sent
+    }
+
+    pub(crate) fn sent_json(&self) -> Vec<serde_json::Value> {
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
+    }
+
+    pub(crate) fn spawn_count(&self) -> u64 {
+        self.spawned.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn last_config_path(&self) -> PathBuf {
+        self.dir.join("last_audio_config.json")
+    }
+}
+
+pub(crate) fn scripted_parts(
+    overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>,
+) -> (AudioHost, Observer) {
+    let dir = std::env::temp_dir().join(format!(
+        "auralyn-compat-{}-{}",
+        std::process::id(),
+        NEXT_DIR.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("engine-input.log");
+    let mut host = AudioHost::new(dir.clone());
+    let live_modes = IpcResponse::LiveModes(Box::new(crate::audio_engine::live_modes::Snapshot {
+        epoch: "scripted".into(),
+        running: false,
+        revision: "0".into(),
+        accepted_revision: "0".into(),
+        completed_revision: "0".into(),
+        target: None,
+        applied: None,
+        phase: "idle".into(),
+        armed: false,
+        natural_tail: false,
+        definitions: host.live_modes.definitions.clone(),
+        error: None,
+        transaction: None,
+    }));
+    // `StartIdentityCapability` は、外の停止が重なった子の起動の確認（J-24）が使う。実際の子と同じ応答を返す。
+    let mut steps: BTreeMap<String, Vec<Step>> = BTreeMap::from([
+        (
+            "ConfigureLiveModes".to_owned(),
+            vec![response_line(&live_modes)],
+        ),
+        (
+            "StartIdentityCapability".to_owned(),
+            vec![response_line(&IpcResponse::StartIdentityCapability {
+                version: 2,
+            })],
+        ),
+    ]);
+    steps.extend(
+        overrides
+            .into_iter()
+            .map(|(name, steps)| (name.to_owned(), steps)),
+    );
+    let script = Script {
+        log: log.clone(),
+        steps,
+    };
+    let recorder = Arc::new(emit::Recorder::default());
+    let spawned = Arc::new(AtomicU64::new(0));
+    host.emitter.set(recorder.emitter());
+    let probes: Arc<Mutex<Vec<Arc<ProcessProbe>>>> = Arc::default();
+    let (counter, seen) = (spawned.clone(), probes.clone());
+    host.test_engine_launcher = Some(Arc::new(move || {
+        // 製品と同じ生成のフラグ。Job への割り当てと再開は起動の手順が行う。
+        counter.fetch_add(1, Ordering::SeqCst);
+        let name = format!(
+            "{}::scripted_engine_entry",
+            module_path!().split_once("::").unwrap().1
+        );
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", &name, "--nocapture"])
+            .env(ENV, serde_json::to_string(&script).unwrap())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        engine_life::apply_creation_flags(&mut command);
+        let child = command.spawn()?;
+        if let Some(probe) = ProcessProbe::open(child.id()) {
+            seen.lock().unwrap().push(Arc::new(probe));
+        }
+        Ok(child)
+    }));
+    (
+        host,
+        Observer {
+            recorder,
+            dir,
+            log,
+            spawned,
+            probes,
+        },
+    )
+}
+
+/// `AudioControl`の下に置いた台本つきの`AudioHost`。コマンド経由の試験に使う。
+pub(crate) struct Fixture {
+    pub(crate) control: control::AudioControl,
+    observer: Observer,
+}
+
+impl Fixture {
+    pub(crate) fn new(overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>) -> Self {
+        let (host, observer) = scripted_parts(overrides);
+        Self {
+            control: control::AudioControl::new(host),
+            observer,
+        }
+    }
+}
+
+impl Deref for Fixture {
+    type Target = Observer;
+    fn deref(&self) -> &Observer {
+        &self.observer
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        if let Ok(mut host) = self.control.lock(control::Entry::command("fixture_drop")) {
+            host.kill_engine();
+        }
+        let _ = std::fs::remove_dir_all(&self.observer.dir);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::end_process;
+    use std::io::{Error, Result};
+    use std::time::Duration;
+
+    const SHORT: Duration = Duration::from_millis(60);
+    const STEP: Duration = Duration::from_millis(5);
+
+    #[test]
+    fn an_exit_that_is_confirmed_is_ok() {
+        assert!(end_process(&mut (), |_| Ok(()), |_| Ok(Some(())), SHORT, STEP).is_ok());
+    }
+
+    #[test]
+    fn a_failed_request_is_reported_even_when_the_exit_is_confirmed() {
+        let result = end_process(
+            &mut (),
+            |_| Err(Error::other("denied")),
+            |_| Ok(Some(())),
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の要求に失敗"));
+    }
+
+    #[test]
+    fn a_failed_wait_is_reported_and_the_request_is_repeated() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Err(Error::other("wait failed")) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("終了の確認に失敗"));
+        assert_eq!(kills, 2);
+    }
+
+    #[test]
+    fn a_timeout_is_reported_and_the_request_is_repeated_before_letting_go() {
+        let mut kills = 0;
+        let result = end_process(
+            &mut (),
+            |_| {
+                kills += 1;
+                Ok(())
+            },
+            |_| -> Result<Option<()>> { Ok(None) },
+            SHORT,
+            STEP,
+        );
+        assert!(result.unwrap_err().contains("待っても終わらない"));
+        assert_eq!(kills, 2);
+    }
+}

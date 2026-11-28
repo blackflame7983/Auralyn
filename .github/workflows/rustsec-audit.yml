@@ -21,8 +21,5 @@ jobs:
           persist-credentials: false
       - name: Install cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Audit Cargo.lock (src-tauri)
-        run: cargo audit --file src-tauri/Cargo.lock
-      - name: Audit Cargo.lock (src-gpui)
-        if: ${{ !cancelled() }}
-        run: cargo audit --file src-gpui/Cargo.lock
+      - name: Audit Cargo.lock
+        run: cargo audit --file Cargo.lock

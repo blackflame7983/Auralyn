@@ -1,4 +1,4 @@
-//! 画面の文言。正本は `src-tauri/crates/auralyn-core/locales/{ja,en}.json`。[`core`] でそこから取る。
+//! 画面の文言。正本は `crates/auralyn-core/locales/{ja,en}.json`。[`core`] でそこから取る。
 
 use auralyn_core::i18n::{catalog, Locale};
 

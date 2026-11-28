@@ -27,7 +27,7 @@ export function policyErrors(actual, expected) {
 export function policyFiles() {
     return [
         'package.json', 'ruff.toml', 'requirements-dev.txt',
-        'src-tauri/Cargo.toml', 'src-tauri/crates/auralyn-core/Cargo.toml', 'src-tauri/crates/auralyn-ui-model/Cargo.toml', 'src-gpui/Cargo.toml', 'src-tauri/clippy.toml', 'config/gardening-python-baseline.json',
+        'Cargo.toml', 'crates/vst-host/Cargo.toml', 'crates/auralyn-core/Cargo.toml', 'crates/auralyn-ui-model/Cargo.toml', 'src-gpui/Cargo.toml', 'crates/vst-host/clippy.toml', 'config/gardening-python-baseline.json',
         'config/gardening-rust-baseline.json',
         '.github/workflows/frontend-quality.yml', '.github/workflows/rustsec-audit.yml', '.github/CODEOWNERS',
         'scripts/verify.mjs', ...fs.readdirSync(path.join(root, 'scripts/gardening')).filter(file => /\.(?:mjs|py)$/.test(file)).map(file => `scripts/gardening/${file}`),

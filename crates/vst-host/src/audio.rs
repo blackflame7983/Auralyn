@@ -1,0 +1,3019 @@
+pub(crate) mod conditions;
+pub(crate) mod control;
+pub(crate) mod emit;
+pub use control::{AudioControl, ControlError, Entry, EntryKind, JobClass};
+mod deadline;
+mod engine_exit;
+pub(crate) mod engine_life;
+pub(crate) mod frontend_bootstrap;
+mod link;
+mod live_modes;
+pub(crate) mod mixing;
+mod mode_vst;
+pub(crate) mod post_mix;
+mod post_mix_start;
+pub(crate) mod process_inputs;
+mod reader;
+mod replies;
+mod session_rack;
+mod writer;
+use anyhow::{anyhow, Result};
+use link::{CloseCause, LinkCell};
+use replies::ReplyOutcome;
+use serde::{Deserialize, Serialize};
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::Instant;
+
+/// 子の終了を待ち手へ伝える文言（EOF の結果）。
+const ENGINE_EXITED: &str = "Engine Crashed/Exited";
+/// 書き込みが期限（5秒）内に終わらず、接続を切り離したときの文言（C2）。
+const WRITE_TIMED_OUT: &str = "音声エンジンが応答しないため、終了しました。もう一度お試しください";
+/// 応答が期限内に来ず、接続を切り離したときの文言（C3）。
+const REPLY_TIMED_OUT: &str = WRITE_TIMED_OUT;
+
+fn writer_gone() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Stdin not available")
+}
+
+fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
+    crate::json_file::write_json(path, config).map_err(anyhow::Error::msg)
+}
+
+// Use shared IPC types
+use crate::ipc::DeviceScanStatus;
+use crate::ipc::{Command as IpcCommand, EngineEvent, OutputMessage, Response as IpcResponse};
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeviceScanTicket {
+    generation: u64,
+    token: u64,
+    started: std::time::Instant,
+    terminal: Arc<OnceLock<std::result::Result<AudioDeviceList, String>>>,
+}
+
+pub(crate) enum DeviceScanStart {
+    Cached(AudioDeviceList),
+    Pending(DeviceScanTicket),
+}
+
+// Re-export for frontend
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioDevice {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate_ranges: Option<Vec<(u32, u32)>>,
+    pub name: String,
+    pub host: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub is_input: bool,
+    pub channels: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buffer_size_range: Option<(u32, u32)>,
+    pub index: usize,
+    pub is_default: bool,
+}
+impl AudioDevice {
+    fn from_info(index: usize, device: crate::ipc::DeviceInfo) -> Self {
+        Self {
+            sample_rate_ranges: device.sample_rate_ranges,
+            name: device.name,
+            host: device.host,
+            id: device.id,
+            is_input: device.is_input,
+            channels: device.channels,
+            buffer_size_range: device.buffer_size_range,
+            index,
+            is_default: device.is_default,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioDeviceList {
+    pub inputs: Vec<AudioDevice>,
+    pub outputs: Vec<AudioDevice>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioConfig {
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub channels: u32,
+    pub routing: Option<crate::ipc::ChannelRouting>,
+    /// この開始で動き始めた音声の番号（`"{engine}:{child}"`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_generation: Option<String>,
+}
+
+/// 親のエンジンの番号と、子の開始の試行の番号を組み合わせる。子を作り直しても重ならない。
+/// どちらかが未採番なら番号なしにする。
+pub(crate) fn stream_generation_label(
+    engine_generation: u64,
+    child: Option<u64>,
+) -> Option<String> {
+    child
+        .filter(|_| engine_generation > 0)
+        .map(|child| format!("{engine_generation}:{child}"))
+}
+
+#[derive(Serialize, Clone)]
+struct LevelPayload {
+    #[serde(flatten)]
+    levels: crate::ipc::MeterLevels,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
+}
+
+/// `stream_generation` は最後の開始の試行、`ended_stream_generation` はこの停止で実際に終わった音声。
+#[derive(Serialize, Clone)]
+struct StoppedPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ended_stream_generation: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct StartedPayload {
+    sample_rate: u32,
+    buffer_size: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_generation: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct ActiveAudioConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_source: Option<crate::input_source::Config>,
+    pub host: String,
+    pub input: Option<String>,
+    pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_id: Option<String>,
+    pub buffer_size: Option<u32>,
+    pub sample_rate: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing: Option<crate::ipc::ChannelRouting>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioStateInfo {
+    pub is_running: bool,
+    pub config: Option<ActiveAudioConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition_witness: Option<AudioConditionWitness>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct AudioConditionWitness {
+    pub revision: String,
+    pub epoch: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineTuningConfig {
+    pub enable_affinity_pinning: bool,
+    pub affinity_mask: Option<String>,
+    pub enable_realtime_priority: bool,
+    pub enable_time_critical_audio_threads: bool,
+}
+
+#[derive(Debug, Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineRuntimeStats {
+    pub process_input: Option<Box<crate::audio_engine::process_capture::Snapshot>>,
+    pub preparation: Option<Box<crate::ipc::PreparationSnapshot>>,
+    pub active_plugin_count: u32,
+    pub enabled_plugin_count: u32,
+    pub pending_unload_count: u32,
+    pub burned_library_count: u32,
+    pub global_bypass: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_health: Vec<crate::ipc::PluginHealthEntry>,
+    pub callback_diagnostics: crate::audio_engine::callback_diagnostics::CallbackSnapshot,
+    pub queue_diagnostics: Option<Box<crate::audio_engine::queue_diagnostics::QueueSnapshot>>,
+    pub latency_metadata: Option<Box<crate::ipc::LatencyMetadata>>,
+    pub frame_timing: Option<Box<crate::audio_engine::frame_timing::Snapshot>>,
+    #[serde(default)]
+    pub resampler_batch_timing: Option<Box<crate::audio_engine::frame_timing::BatchSnapshot>>,
+    #[serde(default)]
+    pub resampler_cohort_timing: Option<Box<crate::audio_engine::frame_timing::cohort::Snapshot>>,
+    pub max_jitter_us: u64,
+    pub glitch_count: u64,
+    pub total_plugin_latency_samples: u32,
+    pub total_plugin_latency_ms: f64,
+    pub noise_reduction_latency_samples: u32,
+    pub noise_reduction_latency_ms: f64,
+    pub total_chain_latency_samples: u32,
+    pub total_chain_latency_ms: f64,
+    pub noise_reduction_enabled: bool,
+    pub noise_reduction_active: bool,
+    pub noise_reduction_mode: String,
+    pub noise_learning_state: String,
+    pub noise_learning_progress: f32,
+    pub noise_profile_available: bool,
+    pub noise_profile_rms: f32,
+    pub recommended_noise_mix: f32,
+    pub speech_detected: bool,
+    pub noise_voice_guard: bool,
+    pub noise_control_strength: f32,
+    pub built_in_effects_enabled: bool,
+    pub built_in_effects_preset: String,
+    pub built_in_effects_amount: f32,
+    pub built_in_singing: Option<crate::audio_engine::singing::SingingParams>,
+    pub built_in_reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+    #[serde(default)]
+    pub processing_health:
+        Option<Box<crate::audio_engine::processing_watch::ProcessingHealthSnapshot>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub built_in_deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopbackProbeResult {
+    pub detected: bool,
+    pub level_db: f32,
+    pub unavailable: Option<String>,
+}
+
+/// 試験の継ぎ目：`ensure_engine_running` が、接続を閉じて確定した後・`ensure_clear` の前に、一度だけ呼ばれる
+/// （試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_ensure_clear {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+/// 試験の継ぎ目：tick の `send_mode_command` が、最後の接続の確認の後・待ちの登録（`begin`）の前に、
+/// 一度だけ呼ばれる（試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_mode_begin {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+/// 試験の継ぎ目：接続の確認の後、応答の待ちを始める前に、一度だけ呼ばれる（試験のスレッドごと）。
+#[cfg(test)]
+pub(crate) mod before_begin_hook {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run() {
+        if let Some(hook) = HOOK.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+#[derive(Default)]
+struct HeldNotices {
+    depth: u32,
+    notices: Vec<(&'static str, serde_json::Value)>,
+}
+
+pub struct AudioHost {
+    post_mix: post_mix::State,
+    post_role: bool,
+    post_attached: bool,
+    bundle_mixing_override: bool,
+    bundle_prepared_voice: bool,
+    conditions: Arc<conditions::Conditions>,
+    last_config_path: PathBuf,
+    maintenance: bool,
+    live_modes: live_modes::HostModes,
+    mode_vst: mode_vst::State,
+    voice_activity: Arc<AtomicBool>,
+    /// 接続の開閉・閉じた理由・応答の待ち（1件だけ。直列プロトコル）・操作の記録。接続ごとに作り直す。
+    link: Arc<LinkCell>,
+    child: Option<Child>,
+    /// 子の stdin の唯一の持ち主（接続ごとの書き込みスレッド）への口。
+    writer: Option<writer::Writer>,
+    emitter: Arc<emit::Notifier>,
+    /// 子の回収の前に生まれた通知を、回収の後まで保持する。
+    held_notices: Mutex<HeldNotices>,
+    /// 外の停止が重なった子の起動の確認の間だけ真。書き込みの失敗・期限切れの回収を、主の子だけにする。
+    confirming_start: bool,
+    /// 試験で差し替えた旧い writer。子の stdin を閉じて子を終わらせないように、Drop まで持つ。
+    #[cfg(test)]
+    kept_writers: Vec<writer::Writer>,
+    #[cfg(test)]
+    test_engine_launcher: Option<Arc<dyn Fn() -> Result<Child> + Send + Sync>>,
+    /// 試験で、ホストの破棄の最初に一度だけ呼ぶ。破棄を門で止める・panic させる。
+    #[cfg(test)]
+    drop_seam: Option<Arc<dyn Fn() + Send + Sync>>,
+    cached_devices: Option<AudioDeviceList>,
+    engine_generation: u64,
+    bundle_change_generation: Option<u64>,
+    next_restore_operation: u64,
+    session_restore: Option<session_rack::Lease>,
+    session_restore_generation: Option<u64>,
+    peak_intent: Option<crate::audio_engine::peak_protection::Config>,
+    true_peak_intent: Option<crate::audio_engine::true_peak_limiter::Config>,
+    frontend_bootstrap: frontend_bootstrap::Startup,
+    device_scan: Option<DeviceScanTicket>,
+    active_config: Option<ActiveAudioConfig>,
+    process_inputs: process_inputs::Inputs,
+    mixing: mixing::State,
+    is_global_muted: bool,
+    engine_tuning: EngineTuningConfig,
+    bundle_output_override: Option<crate::audio_engine::live_output::Config>,
+    bundle_monitor_override: Option<Option<crate::audio_engine::split_monitor::State>>,
+    bundle_interrupt: Option<u64>,
+    output_gain_initialized: bool,
+    engine_job: Option<engine_life::JobHandle>,
+    /// 終了を確かめられない子の記録。配信ミックスの子の `AudioHost` と共有する。
+    retired: Arc<engine_life::Store>,
+}
+
+impl AudioHost {
+    pub(crate) fn global_mute_intent(&self) -> bool {
+        self.is_global_muted
+    }
+    pub fn peak_protection(
+        &mut self,
+        config: Option<crate::audio_engine::peak_protection::Config>,
+    ) -> Result<crate::audio_engine::peak_protection::Snapshot> {
+        match self.execute_running_command(IpcCommand::PeakProtection { config })? {
+            IpcResponse::PeakProtection(snapshot) => {
+                if config.is_some() {
+                    self.peak_intent = Some(snapshot.config);
+                }
+                Ok(snapshot)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("ピーク保護の状態を読み戻せません")),
+        }
+    }
+    pub fn broadcast_true_peak(
+        &mut self,
+        config: Option<crate::audio_engine::true_peak_limiter::Config>,
+    ) -> Result<crate::audio_engine::true_peak_limiter::Snapshot> {
+        match self.execute_running_command(IpcCommand::BroadcastTruePeak { config })? {
+            IpcResponse::BroadcastTruePeak(snapshot) => {
+                if config.is_some() {
+                    self.true_peak_intent = Some(snapshot.config);
+                }
+                Ok(snapshot)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("配信用 true-peak 制限の状態を読み戻せません")),
+        }
+    }
+    pub fn live_output(
+        &mut self,
+        config: Option<crate::audio_engine::live_output::Config>,
+    ) -> Result<crate::audio_engine::live_output::Status> {
+        if let Some(value) = &config {
+            value.validate()?;
+            self.preflight_proposal_apply()?;
+        }
+        let path = self.last_config_path.with_file_name("live_output.json");
+        if config.is_none() && (self.child.is_none() || self.connection_lost()) {
+            let stored = if path.exists() {
+                serde_json::from_slice(&std::fs::read(&path)?)?
+            } else {
+                crate::audio_engine::live_output::Config::default()
+            };
+            stored.validate()?;
+            return Ok(crate::audio_engine::live_output::Status {
+                config: stored,
+                sink: None,
+                error: None,
+                broadcast_epoch: None,
+                monitor: None,
+            });
+        }
+        let saved = config.clone();
+        let previous = if saved.is_some() {
+            match self.execute_command(IpcCommand::LiveOutput { config: None })? {
+                IpcResponse::LiveOutput(s) => Some(s.config),
+                _ => return Err(anyhow!("変更前の出力構成を確認できません")),
+            }
+        } else {
+            None
+        };
+        if let (Some(next), Some(previous)) = (&saved, &previous) {
+            if !next.same_route(previous) {
+                self.preflight_live_changes()?;
+            }
+        }
+        let response = if saved.is_none() {
+            self.execute_running_command(IpcCommand::LiveOutput { config })?
+        } else {
+            self.execute_command(IpcCommand::LiveOutput { config })?
+        };
+        match response {
+            IpcResponse::LiveOutput(status) => {
+                let mut status = *status;
+                if let Some(config) = saved {
+                    let pending = path.with_file_name("live_output.pending.json");
+                    let persist = serde_json::to_vec(&config)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|bytes| {
+                            std::fs::write(&pending, bytes)?;
+                            std::fs::rename(&pending, &path)?;
+                            Ok(())
+                        });
+                    if persist.is_err() {
+                        let restored = self
+                            .execute_running_command(IpcCommand::LiveOutput { config: previous });
+                        return Err(anyhow!(
+                            if matches!(restored, Ok(IpcResponse::LiveOutput(_))) {
+                                "保存に失敗し、実行中の出力構成を元へ戻しました"
+                            } else {
+                                "保存と出力構成の復元に失敗しました。音声を停止して構成を確認してください"
+                            }
+                        ));
+                    }
+                } else if path.exists() {
+                    let stored: crate::audio_engine::live_output::Config =
+                        serde_json::from_slice(&std::fs::read(&path)?)?;
+                    stored.validate()?;
+                    status.config = stored;
+                }
+                Ok(status)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("二系統出力の応答を確認できません")),
+        }
+    }
+    pub fn new(config_dir: PathBuf) -> Self {
+        Self::with_retired(config_dir, Arc::default())
+    }
+
+    fn with_retired(config_dir: PathBuf, retired: Arc<engine_life::Store>) -> Self {
+        let mode_vst = mode_vst::State::new(&config_dir);
+        let recovery_muted = mode_vst.blocked();
+        Self {
+            conditions: Arc::new(conditions::Conditions::default()),
+            last_config_path: config_dir.join("last_audio_config.json"),
+            maintenance: false,
+            live_modes: live_modes::HostModes::new(&config_dir),
+            mode_vst,
+            voice_activity: Arc::new(AtomicBool::new(false)),
+            link: Arc::new(LinkCell::closed()),
+            child: None,
+            writer: None,
+            emitter: Arc::new(emit::Notifier::default()),
+            held_notices: Mutex::new(HeldNotices::default()),
+            confirming_start: false,
+            #[cfg(test)]
+            kept_writers: Vec::new(),
+            #[cfg(test)]
+            test_engine_launcher: None,
+            #[cfg(test)]
+            drop_seam: None,
+            cached_devices: None,
+            engine_generation: 0,
+            bundle_change_generation: None,
+            next_restore_operation: 0,
+            session_restore: None,
+            session_restore_generation: None,
+            peak_intent: None,
+            true_peak_intent: None,
+            frontend_bootstrap: frontend_bootstrap::Startup::default(),
+            device_scan: None,
+            active_config: None,
+            process_inputs: Default::default(),
+            mixing: mixing::State::new(&config_dir),
+            post_mix: post_mix::State::new(&config_dir, retired.clone()),
+            post_role: false,
+            post_attached: false,
+            bundle_mixing_override: false,
+            bundle_prepared_voice: false,
+            is_global_muted: recovery_muted,
+            engine_tuning: EngineTuningConfig::default(),
+            bundle_output_override: None,
+            bundle_monitor_override: None,
+            bundle_interrupt: None,
+            output_gain_initialized: false,
+            engine_job: None,
+            retired,
+        }
+    }
+
+    /// 試験で、子の stdin を writer へ渡す。
+    #[cfg(test)]
+    pub(crate) fn attach_stdin_for_test(&mut self, stdin: std::process::ChildStdin) {
+        self.writer = Some(writer::Writer::start(stdin, self.link.clone()));
+    }
+
+    /// 試験で、接続の開閉を直接決める。
+    #[cfg(test)]
+    pub(crate) fn set_link_for_test(&mut self, open: bool) {
+        self.link.set_open_for_test(open);
+    }
+
+    /// 試験で、writer を差し替える。旧い writer は持ち続け、子の stdin を閉じない（子が先に終わる競りを避ける）。
+    #[cfg(test)]
+    fn replace_writer_for_test(&mut self, writer: writer::Writer) {
+        if let Some(old) = self.writer.replace(writer) {
+            self.kept_writers.push(old);
+        }
+    }
+
+    /// 試験で、writer の失敗を差し込む（以後の書き込みは `Stdin not available` で失敗する）。
+    #[cfg(test)]
+    pub(crate) fn fail_writes_for_test(&mut self) {
+        self.writer = None;
+    }
+
+    fn role(&self) -> engine_life::Role {
+        if self.post_role {
+            engine_life::Role::PostMix
+        } else {
+            engine_life::Role::Primary
+        }
+    }
+
+    /// 子を手放す。終了を確かめられなければ、次の生成より先に記録へ移る。
+    fn retire_engine(&self, child: Child, job: Option<engine_life::JobHandle>) {
+        engine_life::retire_child(&self.retired, self.role(), child, job);
+    }
+
+    pub(crate) fn conditions(&self) -> Arc<conditions::Conditions> {
+        self.conditions.clone()
+    }
+
+    /// ホストが出す通知。`hold_notices` の間は保持して、回収の後に出す。
+    fn notice<S: Serialize + Clone>(&self, name: &'static str, payload: S) {
+        {
+            let mut held = self
+                .held_notices
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if held.depth > 0 {
+                if let Ok(value) = serde_json::to_value(&payload) {
+                    held.notices.push((name, value));
+                }
+                return;
+            }
+        }
+        self.emitter.emit(name, payload);
+    }
+
+    /// 子の回収の経路。通知は回収の後まで保持し、各経路の今の順で出す（`emitter` も通知の列も取らない）。
+    fn hold_notices<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.held_notices
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .depth += 1;
+        let result = f(self);
+        let notices = {
+            let mut held = self
+                .held_notices
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            held.depth -= 1;
+            if held.depth == 0 {
+                std::mem::take(&mut held.notices)
+            } else {
+                Vec::new()
+            }
+        };
+        if !notices.is_empty() {
+            self.emitter.chain(|chain| {
+                for (name, payload) in notices {
+                    let _ = chain.emit(name, payload);
+                }
+            });
+        }
+        result
+    }
+
+    fn notify_conditions_changed(&self) {
+        self.notice("audio-conditions-changed", ());
+    }
+
+    /// 接続を捨てる（2.3 の 1〜3）。勝ち負けを返す。子の回収は呼び出し側が続ける。
+    fn close_connection(&mut self, cause: CloseCause) -> bool {
+        let won = self.link.close(cause);
+        self.writer = None;
+        won
+    }
+
+    /// 接続を閉じて子を回収した後の、切断状態の確定（F1b-0b-4 の14.7）。`ensure_clear` が失敗して
+    /// `new_engine` が来なくても、`running`・`voice_activity` を残さず、閉鎖の前の epoch を失効させる。
+    /// 通知は出さない。待たない。
+    fn settle_disconnected(&self) {
+        self.conditions.retire_engine();
+        self.voice_activity.store(false, Ordering::Release);
+    }
+
+    /// 接続を捨てて、子を回収する（2.3 の 1〜4）。通知は出さない。
+    fn drop_connection(&mut self, cause: CloseCause) -> bool {
+        let won = self.close_connection(cause);
+        if let Some(child) = self.child.take() {
+            let job = self.engine_job.take();
+            self.retire_engine(child, job);
+        }
+        won
+    }
+
+    fn apply_engine_tuning_env(&self, command: &mut Command) {
+        command.env(
+            "AURALYN_ENABLE_AFFINITY_PINNING",
+            if self.engine_tuning.enable_affinity_pinning {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        command.env(
+            "AURALYN_ENABLE_REALTIME_PRIORITY",
+            if self.engine_tuning.enable_realtime_priority {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        command.env(
+            "AURALYN_TIME_CRITICAL_AUDIO_THREADS",
+            if self.engine_tuning.enable_time_critical_audio_threads {
+                "1"
+            } else {
+                "0"
+            },
+        );
+
+        match self
+            .engine_tuning
+            .affinity_mask
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            Some(mask) => {
+                command.env("AURALYN_AFFINITY_MASK", mask);
+            }
+            None => {
+                command.env("AURALYN_AFFINITY_MASK", "0");
+            }
+        }
+    }
+
+    fn spawn_engine_process(&self) -> Result<Child> {
+        #[cfg(test)]
+        if let Some(launch) = &self.test_engine_launcher {
+            return launch();
+        }
+        // 製品もビルド領域も、エンジンは画面の実行ファイルと同じフォルダーに置く。
+        let exe = std::env::current_exe()?;
+        let binary_path = exe.with_file_name("audio_engine.exe");
+        if !binary_path.exists() {
+            return Err(anyhow!(
+                "Audio Engine binary not found: {}",
+                binary_path.display()
+            ));
+        }
+        log::info!("Found engine at: {:?}", binary_path);
+
+        self.spawn_engine_binary(binary_path)
+    }
+
+    /// 子のプロセスを作る。製品と試験の起動が、同じコマンドの組み立てと生成のフラグを通る。
+    fn spawn_engine_binary(&self, binary_path: PathBuf) -> Result<Child> {
+        let mut command = Command::new(binary_path);
+        if self.post_role {
+            command.arg("--post-mix-worker");
+        }
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        engine_life::apply_creation_flags(&mut command);
+        self.apply_engine_tuning_env(&mut command);
+        Ok(command.spawn()?)
+    }
+
+    fn ensure_engine_running(&mut self) -> Result<()> {
+        self.guard_mode_vst()?;
+        if self.maintenance {
+            return Err(anyhow!("更新を適用中のため音声操作はできません。"));
+        }
+        // ... (check child logic same as before) ...
+        if self.child.is_some() {
+            // Check if still alive
+            if let Some(c) = self.child.as_mut() {
+                match engine_life::try_wait(c) {
+                    Ok(Some(status)) => {
+                        log::error!("Audio Engine exited unexpectedly! Status: {}", status);
+                        log::warn!("Forcing restart with empty state");
+                        self.close_connection(CloseCause::Intentional);
+                        self.child = None;
+                        self.engine_job = None;
+                        self.settle_disconnected();
+                    }
+                    // 動いている。主の子で出力だけが閉じていたら、回収して作り直す（C5）。
+                    Ok(None) if self.post_role || self.link.cause() != Some(CloseCause::Eof) => {
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        log::warn!(
+                            "Audio engine stdout closed while the child is alive; replacing it"
+                        );
+                        self.drop_connection(CloseCause::Intentional);
+                        self.engine_job = None;
+                        self.settle_disconnected();
+                    }
+                    Err(e) => {
+                        // 終了の証拠ではない。確かめられるまで、同じ役割の子を作らない。
+                        log::error!("Error waiting on audio engine child process: {}", e);
+                        self.drop_connection(CloseCause::Intentional);
+                        self.settle_disconnected();
+                    }
+                }
+            }
+        }
+
+        #[cfg(test)]
+        before_ensure_clear::run();
+        if let Err(error) = self.retired.ensure_clear(self.role()) {
+            #[cfg(test)]
+            engine_life::seam::stage(engine_life::seam::Stage::ResultDecided);
+            return Err(error.into());
+        }
+        log::info!("Spawning Audio Engine Sidecar...");
+        let condition_epoch = self.conditions.new_engine();
+        self.notify_conditions_changed();
+        let launched = self.spawn_engine_process()?;
+        let (mut child, job, externally_suspended) =
+            engine_life::contain_and_resume(&self.retired, self.role(), launched)?;
+        self.engine_job = job;
+
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+
+        self.child = Some(child);
+        self.output_gain_initialized = false;
+        self.engine_generation = self.engine_generation.wrapping_add(1);
+        self.device_scan = None;
+
+        // Spawn Output Reader Thread
+        // 終了した旧プロセスの応答・終了通知を、新プロセスの待機やUIへ渡さない。
+        self.reset_engine_reader();
+        self.writer = Some(writer::Writer::start(stdin, self.link.clone()));
+        self.voice_activity = Arc::new(AtomicBool::new(false));
+        reader::Reader {
+            link: self.link.clone(),
+            voice_activity: self.voice_activity.clone(),
+            notifier: self.emitter.clone(),
+            conditions: self.conditions.clone(),
+            epoch: condition_epoch,
+            engine_generation: self.engine_generation,
+            #[cfg(test)]
+            pause: None,
+        }
+        .spawn(stdout);
+
+        // 外の停止が重なっていた子は、解かれないまま続くと、最初の応答が来ない。最初の応答が来るまでを
+        // 起動の確認とし、期限（10秒）までに期待した応答が来なければ、主の子だけを切り離して回収し、
+        // 起動の失敗にする（J-24）。戻り値が1の通常の起動には、この確認を足さない。
+        if externally_suspended {
+            // 記録の数は、確認を始める前に控える（確認の中の C2 で記録された子も数える）。
+            let recorded = self.retired.recorded(self.role());
+            self.confirming_start = true;
+            let outcome = self.execute_running_command(IpcCommand::StartIdentityCapability);
+            self.confirming_start = false;
+            if !matches!(outcome, Ok(IpcResponse::StartIdentityCapability { .. })) {
+                // EOF（`Engine Crashed/Exited`）・拒否・期限切れは、どれも起動の失敗。
+                let unconfirmed = outcome.err().and_then(|error| {
+                    error
+                        .downcast_ref::<engine_life::EngineUnconfirmed>()
+                        .copied()
+                });
+                // 配信ミックスの子とオケの入力の選択は残す。起動を試みた主の子だけを回収する。
+                // 応答の期限切れ（C3）と書き込みの失敗は、`await_reply` の中で回収を終えている。
+                if self.child.is_some() {
+                    self.kill_primary_engine();
+                }
+                if let Some(unconfirmed) = unconfirmed {
+                    return Err(unconfirmed.into());
+                }
+                if self.retired.recorded(self.role()) > recorded {
+                    return Err(self.retired.unconfirmed_error(self.role()).into());
+                }
+                return Err(anyhow!(engine_life::LAUNCH_FAILED));
+            }
+        }
+        if let Some(config) = self.peak_intent {
+            let result = self.execute_running_command(IpcCommand::PeakProtection {
+                config: Some(config),
+            });
+            if !matches!(&result, Ok(IpcResponse::PeakProtection(snapshot)) if snapshot.config == config)
+            {
+                self.kill_engine();
+                return Err(anyhow!(
+                    "ピーク保護を新しいEngineへ引き継げません。音声を開始していません"
+                ));
+            }
+        }
+        if let Some(config) = self.true_peak_intent {
+            let result = self.execute_running_command(IpcCommand::BroadcastTruePeak {
+                config: Some(config),
+            });
+            if !matches!(&result, Ok(IpcResponse::BroadcastTruePeak(snapshot)) if snapshot.config == config)
+            {
+                self.kill_engine();
+                return Err(anyhow!(
+                    "配信用 true-peak 制限を新しいEngineへ引き継げません。音声を開始していません"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn execute_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        self.guard_mode_vst()?;
+        self.note_command(&cmd);
+        // 診断の明示読出しでengineを起動・本番設定を同期しない。
+        if matches!(&cmd, IpcCommand::GetFrameTimingTrace { .. }) {
+            return self.execute_running_command_inner(cmd);
+        }
+        if self.bundle_change_generation.is_none() {
+            self.ensure_engine_running()?;
+        }
+        self.send_live_command(cmd)
+    }
+
+    fn note_command(&mut self, cmd: &IpcCommand) {
+        if !conditions::command_changes(cmd) {
+            return;
+        }
+        self.frontend_bootstrap.cancel();
+        match cmd {
+            IpcCommand::SetInputGain { value } => self.frontend_bootstrap.input_gain = Some(*value),
+            IpcCommand::SetOutputGain { value } => {
+                self.frontend_bootstrap.output_gain = Some(*value)
+            }
+            _ => {}
+        }
+    }
+
+    /// engine を用意した後の、どの送信の経路にも共通の確認と送信。
+    fn send_live_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        if self.bundle_change_generation.is_some() {
+            self.validate_bundle_connection()?;
+        }
+        self.sync_live_modes()?;
+        self.guard_live_command(&cmd)?;
+        let custom = matches!(
+            &cmd,
+            IpcCommand::SetBuiltInEffects { .. }
+                | IpcCommand::BuiltinEffects {
+                    request: crate::audio_engine::builtin::Request::Apply { .. }
+                        | crate::audio_engine::builtin::Request::Undo { .. }
+                        | crate::audio_engine::builtin::Request::Redo { .. }
+                        | crate::audio_engine::builtin::Request::ApplyProposal { .. }
+                }
+        );
+        let response = self.execute_running_command(cmd)?;
+        if custom && !matches!(response, IpcResponse::Error(_)) {
+            self.live_modes.target = None;
+        }
+        Ok(response)
+    }
+
+    // 一連の開始準備中に別engineを起動し、適用済みの設定を失わない。
+    fn execute_running_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        let conditions = self.conditions.clone();
+        let emitter = self.emitter.clone();
+        conditions.dispatch(
+            conditions::command_changes(&cmd),
+            || self.execute_running_command_inner(cmd),
+            || emitter.emit("audio-conditions-changed", ()),
+        )
+    }
+
+    fn reset_engine_reader(&mut self) {
+        // 旧readerの終了を新しい接続へ持ち越さない。
+        self.close_connection(CloseCause::Intentional);
+        self.link = Arc::new(LinkCell::open());
+    }
+
+    fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        self.guard_mode_vst()?;
+        anyhow::ensure!(self.link.is_open(), replies::CLOSED);
+        let json = serde_json::to_string(&cmd)?;
+        #[cfg(test)]
+        before_begin_hook::run();
+
+        // IDのない直列プロトコルなので、タイムアウトした応答を受け取るまで
+        // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
+        let rx = self.link.begin(Some(&cmd))?;
+        let limit = writer::reply_limit(&cmd);
+        let submitted = self.submit_write(writer::Payload::Json(json));
+        self.await_reply(submitted, rx, limit)
+    }
+
+    fn submit_write(
+        &self,
+        payload: writer::Payload,
+    ) -> std::io::Result<std::sync::mpsc::Receiver<writer::WriteDone>> {
+        match &self.writer {
+            Some(writer) => writer.submit(payload),
+            None => Err(writer_gone()),
+        }
+    }
+
+    /// 書き込みの完了（5秒）と応答（書き込みが戻ってから `limit`。命令の種類で決まる）を待つ。
+    ///
+    /// 実際の書き込みの失敗と書き込みの期限切れは、応答の受け側を読まずに接続を切り離す。
+    /// `Aborted`（EOF などで閉じていたので書かなかった）は、書き込みの失敗にせず EOF の結果を待つ。
+    /// 応答の期限切れも接続を切り離す（C3。`reply_timed_out`）。
+    fn await_reply(
+        &mut self,
+        submitted: std::io::Result<std::sync::mpsc::Receiver<writer::WriteDone>>,
+        rx: std::sync::mpsc::Receiver<ReplyOutcome>,
+        limit: std::time::Duration,
+    ) -> Result<IpcResponse> {
+        let done = match submitted {
+            Ok(done) => match done.recv_timeout(writer::write_limit()) {
+                Ok(done) => done,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(self.cut_off(
+                        CloseCause::WriteTimeout,
+                        std::io::Error::new(std::io::ErrorKind::TimedOut, WRITE_TIMED_OUT),
+                    ));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(self.cut_off(CloseCause::WriteFailed, writer_gone()));
+                }
+            },
+            Err(error) => return Err(self.cut_off(CloseCause::WriteFailed, error)),
+        };
+        let deadline = match done.result {
+            writer::WriteResult::Ok => done.flushed_at + limit,
+            writer::WriteResult::Aborted => Instant::now() + limit,
+            writer::WriteResult::Err(error) => {
+                return Err(self.cut_off(CloseCause::WriteFailed, error));
+            }
+        };
+        // 期限を過ぎていても、受け側は必ず1回読む。期限の内に着いた応答は `received_at` で採る。
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let outcome = if remaining.is_zero() {
+            rx.try_recv().map_err(|error| match error {
+                std::sync::mpsc::TryRecvError::Empty => std::sync::mpsc::RecvTimeoutError::Timeout,
+                std::sync::mpsc::TryRecvError::Disconnected => {
+                    std::sync::mpsc::RecvTimeoutError::Disconnected
+                }
+            })
+        } else {
+            rx.recv_timeout(remaining)
+        };
+        match outcome {
+            Ok(ReplyOutcome { resp, received_at }) if received_at <= deadline => Ok(*resp),
+            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => self.reply_timed_out(),
+            // 切断で解放された。EOF なら、通知は出し終えている。
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Ok(IpcResponse::Error(ENGINE_EXITED.to_string()))
+            }
+        }
+    }
+
+    /// 応答の期限切れで接続を切り離す（C3、2.3 と同じ後始末）。
+    ///
+    /// 先に接続を閉じる競りに出る。勝てば Host が通知を出し、負ければ reader の EOF として扱い
+    /// （記録には触れず、原因は reader の採取に任せる）、どちらも子は必ず回収する。
+    /// EOF に負けたときは、回収の後に、reader が通知を出し終えるのを（上限つきで）待ってから返す。
+    fn reply_timed_out(&mut self) -> Result<IpcResponse> {
+        let link = self.link.clone();
+        let (won, vst_exit) = link.close_reply_timeout();
+        let recorded = self.retired.recorded(self.role());
+        // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
+        if self.confirming_start {
+            self.kill_primary_engine();
+        } else {
+            self.kill_engine();
+        }
+        if !won {
+            if link.cause() == Some(CloseCause::Eof)
+                && !link.wait_notified(Instant::now() + writer::eof_wait())
+            {
+                log::warn!("EOF の通知を待つ上限を過ぎたため、通知の前に終了を返します");
+            }
+            return Ok(IpcResponse::Error(ENGINE_EXITED.to_string()));
+        }
+        if !self.post_role && !self.confirming_start {
+            match vst_exit {
+                // 固まった VST を復旧画面の除外候補にするため、reader の EOF と同じ通知を出す。
+                Some(exit) => {
+                    log::error!("Audio engine exited: {exit:?}");
+                    self.notice("audio-engine-exited", exit);
+                    self.notice("audio-error", engine_exit::EXITED_NOTICE);
+                }
+                None => self.notice("audio-error", "音声エンジンとの通信が切れました"),
+            }
+        }
+        if self.retired.recorded(self.role()) > recorded {
+            return Err(anyhow::Error::new(
+                self.retired.unconfirmed_error(self.role()),
+            ));
+        }
+        Err(anyhow!(REPLY_TIMED_OUT))
+    }
+
+    /// 書き込みの失敗・期限切れで接続を切り離す（2.3）。書きかけのJSONや遅い応答が残る接続を再利用しない。
+    fn cut_off(&mut self, cause: CloseCause, error: std::io::Error) -> anyhow::Error {
+        let won = self.link.close(cause);
+        let recorded = self.retired.recorded(self.role());
+        if self.confirming_start {
+            // 起動の確認の間は、起動を試みた主の子だけを回収する（配信ミックスの子とオケの入力は残す）。
+            self.kill_primary_engine();
+        } else {
+            self.kill_engine();
+        }
+        let unconfirmed = self.retired.recorded(self.role()) > recorded;
+        // 終了の通知を出すのは競りに勝った側だけ。EOF が先なら reader が出している。
+        if won {
+            self.notice("audio-error", "音声エンジンとの通信が切れました");
+        }
+        // 「終了しました」と言えるのは、子の終了を確かめられたときだけ。
+        if cause == CloseCause::WriteTimeout && unconfirmed {
+            return anyhow::Error::new(self.retired.unconfirmed_error(self.role()));
+        }
+        error.into()
+    }
+    // 同期呼出元（プロファイル適用）は取得済み一覧だけを読む。
+    // 明示再検出はcommands::get_audio_devicesのBegin/Poll経路を使う。
+    pub fn enumerate_devices(&mut self, force_refresh: bool) -> Result<AudioDeviceList> {
+        anyhow::ensure!(
+            !force_refresh,
+            "再検出には非同期のデバイス取得を使用してください"
+        );
+        if !force_refresh {
+            if let Some(cache) = &self.cached_devices {
+                log::debug!("Returning cached device list");
+                return Ok(cache.clone());
+            }
+        }
+
+        match self.execute_command(IpcCommand::GetDevices)? {
+            IpcResponse::Devices(dl) => {
+                let mut inputs = Vec::new();
+                let mut outputs = Vec::new();
+                for (i, d) in dl.into_iter().enumerate() {
+                    let ad = AudioDevice::from_info(i, d);
+                    if ad.is_input {
+                        inputs.push(ad);
+                    } else {
+                        outputs.push(ad);
+                    }
+                }
+                let list = AudioDeviceList { inputs, outputs };
+                self.cached_devices = Some(list.clone());
+                Ok(list)
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub(crate) fn begin_device_scan(&mut self, force_refresh: bool) -> Result<DeviceScanStart> {
+        if !force_refresh {
+            if let Some(cache) = &self.cached_devices {
+                return Ok(DeviceScanStart::Cached(cache.clone()));
+            }
+        }
+        if let Some(ticket) = self.device_scan.clone() {
+            if ticket.started.elapsed() < std::time::Duration::from_secs(35) {
+                return Ok(DeviceScanStart::Pending(ticket));
+            }
+            // 呼出futureが破棄されても、期限切れtokenを次回へ持ち越さない。
+            let _ = self.cancel_device_scan(&ticket);
+        }
+        match self.execute_command(IpcCommand::BeginDeviceScan)? {
+            IpcResponse::DeviceScanStarted { token } => {
+                let ticket = DeviceScanTicket {
+                    generation: self.engine_generation,
+                    token,
+                    started: std::time::Instant::now(),
+                    terminal: Arc::new(OnceLock::new()),
+                };
+                self.device_scan = Some(ticket.clone());
+                Ok(DeviceScanStart::Pending(ticket))
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected device scan response")),
+        }
+    }
+
+    fn scan_is_current(&self, ticket: &DeviceScanTicket) -> bool {
+        self.engine_generation == ticket.generation
+            && self.device_scan.as_ref().is_some_and(|current| {
+                current.generation == ticket.generation && current.token == ticket.token
+            })
+    }
+
+    pub(crate) fn poll_device_scan(
+        &mut self,
+        ticket: &DeviceScanTicket,
+    ) -> Result<Option<AudioDeviceList>> {
+        // 完了済みでも旧engineの結果は返さない。caller共有のterminalは新Beginで消さない。
+        anyhow::ensure!(
+            ticket.generation == self.engine_generation,
+            "音声エンジンの再起動でデバイス検出要求が失効しました"
+        );
+        if let Some(result) = ticket.terminal.get() {
+            return result.clone().map(Some).map_err(anyhow::Error::msg);
+        }
+        anyhow::ensure!(
+            self.scan_is_current(ticket),
+            "デバイス検出要求は失効しています"
+        );
+        anyhow::ensure!(
+            !self.connection_lost(),
+            "検出中に音声エンジンとの通信が終了しました"
+        );
+        let response = self.execute_command(IpcCommand::PollDeviceScan {
+            token: ticket.token,
+        });
+        anyhow::ensure!(
+            self.scan_is_current(ticket),
+            "音声エンジンの再起動でデバイス検出要求が失効しました"
+        );
+        match response {
+            Ok(IpcResponse::DeviceScanStatus { token, status }) if token == ticket.token => {
+                match status {
+                    DeviceScanStatus::Pending => Ok(None),
+                    DeviceScanStatus::Completed(devices) => {
+                        self.finish_device_scan(ticket, devices).map(Some)
+                    }
+                    DeviceScanStatus::Failed(error) => self.fail_device_scan(ticket, error),
+                    DeviceScanStatus::Cancelled => {
+                        self.fail_device_scan(ticket, "デバイス検出を取り消しました".into())
+                    }
+                }
+            }
+            Ok(IpcResponse::Error(error)) => self.fail_device_scan(ticket, error),
+            Ok(_) => self.fail_device_scan(ticket, "Unexpected device scan response".into()),
+            Err(error) => self.fail_device_scan(ticket, error.to_string()),
+        }
+    }
+
+    fn fail_device_scan(
+        &mut self,
+        ticket: &DeviceScanTicket,
+        error: String,
+    ) -> Result<Option<AudioDeviceList>> {
+        let _ = ticket.terminal.set(Err(error.clone()));
+        if self.scan_is_current(ticket) {
+            self.device_scan = None;
+        }
+        Err(anyhow!(error))
+    }
+
+    fn finish_device_scan(
+        &mut self,
+        ticket: &DeviceScanTicket,
+        devices: Vec<crate::ipc::DeviceInfo>,
+    ) -> Result<AudioDeviceList> {
+        anyhow::ensure!(
+            self.scan_is_current(ticket),
+            "デバイス検出要求は失効しています"
+        );
+        self.device_scan = None;
+        let mut list = AudioDeviceList {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        };
+        for (index, device) in devices.into_iter().enumerate() {
+            let device = AudioDevice::from_info(index, device);
+            if device.is_input {
+                list.inputs.push(device);
+            } else {
+                list.outputs.push(device);
+            }
+        }
+        self.cached_devices = Some(list.clone());
+        let _ = ticket.terminal.set(Ok(list.clone()));
+        Ok(list)
+    }
+
+    pub(crate) fn cancel_device_scan(&mut self, ticket: &DeviceScanTicket) -> Result<()> {
+        if !self.scan_is_current(ticket) {
+            return Ok(());
+        }
+        self.device_scan = None;
+        let _ = ticket
+            .terminal
+            .set(Err("デバイス検出を取り消しました".into()));
+        if self.connection_lost() {
+            return Ok(());
+        }
+        match self.execute_command(IpcCommand::CancelDeviceScan {
+            token: ticket.token,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected device scan cancellation response")),
+        }
+    }
+
+    pub fn start(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+    ) -> Result<AudioConfig> {
+        self.frontend_bootstrap.cancel();
+        self.start_internal(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            None,
+        )
+    }
+
+    /// ID指定時は名前へ代替せず、その実機だけを開始する。
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_with_device_ids(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
+    ) -> Result<AudioConfig> {
+        self.frontend_bootstrap.cancel();
+        self.start_internal_guarded_with_ids(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            None,
+            None,
+            input_id,
+            output_id,
+            channel_routing,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+    ) -> Result<AudioConfig> {
+        self.start_internal_guarded(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_guarded(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+    ) -> Result<AudioConfig> {
+        self.start_internal_guarded_with_ids(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            expected_generation,
+            None,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_guarded_with_ids(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
+    ) -> Result<AudioConfig> {
+        let source = self.resolve_input_source(None)?;
+        self.start_internal_with_source(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            expected_generation,
+            input_id,
+            output_id,
+            channel_routing,
+            source,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_with_source(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
+        input_source: Option<crate::input_source::Start>,
+    ) -> Result<AudioConfig> {
+        self.guard_mode_vst()?;
+        self.validate_mixing_selection(input_source.as_ref())?;
+        if let Some(controls) = initial_controls {
+            controls.validate().map_err(|e| anyhow!(e))?;
+        }
+        let channel_routing =
+            channel_routing.or_else(|| initial_controls.map(|controls| controls.routing()));
+        let process = input_source
+            .as_ref()
+            .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)));
+        if !process {
+            crate::desktop_integration::check_microphone_access(host_name.as_deref())
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(source) = &input_source {
+            source.validate().map_err(anyhow::Error::msg)?;
+        }
+        let cmd = IpcCommand::Start {
+            input_source: input_source.clone(),
+            host: host_name.clone().unwrap_or("ASIO".to_string()),
+            input: input_name.clone(),
+            output: output_name.clone(),
+            input_id: input_id.clone(),
+            output_id: output_id.clone(),
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            channel_routing,
+        };
+
+        if input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+        {
+            let path = self.last_config_path.with_file_name("live_output.json");
+            if path.exists() {
+                let config: crate::audio_engine::live_output::Config =
+                    serde_json::from_slice(&std::fs::read(path)?)?;
+                anyhow::ensure!(
+                    !config.split_processing,
+                    "この入力は処理分離に未対応です。音声設定で通常の処理経路を選んでください"
+                );
+            }
+        }
+        if (input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            || self
+                .active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_some_and(|s| *s != crate::input_source::Config::default()))
+            && !self.connection_lost()
+        {
+            let status = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+            anyhow::ensure!(
+                !status.running,
+                "音声を停止してから入力元・用途を変更してください"
+            );
+        }
+        log::info!("Sending Start Command: {:?}", cmd);
+
+        if let Some(expected) = expected_generation {
+            validate_start_generation(expected, self.engine_generation)?;
+            anyhow::ensure!(
+                self.child.is_some() && !self.connection_lost(),
+                "初期化中に音声接続が終了しました"
+            );
+        } else if self.bundle_change_generation.is_some() && initial_controls.is_none() {
+            self.validate_bundle_connection()?;
+        } else {
+            self.ensure_engine_running()?;
+            if self.bundle_change_generation.is_some() {
+                // 明示bundle再起動だけが、操作中の世代更新を引き受ける。
+                self.bundle_change_generation = Some(self.engine_generation);
+            }
+        }
+        let generation = self.engine_generation;
+        self.sync_live_modes()?;
+        self.guard_live_command(&cmd)?;
+        if input_source.is_some() {
+            crate::input_source::require_capability(|probe| self.execute_running_command(probe))?;
+        }
+        require_identity_capability(&cmd, |probe| self.execute_running_command(probe))?;
+        let live_path = self.last_config_path.with_file_name("live_output.json");
+        let live_config = if let Some(config) = &self.bundle_output_override {
+            Some(config.clone())
+        } else if live_path.exists() {
+            Some(serde_json::from_slice::<
+                crate::audio_engine::live_output::Config,
+            >(&std::fs::read(live_path)?)?)
+        } else {
+            None
+        };
+        if let Some(config) = live_config {
+            config.validate()?;
+            match self.execute_running_command(IpcCommand::LiveOutput {
+                config: Some(config),
+            })? {
+                IpcResponse::LiveOutput(_) => {}
+                IpcResponse::Error(error) => return Err(anyhow!(error)),
+                _ => return Err(anyhow!("二系統出力の保存構成を反映できません")),
+            }
+        }
+        if let Some(state) = self.bundle_monitor_override.clone() {
+            match self.execute_running_command(IpcCommand::ModeMonitor {
+                request: crate::audio_engine::split_monitor::Request::Restore { state },
+            })? {
+                IpcResponse::ModeMonitor(snapshot) if !snapshot.failed && !snapshot.pending => {}
+                IpcResponse::Error(error) => return Err(anyhow!(error)),
+                _ => return Err(anyhow!("開始前に自分用処理を復帰できません")),
+            }
+        }
+        let muted = self.is_global_muted;
+        self.prepare_mixing_start()?;
+        self.prepare_post_mix_start(sample_rate)?;
+        validate_start_generation(generation, self.engine_generation)?;
+        let response = if initial_controls.is_some() {
+            self.start_on_existing_generation(generation, cmd)
+        } else {
+            start_with_mute(muted, cmd, |command| self.execute_running_command(command))
+        };
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                self.cancel_prepared_post_start();
+                return Err(error);
+            }
+        };
+        if !matches!(response, IpcResponse::Started { .. }) {
+            self.cancel_prepared_post_start();
+        }
+        validate_start_generation(generation, self.engine_generation)?;
+        match response {
+            IpcResponse::Started {
+                sample_rate,
+                buffer_size,
+                routing,
+                input_id: actual_input_id,
+                output_id: actual_output_id,
+                stream_generation,
+            } => {
+                if channel_routing.is_some() && routing.is_none() {
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
+                    return Err(anyhow!("音声エンジンが接続設定の確認に対応していません"));
+                }
+                if process && actual_input_id.is_some() {
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
+                    return Err(anyhow!(
+                        "アプリ入力で開始したことを確認できません。音声エンジンを更新してください"
+                    ));
+                }
+                if input_id
+                    .as_ref()
+                    .is_some_and(|id| Some(id) != actual_input_id.as_ref())
+                    || output_id
+                        .as_ref()
+                        .is_some_and(|id| Some(id) != actual_output_id.as_ref())
+                {
+                    // 旧Engine等がID照合を行わない場合は即時停止し、成功としない。
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
+                    return Err(anyhow!(
+                        "開始した機器のIDを確認できません。機器を選び直してください"
+                    ));
+                }
+                // Update active config
+                let config = ActiveAudioConfig {
+                    input_source: input_source.as_ref().map(|s| s.source.clone()),
+                    host: host_name.clone().unwrap_or("ASIO".to_string()),
+                    input: input_name,
+                    output: output_name,
+                    input_id: actual_input_id,
+                    output_id: actual_output_id,
+                    buffer_size: Some(buffer_size),
+                    sample_rate: Some(sample_rate),
+                    routing,
+                };
+
+                // Persist for fast auto-start on next launch
+                if let Err(e) = persist_audio_config(&self.last_config_path, &config) {
+                    log::warn!("Failed to save last audio config: {}", e);
+                }
+
+                self.active_config = Some(config);
+                self.remember_input_source(input_source);
+                if let Some(controls) = initial_controls {
+                    self.is_global_muted = controls.muted;
+                    self.output_gain_initialized = true;
+                }
+
+                Ok(AudioConfig {
+                    sample_rate,
+                    buffer_size,
+                    routing,
+                    channels: 2, // Hardcoded for now, or fetch?
+                    stream_generation: stream_generation_label(
+                        self.engine_generation,
+                        stream_generation,
+                    ),
+                })
+            }
+            IpcResponse::Success => {
+                // For backward compatibility or if engine doesn't return Started (it should now)
+                // Or maybe restart_audio_engine calls start which calls this...
+                // If we updated core.rs, it should only return Started for Start command.
+                // But let's handle Success gracefully just in case?
+                // No, core.rs change is definitive.
+                Err(anyhow!("Unexpected Success response, expected Started"))
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    // 停止・画面の後始末で共有する。生存中の通信断を停止済みと推測しない。
+    fn reap_confirmed_stopped_connection(&mut self) -> Result<bool> {
+        if !self.connection_lost() {
+            return Ok(false);
+        }
+        if let Some(child) = &mut self.child {
+            if child.try_wait()?.is_none() {
+                return Ok(false);
+            }
+        }
+        // 通常StopのIPCがなくてもwitness・本番保護・声の活動状態を失効させる。
+        self.kill_engine();
+        Ok(true)
+    }
+
+    pub fn stop(&mut self) -> Result<()> {
+        let result = self.stop_primary();
+        let post = self.post_mix.stop();
+        result.and(post)
+    }
+
+    fn stop_primary(&mut self) -> Result<()> {
+        if self.mode_vst.blocked() {
+            self.hold_notices(|host| {
+                host.cancel_mode_vst("利用者が音声を停止しました");
+                host.kill_engine();
+            });
+            return Ok(());
+        }
+        self.frontend_bootstrap.cancel();
+        self.frontend_bootstrap.session_claimed = true;
+        if self.reap_confirmed_stopped_connection()? {
+            return Ok(());
+        }
+        // 停止は新しいchildを起動せず、確認後に終了した旧接続も再生成しない。
+        match self.execute_running_command(IpcCommand::Stop)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn load_plugin(
+        &mut self,
+        path: &str,
+        class_id: Option<&str>,
+    ) -> Result<crate::ipc::LoadedPlugin> {
+        match self.execute_command(IpcCommand::LoadPlugin {
+            path: path.to_string(),
+            class_id: class_id.map(str::to_string),
+        })? {
+            IpcResponse::PluginLoaded {
+                id,
+                name,
+                class_id,
+                legacy_class_ambiguous,
+                channel_layout,
+                ..
+            } => Ok(crate::ipc::LoadedPlugin {
+                id,
+                name,
+                class_id,
+                legacy_class_ambiguous,
+                channel_layout,
+            }),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn restore_plugin(
+        &mut self,
+        request: crate::ipc::RestorePluginRequest,
+    ) -> Result<crate::ipc::RestoredPlugin> {
+        request.validate().map_err(|error| anyhow!(error))?;
+        if self.bundle_change_generation.is_some() {
+            self.validate_bundle_connection()?;
+        } else {
+            self.ensure_engine_running()?;
+        }
+        let generation = self.engine_generation;
+        self.next_restore_operation = self
+            .next_restore_operation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("VST復元操作IDの上限です"))?;
+        let operation_id = self.next_restore_operation;
+        let response = self.execute_running_command(IpcCommand::RestorePlugin {
+            request,
+            operation_id,
+            expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8_000),
+        })?;
+        validate_restore_response(generation, self.engine_generation, operation_id, response)
+    }
+
+    pub fn remove_plugin(&mut self, id: &str) -> Result<()> {
+        // 削除・取消後の回収のために新しいengineを起こさない。
+        // 生存接続では従来の本番保護と条件変更通知を維持する。
+        self.sync_live_modes()?;
+        let command = IpcCommand::UnloadPlugin { id: id.to_string() };
+        self.guard_live_command(&command)?;
+        match self.execute_running_command(command)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn reorder_plugins(&mut self, order: Vec<String>) -> Result<()> {
+        match self.execute_command(IpcCommand::ReorderPlugins { order })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_bypass(&mut self, id: &str, active: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::SetBypass {
+            id: id.to_string(),
+            active,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_mute(&mut self, id: &str, active: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::SetMute {
+            id: id.to_string(),
+            active,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_gain(&mut self, id: &str, value: f32) -> Result<()> {
+        match self.execute_command(IpcCommand::SetGain {
+            id: id.to_string(),
+            value,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn resume_plugin(&mut self, id: &str) -> Result<()> {
+        match self.execute_command(IpcCommand::ResumePlugin { id: id.to_string() })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn open_editor(&mut self, id: &str) -> Result<()> {
+        match self.execute_command(IpcCommand::OpenEditor { id: id.to_string() })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_global_mute(&mut self, active: bool) -> Result<()> {
+        if self.mode_vst.blocked() {
+            anyhow::ensure!(active, "切替・復旧の完了後にミュートを解除してください");
+            self.is_global_muted = true;
+            self.hold_notices(|host| {
+                host.cancel_mode_vst("緊急ミュートで切替を中止しました");
+                host.kill_engine();
+            });
+            self.notice("global-mute-changed", true);
+            return Ok(());
+        }
+        match self.execute_command(IpcCommand::SetGlobalMute { active })? {
+            IpcResponse::Success => {
+                self.is_global_muted = active;
+                // Emit event for UI update
+                self.notice("global-mute-changed", active);
+                Ok(())
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn toggle_global_mute(&mut self) -> Result<()> {
+        let new_state = !self.is_global_muted;
+        self.set_global_mute(new_state)
+    }
+
+    pub fn set_input_gain(&mut self, value: f32) -> Result<()> {
+        match self.execute_command(IpcCommand::SetInputGain { value })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_noise_reduction(&mut self, active: bool, mode: Option<String>) -> Result<()> {
+        match self.execute_command(IpcCommand::SetNoiseReduction { active, mode })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn noise_measurement(
+        &mut self,
+        request: crate::audio_engine::core::noise_learning::Request,
+    ) -> Result<crate::audio_engine::core::noise_learning::Snapshot> {
+        match self.execute_running_command(IpcCommand::NoiseMeasurement { request })? {
+            IpcResponse::NoiseMeasurement(snapshot) => Ok(*snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("測定状態を確認できません")),
+        }
+    }
+
+    pub fn start_noise_learning(&mut self, duration_ms: u32) -> Result<()> {
+        match self.execute_command(IpcCommand::StartNoiseLearning { duration_ms })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn cancel_noise_learning(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::CancelNoiseLearning)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_noise_control_config(
+        &mut self,
+        active: bool,
+        mode: String,
+        strength: f32,
+        voice_guard: bool,
+    ) -> Result<()> {
+        if !strength.is_finite() {
+            return Err(anyhow!("ノイズ低減の抑制強度が不正です"));
+        }
+        match self.execute_command(IpcCommand::SetNoiseControlConfig {
+            active,
+            mode,
+            strength,
+            voice_guard,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_built_in_effects(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+    ) -> Result<()> {
+        self.set_built_in_effects_full(active, preset, amount, None)
+    }
+
+    pub fn set_built_in_effects_full(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+    ) -> Result<()> {
+        self.set_built_in_effects_with_reverb(active, preset, amount, singing, None)
+    }
+
+    pub fn set_built_in_effects_with_reverb(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+        reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+    ) -> Result<()> {
+        self.set_built_in_effects_detailed(active, preset, amount, singing, reverb, None, false)
+    }
+
+    pub fn set_built_in_effects_from_profile(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+        reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+    ) -> Result<()> {
+        self.set_built_in_effects_detailed(active, preset, amount, singing, reverb, deesser, true)
+    }
+
+    // 旧APIの引数を保ったまま、歯擦音の置換有無だけを足している。
+    #[allow(clippy::too_many_arguments)]
+    fn set_built_in_effects_detailed(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+        reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+        replace_deesser: bool,
+    ) -> Result<()> {
+        match self.execute_command(IpcCommand::SetBuiltInEffects {
+            active,
+            preset,
+            amount,
+            singing,
+            reverb,
+            deesser,
+            replace_deesser,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn builtin_effects(
+        &mut self,
+        request: crate::audio_engine::builtin::Request,
+    ) -> Result<crate::audio_engine::builtin::Snapshot> {
+        let response = if matches!(&request, crate::audio_engine::builtin::Request::Snapshot) {
+            self.execute_running_command(IpcCommand::BuiltinEffects { request })?
+        } else if matches!(
+            &request,
+            crate::audio_engine::builtin::Request::ApplyProposal { .. }
+                | crate::audio_engine::builtin::Request::Undo { .. }
+                | crate::audio_engine::builtin::Request::Redo { .. }
+        ) {
+            self.preflight_proposal_apply()?;
+            anyhow::ensure!(
+                !self.reap_confirmed_stopped_connection()?,
+                "音声エンジンが終了したため提案の期限が切れました"
+            );
+            self.sync_live_modes()?;
+            let command = IpcCommand::BuiltinEffects { request };
+            self.guard_live_command(&command)?;
+            let response = self.execute_running_command(command)?;
+            if !matches!(&response, IpcResponse::Error(_)) {
+                self.live_modes.target = None;
+            }
+            response
+        } else {
+            self.execute_command(IpcCommand::BuiltinEffects { request })?
+        };
+        match response {
+            IpcResponse::BuiltinEffects(snapshot) => Ok(snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected builtin response")),
+        }
+    }
+
+    pub fn set_loudness_measurement(&mut self, id: Option<u64>) -> Result<()> {
+        let response = if id.is_none() {
+            if self.reap_confirmed_stopped_connection()? {
+                return Ok(());
+            }
+            self.execute_running_command(IpcCommand::SetLoudnessMeasurement { id })?
+        } else {
+            self.execute_command(IpcCommand::SetLoudnessMeasurement { id })?
+        };
+        match response {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
+        match self.execute_command(IpcCommand::SetOutputGain { value })? {
+            IpcResponse::Success => {
+                self.output_gain_initialized = true;
+                // プリセットからの変更も、RT反映前に成功として保存させない。
+                for _ in 0..100 {
+                    let state = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+                    if state.stream_failed {
+                        return Err(anyhow!("音声ストリームが停止しています。音声を再起動して現在の音量を確認してください"));
+                    }
+                    if state.gain != value {
+                        return Err(anyhow!("出力音量が変更されました"));
+                    }
+                    if state.settled || !state.running {
+                        return Ok(());
+                    }
+                    thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(anyhow!(
+                    "出力音量の反映を確認できません。現在の状態を確認してください"
+                ))
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn auto_gain(
+        &mut self,
+        request: crate::audio_engine::auto_gain::Request,
+    ) -> Result<crate::audio_engine::auto_gain::Snapshot> {
+        let initializing = matches!(
+            &request,
+            crate::audio_engine::auto_gain::Request::Initialize { .. }
+        );
+        let explicit_gain_update = matches!(
+            &request,
+            crate::audio_engine::auto_gain::Request::Apply { .. }
+                | crate::audio_engine::auto_gain::Request::Restore { .. }
+                | crate::audio_engine::auto_gain::Request::UndoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::RedoHistory { .. }
+        );
+        // Engine側も明示設定後のInitializeを無視する。Hostでも読取にし、
+        // 再起動通知に伴う遅い初期化で復帰・Undoのwitnessを自己失効させない。
+        let request = if initializing && self.output_gain_initialized {
+            crate::audio_engine::auto_gain::Request::Status
+        } else {
+            request
+        };
+        if matches!(request, crate::audio_engine::auto_gain::Request::Cancel)
+            && self.reap_confirmed_stopped_connection()?
+        {
+            // cancelの成功は録音・試聴が存在しないことだけ。gainは未確認で保存対象にしない。
+            return Ok(crate::audio_engine::auto_gain::Snapshot {
+                revision: 0,
+                gain: 1.0,
+                confirmed_gain: 1.0,
+                settled: false,
+                running: false,
+                stream_failed: false,
+                id: 0,
+                phase: "idle".into(),
+                progress: 0.0,
+                proposal: None,
+                playing: false,
+                error: None,
+                devices: Vec::new(),
+                history_id: None,
+                history_epoch: None,
+                history_reason: Some(crate::audio_engine::history::Reason::NotCreated),
+                undo_available: false,
+                redo_available: false,
+            });
+        }
+        let existing_only = matches!(
+            request,
+            crate::audio_engine::auto_gain::Request::Status
+                | crate::audio_engine::auto_gain::Request::UndoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::RedoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::Initialize { .. }
+                | crate::audio_engine::auto_gain::Request::Cancel
+        );
+        let command = IpcCommand::AutoGain { request };
+        let response = if existing_only {
+            // 常時status監視と保存gainの再試行は、停止後のchildを起動しない。
+            self.guard_live_command(&command)?;
+            self.execute_running_command(command)?
+        } else {
+            self.execute_command(command)?
+        };
+        match response {
+            IpcResponse::AutoGain(state) => {
+                if explicit_gain_update {
+                    self.output_gain_initialized = true;
+                }
+                if initializing && !state.stream_failed {
+                    self.frontend_bootstrap.output_gain = Some(state.gain);
+                    if state.running {
+                        self.output_gain_initialized = true;
+                    }
+                }
+                Ok(state)
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("音量調整の状態を取得できません")),
+        }
+    }
+
+    pub fn set_global_bypass(&mut self, active: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::SetGlobalBypass { active })? {
+            IpcResponse::Success => {
+                self.notice("global-bypass-changed", active);
+                Ok(())
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_input_channels(&mut self, left: usize, right: usize) -> Result<()> {
+        match self.execute_command(IpcCommand::SetInputChannels { left, right })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn start_bundle(
+        &mut self,
+        host: Option<String>,
+        input: Option<String>,
+        output: Option<String>,
+        buffer: Option<u32>,
+        rate: Option<u32>,
+        intent: crate::profile::StartIntent,
+    ) -> Result<AudioConfig> {
+        self.start_bundle_with_device_ids(host, input, output, buffer, rate, intent, None, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn start_bundle_with_device_ids(
+        &mut self,
+        host: Option<String>,
+        input: Option<String>,
+        output: Option<String>,
+        buffer: Option<u32>,
+        rate: Option<u32>,
+        intent: crate::profile::StartIntent,
+        input_id: Option<String>,
+        output_id: Option<String>,
+    ) -> Result<AudioConfig> {
+        anyhow::ensure!(
+            self.bundle_mixing_override || self.mixing.selected.is_none(),
+            "二入力の入出力を復帰する場合は、オケ・ミックス後VSTを含む全体保存を使ってください"
+        );
+        intent.validate().map_err(|e| anyhow!(e))?;
+        self.validate_bundle_connection()?;
+        self.preflight_live_changes()?;
+        if self.bundle_mixing_override && self.bundle_prepared_voice {
+            anyhow::ensure!(
+                matches!(
+                    self.execute_running_command(IpcCommand::ProcessingState)?,
+                    IpcResponse::ProcessingState { present: false, .. }
+                ),
+                "準備済みの声ラックを保持したまま停止中から開始してください"
+            );
+        } else if self.bundle_mixing_override {
+            self.preserve_live_changes_for_restart();
+            // 全体復帰で明示選択した入力と、準備済みの別ラックを主Engine再起動に渡す。
+            self.kill_primary_engine();
+        } else {
+            self.preserve_live_changes_for_restart();
+            self.kill_engine();
+        }
+        self.start_internal_guarded_with_ids(
+            host,
+            input,
+            output,
+            buffer,
+            rate,
+            Some(intent),
+            None,
+            input_id,
+            output_id,
+            None,
+        )
+    }
+
+    fn validate_bundle_connection(&self) -> Result<()> {
+        if let Some(expected) = self.bundle_change_generation {
+            anyhow::ensure!(
+                self.bundle_interrupt == Some(self.conditions.restore_interrupt()),
+                "停止・ミュート操作が優先されたため、配信状態の復帰を中断しました"
+            );
+            validate_start_generation(expected, self.engine_generation)?;
+            anyhow::ensure!(
+                !self.connection_lost(),
+                "配信状態の変更中に音声エンジンが終了しました"
+            );
+        }
+        Ok(())
+    }
+
+    fn start_on_existing_generation(
+        &mut self,
+        generation: u64,
+        command: IpcCommand,
+    ) -> Result<IpcResponse> {
+        validate_start_generation(generation, self.engine_generation)?;
+        let response = self.execute_running_command(command)?;
+        validate_start_generation(generation, self.engine_generation)?;
+        Ok(response)
+    }
+
+    pub fn get_plugin_state(&mut self, id: &str) -> Result<String> {
+        // 保存開始後に旧engineが終了しても、読み取りで新engineを起こさない。
+        match self.execute_running_command(IpcCommand::GetPluginState { id: id.to_string() })? {
+            IpcResponse::PluginState { state, .. } => Ok(state),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_plugin_state(&mut self, id: &str, state: &str) -> Result<()> {
+        match self.execute_command(IpcCommand::SetPluginState {
+            id: id.to_string(),
+            state: state.to_string(),
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn unload_all_plugins(&mut self, ids: &[String]) -> Result<()> {
+        for id in ids {
+            self.remove_plugin(id)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_channel_scan(&mut self, active: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::SetChannelScan { active })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn start_voice_check(&mut self, max_ms: u32) -> Result<()> {
+        match self.execute_command(IpcCommand::StartVoiceCheckRecording { max_ms })? {
+            IpcResponse::Success => {
+                self.voice_activity.store(true, Ordering::Release);
+                Ok(())
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn voice_check_preview(
+        &mut self,
+        request: crate::audio_engine::voice_check::preview::Request,
+    ) -> Result<crate::audio_engine::voice_check::preview::Snapshot> {
+        // 閉じた画面の古いpoll/停止で、終了済みのengineを起動し直さない。
+        if !matches!(
+            request.action,
+            crate::audio_engine::voice_check::preview::Action::Open
+        ) && self.connection_lost()
+        {
+            return Err(anyhow!(
+                "音声エンジンとの通信が終了しました。試聴画面を開き直してください"
+            ));
+        }
+        let response = if matches!(
+            &request.action,
+            crate::audio_engine::voice_check::preview::Action::HistoryStatus
+        ) {
+            self.execute_running_command(IpcCommand::VoiceCheckPreview { request })?
+        } else if matches!(
+            &request.action,
+            crate::audio_engine::voice_check::preview::Action::PrepareProposal { .. }
+                | crate::audio_engine::voice_check::preview::Action::PrepareNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }
+        ) {
+            let generation = self.engine_generation;
+            self.require_proposal_connection(generation)?;
+            self.prepare_proposal_on_existing_generation(generation, request)?
+        } else {
+            self.execute_command(IpcCommand::VoiceCheckPreview { request })?
+        };
+        match response {
+            IpcResponse::VoiceCheckPreview(snapshot) => Ok(*snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected voice preview response")),
+        }
+    }
+
+    fn require_proposal_connection(&mut self, generation: u64) -> Result<()> {
+        validate_start_generation(generation, self.engine_generation)?;
+        anyhow::ensure!(
+            !self.connection_lost(),
+            "音声エンジンとの通信が終了しました"
+        );
+        let child = self
+            .child
+            .as_mut()
+            .ok_or_else(|| anyhow!("既存の音声エンジンがありません。提案を作成し直してください"))?;
+        anyhow::ensure!(
+            child.try_wait()?.is_none(),
+            "音声エンジンが終了しました。提案を作成し直してください"
+        );
+        Ok(())
+    }
+
+    fn prepare_proposal_on_existing_generation(
+        &mut self,
+        generation: u64,
+        request: crate::audio_engine::voice_check::preview::Request,
+    ) -> Result<IpcResponse> {
+        // reader通知前のchild終了と、直前の検査後の終了を再起動で補わない。
+        self.require_proposal_connection(generation)?;
+        let response = self.execute_running_command(IpcCommand::VoiceCheckPreview { request })?;
+        self.require_proposal_connection(generation)?;
+        Ok(response)
+    }
+
+    pub fn stop_voice_check(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopVoiceCheckRecording)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn play_voice_check(&mut self, source: String, loop_playback: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::PlayVoiceCheck {
+            source,
+            loop_playback,
+        })? {
+            IpcResponse::Success => {
+                self.voice_activity.store(true, Ordering::Release);
+                Ok(())
+            }
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn stop_voice_check_playback(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopVoiceCheckPlayback)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn export_voice_check(&mut self, path: String, source: String) -> Result<()> {
+        match self.execute_command(IpcCommand::ExportVoiceCheck { path, source })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn play_test_tone(&mut self, freq_hz: f32, duration_ms: u32, level_db: f32) -> Result<()> {
+        match self.execute_command(IpcCommand::PlayTestTone {
+            freq_hz,
+            duration_ms,
+            level_db,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    // 到達確認は既存streamだけを使う。別操作が入った後の古い後始末から
+    // 新しいtoneや利用者の停止を変更しないよう、開始ACK後の条件を所有する。
+    pub(crate) fn begin_obs_reach_tone(&mut self, duration_ms: u32) -> Result<conditions::Witness> {
+        self.conditions.snapshot().map_err(anyhow::Error::msg)?;
+        let command = IpcCommand::PlayTestTone {
+            freq_hz: 1000.0,
+            duration_ms,
+            level_db: -20.0,
+        };
+        self.guard_live_command(&command)?;
+        match self.execute_running_command(command)? {
+            IpcResponse::Success => self.conditions.snapshot().map_err(anyhow::Error::msg),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub(crate) fn finish_obs_reach_tone(
+        &mut self,
+        witness: &conditions::Witness,
+    ) -> Result<conditions::Witness> {
+        witness.validate().map_err(anyhow::Error::msg)?;
+        match self.execute_running_command(IpcCommand::StopTestTone)? {
+            IpcResponse::Success => self.conditions.snapshot().map_err(anyhow::Error::msg),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn stop_test_tone(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopTestTone)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn measure_round_trip(
+        &mut self,
+        level_db: Option<f32>,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::MeasureRoundTrip { level_db })
+    }
+
+    pub fn cancel_round_trip_measurement(
+        &mut self,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::CancelMeasurement)
+    }
+
+    pub fn get_round_trip_measurement(
+        &mut self,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::GetRoundTripMeasurement)
+    }
+
+    fn round_trip_command(
+        &mut self,
+        command: IpcCommand,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        match self.execute_command(command)? {
+            IpcResponse::RoundTrip(snapshot) => Ok(snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn probe_loopback(
+        &mut self,
+        input_device: String,
+        duration_ms: u32,
+        freq_hz: f32,
+    ) -> Result<LoopbackProbeResult> {
+        match self.execute_command(IpcCommand::ProbeLoopback {
+            input_device,
+            duration_ms: deadline::probe_duration_ms(duration_ms),
+            freq_hz,
+        })? {
+            IpcResponse::LoopbackProbe {
+                detected,
+                level_db,
+                unavailable,
+            } => Ok(LoopbackProbeResult {
+                detected,
+                level_db,
+                unavailable,
+            }),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_engine_tuning_config(&mut self, mut config: EngineTuningConfig) {
+        config.affinity_mask = config
+            .affinity_mask
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        self.engine_tuning = config;
+    }
+
+    pub fn get_engine_tuning_config(&self) -> EngineTuningConfig {
+        self.engine_tuning.clone()
+    }
+
+    pub fn get_engine_runtime_stats(&mut self) -> Result<EngineRuntimeStats> {
+        if self.bundle_change_generation.is_some() {
+            self.validate_bundle_connection()?;
+            anyhow::ensure!(
+                self.child.is_some(),
+                "配信状態の変更中に音声エンジンが終了しました"
+            );
+        }
+        if self.child.is_none() {
+            return Ok(EngineRuntimeStats::default());
+        }
+
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    self.kill_engine();
+                    self.validate_bundle_connection()?;
+                    return Ok(EngineRuntimeStats::default());
+                }
+                Err(error) => return Err(error.into()),
+                Ok(None) => {}
+            }
+        }
+
+        match self.execute_running_command(IpcCommand::GetRuntimeStats)? {
+            IpcResponse::RuntimeStats {
+                process_input,
+                preparation,
+                active_plugin_count,
+                enabled_plugin_count,
+                pending_unload_count,
+                burned_library_count,
+                global_bypass,
+                plugin_health,
+                callback_diagnostics,
+                queue_diagnostics,
+                latency_metadata,
+                frame_timing,
+                resampler_batch_timing,
+                resampler_cohort_timing,
+                max_jitter_us,
+                glitch_count,
+                total_plugin_latency_samples,
+                total_plugin_latency_ms,
+                noise_reduction_latency_samples,
+                noise_reduction_latency_ms,
+                total_chain_latency_samples,
+                total_chain_latency_ms,
+                noise_reduction_enabled,
+                noise_reduction_active,
+                noise_reduction_mode,
+                noise_learning_state,
+                noise_learning_progress,
+                noise_profile_available,
+                noise_profile_rms,
+                recommended_noise_mix,
+                speech_detected,
+                noise_voice_guard,
+                noise_control_strength,
+                built_in_effects_enabled,
+                built_in_effects_preset,
+                built_in_effects_amount,
+                built_in_singing,
+                built_in_reverb,
+                processing_health,
+                built_in_deesser,
+            } => Ok(EngineRuntimeStats {
+                process_input,
+                preparation,
+                active_plugin_count,
+                enabled_plugin_count,
+                pending_unload_count,
+                burned_library_count,
+                global_bypass,
+                plugin_health,
+                callback_diagnostics: *callback_diagnostics,
+                queue_diagnostics,
+                latency_metadata,
+                frame_timing,
+                resampler_batch_timing,
+                resampler_cohort_timing,
+                max_jitter_us,
+                glitch_count,
+                total_plugin_latency_samples,
+                total_plugin_latency_ms,
+                noise_reduction_latency_samples,
+                noise_reduction_latency_ms,
+                total_chain_latency_samples,
+                total_chain_latency_ms,
+                noise_reduction_enabled,
+                noise_reduction_active,
+                noise_reduction_mode,
+                noise_learning_state,
+                noise_learning_progress,
+                noise_profile_available,
+                noise_profile_rms,
+                recommended_noise_mix,
+                speech_detected,
+                noise_voice_guard,
+                noise_control_strength,
+                built_in_effects_enabled,
+                built_in_effects_preset,
+                built_in_effects_amount,
+                built_in_singing,
+                built_in_reverb,
+                processing_health,
+                built_in_deesser,
+            }),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn check_can_interrupt(&mut self) -> Result<()> {
+        if self.maintenance {
+            return Err(anyhow!(
+                "変更を反映済みです。再起動してから操作してください。"
+            ));
+        }
+        if self.link.is_open() && self.voice_activity.load(Ordering::Acquire) {
+            return Err(anyhow!(
+                "ボイスチェックの録音・試聴を終了してから更新してください。"
+            ));
+        }
+        if self.child.is_some() {
+            let gain = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+            if gain.phase == "recording" || gain.playing {
+                return Err(anyhow!(
+                    "音量調整の録音・試聴を終了してから更新してください。"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn prepare_update(&mut self) -> Result<()> {
+        self.check_can_interrupt()?;
+        if self.child.is_some() {
+            self.stop()?;
+        }
+        self.maintenance = true;
+        self.kill_engine();
+        // 終わらない子が残る間は、更新・移行・一時利用へ進まない。
+        if let Err(error) = self.retired.recheck() {
+            self.maintenance = false;
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    pub fn finish_update_attempt(&mut self) {
+        self.maintenance = false;
+    }
+
+    pub fn kill_engine(&mut self) {
+        self.bundle_prepared_voice = false;
+        self.post_mix.kill();
+        self.mixing.selected = None;
+        self.kill_primary_engine();
+    }
+
+    /// 状態は今の順で変え、通知は子の回収の後に出す（2.3）。
+    fn kill_primary_engine(&mut self) {
+        self.hold_notices(|host| {
+            host.post_attached = false;
+            host.output_gain_initialized = false;
+            if host.mode_vst.busy() {
+                host.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
+            }
+            if host.child.is_some() {
+                host.frontend_bootstrap.cancel();
+                host.frontend_bootstrap.session_claimed = true;
+            }
+            host.invalidate_live_protection();
+            host.live_modes.needs_sync = true;
+            host.conditions.retire_engine();
+            host.engine_generation = host.engine_generation.wrapping_add(1);
+            host.device_scan = None;
+            // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
+            if host.child.is_some() {
+                log::warn!("Force Killing Audio Engine...");
+            }
+            host.drop_connection(CloseCause::Intentional);
+            host.voice_activity.store(false, Ordering::Release);
+            // 切断状態の確定が済んでから、保持する通知を積む。
+            host.notify_conditions_changed();
+            host.engine_job = None;
+        });
+    }
+
+    pub fn warmup(&mut self) -> Result<()> {
+        if self.frontend_bootstrap.frontend_seen {
+            return Ok(());
+        }
+        self.warmup_once()
+    }
+
+    fn warmup_once(&mut self) -> Result<()> {
+        if self.mode_vst.blocked() {
+            self.require_explicit_start();
+            return Ok(());
+        }
+        if !self.prepare_warmup(Self::ensure_engine_running)? {
+            return Ok(());
+        }
+
+        // Fast auto-start: read last successful config and start immediately
+        // This avoids waiting for the frontend to load and send the Start command.
+        let path = &self.last_config_path;
+        match std::fs::read_to_string(path) {
+            Ok(json) => {
+                match serde_json::from_str::<ActiveAudioConfig>(&json) {
+                    Ok(config)
+                        if config
+                            .input_source
+                            .as_ref()
+                            .is_some_and(|s| *s != crate::input_source::Config::default()) =>
+                    {
+                        self.frontend_bootstrap.automatic_attempted = true;
+                        self.frontend_bootstrap.warmup_error = Some(
+                            "保存した入力は自動開始しません。音声設定で入力を確認してください。"
+                                .into(),
+                        );
+                    }
+                    Ok(config)
+                        if !config.host.is_empty()
+                            && config
+                                .routing
+                                .is_none_or(|routing| routing.input_channels.is_none()) =>
+                    {
+                        // 旧形式には入力ペアがない。frontendから保存済みの選択が届くまで開始しない。
+                        log::debug!("入力ペアを受け取るまで旧設定の自動開始を待機します");
+                        self.frontend_bootstrap.deferred_config = Some(config);
+                    }
+                    Ok(config) if !config.host.is_empty() => {
+                        self.frontend_bootstrap.automatic_attempted = true;
+                        log::info!("Auto-starting audio with last config: {:?}", config);
+                        let generation = self.engine_generation;
+                        match self.start_internal_guarded_with_ids(
+                            Some(config.host),
+                            config.input,
+                            config.output,
+                            config.buffer_size,
+                            config.sample_rate,
+                            None,
+                            Some(generation),
+                            config.input_id,
+                            config.output_id,
+                            config.routing,
+                        ) {
+                            Ok(res) => {
+                                self.frontend_bootstrap.warmup_succeeded = true;
+                                log::info!(
+                                    "Auto-start successful (SR={}, Buf={})",
+                                    res.sample_rate,
+                                    res.buffer_size
+                                );
+                            }
+                            Err(e) => {
+                                self.frontend_bootstrap.cancel();
+                                self.frontend_bootstrap.warmup_error = Some("自動開始が完了していません。設定から明示的に再開してください。".into());
+                                log::warn!("Auto-start failed (user can start manually): {}", e);
+                            }
+                        }
+                    }
+                    Ok(_) => log::debug!("Last config has empty host, skipping auto-start"),
+                    Err(e) => log::debug!("Failed to parse last config: {}", e),
+                }
+            }
+            Err(_) => log::debug!("No last audio config found, skipping auto-start"),
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn require_explicit_start(&mut self) {
+        self.frontend_bootstrap.cancel();
+        self.frontend_bootstrap.session_claimed = true;
+    }
+
+    pub fn get_state(&self) -> AudioStateInfo {
+        AudioStateInfo {
+            is_running: self.child.is_some(),
+            config: self.active_config.clone(),
+            condition_witness: self
+                .conditions
+                .snapshot()
+                .ok()
+                .map(|w| AudioConditionWitness {
+                    revision: w.revision().to_string(),
+                    epoch: w.engine_epoch().to_string(),
+                }),
+        }
+    }
+
+    // 同じ配布形式の保存先だけを読む。復帰操作から呼び、音声開始や別保存先への代替はしない。
+    pub fn read_saved_audio_config(&self) -> Result<Option<ActiveAudioConfig>> {
+        match std::fs::read(&self.last_config_path) {
+            Ok(bytes) => {
+                let config: ActiveAudioConfig = serde_json::from_slice(&bytes)?;
+                anyhow::ensure!(!config.host.trim().is_empty(), "保存済み接続方式が空です");
+                Ok(Some(config))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+impl Drop for AudioHost {
+    fn drop(&mut self) {
+        #[cfg(test)]
+        if let Some(seam) = self.drop_seam.take() {
+            seam();
+        }
+        // アプリ終了によるkillを、readerの異常終了通知から除外する。writer は join しない。
+        self.close_connection(CloseCause::Intentional);
+        self.conditions.retire_engine();
+        if self.post_role {
+            // 配信ミックスの子の `AudioHost` を手放す経路。終わらない子は、主の記録へ移す。
+            self.release_engine();
+            return;
+        }
+        // 主・配信ミックス・記録の子に、共通の期限で終了を確かめる。Job が残りを回収する。
+        let mut children = Vec::new();
+        children.extend(self.take_engine_for_shutdown());
+        children.extend(self.post_mix.take_children_for_shutdown());
+        if !self.post_role {
+            children.extend(self.retired.drain());
+        }
+        if !children.is_empty() {
+            log::info!("Killing Audio Engine Sidecar (Drop)...");
+            engine_life::terminate_all(children);
+        }
+    }
+}
+
+impl AudioHost {
+    /// 子を手放す（`AudioHost` ごと捨てる前）。終了を確かめられなければ記録へ移す。
+    fn release_engine(&mut self) {
+        self.drop_connection(CloseCause::Intentional);
+    }
+
+    fn take_engine_for_shutdown(&mut self) -> Option<(Child, Option<engine_life::JobHandle>)> {
+        self.close_connection(CloseCause::Intentional);
+        self.child
+            .take()
+            .map(|child| (child, self.engine_job.take()))
+    }
+}
+
+// ミュート確認を受けた同じ接続だけでStartする。拒否・通信失敗ではStartしない。
+fn validate_restore_response(
+    expected_generation: u64,
+    generation: u64,
+    operation_id: u64,
+    response: IpcResponse,
+) -> Result<crate::ipc::RestoredPlugin> {
+    anyhow::ensure!(
+        generation == expected_generation,
+        "VST復元中に音声エンジンが変わりました"
+    );
+    match response {
+        IpcResponse::PluginRestored {
+            operation_id: received,
+            plugin,
+        } if received == operation_id => Ok(plugin),
+        IpcResponse::Error(error) => Err(anyhow!(error)),
+        _ => Err(anyhow!("VST復元の応答が操作と一致しません")),
+    }
+}
+
+fn validate_start_generation(expected: u64, actual: u64) -> Result<()> {
+    anyhow::ensure!(
+        expected == actual,
+        "開始準備中に音声エンジンが変わりました。開始していません"
+    );
+    Ok(())
+}
+
+fn require_identity_capability(
+    start: &IpcCommand,
+    mut send: impl FnMut(IpcCommand) -> Result<IpcResponse>,
+) -> Result<()> {
+    let needs_routing = matches!(
+        start,
+        IpcCommand::Start {
+            channel_routing: Some(_),
+            ..
+        }
+    );
+    if !needs_routing
+        && !matches!(
+            start,
+            IpcCommand::Start {
+                input_id: Some(_),
+                ..
+            } | IpcCommand::Start {
+                output_id: Some(_),
+                ..
+            }
+        )
+    {
+        return Ok(());
+    }
+    match send(IpcCommand::StartIdentityCapability) {
+        Ok(IpcResponse::StartIdentityCapability { version })
+            if version >= if needs_routing { 2 } else { 1 } =>
+        {
+            Ok(())
+        }
+        _ => Err(anyhow!(
+            "音声エンジンが機器IDの照合に対応していません。再起動して設定を確認してください"
+        )),
+    }
+}
+
+fn start_with_mute(
+    active: bool,
+    start: IpcCommand,
+    mut execute: impl FnMut(IpcCommand) -> Result<IpcResponse>,
+) -> Result<IpcResponse> {
+    match execute(IpcCommand::SetGlobalMute { active })? {
+        IpcResponse::Success => execute(start),
+        IpcResponse::Error(error) => Err(anyhow!(error)),
+        _ => Err(anyhow!("Unexpected global mute response before Start")),
+    }
+}
+
+// Global state container
+pub struct AudioState(pub control::AudioControl);
+
+/// Translate common audio engine errors into user-friendly Japanese messages.
+pub fn localize_audio_error(e: String) -> String {
+    let lower = e.to_lowercase();
+
+    // 日本語の最終の文言を持つので、そのまま返す（英語は #833）（既定の包みをかけない）。
+    if e.contains(engine_life::REPEATED_JA) {
+        return engine_life::EngineUnconfirmed::text(true);
+    }
+    if e.contains(engine_life::UNCONFIRMED_JA) {
+        return engine_life::EngineUnconfirmed::text(false);
+    }
+    if lower.contains("sample clock or rate cannot be determined") {
+        return "オーディオデバイスのサンプルレートを取得できません。\n\n\
+                他のアプリ（Discord・ブラウザなど）がデバイスを使用中の可能性があります。\n\
+                → 他のアプリを閉じてから、もう一度お試しください。\n\
+                → 解決しない場合は「サウンド設定」でサンプルレートを確認してください。"
+            .to_string();
+    }
+    if lower.contains("device not found") {
+        return "オーディオデバイスが見つかりません。\n\n\
+             → デバイスが接続されているか確認してください。\n\
+             → 接続し直した後、「更新」ボタンを押してください。"
+            .to_string();
+    }
+    if lower.contains("access is denied")
+        || lower.contains("access denied")
+        || lower.contains("0x80070005")
+        || e.contains("アクセスが拒否")
+    {
+        return "オーディオデバイスへのアクセスが拒否されました。\n\n\
+                → Windows設定 > プライバシーとセキュリティ > マイクを確認してください。\n\
+                → Store・MSIX版はアプリ一覧のAuralyn、通常配布版はデスクトップアプリの許可も確認してください。\n\
+                → 排他モードを使用中の場合は、他のアプリを閉じてください。"
+            .to_string();
+    }
+    if lower.contains("stream configuration is not supported") {
+        return "選択した設定はこのデバイスに対応していません。\n\n\
+                → バッファサイズを大きくしてみてください（例: 512 → 1024）。\n\
+                → それでも解決しない場合は「かんたん設定」をお試しください。"
+            .to_string();
+    }
+    // Default fallback
+    format!("オーディオエラーが発生しました。\n\n詳細: {}", e)
+}
+
+#[cfg(test)]
+#[path = "audio/tests/permission_error_tests.rs"]
+mod permission_error_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/config_storage_tests.rs"]
+mod config_storage_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/device_scan_tests.rs"]
+mod device_scan_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/compat_support.rs"]
+pub(crate) mod compat_support;
+
+#[cfg(test)]
+#[path = "audio/tests/compat_tests.rs"]
+mod compat_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/engine_life_tests.rs"]
+mod engine_life_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/control_tests.rs"]
+mod control_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/actor_tests.rs"]
+mod actor_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/queue_support.rs"]
+mod queue_support;
+
+#[cfg(test)]
+#[path = "audio/tests/stop_priority_tests.rs"]
+mod stop_priority_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/class_tests.rs"]
+mod class_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/link_seam.rs"]
+mod link_seam;
+
+#[cfg(test)]
+#[path = "audio/tests/reaper_seam.rs"]
+mod reaper_seam;
+
+#[cfg(test)]
+#[path = "audio/tests/unconfirmed_tests.rs"]
+mod unconfirmed_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/link_cell_tests.rs"]
+mod link_cell_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/link_tests.rs"]
+mod link_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/n2_tests.rs"]
+mod n2_tests;
+
+#[cfg(test)]
+#[path = "audio/tests/reply_deadline_tests.rs"]
+mod reply_deadline_tests;

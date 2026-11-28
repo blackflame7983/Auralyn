@@ -157,7 +157,7 @@ def main() -> int:
     parser.add_argument("--output-endpoint", required=True)
     args = parser.parse_args()
     args.engine, args.probe = args.engine.resolve(strict=True), args.probe.resolve(strict=True)
-    directory = Path("src-tauri/target/process-loopback-probe", "engine-process-" + uuid.uuid4().hex[:10]).resolve()
+    directory = Path("target/process-loopback-probe", "engine-process-" + uuid.uuid4().hex[:10]).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     summary = {"functional_pass": False, "engine_sha256": hashlib.sha256(args.engine.read_bytes()).hexdigest(), "audible_monitor_tested": False}
     try:

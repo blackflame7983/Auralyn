@@ -9,7 +9,7 @@ export function rustSuppressions(source) {
     return [...source.matchAll(/#\s*!?\[[\s\S]*?\]/g)].filter(match => /\b(?:allow|expect)\s*\(/.test(match[0]));
 }
 export function rustFindings() {
-    const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'src-tauri/src', 'src-tauri/crates', 'src-gpui/src'], { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.rs'));
+    const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'crates/vst-host/src', 'crates/auralyn-core', 'crates/auralyn-ui-model', 'src-gpui/src'], { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.rs'));
     const result = [];
     for (const file of [...new Set(files)]) {
         if (!fs.existsSync(path.join(root, file))) continue;
@@ -25,11 +25,11 @@ export function checkRust() {
     const errors = reconcile(rustFindings(), baseline.entries);
     const rtGuard = '#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]';
     for (const file of ['gain_ramp.rs', 'comparison.rs']) {
-        if (!fs.readFileSync(path.join(root, 'src-tauri/src/audio_engine', file), 'utf8').includes(rtGuard)) errors.push(`${file}: RT用の禁止API/型検査を削除しないでください。`);
+        if (!fs.readFileSync(path.join(root, 'crates/vst-host/src/audio_engine', file), 'utf8').includes(rtGuard)) errors.push(`${file}: RT用の禁止API/型検査を削除しないでください。`);
     }
-    const native = fs.readFileSync(path.join(root, 'src-tauri/src/audio_engine/core/native_stream.rs'), 'utf8').replaceAll('\r\n', '\n');
+    const native = fs.readFileSync(path.join(root, 'crates/vst-host/src/audio_engine/core/native_stream.rs'), 'utf8').replaceAll('\r\n', '\n');
     for (const callback of ['input_samples', 'output_samples']) if (!native.includes(`#[deny(clippy::disallowed_methods, clippy::disallowed_types)]\nfn ${callback}`)) errors.push(`${callback}: RT境界のClippy検査がありません。`);
-    if (!fs.readFileSync(path.join(root, 'src-tauri/src/lib.rs'), 'utf8').includes('#![deny(clippy::await_holding_lock)]')) errors.push('Rustのawait_holding_lock検査を維持してください。');
+    if (!fs.readFileSync(path.join(root, 'crates/vst-host/src/lib.rs'), 'utf8').includes('#![deny(clippy::await_holding_lock)]')) errors.push('Rustのawait_holding_lock検査を維持してください。');
     if (errors.length) throw new Error(errors.join('\n'));
     console.log('Rust policy PASS (抑制・RT検査の適用範囲。コンパイルは--rustで実行)');
 }

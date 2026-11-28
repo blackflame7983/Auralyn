@@ -572,6 +572,7 @@ struct Scan {
 
 /// 機器の走査の様子を見に行く間隔と、あきらめるまでの時間（Tauri 版と同じ）。
 const SCAN_POLL: Duration = Duration::from_millis(100);
+const MODE_POLL: Duration = Duration::from_millis(10);
 const SCAN_LIMIT: Duration = Duration::from_secs(35);
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
@@ -597,8 +598,14 @@ impl Control {
         self.restore_sound();
         self.start_saved();
         loop {
-            let first = if self.scan.is_some() {
-                match commands.recv_timeout(SCAN_POLL) {
+            // モードの VST の切替は、ホストが 10ms ごとの呼び出しで進める。
+            let poll = if self.host.mode_vst_pending() {
+                Some(MODE_POLL)
+            } else {
+                self.scan.as_ref().map(|_| SCAN_POLL)
+            };
+            let first = if let Some(poll) = poll {
+                match commands.recv_timeout(poll) {
                     Ok(command) => Some(command),
                     Err(flume::RecvTimeoutError::Timeout) => None,
                     Err(flume::RecvTimeoutError::Disconnected) => break,
@@ -616,6 +623,7 @@ impl Control {
                     self.execute(command);
                 }
             }
+            self.host.poll_mode_vst();
             self.poll_scan();
         }
     }

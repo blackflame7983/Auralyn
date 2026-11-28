@@ -153,12 +153,12 @@ def verify(binary: Path, directory: Path, allow_tone: bool, summary: dict) -> di
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=Path("src-tauri/target/debug/examples/process_loopback_probe.exe"))
+    parser.add_argument("--binary", type=Path, default=Path("target/debug/examples/process_loopback_probe.exe"))
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--allow-low-volume-tone", action="store_true", help="9秒間の997Hz・振幅0.002の基準音を明示的に許可する")
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
-    directory = (args.output_dir or Path("src-tauri/target/process-loopback-probe") / ("verify-" + uuid.uuid4().hex[:10])).resolve()
+    directory = (args.output_dir or Path("target/process-loopback-probe") / ("verify-" + uuid.uuid4().hex[:10])).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     print(json.dumps({"output_directory": str(directory)}), flush=True)
     summary: dict = {}
