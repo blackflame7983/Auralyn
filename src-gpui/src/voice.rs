@@ -9,6 +9,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::select::{Select, SelectState};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Disableable as _, Selectable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -404,7 +405,7 @@ impl VoicePanel {
                         Source::Processed,
                     ))
                     .child(
-                        Checkbox::new("listen-loop")
+                        Switch::new("listen-loop")
                             .checked(self.looped.get())
                             .label(core(lang, keys::LISTEN_LOOP))
                             .on_click({

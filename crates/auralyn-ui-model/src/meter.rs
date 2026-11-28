@@ -224,6 +224,11 @@ pub fn warning_position() -> f32 {
     position(amplitude(LOUD_DB))
 }
 
+/// 話し声のちょうど良い大きさ（−30〜−6 dBFS）の帯の、下と上の位置。
+pub fn comfortable_band() -> (f32, f32) {
+    (position(amplitude(QUIET_DB)), warning_position())
+}
+
 /// 画面に出すピークの数字。負号は U+2212 にそろえる（`formatPeakDbfs`）。
 pub fn format_peak(level: f32) -> String {
     let db = to_dbfs(level);
@@ -236,6 +241,12 @@ pub fn format_peak(level: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comfortable_band_sits_between_quiet_and_loud() {
+        let (low, high) = comfortable_band();
+        assert!((low - 0.5).abs() < 1e-4 && (high - 0.9).abs() < 1e-4);
+    }
 
     fn live(value: [f32; 2]) -> (Meter, Instant) {
         let now = Instant::now();
