@@ -45,16 +45,16 @@ function powershellQuote(value) {
 
 function prepareAsioSdk(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || PROJECT_ROOT);
-  const policyPath = path.join(projectRoot, 'config', 'release-policy.json');
+  const policyPath = path.join(projectRoot, 'config', 'asio-sdk.json');
   const policy = options.policy || JSON.parse(fs.readFileSync(policyPath, 'utf8'));
-  const asio = policy.asio || {};
+  const asio = policy;
   const sdkVersion = asio.sdkVersion;
   const expectedHash = String(asio.sdkArchiveSha256 || '').toLowerCase();
   const downloadUrl = asio.licenseSource;
   const cacheRoot = path.resolve(options.cacheRoot || CACHE_ROOT);
 
   if (!sdkVersion || !/^[a-f0-9]{64}$/.test(expectedHash) || !downloadUrl) {
-    throw new Error('ASIO SDK version、download URL、SHA-256をrelease-policy.jsonに固定してください。');
+    throw new Error('ASIO SDK version、download URL、SHA-256をconfig/asio-sdk.jsonに固定してください。');
   }
 
   fs.mkdirSync(cacheRoot, { recursive: true });
