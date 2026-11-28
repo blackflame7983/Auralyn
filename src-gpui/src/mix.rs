@@ -19,7 +19,8 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, MixAction};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, with_hint, Fold, OnCommand};
+use crate::part::{action, card, note, with_hint, Fold, OnCommand};
+use crate::prep::{Goto, OnGoto};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -423,6 +424,7 @@ impl MixPanel {
         output_ready: Option<bool>,
         cx: &App,
         send: OnCommand,
+        goto: OnGoto,
     ) -> impl IntoElement {
         let Some(mix) = self.mix.as_ref() else {
             return card(
@@ -449,6 +451,18 @@ impl MixPanel {
             && mix.error.is_none()
             && matches!(chosen, Some((_, true)))
             && confirmed;
+        // ほかの理由（配信用の出力・止める・ミュート）は上に注意として出ている。
+        let apply_reason = if !ready || mix.running || route_unmuted || mix.error.is_some() {
+            None
+        } else if self.selected(cx).is_none() {
+            Some(keys::REASON_MIX_DEVICE)
+        } else if chosen.is_none() {
+            Some(keys::REASON_MIX_CHANNELS)
+        } else if !confirmed {
+            Some(keys::REASON_CONFIRM)
+        } else {
+            None
+        };
         let current = |source: &Option<Source>| match source {
             Some(Source::Device { input_id, channels }) => format!(
                 "{} ({})",
@@ -493,6 +507,16 @@ impl MixPanel {
                 .gap_3()
                 .when(output_ready == Some(false), |this| {
                     this.child(warning(core(lang, keys::MIX_NEED_OUTPUT).to_owned()))
+                        .child(
+                            div().child(
+                                Button::new("mix-open-connect")
+                                    .label(core(lang, keys::OPEN_CONNECT))
+                                    .icon(IconName::ChevronRight)
+                                    .outline()
+                                    .small()
+                                    .on_click(move |_, window, cx| goto(Goto::Connect, window, cx)),
+                            ),
+                        )
                 })
                 .child(row(lang, keys::MIX_CURRENT, current(&mix.active)))
                 .when(mix.active.is_none() && mix.saved.is_some(), |this| {
@@ -587,8 +611,10 @@ impl MixPanel {
                         .child(
                             div()
                                 .flex()
+                                .flex_wrap()
+                                .items_center()
                                 .gap_2()
-                                .child(
+                                .child(action(
                                     Button::new("mix-apply")
                                         .label(core(lang, keys::MIX_APPLY))
                                         .primary()
@@ -601,7 +627,8 @@ impl MixPanel {
                                                 }
                                             }
                                         }),
-                                )
+                                    apply_reason.map(|key| core(lang, key)),
+                                ))
                                 .when(mix.active.is_some() || mix.saved.is_some(), |this| {
                                     let send = send.clone();
                                     this.child(

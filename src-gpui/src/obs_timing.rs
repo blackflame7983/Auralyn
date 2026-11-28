@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use auralyn_ui_model::obs_timing::{
-    result_offset, Blocked, Comparison, Direction, Form, Role, MAX_NOTE_CHARS,
+    result_offset, Blocked, Comparison, Direction, Form, Missing, Role, MAX_NOTE_CHARS,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
@@ -20,7 +20,7 @@ use vst_host_lib::obs_setup::{TimingMetadata, TimingTargets};
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, Timing};
-use crate::part::{choices, note};
+use crate::part::{action, choices, note};
 
 /// ボタンで選ぶもの。入力欄の文字は `InputState` が持つ。
 #[derive(Default)]
@@ -174,7 +174,10 @@ impl TimingPanel {
             .border_color(crate::color::border())
             .child(div().child(toggle))
             .when(open, |this| {
-                this.child(self.render_form(lang, cx, connected, busy, on))
+                this.child(crate::part::reveal(
+                    "obs-timing-body".into(),
+                    div().child(self.render_form(lang, cx, connected, busy, on)),
+                ))
             })
     }
 
@@ -309,6 +312,19 @@ impl TimingPanel {
                 measurement: m.clone(),
             });
         let idle = connected && !busy;
+        let fetch_reason = form
+            .missing()
+            .filter(|_| idle)
+            .map(|missing| match missing {
+                Missing::Direction => keys::REASON_TIMING_DIRECTION,
+                Missing::Difference => keys::REASON_TIMING_DIFFERENCE,
+                Missing::Fps => keys::REASON_TIMING_FPS,
+                Missing::Track => keys::REASON_TIMING_TRACK,
+                Missing::Note => keys::REASON_TIMING_NOTE,
+                Missing::Checked => keys::REASON_CONFIRM,
+            });
+        let preview_reason = (measurement.is_some() && supported.is_some() && selected.is_none())
+            .then_some(keys::REASON_TIMING_TARGET);
         div()
             .flex()
             .flex_col()
@@ -358,14 +374,17 @@ impl TimingPanel {
             .child(checked)
             .when_some(blocked, |this, key| this.child(note(core(lang, key))))
             .when_some(role, |this, role| this.child(div().text_sm().child(role)))
-            .child(div().child({
-                let on = on.clone();
-                Button::new("obs-timing-targets")
-                    .label(core(lang, keys::OBS_TIMING_FETCH))
-                    .outline()
-                    .disabled(!idle || measurement.is_none())
-                    .on_click(move |_, _, cx| on(Order::Setup(Setup::Targets), cx))
-            }))
+            .child(action(
+                {
+                    let on = on.clone();
+                    Button::new("obs-timing-targets")
+                        .label(core(lang, keys::OBS_TIMING_FETCH))
+                        .outline()
+                        .disabled(!idle || measurement.is_none())
+                        .on_click(move |_, _, cx| on(Order::Setup(Setup::Targets), cx))
+                },
+                fetch_reason.map(|key| core(lang, key)),
+            ))
             .when_some(self.targets.as_ref(), |this, targets| {
                 this.child(self.render_targets(lang, targets, picked.token.as_deref(), busy))
             })
@@ -383,18 +402,21 @@ impl TimingPanel {
                 }
                 this.child(div().text_sm().child(line))
             })
-            .child(div().child({
-                let on = on.clone();
-                Button::new("obs-timing-preview")
-                    .label(core(lang, keys::OBS_TIMING_PREVIEW))
-                    .outline()
-                    .disabled(!idle || preview.is_none())
-                    .on_click(move |_, _, cx| {
-                        if let Some(timing) = preview.clone() {
-                            on(Order::Setup(Setup::Timing(timing)), cx);
-                        }
-                    })
-            }))
+            .child(action(
+                {
+                    let on = on.clone();
+                    Button::new("obs-timing-preview")
+                        .label(core(lang, keys::OBS_TIMING_PREVIEW))
+                        .outline()
+                        .disabled(!idle || preview.is_none())
+                        .on_click(move |_, _, cx| {
+                            if let Some(timing) = preview.clone() {
+                                on(Order::Setup(Setup::Timing(timing)), cx);
+                            }
+                        })
+                },
+                preview_reason.map(|key| core(lang, key)),
+            ))
             .child(note(core(lang, keys::OBS_TIMING_FOOTER)))
     }
 

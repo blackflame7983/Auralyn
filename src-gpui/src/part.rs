@@ -8,6 +8,7 @@ use std::time::Duration;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -60,15 +61,33 @@ impl Fold {
 pub const REVEAL: Duration = Duration::from_millis(220);
 pub const REVEAL_RISE: f32 = 8.;
 
+/// 画面の中で切り替わる部分（入力の種類・開いた欄）の動き。画面を開くときより短く、小さくする。
+const SHIFT: Duration = Duration::from_millis(160);
+const SHIFT_RISE: f32 = 4.;
+
 /// 中身を下からふわっと出す。`id` が変わるたびに動き直す。
 pub fn reveal<E: IntoElement + Styled + 'static>(id: ElementId, element: E) -> impl IntoElement {
+    rise(id, element, REVEAL, REVEAL_RISE)
+}
+
+/// 画面の中で切り替わった部分を、控えめにふわっと出す。`id` に今の選択を含めると、選び直すたびに動く。
+pub fn shift<E: IntoElement + Styled + 'static>(id: ElementId, element: E) -> impl IntoElement {
+    rise(id, element, SHIFT, SHIFT_RISE)
+}
+
+fn rise<E: IntoElement + Styled + 'static>(
+    id: ElementId,
+    element: E,
+    duration: Duration,
+    distance: f32,
+) -> impl IntoElement {
     element.with_animation(
         id,
-        Animation::new(REVEAL).with_easing(ease_out_quint()),
-        |this, delta| {
+        Animation::new(duration).with_easing(ease_out_quint()),
+        move |this, delta| {
             this.opacity(delta)
                 .relative()
-                .top(px(REVEAL_RISE * (1. - delta)))
+                .top(px(distance * (1. - delta)))
         },
     )
 }
@@ -326,4 +345,33 @@ pub fn choices<T: Copy + PartialEq + 'static>(
                 .toggled(current == Some(value))
                 .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
+}
+
+/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に1行で出し、収まらなければ省いて全文をツールチップに出す（下の行を押し下げない）。
+pub fn action<R: Into<SharedString>>(
+    button: impl IntoElement,
+    reason: Option<R>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(div().flex_none().child(button))
+        .when_some(reason, |this, reason| {
+            let reason: SharedString = reason.into();
+            this.child(
+                div()
+                    .id(ElementId::Name(reason.clone()))
+                    .flex_1()
+                    .min_w_0()
+                    .text_sm()
+                    .text_color(color::muted())
+                    .truncate()
+                    .tooltip({
+                        let reason = reason.clone();
+                        move |window, cx| Tooltip::new(reason.clone()).build(window, cx)
+                    })
+                    .child(reason),
+            )
+        })
 }

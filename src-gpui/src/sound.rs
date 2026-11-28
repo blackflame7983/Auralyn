@@ -17,7 +17,7 @@ use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::limiter::LimiterPanel;
 use crate::measure::MeasurePanel;
-use crate::part::{choices, note, paragraphs, with_hint, Card, Fold, OnCommand};
+use crate::part::{choices, note, paragraphs, shift, with_hint, Card, Fold, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -382,8 +382,15 @@ impl SoundPage {
                                         NoiseMode::Low | NoiseMode::High => None,
                                     }),
                                     |this, means| {
-                                        this.child(note(core(lang, means)))
-                                            .child(self.measure.render(lang, send.clone()))
+                                        this.child(shift(
+                                            SharedString::new_static(means).into(),
+                                            div()
+                                                .flex()
+                                                .flex_col()
+                                                .gap_2()
+                                                .child(note(core(lang, means)))
+                                                .child(self.measure.render(lang, send.clone())),
+                                        ))
                                     },
                                 )
                                 .child(slider_row(
@@ -448,23 +455,29 @@ impl SoundPage {
                             let set = set.clone();
                             move |preset, _, cx| set(Change::Preset(preset), cx)
                         }))
-                        .map(|this| {
-                            if current.preset == Some(Preset::Singing) {
-                                this.children(
-                                    [Knob::LowCut, Knob::Dynamics, Knob::Brightness]
-                                        .map(|knob| self.knob(knob, lang, cx)),
-                                )
-                            } else {
-                                this.child(slider_row(
-                                    lang,
-                                    keys::EFFECTS_AMOUNT,
-                                    core(lang, keys::EFFECTS_AMOUNT),
-                                    &self.amount,
-                                    percent,
-                                    false,
-                                    cx,
-                                ))
-                            }
+                        .child({
+                            let singing = current.preset == Some(Preset::Singing);
+                            shift(
+                                ElementId::NamedInteger("effects-knobs".into(), u64::from(singing)),
+                                div().flex().flex_col().gap_2().map(|this| {
+                                    if singing {
+                                        this.children(
+                                            [Knob::LowCut, Knob::Dynamics, Knob::Brightness]
+                                                .map(|knob| self.knob(knob, lang, cx)),
+                                        )
+                                    } else {
+                                        this.child(slider_row(
+                                            lang,
+                                            keys::EFFECTS_AMOUNT,
+                                            core(lang, keys::EFFECTS_AMOUNT),
+                                            &self.amount,
+                                            percent,
+                                            false,
+                                            cx,
+                                        ))
+                                    }
+                                }),
+                            )
                         }),
                 ))
             })

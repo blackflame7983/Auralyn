@@ -210,12 +210,22 @@ impl MainView {
                         this.engine.send(Command::SetBypass(!bypassed));
                     })),
             )
-            .when(bypassed, |this| {
+            .map(|this| {
+                let text = if bypassed {
+                    Some(keys::COMPARE_ON)
+                } else if self.phase != Phase::Running {
+                    Some(keys::REASON_START_AUDIO)
+                } else {
+                    None
+                };
+                // 文が無いときも1行分を空けておき、下のロックを動かさない。
                 this.child(
                     div()
+                        .min_h(px(COMPARE_NOTE_HEIGHT))
+                        .line_height(px(COMPARE_NOTE_HEIGHT))
                         .text_xs()
                         .text_color(color::muted())
-                        .child(core(lang, keys::COMPARE_ON)),
+                        .children(text.map(|key| core(lang, key))),
                 )
             })
     }
@@ -433,3 +443,6 @@ fn slider_row(
                 .child(Slider::new(state).horizontal().accessibility_label(label)),
         )
 }
+
+/// 比較のボタンの下の文（`text_xs` の1行）の高さ。
+const COMPARE_NOTE_HEIGHT: f32 = 16.;
