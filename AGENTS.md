@@ -16,7 +16,7 @@
 - 分からないことは推測で実装しない。未決の問いとして挙げる。
 - 画面は `src-gpui/`（`src-tauri` とは別のワークスペース）。書き方と落とし穴は [docs/gpui/knowledge.md](docs/gpui/knowledge.md)、理由つきの決定は [docs/gpui/decisions.md](docs/gpui/decisions.md)。作って分かったことはここへ足す。
 - 振る舞いの規則（メーターの読み・判定など）は GPUI に依存しない `src-tauri/crates/auralyn-ui-model` に置き、`cargo test` で確かめる。部品は描くだけにする。
-- GPUI 版の確認は Windows の実機で行い、確かめ方は [src-gpui/README.md](src-gpui/README.md)。実機の合否は、確かめた日・手順・結果を PR に書く。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は GPUI 版が置き換えるまで main で動くまま保つ。
+- GPUI 版の確認は Windows の実機で行い、確かめ方は [src-gpui/README.md](src-gpui/README.md)。実機の合否は、確かめた日・手順・結果を PR に書く。クラウドでの型検査の成功を実機の合格にしない。Tauri 版は取り除いた（2026-11-28）。
 
 ## 作業の進め方
 
@@ -36,15 +36,15 @@
 ## ガードを迂回しない
 
 - タスクを通すためにLint・型・テスト・CIの設定や検査対象を緩めない。検査器自体の変更は目的と影響を提示し、人間の明示許可を得る。
-- 人間の許可なく`eslint-disable`、`@ts-ignore`、`@ts-expect-error`、`# noqa`、`# type: ignore`、Rustの`allow/expect`、テストのskipを新規追加しない。
+- 人間の許可なく`# noqa`、`# type: ignore`、Rustの`allow/expect`、テストのskipを新規追加しない。
 - 既存違反の指紋を更新して追認しない。編集した宣言の違反を修正し、不要な例外を取り除く。例外の扱いは[GARDENING](docs/GARDENING.md)に従う。
 - コードで表現できることをコメントで説明しない。ハックを正当化せず、状態設計・完了通知・責務の分離で原因を直す。仕様・数学的根拠、公開API、`SAFETY:`、ライセンスの説明は保つ。
 - 人間から修正指示を受けたら、修正とともに、Lint・型・テストで再発を防ぐ方法を必ず1つ提案する。
 
 ## 実装後の確認
 
-- 未コミット変更は`npm run verify -- --changed`。コミット済みの機能は`--feature <名前>`、全フロント検証は`--full`。静的検査だけなら`--static`。
-- Tauri 版の画面の変更は[feature-map](docs/feature-map.md)に対応する`--feature <名前> --browser`または該当Playwright試験で確認する（CIでは回らない）。GPUI 版は`--rust`と実機で確かめる。どちらも実行時例外・フォーカス・狭い窓・日英を確認する。
+- 検査は`npm run verify`（未コミット変更の静的検査）。全体は`--full`、Rust は`--rust`を足す。
+- 画面（GPUI 版）の変更は`--rust`と実機で確かめる。実行時例外・フォーカス・狭い窓・日英を確認する。
 - Rust変更はビルド領域を確認して`npm run verify -- --static --rust`。RT変更は既存の無割当・解放・状態遷移試験も確認する。検査の成功を実音声・聴感・長時間運転の合格にしない。
 - 複雑なUI・非同期フローを変えたら、ユーザー視点のMermaid状態遷移図を差分説明に示す。イベント・失敗・取消・再試行を明示し、図だけを動作の証拠にしない。
 - 関連する必須検査の成功後は、新しい差分・失敗・未解決の懸念がなければ同じ検査を繰り返さない。

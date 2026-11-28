@@ -390,11 +390,9 @@ fn change(lang: Lang, c: &Change, result: Option<String>) -> impl IntoElement {
         )
 }
 
-/// 失敗の表示。ホストの文は訳さず、原文として後ろに付ける（Tauri 版と同じ）。
+/// 失敗の表示。ホストの文は訳さず、原文として後ろに付ける。
 fn failure(lang: Lang, op: Op, message: &str) -> String {
-    // ホストの `obs_setup::HISTORY_FULL`（非公開）と同じ文。Tauri 版も全文で比べる。
-    if message == "変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。"
-    {
+    if message == vst_host_lib::obs_setup::HISTORY_FULL {
         return core(lang, keys::OBS_SETUP_HISTORY_FULL).to_string();
     }
     let (failed, next) = match op {

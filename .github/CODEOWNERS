@@ -1,15 +1,10 @@
 /AGENTS.md @blackflame7983
 /CLAUDE.md @blackflame7983
-/eslint.config.mjs @blackflame7983
-/tsconfig*.json @blackflame7983
-/vitest.config.ts @blackflame7983
-/playwright*.config.ts @blackflame7983
 /ruff.toml @blackflame7983
 /requirements-dev.txt @blackflame7983
 /src-tauri/clippy.toml @blackflame7983
 /src-tauri/Cargo.toml @blackflame7983
 /config/gardening-*.json @blackflame7983
-/config/verification-features.json @blackflame7983
 /scripts/gardening/ @blackflame7983
 /scripts/verify.mjs @blackflame7983
 /.github/ @blackflame7983

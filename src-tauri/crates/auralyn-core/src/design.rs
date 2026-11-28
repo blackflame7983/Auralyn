@@ -1,4 +1,4 @@
-//! デザイントークン。`design/tokens.json`（`scripts/design-tokens.mjs` が `src/index.css` から作る）を読む。
+//! デザイントークン。正本は `design/tokens.json`（色の値はここで直す）。
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
