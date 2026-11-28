@@ -20,12 +20,11 @@ use vst_host_lib::obs_setup::{TimingMetadata, TimingTargets};
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::obs::OnOrder;
 use crate::obs_link::{Order, Setup, Timing};
-use crate::part::{action, choices, note};
+use crate::part::{action, card, choices, note, Fold};
 
 /// ボタンで選ぶもの。入力欄の文字は `InputState` が持つ。
 #[derive(Default)]
 struct Picked {
-    open: bool,
     comparison: Comparison,
     direction: Option<Direction>,
     mixed: bool,
@@ -45,6 +44,8 @@ fn edit(picked: &RefCell<Picked>, window: &mut Window, change: impl FnOnce(&mut 
 
 pub struct TimingPanel {
     picked: Rc<RefCell<Picked>>,
+    /// 普段は畳んでおく（毎回は使わない調整）。
+    fold: Fold,
     difference: Entity<InputState>,
     note: Entity<InputState>,
     fps: Entity<InputState>,
@@ -80,6 +81,7 @@ impl TimingPanel {
             .collect();
         Self {
             picked,
+            fold: Fold::default(),
             difference,
             note,
             fps,
@@ -147,35 +149,13 @@ impl TimingPanel {
         busy: bool,
         on: OnOrder,
     ) -> impl IntoElement {
-        let open = self.picked.borrow().open;
-        let toggle = {
-            let picked = self.picked.clone();
-            Button::new("obs-timing-open")
-                .aria_expanded(open)
-                .label(core(lang, keys::OBS_TIMING_TITLE))
-                .icon(if open {
-                    IconName::ChevronUp
-                } else {
-                    IconName::ChevronDown
-                })
-                .outline()
-                .on_click(move |_, window, _| {
-                    let mut picked = picked.borrow_mut();
-                    picked.open = !picked.open;
-                    window.refresh();
-                })
-        };
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(div().child(toggle))
-            .when(open, |this| {
-                this.child(crate::part::reveal(
-                    "obs-timing-body".into(),
-                    div().child(self.render_form(lang, cx, connected, busy, on)),
-                ))
-            })
+        card(
+            core(lang, keys::OBS_TIMING_TITLE),
+            div(),
+            div().child(self.render_form(lang, cx, connected, busy, on)),
+        )
+        .icon(IconName::Clock)
+        .fold(&self.fold, false)
     }
 
     fn render_form(

@@ -722,11 +722,31 @@ impl ConnectPage {
             .flex_col()
             .gap_4()
             .child(
+                // 行全体を押せる枠にする（右端の小さな印だけでは押せる所に見えない）。キーでも開け閉めできる。
                 div()
+                    .id("connect-advanced")
+                    .role(Role::Button)
+                    .aria_label(core(lang, keys::CONNECT_ADVANCED))
+                    .aria_expanded(open)
+                    .aria_description(summary.clone())
+                    .focusable()
+                    .tab_stop(true)
+                    .cursor_pointer()
                     .flex()
                     .items_center()
                     .justify_between()
                     .gap_3()
+                    .px_3()
+                    .py_2()
+                    .rounded(px(color::radius("control")))
+                    .border_1()
+                    .border_color(color::border())
+                    .hover(|style| style.bg(color::track()))
+                    .focus_visible(|style| style.border_color(color::primary()))
+                    .on_click(move |_, window, _| {
+                        fold.set(!fold.is_open());
+                        window.refresh();
+                    })
                     .child(
                         div()
                             .flex()
@@ -747,20 +767,12 @@ impl ConnectPage {
                             ),
                     )
                     .child(
-                        Button::new("connect-advanced")
-                            .ghost()
-                            .small()
-                            .icon(if open {
-                                IconName::ChevronUp
-                            } else {
-                                IconName::ChevronDown
-                            })
-                            .accessibility_label(core(lang, keys::CONNECT_ADVANCED))
-                            .aria_expanded(open)
-                            .on_click(move |_, window, _| {
-                                fold.set(!fold.is_open());
-                                window.refresh();
-                            }),
+                        Icon::new(if open {
+                            IconName::ChevronUp
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .text_color(color::muted()),
                     ),
             )
             .when(open, |this| {

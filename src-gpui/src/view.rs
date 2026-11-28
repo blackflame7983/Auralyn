@@ -1190,6 +1190,15 @@ impl Render for MainView {
                 }
             },
         );
+        let on_order: crate::obs::OnOrder = {
+            let entity = entity.clone();
+            Rc::new(move |order, cx| {
+                entity.update(cx, |this, cx| {
+                    this.obs.order(order);
+                    cx.notify();
+                })
+            })
+        };
         let send: OnCommand = {
             let entity = entity.clone();
             Rc::new(move |command, cx| {
@@ -1417,17 +1426,17 @@ impl Render for MainView {
                                             .flex()
                                             .flex_col()
                                             .gap_3()
-                                            // 音楽を聴くとき、配信ミックスを使っていなければ右の列に VST の短い一覧を置く（空けない）。
-                                            .when(self.music && !self.mix.in_use(), |this| {
+                                            // 右の列の先頭に VST の短い一覧（今どの VST を通しているかをホームで見て切り替える）。
+                                            .child({
                                                 let entity = entity.clone();
-                                                this.child(div().max_w(px(560.)).child(
+                                                div().max_w(px(560.)).child(
                                                     self.vst.render_quick(lang, send.clone(), move |_, cx| {
                                                         entity.update(cx, |this, cx| {
                                                             this.open(Page::Vst);
                                                             cx.notify();
                                                         })
                                                     }),
-                                                ))
+                                                )
                                             })
                                             .when(!self.music || self.mix.in_use(), |this| {
                                                 this.child(div().max_w(px(560.)).child(
@@ -1480,15 +1489,7 @@ impl Render for MainView {
                                             .flex()
                                             .flex_col()
                                             .gap_6()
-                                            .child(self.obs.render(lang, cx, {
-                                                let entity = entity.clone();
-                                                Rc::new(move |order, cx| {
-                                                    entity.update(cx, |this, cx| {
-                                                        this.obs.order(order);
-                                                        cx.notify();
-                                                    })
-                                                })
-                                            }))
+                                            .child(self.obs.render(lang, cx, on_order))
                                             .child(self.scenes.render(lang, {
                                                 let entity = entity.clone();
                                                 Rc::new(move |edit, window, cx| {

@@ -426,29 +426,25 @@ impl ObsPanel {
         let changes = card(
             core(lang, keys::OBS_CHANGES_CARD),
             div(),
-            div()
-                .flex()
-                .flex_col()
-                .gap_3()
-                .child(self.timing.render(
-                    lang,
-                    cx,
-                    state == State::Connected,
-                    self.changes.busy() || self.reaching,
-                    on.clone(),
-                ))
-                .child(
-                    self.changes
-                        .render(lang, state == State::Connected, self.reaching, on),
-                ),
+            self.changes
+                .render(lang, state == State::Connected, self.reaching, on.clone()),
         )
         .icon(IconName::SlidersHorizontal);
+        // 同期の調整は畳んだカードにし、変更の確認の直後に置く（作った変更予定は「OBSの設定」に出る）。
+        let timing = self.timing.render(
+            lang,
+            cx,
+            state == State::Connected,
+            self.changes.busy() || self.reaching,
+            on,
+        );
         div()
             .flex()
             .flex_col()
             .gap_6()
             .child(connection)
             .child(changes)
+            .child(timing)
     }
 
     fn render_reach(&self, lang: Lang, on: OnOrder) -> impl IntoElement {
