@@ -315,6 +315,7 @@ impl MainView {
             Command::Mix(MixAction::Read),
             Command::PostMix(PostAction::Read, None),
             Command::Modes(ModeAction::Read),
+            Command::ReadSound,
         ] {
             engine.send(command);
         }
