@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{hint, note, shift, with_hint};
+use crate::part::{hint, note, reveal, shift, with_hint, Fold};
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -53,6 +53,8 @@ pub struct ConnectPage {
     apps_failed: Option<String>,
     /// 使い道ごとに、最後に始めた接続（Tauri 版の使い道の切り替え）。
     pub remembered: Vec<Saved>,
+    /// 周波数・バッファの欄を開いているか。
+    advanced: Fold,
 }
 
 /// 出力の返し方の札と説明。並びは `Output::row`。
@@ -90,6 +92,7 @@ impl ConnectPage {
             apps: Vec::new(),
             apps_failed: None,
             remembered: Vec::new(),
+            advanced: Fold::default(),
         }
     }
 
@@ -522,14 +525,6 @@ impl ConnectPage {
             .flex_col()
             .gap_4()
             .max_w(px(480.))
-            .child(field(
-                core(lang, keys::CONNECTION_METHOD),
-                Select::new(&self.host).placeholder(empty),
-            ))
-            .child(field(core(lang, keys::SOURCE), Select::new(&self.source)))
-            .when(shared, |this| {
-                this.child(note(core(lang, keys::SOURCE_ASIO)))
-            })
             .child(field(core(lang, keys::PURPOSE), Select::new(&self.purpose)))
             .when_some(self.other_usage(cx), |this, other| {
                 let input = other
@@ -559,6 +554,14 @@ impl ConnectPage {
                                 .on_click(move |_, window, cx| on_switch(window, cx)),
                         ),
                 )
+            })
+            .child(field(
+                core(lang, keys::CONNECTION_METHOD),
+                Select::new(&self.host).placeholder(empty),
+            ))
+            .child(field(core(lang, keys::SOURCE), Select::new(&self.source)))
+            .when(shared, |this| {
+                this.child(note(core(lang, keys::SOURCE_ASIO)))
             })
             .child(shift(
                 ElementId::NamedInteger(
@@ -591,22 +594,24 @@ impl ConnectPage {
                     Select::new(&self.output).placeholder(empty),
                 ))
             })
-            .child(field_hint(
-                lang,
-                core(lang, keys::SAMPLE_RATE),
-                connect::uses_system_rate(&host).then_some(keys::WASAPI_RATE),
-                Select::new(&self.rate),
-            ))
-            .child(field(
-                core(lang, keys::BUFFER_SIZE),
-                Select::new(&self.buffer),
-            ))
             .when(shared, |this| {
                 this.child(shift(
                     "connect-routing".into(),
                     div().child(self.render_routing(lang, signal, on_use_pair, cx)),
                 ))
             })
+            .child(self.render_advanced(lang, cx, |this| {
+                this.child(field_hint(
+                    lang,
+                    core(lang, keys::SAMPLE_RATE),
+                    connect::uses_system_rate(&host).then_some(keys::WASAPI_RATE),
+                    Select::new(&self.rate),
+                ))
+                .child(field(
+                    core(lang, keys::BUFFER_SIZE),
+                    Select::new(&self.buffer),
+                ))
+            }))
             .child(
                 div()
                     .flex()
@@ -645,6 +650,83 @@ impl ConnectPage {
 }
 
 impl ConnectPage {
+    /// 毎回は触らない設定（周波数・バッファ）を畳んだ欄。見出しに今の値を出す。
+    fn render_advanced(
+        &self,
+        lang: Lang,
+        cx: &App,
+        body: impl FnOnce(Div) -> Div,
+    ) -> impl IntoElement {
+        let open = self.advanced.is_open();
+        let value = |label: &'static str, state: &Entity<Choices>| {
+            state
+                .read(cx)
+                .selected_value()
+                .map(|value| format!("{} {value}", core(lang, label)))
+        };
+        let summary = [
+            value(keys::SAMPLE_RATE, &self.rate),
+            value(keys::BUFFER_SIZE, &self.buffer),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
+        let fold = self.advanced.clone();
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(core(lang, keys::CONNECT_ADVANCED)),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(color::muted())
+                                    .truncate()
+                                    .child(summary),
+                            ),
+                    )
+                    .child(
+                        Button::new("connect-advanced")
+                            .ghost()
+                            .small()
+                            .icon(if open {
+                                IconName::ChevronUp
+                            } else {
+                                IconName::ChevronDown
+                            })
+                            .accessibility_label(core(lang, keys::CONNECT_ADVANCED))
+                            .aria_expanded(open)
+                            .on_click(move |_, window, _| {
+                                fold.set(!fold.is_open());
+                                window.refresh();
+                            }),
+                    ),
+            )
+            .when(open, |this| {
+                this.child(reveal(
+                    "connect-advanced-body".into(),
+                    body(div().flex().flex_col().gap_4()),
+                ))
+            })
+    }
+
     /// アプリの音声：アプリと原音の出力先を選ぶ。一覧は「更新」で読む（音を出しているアプリだけが出る）。
     fn render_app(
         &self,

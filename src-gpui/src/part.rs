@@ -6,8 +6,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
+use gpui_kit::component::radio::{Radio, RadioGroup};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -321,8 +322,33 @@ fn picked<T, E>(answer: Result<anyhow::Result<Option<T>>, E>) -> Option<T> {
     }
 }
 
-/// どれか1つを選ぶボタンの組（幅が足りなければ折り返す）。今の値が無い（分からない）ときは、どれも選ばない。
+/// どれか1つを選ぶ（文が長い選択肢）。丸の印を縦に並べる。今の値が無い（分からない）ときは、どれも選ばない。
 pub fn choices<T: Copy + PartialEq + 'static>(
+    id: impl Into<SharedString>,
+    lang: Lang,
+    options: &[(T, &'static str)],
+    current: Option<T>,
+    on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let values: Vec<T> = options.iter().map(|(value, _)| *value).collect();
+    let id: SharedString = id.into();
+    RadioGroup::vertical(id)
+        .selected_index(values.iter().position(|value| current == Some(*value)))
+        .children(
+            options
+                .iter()
+                .enumerate()
+                .map(|(index, (_, label))| Radio::new(index).label(core(lang, label))),
+        )
+        .on_change(move |index, window, cx| {
+            if let Some(value) = values.get(*index) {
+                on_pick(*value, window, cx);
+            }
+        })
+}
+
+/// どれか1つを選ぶ（短い語の選択肢）。つながった切り替えにして、押すと動くボタンと見分ける。
+pub fn segment<T: Copy + PartialEq + 'static>(
     id: impl Into<SharedString>,
     lang: Lang,
     options: &[(T, &'static str)],
@@ -331,18 +357,14 @@ pub fn choices<T: Copy + PartialEq + 'static>(
 ) -> impl IntoElement {
     let id: SharedString = id.into();
     let on_pick = Rc::new(on_pick);
-    div()
-        .flex()
-        .flex_wrap()
-        .gap_1()
+    ButtonGroup::new(id)
+        .outline()
         .children(options.iter().enumerate().map(|(index, (value, label))| {
             let value = *value;
             let on_pick = on_pick.clone();
-            Button::new(SharedString::from(format!("{id}-{index}")))
-                .outline()
+            Button::new(index)
                 .label(core(lang, label))
                 .selected(current == Some(value))
-                .toggled(current == Some(value))
                 .on_click(move |_, window, cx| on_pick(value, window, cx))
         }))
 }

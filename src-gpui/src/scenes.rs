@@ -14,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{choices, note, with_hint};
+use crate::part::{choices, note, segment, with_hint};
 use crate::scene_file;
 
 const STRATEGIES: [(Strategy, &str); 3] = [
@@ -178,7 +178,7 @@ impl ScenePanel {
                                     &[("arg0", &(index + 1))],
                                 )),
                             ))
-                            .child(choices(
+                            .child(segment(
                                 format!("scene-mode-{index}"),
                                 lang,
                                 &MODES,
