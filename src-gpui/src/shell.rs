@@ -1,5 +1,5 @@
 //! 窓の外枠。左のレール（行き先）と、中央の先頭の帯（音声の状態と、開始・停止）。
-//! Tauri 版の `AppRail.tsx`・`StatusBand.tsx` に当たる。ヘルプの入口と経過時間・経路の表示は、それぞれの画面を作るときに足す。
+//! ヘルプの入口と経過時間・経路の表示は、それぞれの画面を作るときに足す。
 
 use std::rc::Rc;
 
@@ -15,7 +15,7 @@ use crate::color;
 use crate::i18n::{core, keys, Lang};
 use crate::part::{REVEAL, REVEAL_RISE};
 
-/// レールの幅（`AppRail.tsx` の `w-[76px]`）。
+/// レールの幅（76px）。
 const RAIL_WIDTH: f32 = 76.;
 /// レールの1項目の高さ（`h-14`）。
 const RAIL_ITEM_HEIGHT: f32 = 56.;

@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/auralyn-core", "crates/auralyn-ui-model", "crates/vst-host", "src-gpui"]
+# 差し替えた依存（third_party）はワークスペースに入れない（その開発用の依存まで解決させない）。
+exclude = ["third_party"]
+
+# アプリの版の正本（docs/VERSIONING.md）。画面の「版」はこの値を出す。
+[workspace.package]
+version = "1.1.0"
+
+# 依存はリリースでも開発でも最適化する（エンジンの起動・音声処理を速くする）。
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = true        # Link Time Optimization (smaller binary, faster code)
+panic = "abort"   # Remove unwind tables (smaller binary)
+# strip = true    # Windows Defenderの誤検知(トロイの木馬判定)を軽減するためデバッグシンボルを残す
+
+[patch.crates-io]
+# 固定版のASIO callback回収、playまでの開始遅延、登録名による機器検出。
+cpal = { path = "third_party/cpal-0.17.3" }

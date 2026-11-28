@@ -75,7 +75,7 @@ APIは正規化後のペアを返さず成功を返すため、画面と保存�
 
 ### 左右平均によって音割れを見落とす
 
-`src-tauri/src/audio_analysis.rs` の `analyze_voice_check` は、`to_mono` で左右を平均してから `detect_clips`、音量、音切れ、帯域を解析する。
+`crates/vst-host/src/audio_analysis.rs` の `analyze_voice_check` は、`to_mono` で左右を平均してから `detect_clips`、音量、音切れ、帯域を解析する。
 左右が `[1.1, -1.1]` なら平均は0になるため、各チャンネルがしきい値を超えていても音割れ判定へ届かない。
 片側だけの大きな信号も平均で小さくなる。
 

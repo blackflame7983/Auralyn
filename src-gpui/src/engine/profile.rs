@@ -1,4 +1,4 @@
-//! 保存した構成（Tauri 版と同じ `presets/`）の一覧・保存・適用・削除・書き出し・読み込み。接続は扱わない。
+//! 保存した構成（`presets/`）の一覧・保存・適用・削除・書き出し・読み込み。接続は扱わない。
 
 use super::*;
 
@@ -67,7 +67,7 @@ impl Control {
     }
 
     /// 今の並び（中の設定を取り直す）と音づくりを、構成の形にする。接続は含めない
-    /// （GPUI 版は入出力の音量・チャンネルを Tauri 版の形で持たないので、違う値を保存しないため）。
+    /// （GPUI 版は入出力の音量・チャンネルを 保存した構成の形（dB）で持たないので、違う値を保存しないため）。
     pub(super) fn capture_profile(&mut self, name: &str) -> anyhow::Result<presets::Preset> {
         // 子が落ちていると既定の音づくりが読めてしまうので、先に読み直す。
         self.recover();
@@ -108,7 +108,7 @@ impl Control {
         self.list_profiles();
     }
 
-    /// OBS のシーンと同じ名前の構成の VST の並びだけを読む（Tauri 版の連動のプリセット読み込みと同じく、
+    /// OBS のシーンと同じ名前の構成の VST の並びだけを読む（
     /// 退避は作らず音づくりも変えない）。無い名前・退避の名前は読まない。
     pub(super) fn scene_profile(&mut self, name: &str) {
         let known = name != presets::BACKUP_PROFILE_NAME
@@ -131,7 +131,7 @@ impl Control {
         }
     }
 
-    /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る（Tauri 版の適用と同じ呼び出し）。
+    /// 並びは今の VST を外して構成の VST を読み直し、音づくりは構成の値を送る。
     /// 構成に無い分類は変えない。読めなかった VST は「読めていない」枠として残す（起動時の復元と同じ）。
     pub(super) fn apply_profile(&mut self, name: &str, restore: bool) {
         // 子が落ちていたら先に読み直す（あとで読み直すと、落ちる前の音づくりで構成の値を上書きしてしまう）。
@@ -155,7 +155,7 @@ impl Control {
 
     /// 構成に無い分類は変えない。外せない VST があればそこで止める（画面から消えたまま鳴り続けないように）。
     pub(super) fn apply_profile_parts(&mut self, name: &str, restore: bool) -> anyhow::Result<()> {
-        // 操作ロック中は VST を外せないので、音づくりだけ変わって止まらないよう、先に丸ごと断る（Tauri 版と同じ）。
+        // 操作ロック中は VST を外せないので、音づくりだけ変わって止まらないよう、先に丸ごと断る。
         self.host.preflight_live_changes()?;
         let profile = presets::load_preset(&self.config_dir, name).map_err(anyhow::Error::msg)?;
         if !restore {

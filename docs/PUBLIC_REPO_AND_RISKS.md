@@ -26,7 +26,7 @@
 - `LICENSE`、`NOTICE.md`、`SOURCE-DISTRIBUTION.md`
 - 必要に応じてPortable版
 
-Source ZIPには少なくとも`LICENSE`、`NOTICE.md`、`SOURCE-DISTRIBUTION.md`、ビルドスクリプト、`package-lock.json`、`src-tauri/Cargo.lock`、実ビルドで使用したASIO SDK 2.3.4の`common`／`host`ソースとライセンスを含める。
+Source ZIPには少なくとも`LICENSE`、`NOTICE.md`、`SOURCE-DISTRIBUTION.md`、ビルドスクリプト、`package-lock.json`、`Cargo.lock`、実ビルドで使用したASIO SDK 2.3.4の`common`／`host`ソースとライセンスを含める。
 
 ## 公開前ゲート
 

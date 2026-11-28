@@ -1,4 +1,4 @@
-//! OBS のカードの「OBS の変更確認と復元」：変更予定を確かめてから適用し、履歴から元に戻す（Tauri 版の `ObsSafeSetup`）。
+//! OBS のカードの「OBS の変更確認と復元」：変更予定を確かめてから適用し、履歴から元に戻す。
 //! 変更そのものと履歴はホストの `obs_setup`（アプリを終えるまで保持）。説明文は `obs_text`。
 
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
@@ -75,7 +75,7 @@ impl Changes {
                 }
                 Err(e) => self.error = Some((Op::Apply, e)),
             },
-            // 読み直し・元に戻すでホストは変更予定を捨てる（Tauri 版も同じ）。
+            // 読み直し・元に戻すでホストは変更予定を捨てる。
             SetupDone::History(history) => {
                 self.plan = None;
                 self.history = history;

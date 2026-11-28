@@ -1,5 +1,5 @@
 //! 設定の画面の「OBS への接続」：接続先（ホスト名・ポート・パスワード）と接続・切断。
-//! 接続とパスワードの保存は `obs_link`（Tauri 版と同じ処理・同じ保存先）。入力の規則は `auralyn-ui-model` の `obs`。
+//! 接続とパスワードの保存は `obs_link`（処理・同じ保存先）。入力の規則は `auralyn-ui-model` の `obs`。
 
 use std::cell::Cell;
 use std::path::Path;
@@ -185,7 +185,7 @@ impl ObsPanel {
                     self.saved = saved;
                 }
                 Reply::Failed { connect, message } => self.error = Some((connect, message)),
-                // 切れる前に届いたシーンでは動かない（Tauri 版も動く直前に接続を確かめる）。
+                // 切れる前に届いたシーンでは動かない。
                 Reply::Lost => {
                     self.scene = None;
                     self.link.send(Order::Read);

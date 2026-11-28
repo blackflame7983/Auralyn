@@ -51,7 +51,7 @@ pub struct ConnectPage {
     /// 最後に読んだ起動中のアプリ（配信ミックスのオケと同じ一覧）。
     apps: Vec<mix::App>,
     apps_failed: Option<String>,
-    /// 使い道ごとに、最後に始めた接続（Tauri 版の使い道の切り替え）。
+    /// 使い道ごとに、最後に始めた接続。
     pub remembered: Vec<Saved>,
     /// 周波数・バッファの欄を開いているか。
     advanced: Fold,

@@ -37,18 +37,16 @@ test('固定SHA-256のASIO SDKだけを展開する', () => {
     execFileSync('tar', ['-a', '-cf', archivePath, '-C', inputRoot, 'ASIOSDK']);
     const archiveSha256 = calculateSha256(archivePath);
     const policy = {
-      asio: {
-        sdkVersion: '2.3.4',
-        sdkArchiveSha256: archiveSha256,
-        licenseSource: 'https://www.steinberg.net/asiosdk',
-      },
+      sdkVersion: '2.3.4',
+      sdkArchiveSha256: archiveSha256,
+      licenseSource: 'https://www.steinberg.net/asiosdk',
     };
 
     const prepared = prepareAsioSdk({ projectRoot: tempRoot, cacheRoot, policy });
     assert.equal(prepared.archiveSha256, archiveSha256);
     assert.equal(fs.existsSync(path.join(prepared.sdkDir, 'common', 'asio.h')), true);
 
-    policy.asio.sdkArchiveSha256 = '0'.repeat(64);
+    policy.sdkArchiveSha256 = '0'.repeat(64);
     assert.throws(
       () => prepareAsioSdk({ projectRoot: tempRoot, cacheRoot, policy }),
       /SHA-256が固定値と一致しません/,

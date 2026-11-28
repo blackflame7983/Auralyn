@@ -42,8 +42,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # GPUI 版へ移るので、Tauri 版の画面だけを見るブラウザ試験（Playwright）は CI から外した（2026-11-25 利用者の判断）。
-  # GPUI に依存しない Rust のクレートは Linux で検査する。src-gpui と vst-host は Windows 専用のため、ここでは書式だけを見る。
+  # Windows 専用でない Rust のクレート（auralyn-core・auralyn-ui-model）は Linux で検査する。vst-host と src-gpui は書式だけを見る。
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -51,14 +50,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Rust format (src-tauri, src-gpui)
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-          cargo fmt --manifest-path src-gpui/Cargo.toml --all -- --check
+      - name: Rust format
+        run: cargo fmt --all -- --check
       - name: Clippy (auralyn-core, auralyn-ui-model)
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked -p auralyn-core -p auralyn-ui-model --all-targets -- -D warnings
+        run: cargo clippy --locked -p auralyn-core -p auralyn-ui-model --all-targets -- -D warnings
       - name: Tests (auralyn-core, auralyn-ui-model)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -p auralyn-core -p auralyn-ui-model
+        run: cargo test --locked -p auralyn-core -p auralyn-ui-model
 
   # 既存の必須チェック名を保ち、片方の失敗・取消・skipを成功扱いにしない。
   frontend:

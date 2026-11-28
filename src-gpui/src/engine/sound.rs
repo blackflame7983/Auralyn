@@ -215,8 +215,8 @@ impl Control {
         }
     }
 
-    /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める（Tauri 版のショートカットと同じ）。
-    /// 種類がまだ無ければ「弱」で入れる（Tauri 版と同じ）。分からない種類は書き換えないので、切り替えずに断る。
+    /// ノイズ低減の ON/OFF を反転する。画面の値でなく、いまのエンジンの値から決める。
+    /// 種類がまだ無ければ「弱」で入れる。分からない種類は書き換えないので、切り替えずに断る。
     pub(super) fn toggle_noise(&mut self) {
         let Some((before, unset)) = self.current_sound() else {
             return;

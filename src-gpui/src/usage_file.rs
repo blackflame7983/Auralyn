@@ -1,5 +1,5 @@
-//! 使い道（声・音楽）ごとに、最後に始めた接続を残す（Tauri 版の `usageDevices`）。
-//! GPUI 版は自分のファイル（`gpui_usage_devices.json`）に書く（Tauri 版は画面（WebView）の中に保存していて読めない）。
+//! 使い道（声・音楽）ごとに、最後に始めた接続を残す。
+//! GPUI 版は自分のファイル（`gpui_usage_devices.json`）に書く。
 
 use std::path::Path;
 

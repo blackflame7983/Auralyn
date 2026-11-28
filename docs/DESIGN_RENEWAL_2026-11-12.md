@@ -632,7 +632,7 @@ G2 の「大きい窓では全体を拡大する」（11章）が、実機の We
 
 ### 条件
 
-- Tauri の開発版（debug ビルド、`src-tauri/target/debug` の既存のビルド領域を再利用）。WebView2 は Edg/157。
+- Tauri の開発版（debug ビルド、`target/debug` の既存のビルド領域を再利用）。WebView2 は Edg/157。
 - 設定の上書きで、窓の最初の URL を試作（`/?proto=g2&screen=live&bar=0`）にした。上書きファイルはリポジトリの外の作業用フォルダーに置き、`tauri.conf.json` は変えていない。
 - 画面の表示倍率は 100%（`devicePixelRatio` = 1）。窓の大きさは Tauri MCP から論理ピクセルで指定した。
 - メーターは擬似信号。

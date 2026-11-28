@@ -1,33 +1,30 @@
 [package]
 name = "auralyn-gpui"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 publish = false
 license = "GPL-3.0-only"
-description = "Auralyn の GPUI 版の画面（Tauri 版の置き換え）"
+description = "Auralyn の画面（GPUI）"
 rust-version = "1.100"
-
-# src-tauri とは別のワークスペースにする。Tauri のビルドに影響させない。
-[workspace]
 
 [[bin]]
 name = "auralyn-gpui"
 path = "src/main.rs"
 
 [dependencies]
-vst-host = { path = "../src-tauri" }
-auralyn-core = { path = "../src-tauri/crates/auralyn-core" }
-auralyn-ui-model = { path = "../src-tauri/crates/auralyn-ui-model" }
+vst-host = { path = "../crates/vst-host" }
+auralyn-core = { path = "../crates/auralyn-core" }
+auralyn-ui-model = { path = "../crates/auralyn-ui-model" }
 gpui-kit = "0.11.0"
 serde_json = "1"
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 flume = "0.11"
-# OBS との接続（vst-host の obs）を動かす。版は src-tauri と同じ。
+# OBS との接続（vst-host の obs）を動かす。版は vst-host と同じ。
 tokio = { version = "1.51.6", features = ["rt-multi-thread"] }
 
-# Tauri が内部で使うのと同じ版。Windows だけで使う。
+# Windows だけで使う。
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
 global-hotkey = "0.7"
@@ -35,13 +32,9 @@ global-hotkey = "0.7"
 raw-window-handle = "0.6"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
 
-# 窓・タスクバー・トレイのアイコンを実行ファイルに入れる。版は src-tauri（tauri-build）と同じ。
+# 窓・タスクバー・トレイのアイコンを実行ファイルに入れる。
 [build-dependencies]
 embed-resource = "3.0.6"
 
 [lints.clippy]
 await_holding_lock = "deny"
-
-# src-tauri の [patch.crates-io] は、別のワークスペースから依存として読むときには効かないので、同じ差し替えをここにも置く。
-[patch.crates-io]
-cpal = { path = "../third_party/cpal-0.17.3" }

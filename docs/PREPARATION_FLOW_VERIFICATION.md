@@ -41,7 +41,7 @@ Rust初回ビルドと同時実行した回では既存の設定移行/ホット
 | キーボード・フォーカス | 確認後の次操作、送り先入力、Escapeで閉じた後の元操作への復帰を確認 |
 | 文字拡大 | 1024×768で基準文字サイズ20px（通常16pxの125%）を確認。横スクロールなし、フッターを表示。OSの実DPI確認ではない |
 
-生の操作ログ、模擬応答、スクリーンショットは作業用の`src-tauri/target/preparation94/`へ置く。
+生の操作ログ、模擬応答、スクリーンショットは作業用の`target/preparation94/`へ置く。
 `home-900-ja.png`、`venue-obs-900-ja.png`、`obs-witness-900-ja.png`、`local-1024-en-text125.png`、`browser-scenarios.json`、`browser-additional.json`等。
 これらは配布ソースへ含める変更ではない。
 
@@ -68,16 +68,16 @@ Rust初回ビルドと同時実行した回では既存の設定移行/ホット
 実機音声を開始する`test_audio_engine_lifecycle`と、インストール済みVST/native GUIに依存する`test_ott_editor_loading`を除いた次の範囲で成功した。
 
 ```text
-cargo test --locked --manifest-path src-tauri/Cargo.toml -- --skip test_audio_engine_lifecycle --skip test_ott_editor_loading
-cargo check --locked --all-targets --manifest-path src-tauri/Cargo.toml
-cargo clippy --locked --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --locked --manifest-path crates/vst-host/Cargo.toml -- --skip test_audio_engine_lifecycle --skip test_ott_editor_loading
+cargo check --locked --all-targets --manifest-path crates/vst-host/Cargo.toml
+cargo clippy --locked --all-targets --manifest-path crates/vst-host/Cargo.toml -- -D warnings
+cargo fmt --manifest-path crates/vst-host/Cargo.toml -- --check
 ```
 
 この2件の除外は実機確認の境界であり、合格ではない。元からignoredの実VSTテストも未実施のまま。
 
 実機確認に備え、今回のソースから生成されたdebug版audio_engine/plugin_scannerを作業worktreeのbinへコピーした。
-実行はしていない。SHA-256は作業用の`src-tauri/target/preparation94/sidecar-identities.json`に記録する。
+実行はしていない。SHA-256は作業用の`target/preparation94/sidecar-identities.json`に記録する。
 配布済みrelease sidecarの動作保証やインストーラービルドの結果ではない。
 
 ## PR前レビューでの修正

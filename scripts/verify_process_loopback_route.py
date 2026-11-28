@@ -115,7 +115,7 @@ def main() -> int:
     if not 1 <= args.seconds <= 3500:
         parser.error("--seconds は1〜3500秒です")
     binary = args.binary.resolve(strict=True)
-    directory = (args.output_dir or Path("src-tauri/target/process-loopback-probe") / ("route-" + uuid.uuid4().hex[:10])).resolve()
+    directory = (args.output_dir or Path("target/process-loopback-probe") / ("route-" + uuid.uuid4().hex[:10])).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     summary = {"functional_pass": False}
     try:

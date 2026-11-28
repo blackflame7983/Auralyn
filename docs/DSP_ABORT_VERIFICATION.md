@@ -37,12 +37,12 @@ DSP係数・同梱モデル・窓・正規化・処理式・reset値を変更し
   `git diff --check`と新規Rustファイル・共有検証ファイルの整形確認も成功した。
 - 通常feature構成のnormal依存ツリーにはローカル版nnnoiselessだけがあり、検証featureを指定した場合だけregistry版が加わることを確認した。
 
-ログ・出力記録はignoredの`src-tauri/target/dsp-abort-verification/`へ保存した。
+ログ・出力記録はignoredの`target/dsp-abort-verification/`へ保存した。
 配布用sidecar、比較用の生データや実行バイナリはコミット対象にしない。
 
 ## 再実行
 
-`src-tauri`で実行する。各コマンドに成功した場合だけ次へ進み、毎回新しい記録先を作成する。
+`crates/vst-host`で実行する。各コマンドに成功した場合だけ次へ進み、毎回新しい記録先を作成する。
 
 ```powershell
 cargo build --locked --release --example dsp_abort_verification --features dsp-verification
@@ -79,7 +79,7 @@ try {
 通常構成の`cargo build --locked --release --bin audio_engine -vv`も成功し、ライブラリのコンパイル引数に検証featureと比較用参照依存が含まれないことを確認した。
 検証用release構成の全target厳格Clippyは警告0件。debug構成でもexampleをビルド・実行し、DSP検証へ入る前に終了コード1で拒否することを確認した。
 通常構成のテスト53件・check・厳格Clippyは前段の同じ測定器・DSPソースでの結果を引き継ぎ、レビューでは変更したexampleの正常・異常系と上記のrelease検証を再実行した。
-レビューのログ・記録はignoredの`src-tauri/target/dsp-abort-review/`へ保存した。
+レビューのログ・記録はignoredの`target/dsp-abort-review/`へ保存した。
 
 ## 検証範囲
 

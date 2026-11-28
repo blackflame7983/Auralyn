@@ -16,14 +16,14 @@ VST プラグイン化ではなく、まず Auralyn 本体のホスト機能と�
 ### 既にあるもの
 
 - ノイズ低減のリアルタイム経路は存在する
-  - `src-tauri/src/audio_engine/core.rs`
+  - `crates/vst-host/src/audio_engine/core.rs`
   - `RtNoiseReducer` が `nnnoiseless::DenoiseState` を使って 2ch に対して処理している
 - エンジン設定は IPC 経由で切り替えられる
-  - `src-tauri/src/ipc.rs`
+  - `crates/vst-host/src/ipc.rs`
   - `Command::SetNoiseReduction { active, mode }`
 - ホスト層から Tauri command で叩ける
-  - `src-tauri/src/audio.rs`
-  - `src-tauri/src/lib.rs`
+  - `crates/vst-host/src/audio.rs`
+  - `crates/vst-host/src/lib.rs`
 - フロント側には既に UI がある
   - `src/components/layout/MasterBar.tsx`
   - `src/components/features/AudioSettings/AudioSettingsModal.tsx`
@@ -103,7 +103,7 @@ MVP でやらないこと:
 
 現状の処理箇所:
 
-- `src-tauri/src/audio_engine/core.rs`
+- `crates/vst-host/src/audio_engine/core.rs`
   - 入力ルーティング後
   - VST チェーン前
 
@@ -129,7 +129,7 @@ MVP でやらないこと:
 
 対象:
 
-- `src-tauri/src/audio_engine/core.rs`
+- `crates/vst-host/src/audio_engine/core.rs`
 
 追加候補:
 
@@ -161,7 +161,7 @@ MVP でやらないこと:
 
 対象:
 
-- `src-tauri/src/ipc.rs`
+- `crates/vst-host/src/ipc.rs`
 
 追加候補 command:
 
@@ -336,10 +336,10 @@ MVP でやらないこと:
 
 優先順:
 
-1. `src-tauri/src/ipc.rs`
-2. `src-tauri/src/audio_engine/core.rs`
-3. `src-tauri/src/audio.rs`
-4. `src-tauri/src/lib.rs`
+1. `crates/vst-host/src/ipc.rs`
+2. `crates/vst-host/src/audio_engine/core.rs`
+3. `crates/vst-host/src/audio.rs`
+4. `crates/vst-host/src/lib.rs`
 5. `src/api/audio.ts`
 6. `src/components/features/AudioSettings/AudioSettingsModal.tsx`
 7. `src/components/layout/MasterBar.tsx`

@@ -1,4 +1,4 @@
-//! ミックス後の VST（配信音だけを仕上げる、声用とは別の並び）。Tauri 版と同じ `AudioHost::post_mix` を使い、保存も同じ。
+//! ミックス後の VST（配信音だけを仕上げる、声用とは別の並び）。`AudioHost::post_mix` を使い、保存も同じ。
 //! 変える操作には、画面が最後に見た世代（epoch・revision）を付ける。見た後に変わっていれば断られる（二度押しや古い行への操作を通さない）。
 //! どの操作のあとも読み直して画面へ送る。
 
@@ -69,7 +69,7 @@ impl Control {
         let _ = self.notices.send(Notice::PostMix(notice));
     }
 
-    /// 診断に出す配信ミックスの値（Tauri 版の「オケ・配信VSTの診断」と同じ項目）。読めない部分は空のまま。
+    /// 診断に出す配信ミックスの値。読めない部分は空のまま。
     pub(super) fn mix_stats(&mut self) -> diagnostics::Mix {
         let mut stats = diagnostics::Mix::default();
         if let Ok(snapshot) = self.host.mixing(vst_host_lib::mixing::Request::Snapshot) {

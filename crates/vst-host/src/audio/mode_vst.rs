@@ -1,0 +1,2940 @@
+//! VSTと内蔵モードを、応答待ち中にHostを占有せず一体で切り替える。
+use super::*;
+use crate::audio_engine::{builtin, live_modes as model, mode_silence, split_monitor};
+use crate::vst_host::presets::{self, PresetPlugin};
+use sha2::{Digest, Sha256};
+use std::sync::mpsc::{Receiver, TryRecvError};
+use std::time::{Duration, Instant};
+
+const MAX_JOURNAL_BYTES: u64 = 96 * 1024 * 1024;
+const MAX_STATE_BYTES: usize = 64 * 1024 * 1024;
+const BUSY: &str = "本番モードのVST切替・復旧中です。完了後に操作してください";
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Journal {
+    schema_version: u32,
+    id: String,
+    phase: String,
+    plugins: Vec<PresetPlugin>,
+    builtin: builtin::Config,
+    #[serde(default)]
+    monitor: Option<split_monitor::State>,
+    origin_mode: Option<model::Mode>,
+    original_mute: bool,
+}
+impl Journal {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            self.schema_version == 1 && !self.id.is_empty() && self.id.len() <= 256,
+            "復旧記録の形式が不正です"
+        );
+        validate_plugins(&self.plugins, true)?;
+        self.builtin.clone().normalize().map_err(|e| anyhow!(e))?;
+        if let Some(monitor) = &self.monitor {
+            monitor.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+type DiskHook = Box<dyn Fn(&AudioHost) + Send>;
+
+pub(super) struct State {
+    path: PathBuf,
+    journal: Option<Journal>,
+    blocked: bool,
+    transaction: Option<Transaction>,
+    pub(super) status: Option<model::TransactionSnapshot>,
+    cached: Option<model::Snapshot>,
+    orphan_disk: Option<DiskJob>,
+    #[cfg(test)]
+    writer_probe: writer::Probe,
+    /// 試験の継ぎ目：ディスクの結果を取り込んだ直後に呼ばれる。
+    #[cfg(test)]
+    after_disk_adopted: Option<DiskHook>,
+}
+impl State {
+    pub(super) fn new(root: &std::path::Path) -> Self {
+        let path = root.join("live-mode-vst-journal.json");
+        let blocked = path.try_exists().unwrap_or(true);
+        let journal = if blocked {
+            read_journal(&path).ok()
+        } else {
+            None
+        };
+        let status = blocked.then(|| model::TransactionSnapshot {
+            id: journal
+                .as_ref()
+                .map(|j| j.id.clone())
+                .unwrap_or_else(|| "unknown".into()),
+            phase: "recovery_required".into(),
+            target: None,
+            error: Some(
+                if journal.is_some() {
+                    "前回の切替が完了していません。内容を確認して手動復旧してください"
+                } else {
+                    "復旧記録を読めません。音声を停止したまま記録を保全してください"
+                }
+                .into(),
+            ),
+            recovery_available: journal.is_some(),
+        });
+        Self {
+            path,
+            journal,
+            blocked,
+            transaction: None,
+            status,
+            cached: None,
+            orphan_disk: None,
+            #[cfg(test)]
+            writer_probe: writer::Probe::default(),
+            #[cfg(test)]
+            after_disk_adopted: None,
+        }
+    }
+    pub(super) fn blocked(&self) -> bool {
+        self.blocked || self.busy()
+    }
+    pub(super) fn busy(&self) -> bool {
+        self.transaction.is_some()
+    }
+}
+
+fn read_journal(path: &std::path::Path) -> Result<Journal> {
+    anyhow::ensure!(
+        std::fs::metadata(path)?.len() <= MAX_JOURNAL_BYTES,
+        "復旧記録が大きすぎます"
+    );
+    let journal: Journal = serde_json::from_slice(&std::fs::read(path)?)?;
+    journal.validate()?;
+    Ok(journal)
+}
+fn validate_plugins(plugins: &[PresetPlugin], require_state: bool) -> Result<()> {
+    anyhow::ensure!(plugins.len() <= 32, "VSTは32件までです");
+    let mut bytes = 0usize;
+    for plugin in plugins {
+        let request = restore_request(plugin);
+        request.validate().map_err(|e| anyhow!(e))?;
+        anyhow::ensure!(
+            !require_state || plugin.state.is_some(),
+            "復旧用VST状態がありません"
+        );
+        bytes = bytes.saturating_add(plugin.state.as_ref().map_or(0, String::len));
+    }
+    anyhow::ensure!(bytes <= MAX_STATE_BYTES, "VST状態の合計が大きすぎます");
+    Ok(())
+}
+fn restore_request(plugin: &PresetPlugin) -> crate::ipc::RestorePluginRequest {
+    crate::ipc::RestorePluginRequest {
+        path: plugin.path.clone(),
+        state: plugin.state.clone(),
+        bypassed: !plugin.enabled,
+        muted: plugin.muted,
+        gain: plugin.gain,
+        class_id: plugin.class_id.clone(),
+    }
+}
+pub(super) fn load_binding(
+    root: &std::path::Path,
+    name: &str,
+) -> Result<(Vec<PresetPlugin>, String)> {
+    let path = presets::preset_path(root, name).map_err(|e| anyhow!(e))?;
+    anyhow::ensure!(
+        std::fs::metadata(&path)?.len() <= MAX_JOURNAL_BYTES,
+        "プロファイルが大きすぎます"
+    );
+    let profile: presets::Preset = serde_json::from_slice(&std::fs::read(path)?)?;
+    anyhow::ensure!(
+        profile.includes_plugin_category(),
+        "VSTカテゴリを含むプロファイルを選んでください"
+    );
+    validate_plugins(&profile.plugins, false)?;
+    // 機器・NR・ゲイン・プロファイルの内蔵処理を指紋にも適用にも混ぜない。
+    let canonical = serde_json::to_vec(&(true, &profile.plugins))?;
+    let revision = format!("{:x}", Sha256::digest(canonical));
+    Ok((profile.plugins, revision))
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Step {
+    Configure,
+    ReadLive,
+    SourceRack,
+    SourceState(usize),
+    ConfirmSource,
+    SourceBuiltin,
+    SourceMonitor,
+    SilenceBegin,
+    SilencePoll,
+    ClearRack,
+    Unload,
+    Restore(usize),
+    VerifyRack,
+    VerifyState(usize),
+    BuiltinCurrent,
+    BuiltinApply,
+    BuiltinSelect,
+    BuiltinWait,
+    MonitorRestore,
+    MonitorConfigure,
+    MonitorWait,
+    LiveWait,
+    Finish,
+    ReleasePoll,
+}
+struct Pending {
+    receiver: Receiver<ReplyOutcome>,
+    writer: Option<Receiver<writer::WriteDone>>,
+    sent: Instant,
+    /// この命令の種類の応答の期限。`sent` から数える。
+    limit: Duration,
+}
+#[derive(Clone, Copy)]
+enum DiskKind {
+    Prepare,
+    Commit,
+}
+struct DiskJob {
+    receiver: Receiver<std::result::Result<Journal, String>>,
+    kind: DiskKind,
+}
+struct Transaction {
+    id: String,
+    generation: u64,
+    mode: Option<model::Mode>,
+    source: Journal,
+    destination: Vec<PresetPlugin>,
+    desired: builtin::Config,
+    source_rack: Vec<crate::ipc::RackPlugin>,
+    source_revision: u64,
+    current_rack: Vec<crate::ipc::RackPlugin>,
+    builtin: Option<builtin::Snapshot>,
+    monitor_revision: Option<String>,
+    step: Step,
+    pending: Option<Pending>,
+    disk: Option<DiskJob>,
+    condition_pending: Option<conditions::Pending>,
+    started: Instant,
+    journaled: bool,
+    silence_ready: bool,
+    rollback: bool,
+    recovery: bool,
+    error: Option<String>,
+}
+
+impl AudioHost {
+    pub(super) fn load_bound_plugins(
+        &self,
+        binding: &model::ProfileBinding,
+    ) -> Result<Vec<PresetPlugin>> {
+        let root = self
+            .live_modes
+            .path
+            .parent()
+            .ok_or_else(|| anyhow!("保存先がありません"))?;
+        if binding.snapshot.is_some() {
+            return crate::bundle::live_configuration::read_snapshot(root, binding)
+                .map_err(anyhow::Error::msg);
+        }
+        let (plugins, revision) = load_binding(root, &binding.name)?;
+        anyhow::ensure!(
+            revision == binding.revision,
+            "登録後にVSTプロファイルが変更されました。登録し直してください"
+        );
+        Ok(plugins)
+    }
+    pub(super) fn guard_mode_vst(&self) -> Result<()> {
+        anyhow::ensure!(!self.mode_vst.blocked(), BUSY);
+        Ok(())
+    }
+    pub(super) fn mode_vst_snapshot(&self) -> model::Snapshot {
+        let mut snapshot = self
+            .mode_vst
+            .cached
+            .clone()
+            .unwrap_or_else(|| model::Snapshot {
+                epoch: self.live_modes.epoch.clone(),
+                running: false,
+                revision: "0".into(),
+                accepted_revision: "0".into(),
+                completed_revision: "0".into(),
+                target: self.live_modes.target,
+                applied: None,
+                phase: if self.live_modes.target.is_some() {
+                    "stopped"
+                } else {
+                    "custom"
+                }
+                .into(),
+                armed: self.live_modes.armed,
+                natural_tail: false,
+                definitions: self.live_modes.definitions.clone(),
+                error: self.live_modes.load_error.clone(),
+                transaction: None,
+            });
+        snapshot.epoch = self.live_modes.epoch.clone();
+        snapshot.running &= !self.connection_lost();
+        snapshot.definitions = self.live_modes.definitions.clone();
+        snapshot.transaction = self.mode_vst.status.clone();
+        snapshot
+    }
+    pub(super) fn cache_mode_snapshot(&mut self, snapshot: &model::Snapshot) {
+        self.mode_vst.cached = Some(snapshot.clone());
+    }
+    pub(super) fn bind_mode_profile(
+        &mut self,
+        expected: String,
+        mode: model::Mode,
+        name: Option<String>,
+    ) -> Result<model::Snapshot> {
+        self.guard_mode_vst()?;
+        self.preflight_live_changes()?;
+        anyhow::ensure!(
+            expected == self.live_modes.definitions.version,
+            "本番モード設定が変更されました。再取得してください"
+        );
+        let binding = name
+            .map(|name| {
+                let root = self
+                    .live_modes
+                    .path
+                    .parent()
+                    .ok_or_else(|| anyhow!("設定保存先がありません"))?;
+                let (_, revision) = load_binding(root, &name)?;
+                Ok::<_, anyhow::Error>(model::ProfileBinding {
+                    name,
+                    revision,
+                    snapshot: None,
+                })
+            })
+            .transpose()?;
+        let mut definitions = self.live_modes.definitions.clone();
+        if binding.is_some() {
+            definitions.config(mode).map_err(|e| anyhow!(e))?;
+        }
+        match mode {
+            model::Mode::Singing => definitions.profiles.singing = binding,
+            model::Mode::Talk => definitions.profiles.talk = binding,
+        }
+        definitions.version = definitions
+            .version
+            .parse::<u64>()?
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("保存回数の上限です"))?
+            .to_string();
+        let definitions = definitions.validate().map_err(|e| anyhow!(e))?;
+        crate::json_file::write_json(&self.live_modes.path, &definitions)
+            .map_err(|e| anyhow!(e))?;
+        self.live_modes.definitions = definitions;
+        self.live_modes.needs_sync = true;
+        Ok(self.mode_vst_snapshot())
+    }
+    pub(super) fn mode_profile(&self, mode: model::Mode) -> Option<&model::ProfileBinding> {
+        match mode {
+            model::Mode::Singing => self.live_modes.definitions.profiles.singing.as_ref(),
+            model::Mode::Talk => self.live_modes.definitions.profiles.talk.as_ref(),
+        }
+    }
+    pub(super) fn begin_mode_vst(&mut self, mode: model::Mode) -> Result<model::Snapshot> {
+        self.guard_mode_vst()?;
+        self.preflight_live_changes()?;
+        anyhow::ensure!(
+            self.session_restore.is_none() && self.bundle_change_generation.is_none(),
+            BUSY
+        );
+        let binding = self
+            .mode_profile(mode)
+            .ok_or_else(|| anyhow!("プロファイル参照がありません"))?;
+        let destination = self.load_bound_plugins(binding)?;
+        let desired = self
+            .live_modes
+            .definitions
+            .config(mode)
+            .map_err(|e| anyhow!(e))?;
+        anyhow::ensure!(
+            !self.connection_lost() && self.child.is_some(),
+            "音声を開始してからVST付きモードを切り替えてください"
+        );
+        let id = format!(
+            "{}:vst:{}",
+            self.live_modes.epoch,
+            crate::audio_engine::restoration::unix_ms()
+        );
+        let source = Journal {
+            schema_version: 1,
+            id: id.clone(),
+            phase: "preparing".into(),
+            plugins: Vec::new(),
+            builtin: Default::default(),
+            monitor: None,
+            origin_mode: self.live_modes.target,
+            original_mute: self.is_global_muted,
+        };
+        let tx = Transaction {
+            id,
+            generation: self.engine_generation,
+            mode: Some(mode),
+            source,
+            destination,
+            desired,
+            source_rack: Vec::new(),
+            source_revision: 0,
+            current_rack: Vec::new(),
+            builtin: None,
+            monitor_revision: None,
+            step: Step::Configure,
+            pending: None,
+            disk: None,
+            condition_pending: Some(self.conditions.begin()),
+            started: Instant::now(),
+            journaled: false,
+            silence_ready: false,
+            rollback: false,
+            recovery: false,
+            error: None,
+        };
+        self.frontend_bootstrap.cancel();
+        self.frontend_bootstrap.session_claimed = true;
+        self.mode_vst.transaction = Some(tx);
+        self.notify_conditions_changed();
+        self.emit_mode_rack_event("session-rack-change-started");
+        self.update_mode_status("preparing", None, false);
+        Ok(self.mode_vst_snapshot())
+    }
+    pub(super) fn recover_mode_vst(&mut self, epoch: String) -> Result<model::Snapshot> {
+        anyhow::ensure!(
+            epoch == self.live_modes.epoch
+                && !self.mode_vst.busy()
+                && self.mode_vst.orphan_disk.is_none(),
+            "古い復旧操作または切替中です"
+        );
+        anyhow::ensure!(self.mode_vst.blocked, "復旧対象がありません");
+        let source = read_journal(&self.mode_vst.path)?;
+        // 手動復旧は既存streamを再利用しない。停止中のsidecarだけを起動する。
+        self.kill_engine();
+        self.is_global_muted = true;
+        self.require_explicit_start();
+        // sidecarの起動準備に限り内部経路を通す。音声Startは発行しない。
+        self.mode_vst.blocked = false;
+        let launched = self.ensure_engine_running();
+        self.mode_vst.blocked = true;
+        launched?;
+        self.observe_live_generation();
+        let tx = Transaction {
+            id: source.id.clone(),
+            generation: self.engine_generation,
+            mode: source.origin_mode,
+            destination: source.plugins.clone(),
+            desired: source.builtin.clone(),
+            source,
+            source_rack: Vec::new(),
+            source_revision: 0,
+            current_rack: Vec::new(),
+            builtin: None,
+            monitor_revision: None,
+            step: Step::ClearRack,
+            pending: None,
+            disk: None,
+            condition_pending: Some(self.conditions.begin()),
+            started: Instant::now(),
+            journaled: true,
+            silence_ready: false,
+            rollback: false,
+            recovery: true,
+            error: None,
+        };
+        self.mode_vst.transaction = Some(tx);
+        self.notify_conditions_changed();
+        self.emit_mode_rack_event("session-rack-change-started");
+        self.update_mode_status("restoring", None, false);
+        Ok(self.mode_vst_snapshot())
+    }
+    fn update_mode_status(&mut self, phase: &str, error: Option<String>, recovery: bool) {
+        let (id, target) = self
+            .mode_vst
+            .transaction
+            .as_ref()
+            .map(|t| (t.id.clone(), t.mode))
+            .unwrap_or_else(|| {
+                (
+                    self.mode_vst
+                        .journal
+                        .as_ref()
+                        .map(|j| j.id.clone())
+                        .unwrap_or_else(|| "unknown".into()),
+                    None,
+                )
+            });
+        if self.mode_vst.status.as_ref().is_some_and(|s| {
+            s.id == id
+                && s.phase == phase
+                && s.target == target
+                && s.error == error
+                && s.recovery_available == recovery
+        }) {
+            return;
+        }
+        self.mode_vst.status = Some(model::TransactionSnapshot {
+            id,
+            phase: phase.into(),
+            target,
+            error,
+            recovery_available: recovery,
+        });
+        self.notice("live-modes-invalidated", ());
+    }
+    pub(super) fn cancel_mode_vst(&mut self, message: &str) {
+        let canceled = self.mode_vst.transaction.is_some();
+        if let Some(mut tx) = self.mode_vst.transaction.take() {
+            if tx.journaled || tx.disk.is_some() {
+                self.mode_vst.journal = Some(tx.source);
+                self.mode_vst.blocked = true;
+            }
+            if let Some(job) = tx.disk.take() {
+                self.mode_vst.orphan_disk = Some(job);
+            }
+        }
+        if self.mode_vst.blocked {
+            self.is_global_muted = true;
+            self.require_explicit_start();
+            self.notice("global-mute-changed", true);
+            self.update_mode_status(
+                "recovery_required",
+                Some(message.into()),
+                self.mode_vst.journal.is_some() && self.mode_vst.orphan_disk.is_none(),
+            );
+        } else {
+            self.update_mode_status("failed", Some(message.into()), false);
+        }
+        if canceled {
+            self.emit_mode_rack_event("session-rack-change-cancelled");
+        }
+    }
+    fn emit_mode_rack_event(&self, event: &'static str) {
+        self.notice(event, ());
+    }
+    /// モードの VST の切替（または中止した切替の記録）が進行中か。進行中は画面のスレッドが 10ms ごとに [`Self::poll_mode_vst`] を呼ぶ。
+    pub fn mode_vst_pending(&self) -> bool {
+        self.mode_vst.transaction.is_some() || self.mode_vst.orphan_disk.is_some()
+    }
+
+    pub fn poll_mode_vst(&mut self) {
+        self.poll_orphan_mode_disk();
+        // 取消済みなら、ここに取引はない。
+        let Some(mut tx) = self.mode_vst.transaction.take() else {
+            return;
+        };
+        if tx.generation != self.engine_generation {
+            self.fail_mode_transaction(
+                tx,
+                "音声エンジンの世代または接続が変わりました".into(),
+                true,
+            );
+            return;
+        }
+        if tx.started.elapsed() > Duration::from_secs(120) {
+            self.fail_mode_transaction(tx, "切替が時間内に完了しませんでした".into(), true);
+            return;
+        }
+        if let Some(mut pending) = tx.pending.take() {
+            // 同じ世代の保留中のIPCは、書き込みの結果と期限を、接続の切断の検出より先に判定する。
+            if let Some(done) = pending.writer.take() {
+                match done.try_recv() {
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Ok,
+                        ..
+                    }) => {}
+                    // 閉じていたので書かなかった。EOFの結果を、同じ期限の中で待つ。
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Aborted,
+                        ..
+                    }) => {}
+                    Ok(writer::WriteDone {
+                        result: writer::WriteResult::Err(error),
+                        ..
+                    }) => {
+                        self.fail_mode_transaction(tx, error.to_string(), true);
+                        return;
+                    }
+                    Err(TryRecvError::Empty) if pending.sent.elapsed() < pending.limit => {
+                        pending.writer = Some(done);
+                        tx.pending = Some(pending);
+                        self.mode_vst.transaction = Some(tx);
+                        return;
+                    }
+                    Err(_) => {
+                        self.fail_mode_deadline(tx, "VST切替の送信結果が不明です");
+                        return;
+                    }
+                }
+            }
+            match pending.receiver.try_recv() {
+                // 期限の後に届いた応答は、受け取りが遅れなくても期限切れとして扱う。
+                Ok(ReplyOutcome { received_at, .. })
+                    if received_at > pending.sent + pending.limit =>
+                {
+                    self.fail_mode_deadline(tx, "VST切替の応答が不明です");
+                    return;
+                }
+                Ok(ReplyOutcome { resp, .. }) => {
+                    // 応答を採る時点で接続を失っていたら、復旧の経路へ進む（巻き戻しを始めない）。
+                    if self.connection_lost() {
+                        self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+                        return;
+                    }
+                    if let Err(error) = self.mode_step_response(&mut tx, *resp) {
+                        // 拒否の応答の直後に閉じていた場合も、ロールバックの対象にしない。
+                        let lost = self.connection_lost();
+                        let message = if lost {
+                            ENGINE_EXITED.into()
+                        } else {
+                            error.to_string()
+                        };
+                        self.fail_mode_transaction(tx, message, lost);
+                        return;
+                    }
+                }
+                // 切断した接続は、復旧の経路へ進む（ロールバックを始めない）。
+                Err(TryRecvError::Disconnected) => {
+                    self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+                    return;
+                }
+                Err(TryRecvError::Empty) if pending.sent.elapsed() < pending.limit => {
+                    tx.pending = Some(pending);
+                    self.mode_vst.transaction = Some(tx);
+                    return;
+                }
+                Err(TryRecvError::Empty) => {
+                    self.fail_mode_deadline(tx, "VST切替の応答が不明です");
+                    return;
+                }
+            }
+        }
+        // 接続を失っていたら、次のIPCもロールバックも始めない（応答を採る時点・次の段へ進む時点のどちらでも。接続の開閉は `LinkCell` だけで決まる）。
+        if self.connection_lost() {
+            self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+            return;
+        }
+        match self.poll_mode_disk(&mut tx) {
+            Ok(true) => {
+                self.mode_vst.transaction = Some(tx);
+                return;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                self.fail_mode_transaction(tx, error.to_string(), false);
+                return;
+            }
+        }
+        // 次の段へ進む直前と、完了を確定して復旧の記録を消す直前にも、同じ判定を使う。
+        if self.connection_lost() {
+            self.fail_mode_transaction(tx, ENGINE_EXITED.into(), true);
+            return;
+        }
+        // 完了後のjournal消去まで失敗を隠さない。
+        if matches!(tx.step, Step::ReleasePoll)
+            && tx.pending.is_none()
+            && self
+                .mode_vst
+                .status
+                .as_ref()
+                .is_some_and(|s| s.phase == "completed")
+        {
+            self.complete_mode_transaction(tx);
+            return;
+        }
+        let command = match self.mode_step_command(&mut tx) {
+            Ok(command) => command,
+            Err(error) => {
+                self.fail_mode_transaction(tx, error.to_string(), false);
+                return;
+            }
+        };
+        let phase = if tx.rollback || tx.recovery {
+            "restoring"
+        } else {
+            match tx.step {
+                Step::Configure
+                | Step::ReadLive
+                | Step::SourceRack
+                | Step::SourceState(_)
+                | Step::SourceMonitor
+                | Step::ConfirmSource
+                | Step::SourceBuiltin => "preparing",
+                Step::SilenceBegin | Step::SilencePoll => "silencing",
+                Step::BuiltinCurrent
+                | Step::BuiltinApply
+                | Step::BuiltinSelect
+                | Step::BuiltinWait
+                | Step::LiveWait => "applying",
+                Step::Finish | Step::ReleasePoll => "committing",
+                _ => "loading",
+            }
+        };
+        match self.send_mode_command(command) {
+            Ok(pending) => {
+                tx.pending = Some(pending);
+                self.mode_vst.transaction = Some(tx);
+                self.update_mode_status(phase, None, false);
+            }
+            Err(error) => {
+                // EOF の処理の途中（応答の待ちが閉じ、接続の開閉はこれから）に当たっても、文言を切断にそろえる。
+                let lost = self.connection_lost();
+                let message = if lost {
+                    ENGINE_EXITED.into()
+                } else {
+                    error.to_string()
+                };
+                self.fail_mode_transaction(tx, message, true);
+            }
+        }
+    }
+    /// 命令の種類の期限を過ぎた。接続の閉じた理由を `ReplyTimeout` にして、結果が分からない扱いで
+    /// 中止する（巻き戻さず、子を回収する。通知は今のまま）。
+    fn fail_mode_deadline(&mut self, tx: Transaction, message: &str) {
+        self.link.close(CloseCause::ReplyTimeout);
+        self.fail_mode_transaction(tx, message.into(), true);
+    }
+    /// 接続を失ったか。「閉じた」は LinkCell だけで決まる（reader は先に LinkCell を閉じる）。
+    pub(super) fn connection_lost(&self) -> bool {
+        !self.link.is_open()
+    }
+    fn send_mode_command(&mut self, command: IpcCommand) -> Result<Pending> {
+        #[cfg(test)]
+        before_mode_begin::run();
+        let receiver = self.link.begin(None)?;
+        let Some(writer) = self.writer.as_ref() else {
+            self.link.cancel();
+            return Err(anyhow!("音声エンジン入力がありません"));
+        };
+        let limit = writer::reply_limit(&command);
+        // 大きいVST stateのJSON化・pipe書込みもHost mutexの外（writerのスレッド）で行う。
+        let payload = writer::Payload::Command(Box::new(command));
+        #[cfg(test)]
+        let submitted = writer.submit_probed(payload, self.mode_vst.writer_probe.clone());
+        #[cfg(not(test))]
+        let submitted = writer.submit(payload);
+        let done = match submitted {
+            Ok(done) => done,
+            Err(error) => {
+                self.link.cancel();
+                return Err(error.into());
+            }
+        };
+        Ok(Pending {
+            receiver,
+            writer: Some(done),
+            sent: Instant::now(),
+            limit,
+        })
+    }
+    fn spawn_mode_disk(&self, tx: &mut Transaction, kind: DiskKind) {
+        let path = self.mode_vst.path.clone();
+        let mut journal = tx.source.clone();
+        if matches!(kind, DiskKind::Commit) {
+            journal.phase = "committing".into();
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let result = crate::json_file::write_json(&path, &journal).map(|()| journal);
+            let _ = sender.send(result);
+        });
+        tx.disk = Some(DiskJob { receiver, kind });
+    }
+    // trueの間はIPCも次段階も送らず、短いpollだけでHost mutexを解放する。
+    fn poll_mode_disk(&mut self, tx: &mut Transaction) -> Result<bool> {
+        let Some(job) = tx.disk.take() else {
+            return Ok(false);
+        };
+        match job.receiver.try_recv() {
+            Err(TryRecvError::Empty) => {
+                tx.disk = Some(job);
+                Ok(true)
+            }
+            Err(TryRecvError::Disconnected) => {
+                tx.disk = Some(job);
+                Err(anyhow!("復旧記録の書込み結果が不明です"))
+            }
+            Ok(Err(error)) => Err(anyhow!(error)),
+            Ok(Ok(journal)) => {
+                self.mode_vst.journal = Some(journal);
+                match job.kind {
+                    DiskKind::Prepare => {
+                        tx.journaled = true;
+                        tx.step = Step::SilenceBegin;
+                    }
+                    DiskKind::Commit => {
+                        if tx.recovery {
+                            tx.step = Step::ReleasePoll;
+                            self.mode_vst.status = Some(model::TransactionSnapshot {
+                                id: tx.id.clone(),
+                                phase: "completed".into(),
+                                target: tx.mode,
+                                error: None,
+                                recovery_available: false,
+                            });
+                        } else {
+                            tx.step = Step::Finish;
+                        }
+                    }
+                }
+                #[cfg(test)]
+                if let Some(hook) = &self.mode_vst.after_disk_adopted {
+                    hook(&*self);
+                }
+                Ok(false)
+            }
+        }
+    }
+    fn poll_orphan_mode_disk(&mut self) {
+        let Some(job) = self.mode_vst.orphan_disk.take() else {
+            return;
+        };
+        match job.receiver.try_recv() {
+            Err(TryRecvError::Empty) => {
+                self.mode_vst.orphan_disk = Some(job);
+            }
+            Ok(Ok(journal)) => {
+                self.mode_vst.journal = Some(journal);
+                self.update_mode_status(
+                    "recovery_required",
+                    Some("中止した切替の復旧記録を保存しました。音声は停止したままです".into()),
+                    true,
+                );
+            }
+            Ok(Err(_)) => {
+                // Prepare失敗はまだラックを変更していない。Commit失敗は旧journalを維持する。
+                if matches!(job.kind, DiskKind::Prepare) {
+                    self.mode_vst.blocked = false;
+                    self.mode_vst.journal = None;
+                }
+                self.update_mode_status(
+                    if self.mode_vst.blocked {
+                        "recovery_required"
+                    } else {
+                        "failed"
+                    },
+                    Some(
+                        "中止した切替の記録保存が完了しませんでした。音声は停止したままです".into(),
+                    ),
+                    self.mode_vst.blocked,
+                );
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.update_mode_status(
+                    "recovery_required",
+                    Some(
+                        "復旧記録の書込み結果が不明です。音声は停止したまま記録を保全してください"
+                            .into(),
+                    ),
+                    false,
+                );
+            }
+        }
+    }
+    fn fail_mode_transaction(&mut self, mut tx: Transaction, error: String, ambiguous: bool) {
+        if tx.journaled
+            && tx.silence_ready
+            && !tx.rollback
+            && !tx.recovery
+            && !ambiguous
+            && !matches!(tx.step, Step::Finish | Step::ReleasePoll)
+        {
+            tx.rollback = true;
+            tx.error = Some(error);
+            tx.destination = tx.source.plugins.clone();
+            tx.desired = tx.source.builtin.clone();
+            tx.pending = None;
+            tx.step = Step::ClearRack;
+            tx.started = Instant::now();
+            self.mode_vst.transaction = Some(tx);
+            self.update_mode_status("restoring", None, false);
+            return;
+        }
+        let journaled = tx.journaled;
+        self.mode_vst.transaction = Some(tx);
+        // 通知は、接続を捨てて子を回収した後に出す。
+        self.hold_notices(|host| {
+            host.cancel_mode_vst(&error);
+            if journaled || ambiguous {
+                host.kill_engine();
+            } else if !host.mode_vst.blocked {
+                // 取得・原本保存の確定失敗ではラックは未変更。cancelで消した旧IDを
+                // 実ラックから再照合し、稼働中のVSTを画面から操作できる状態へ戻す。
+                host.emit_mode_rack_event("session-rack-invalidated");
+            }
+        });
+    }
+    fn complete_mode_transaction(&mut self, mut tx: Transaction) {
+        if let Err(error) = std::fs::remove_file(&self.mode_vst.path) {
+            self.mode_vst.transaction = Some(tx);
+            self.hold_notices(|host| {
+                host.cancel_mode_vst(&format!("復旧記録を消去できません: {error}"));
+                host.kill_engine();
+            });
+            return;
+        }
+        self.mode_vst.blocked = false;
+        self.mode_vst.journal = None;
+        self.live_modes.target = if tx.rollback || tx.recovery {
+            // 元の値は完全復元するが、VST内部編集を含めモード同一性は証明しない。
+            None
+        } else {
+            tx.mode
+        };
+        self.live_modes.needs_sync = tx.recovery;
+        if tx.recovery {
+            self.is_global_muted = true;
+            self.require_explicit_start();
+        }
+        if let Some(cached) = self.mode_vst.cached.as_mut() {
+            cached.target = self.live_modes.target;
+            cached.applied = self.live_modes.target;
+            cached.phase = if tx.recovery {
+                "stopped"
+            } else if tx.rollback {
+                "custom"
+            } else {
+                "settled"
+            }
+            .into();
+        }
+        self.mode_vst.status = tx.error.map(|error| model::TransactionSnapshot {
+            id: tx.id,
+            phase: "failed".into(),
+            target: tx.mode,
+            error: Some(error),
+            recovery_available: false,
+        });
+        drop(tx.condition_pending.take());
+        self.conditions.lifecycle(!tx.recovery);
+        self.notify_conditions_changed();
+        for event in ["live-modes-invalidated", "session-rack-invalidated"] {
+            self.notice(event, ());
+        }
+    }
+}
+
+impl AudioHost {
+    fn mode_step_command(&mut self, tx: &mut Transaction) -> Result<IpcCommand> {
+        Ok(match tx.step {
+            Step::Configure => IpcCommand::ConfigureLiveModes {
+                definitions: self.live_modes.definitions.clone(),
+                armed: false,
+            },
+            Step::ReadLive => IpcCommand::LiveMode {
+                request: model::Request::Snapshot,
+            },
+            Step::SourceRack | Step::ConfirmSource | Step::ClearRack | Step::VerifyRack => {
+                IpcCommand::GetPluginRack
+            }
+            Step::SourceState(index) => IpcCommand::GetPluginState {
+                id: tx.source_rack[index].id.clone(),
+            },
+            Step::SourceBuiltin | Step::BuiltinCurrent | Step::BuiltinWait => {
+                IpcCommand::BuiltinEffects {
+                    request: builtin::Request::Snapshot,
+                }
+            }
+            Step::SilenceBegin => IpcCommand::ModeSilence {
+                request: mode_silence::Request::Begin { id: tx.id.clone() },
+            },
+            Step::SilencePoll | Step::ReleasePoll => IpcCommand::ModeSilence {
+                request: mode_silence::Request::Snapshot { id: tx.id.clone() },
+            },
+            Step::Unload => IpcCommand::UnloadPlugin {
+                id: tx
+                    .current_rack
+                    .first()
+                    .ok_or_else(|| anyhow!("削除対象がありません"))?
+                    .id
+                    .clone(),
+            },
+            Step::Restore(index) => {
+                self.next_restore_operation = self
+                    .next_restore_operation
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow!("復元操作IDの上限です"))?;
+                IpcCommand::RestorePlugin {
+                    request: restore_request(&tx.destination[index]),
+                    operation_id: self.next_restore_operation,
+                    expires_at_ms: crate::audio_engine::restoration::unix_ms()
+                        .saturating_add(8_000),
+                }
+            }
+            Step::VerifyState(index) => IpcCommand::GetPluginState {
+                id: tx.current_rack[index].id.clone(),
+            },
+            Step::BuiltinSelect => {
+                let intent = model::Intent {
+                    client_id: "host-vst".into(),
+                    sequence: self
+                        .next_restore_operation
+                        .saturating_add(crate::audio_engine::restoration::unix_ms())
+                        .min(9_007_199_254_740_991),
+                    expected_epoch: self.live_modes.engine_epoch.clone(),
+                };
+                IpcCommand::LiveMode {
+                    request: match tx.mode {
+                        Some(model::Mode::Singing) => model::Request::SingingOn { intent },
+                        _ => model::Request::TalkOn { intent },
+                    },
+                }
+            }
+            Step::LiveWait => IpcCommand::LiveMode {
+                request: model::Request::Snapshot,
+            },
+            Step::SourceMonitor | Step::MonitorWait => IpcCommand::ModeMonitor {
+                request: split_monitor::Request::Snapshot,
+            },
+            Step::MonitorRestore => IpcCommand::ModeMonitor {
+                request: split_monitor::Request::Restore {
+                    state: tx.source.monitor.clone(),
+                },
+            },
+            Step::MonitorConfigure => {
+                // 停止復旧したsidecarにも通常の出力構成を先に同期する。
+                // 復旧後の初回Startの再送と、利用者による明示編集を区別できる。
+                let path = self.last_config_path.with_file_name("live_output.json");
+                let config: crate::audio_engine::live_output::Config = if path.try_exists()? {
+                    serde_json::from_slice(&std::fs::read(path)?)?
+                } else {
+                    Default::default()
+                };
+                config.validate()?;
+                anyhow::ensure!(
+                    config.split_processing == tx.source.monitor.is_some(),
+                    "復旧原本と保存済みの自分用出力構成が一致しません"
+                );
+                IpcCommand::LiveOutput {
+                    config: Some(config),
+                }
+            }
+            Step::BuiltinApply => {
+                let snapshot = tx
+                    .builtin
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("内蔵設定の現在値がありません"))?;
+                IpcCommand::BuiltinEffects {
+                    request: builtin::Request::Apply {
+                        epoch: snapshot.epoch.clone(),
+                        expected_revision: snapshot.revision.clone(),
+                        config: tx.desired.clone(),
+                    },
+                }
+            }
+            Step::Finish => IpcCommand::ModeSilence {
+                request: mode_silence::Request::Finish { id: tx.id.clone() },
+            },
+        })
+    }
+    fn mode_step_response(&mut self, tx: &mut Transaction, response: IpcResponse) -> Result<()> {
+        if let IpcResponse::Error(error) = &response {
+            anyhow::bail!(error.clone());
+        }
+        match (tx.step, response) {
+            (Step::Configure, IpcResponse::LiveModes(snapshot)) => {
+                anyhow::ensure!(snapshot.error.is_none(), "本番モード定義を同期できません");
+                self.live_modes.engine_epoch = snapshot.epoch.clone();
+                self.live_modes.needs_sync = false;
+                tx.step = Step::ReadLive;
+            }
+            (Step::ReadLive, IpcResponse::LiveModes(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.epoch == self.live_modes.engine_epoch
+                        && snapshot.running
+                        && snapshot.error.is_none()
+                        && !matches!(
+                            snapshot.phase.as_str(),
+                            "queued" | "transitioning" | "partial"
+                        ),
+                    "現在の本番モードの切替完了を待ってください"
+                );
+                tx.source.origin_mode = snapshot.target;
+                self.cache_mode_snapshot(&snapshot);
+                tx.step = Step::SourceRack;
+            }
+            (
+                Step::SourceRack,
+                IpcResponse::PluginRack {
+                    plugins,
+                    revision,
+                    running,
+                    ..
+                },
+            ) => {
+                anyhow::ensure!(
+                    running,
+                    "音声を開始してからVST付きモードを切り替えてください"
+                );
+                anyhow::ensure!(plugins.len() <= 32, "元ラックが32件を超えています");
+                tx.source_rack = plugins;
+                tx.source_revision = revision;
+                tx.step = if tx.source_rack.is_empty() {
+                    Step::ConfirmSource
+                } else {
+                    Step::SourceState(0)
+                };
+            }
+            (Step::SourceState(index), IpcResponse::PluginState { id, state }) => {
+                let plugin = &tx.source_rack[index];
+                anyhow::ensure!(id == plugin.id, "元ラック状態のIDが一致しません");
+                tx.source.plugins.push(PresetPlugin {
+                    path: plugin.path.clone(),
+                    name: plugin.name.clone(),
+                    vendor: String::new(),
+                    version: String::new(),
+                    enabled: plugin.enabled,
+                    muted: plugin.muted,
+                    gain: plugin.gain,
+                    state: Some(state),
+                    class_id: plugin.class_id.clone(),
+                });
+                validate_plugins(&tx.source.plugins, true)?;
+                tx.step = if index + 1 == tx.source_rack.len() {
+                    Step::ConfirmSource
+                } else {
+                    Step::SourceState(index + 1)
+                };
+            }
+            (
+                Step::ConfirmSource,
+                IpcResponse::PluginRack {
+                    plugins, revision, ..
+                },
+            ) => {
+                anyhow::ensure!(
+                    revision == tx.source_revision && racks_equal(&plugins, &tx.source_rack),
+                    "取得中に元ラックが変更されました"
+                );
+                tx.step = Step::SourceBuiltin;
+            }
+            (Step::SourceBuiltin, IpcResponse::BuiltinEffects(snapshot)) => {
+                anyhow::ensure!(
+                    !snapshot.pending && snapshot.error.is_none(),
+                    "内蔵処理の切替完了を待ってください"
+                );
+                tx.source.builtin = snapshot.config;
+                tx.step = Step::SourceMonitor;
+            }
+            (Step::SourceMonitor, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.epoch == self.live_modes.engine_epoch
+                        && !snapshot.failed
+                        && !snapshot.pending
+                        && snapshot.revision == snapshot.completed_revision,
+                    "自分用処理の切替完了を待ってください"
+                );
+                tx.source.monitor = snapshot.state;
+                tx.source.validate()?;
+                anyhow::ensure!(
+                    !self.mode_vst.path.try_exists()?,
+                    "未完了の復旧記録があるため上書きを拒否しました"
+                );
+                self.spawn_mode_disk(tx, DiskKind::Prepare);
+            }
+            (Step::SilenceBegin | Step::SilencePoll, IpcResponse::ModeSilence(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.id == tx.id && snapshot.active && !snapshot.failed && snapshot.running,
+                    "無音確認が失敗しました"
+                );
+                if snapshot.ready {
+                    tx.silence_ready = true;
+                    tx.step = Step::ClearRack;
+                } else {
+                    tx.step = Step::SilencePoll;
+                }
+            }
+            (
+                Step::ClearRack,
+                IpcResponse::PluginRack {
+                    plugins, running, ..
+                },
+            ) => {
+                anyhow::ensure!(!tx.recovery || !running, "復旧時に音声が開始されています");
+                tx.current_rack = plugins;
+                tx.step = if tx.current_rack.is_empty() {
+                    if tx.destination.is_empty() {
+                        Step::VerifyRack
+                    } else {
+                        Step::Restore(0)
+                    }
+                } else {
+                    Step::Unload
+                };
+            }
+            (Step::ClearRack, IpcResponse::RackBusy) => {}
+            (Step::Unload, IpcResponse::Success) => tx.step = Step::ClearRack,
+            (
+                Step::Restore(index),
+                IpcResponse::PluginRestored {
+                    operation_id,
+                    plugin,
+                },
+            ) => {
+                anyhow::ensure!(
+                    operation_id == self.next_restore_operation && (tx.recovery || plugin.prepared),
+                    "VSTの復元完了を確認できません"
+                );
+                tx.step = if index + 1 == tx.destination.len() {
+                    Step::VerifyRack
+                } else {
+                    Step::Restore(index + 1)
+                };
+            }
+            (
+                Step::VerifyRack,
+                IpcResponse::PluginRack {
+                    plugins, running, ..
+                },
+            ) => {
+                anyhow::ensure!(
+                    (!tx.recovery || !running) && rack_matches(&plugins, &tx.destination),
+                    "復元後のVST順序・設定が一致しません"
+                );
+                tx.current_rack = plugins;
+                tx.step = if tx.current_rack.is_empty() {
+                    Step::BuiltinCurrent
+                } else {
+                    Step::VerifyState(0)
+                };
+            }
+            (Step::VerifyState(index), IpcResponse::PluginState { id, state }) => {
+                anyhow::ensure!(
+                    id == tx.current_rack[index].id
+                        && tx.destination[index]
+                            .state
+                            .as_ref()
+                            .is_none_or(|expected| expected == &state),
+                    "VST状態の復元結果が一致しません"
+                );
+                tx.step = if index + 1 == tx.current_rack.len() {
+                    Step::BuiltinCurrent
+                } else {
+                    Step::VerifyState(index + 1)
+                };
+            }
+            (Step::BuiltinCurrent, IpcResponse::BuiltinEffects(snapshot)) => {
+                anyhow::ensure!(!snapshot.pending, "内蔵処理の反映待ちです");
+                tx.builtin = Some(snapshot);
+                tx.step = Step::BuiltinApply;
+            }
+            (Step::BuiltinSelect, IpcResponse::LiveModes(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.error.is_none() && snapshot.target == tx.mode,
+                    "内蔵モードの選択に失敗しました"
+                );
+                self.cache_mode_snapshot(&snapshot);
+                tx.step = Step::BuiltinWait;
+            }
+            (Step::BuiltinApply, IpcResponse::BuiltinEffects(snapshot)) => {
+                anyhow::ensure!(snapshot.error.is_none(), "内蔵処理を反映できません");
+                tx.step = if tx.rollback || tx.recovery {
+                    Step::BuiltinWait
+                } else {
+                    Step::BuiltinSelect
+                };
+            }
+            (Step::BuiltinWait, IpcResponse::BuiltinEffects(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.error.is_none() && snapshot.config == tx.desired,
+                    "内蔵処理の値が一致しません"
+                );
+                if !snapshot.pending
+                    && (tx.recovery || snapshot.revision == snapshot.applied_revision)
+                {
+                    if tx.recovery || tx.rollback {
+                        tx.step = if tx.recovery {
+                            Step::MonitorConfigure
+                        } else {
+                            Step::MonitorRestore
+                        };
+                    } else {
+                        tx.step = Step::LiveWait;
+                    }
+                }
+            }
+            (Step::MonitorConfigure, IpcResponse::LiveOutput(status)) => {
+                anyhow::ensure!(
+                    status.error.is_none()
+                        && status.config.split_processing == tx.source.monitor.is_some(),
+                    "復旧前の出力構成の同期を確認できません"
+                );
+                tx.step = Step::MonitorRestore;
+            }
+            (Step::MonitorRestore, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    tx.builtin
+                        .as_ref()
+                        .is_some_and(|builtin| snapshot.epoch == builtin.epoch)
+                        && !snapshot.failed
+                        && snapshot.state == tx.source.monitor,
+                    "自分用処理の復元要求を確認できません"
+                );
+                tx.monitor_revision = Some(snapshot.revision);
+                tx.step = Step::MonitorWait;
+            }
+            (Step::MonitorWait, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    tx.builtin
+                        .as_ref()
+                        .is_some_and(|builtin| snapshot.epoch == builtin.epoch)
+                        && !snapshot.failed
+                        && snapshot.state == tx.source.monitor
+                        && Some(&snapshot.revision) == tx.monitor_revision.as_ref(),
+                    "自分用処理の復元結果が一致しません"
+                );
+                if !snapshot.pending && snapshot.revision == snapshot.completed_revision {
+                    self.commit_mode_transaction(tx)?;
+                }
+            }
+            (Step::LiveWait, IpcResponse::LiveModes(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.epoch == self.live_modes.engine_epoch
+                        && snapshot.error.is_none()
+                        && snapshot.target == tx.mode
+                        && snapshot.running
+                        && snapshot.phase != "partial",
+                    "本番モードの全送出先への反映を確認できません"
+                );
+                if snapshot.phase == "settled"
+                    && snapshot.applied == tx.mode
+                    && snapshot.revision == snapshot.completed_revision
+                {
+                    self.cache_mode_snapshot(&snapshot);
+                    self.commit_mode_transaction(tx)?;
+                }
+            }
+            (Step::Finish | Step::ReleasePoll, IpcResponse::ModeSilence(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.id == tx.id && !snapshot.failed && snapshot.running,
+                    "無音解除の結果を確認できません"
+                );
+                tx.step = Step::ReleasePoll;
+                if !snapshot.active {
+                    self.mode_vst.status = Some(model::TransactionSnapshot {
+                        id: tx.id.clone(),
+                        phase: "completed".into(),
+                        target: tx.mode,
+                        error: None,
+                        recovery_available: false,
+                    });
+                }
+            }
+            _ => anyhow::bail!("本番モード切替の応答形式が不正です"),
+        }
+        Ok(())
+    }
+    fn commit_mode_transaction(&mut self, tx: &mut Transaction) -> Result<()> {
+        // 無音解除前に、原本を保持したままコミット段階を耐久保存する。
+        self.spawn_mode_disk(tx, DiskKind::Commit);
+        Ok(())
+    }
+}
+fn racks_equal(a: &[crate::ipc::RackPlugin], b: &[crate::ipc::RackPlugin]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| {
+            a.id == b.id
+                && a.path == b.path
+                && a.enabled == b.enabled
+                && a.muted == b.muted
+                && a.gain == b.gain
+                && a.class_id == b.class_id
+        })
+}
+fn class_ids_match(saved: &Option<String>, opened: &Option<String>) -> bool {
+    match saved {
+        None => true,
+        Some(saved) => opened
+            .as_ref()
+            .is_some_and(|opened| opened.eq_ignore_ascii_case(saved)),
+    }
+}
+fn rack_matches(rack: &[crate::ipc::RackPlugin], plugins: &[PresetPlugin]) -> bool {
+    rack.len() == plugins.len()
+        && rack.iter().zip(plugins).all(|(a, b)| {
+            a.path == b.path
+                && class_ids_match(&b.class_id, &a.class_id)
+                && a.enabled == b.enabled
+                && a.muted == b.muted
+                && a.gain == b.gain
+        })
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    fn host() -> AudioHost {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-mode-vst-{}-{}-{}",
+            std::process::id(),
+            crate::audio_engine::restoration::unix_ms(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        AudioHost::new(root)
+    }
+    fn plugin() -> PresetPlugin {
+        PresetPlugin {
+            path: "unit-test.vst3".into(),
+            name: "unit".into(),
+            vendor: "vendor".into(),
+            version: "1".into(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            state: Some("state".into()),
+            class_id: None,
+        }
+    }
+    #[test]
+    fn journal_optional_class_id_roundtrips_and_legacy_plugins_still_validate() {
+        let mut current = journal();
+        let mut named = plugin();
+        named.class_id = Some("0123456789ABCDEF0123456789ABCDEF".into());
+        current.plugins = vec![named];
+        let json = serde_json::to_value(&current).unwrap();
+        assert_eq!(json["schemaVersion"], 1);
+        assert_eq!(
+            json["plugins"][0]["classId"],
+            "0123456789ABCDEF0123456789ABCDEF"
+        );
+        let back: Journal = serde_json::from_value(json).unwrap();
+        assert!(back.validate().is_ok());
+        assert_eq!(
+            back.plugins[0].class_id.as_deref(),
+            Some("0123456789ABCDEF0123456789ABCDEF")
+        );
+        let mut legacy = journal();
+        legacy.plugins = vec![plugin()];
+        let mut json = serde_json::to_value(&legacy).unwrap();
+        assert!(json["plugins"][0].get("classId").is_none());
+        let back: Journal = serde_json::from_value(json.clone()).unwrap();
+        assert!(back.plugins[0].class_id.is_none() && back.validate().is_ok());
+        json["plugins"][0]["classId"] = serde_json::json!("zz");
+        let invalid: Journal = serde_json::from_value(json).unwrap();
+        assert!(invalid.validate().is_err());
+    }
+    fn journal() -> Journal {
+        Journal {
+            schema_version: 1,
+            id: "tx-test".into(),
+            phase: "preparing".into(),
+            plugins: vec![],
+            builtin: Default::default(),
+            monitor: None,
+            origin_mode: Some(model::Mode::Talk),
+            original_mute: false,
+        }
+    }
+    fn tx(step: Step) -> Transaction {
+        Transaction {
+            id: "tx-test".into(),
+            generation: 0,
+            mode: Some(model::Mode::Singing),
+            source: journal(),
+            destination: vec![],
+            desired: Default::default(),
+            source_rack: vec![],
+            source_revision: 0,
+            current_rack: vec![],
+            builtin: None,
+            monitor_revision: None,
+            step,
+            pending: None,
+            disk: None,
+            condition_pending: None,
+            started: Instant::now(),
+            journaled: false,
+            silence_ready: false,
+            rollback: false,
+            recovery: false,
+            error: None,
+        }
+    }
+    fn builtin(config: builtin::Config, pending: bool) -> IpcResponse {
+        IpcResponse::BuiltinEffects(builtin::Snapshot {
+            epoch: "engine".into(),
+            revision: "4".into(),
+            applied_revision: if pending { "3" } else { "4" }.into(),
+            config,
+            pending,
+            undo_token: None,
+            redo_token: None,
+            history_reason: None,
+            error: None,
+        })
+    }
+    fn monitor(state: Option<split_monitor::State>, pending: bool) -> IpcResponse {
+        IpcResponse::ModeMonitor(Box::new(split_monitor::StateSnapshot {
+            epoch: "engine".into(),
+            state,
+            revision: "9".into(),
+            completed_revision: if pending { "8" } else { "9" }.into(),
+            pending,
+            failed: false,
+        }))
+    }
+    fn rack(plugins: Vec<crate::ipc::RackPlugin>, revision: u64) -> IpcResponse {
+        IpcResponse::PluginRack {
+            plugins,
+            restore_eligible: false,
+            revision,
+            running: true,
+        }
+    }
+    fn silence(active: bool, ready: bool) -> IpcResponse {
+        IpcResponse::ModeSilence(mode_silence::Snapshot {
+            id: "tx-test".into(),
+            active,
+            ready,
+            running: true,
+            failed: false,
+        })
+    }
+    fn await_disk(host: &mut AudioHost, transaction: &mut Transaction) -> Result<()> {
+        let started = Instant::now();
+        while host.poll_mode_disk(transaction)? {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(1));
+        }
+        Ok(())
+    }
+    #[test]
+    fn binding_fingerprint_pins_only_vst_and_detects_replacement_before_silence() {
+        let mut host = host();
+        let root = host.live_modes.path.parent().unwrap().to_path_buf();
+        let mut profile = presets::Preset {
+            schema_version: 2,
+            name: "linked".into(),
+            plugins: vec![plugin()],
+            plugins_included: Some(true),
+            audio_config: None,
+            noise_control: None,
+            builtin_fx: None,
+        };
+        presets::save_preset(&root, "linked", &profile).unwrap();
+        let (_, first) = load_binding(&root, "linked").unwrap();
+        profile.name = "metadata only".into();
+        presets::save_preset(&root, "linked", &profile).unwrap();
+        assert_eq!(first, load_binding(&root, "linked").unwrap().1);
+        host.live_modes.definitions.singing = Some(Default::default());
+        host.live_modes.definitions.profiles.singing = Some(model::ProfileBinding {
+            snapshot: None,
+            name: "linked".into(),
+            revision: first,
+        });
+        profile.plugins[0].muted = true;
+        presets::save_preset(&root, "linked", &profile).unwrap();
+        assert!(host
+            .begin_mode_vst(model::Mode::Singing)
+            .unwrap_err()
+            .to_string()
+            .contains("変更"));
+        assert!(!host.mode_vst.path.exists());
+        assert!(!host.mode_vst.busy());
+        assert!(host.child.is_none());
+    }
+    #[test]
+    fn legacy_empty_is_not_bindable_and_explicit_empty_is() {
+        let host = host();
+        let root = host.live_modes.path.parent().unwrap();
+        let mut profile = presets::Preset {
+            schema_version: 1,
+            name: "empty".into(),
+            plugins: vec![],
+            plugins_included: None,
+            audio_config: None,
+            noise_control: None,
+            builtin_fx: None,
+        };
+        presets::save_preset(root, "empty", &profile).unwrap();
+        assert!(load_binding(root, "empty").is_err());
+        profile.plugins_included = Some(true);
+        presets::save_preset(root, "empty", &profile).unwrap();
+        assert!(load_binding(root, "empty").unwrap().0.is_empty());
+    }
+    #[test]
+    fn pending_silence_ack_never_unloads_and_wrong_generation_ack_fails() {
+        let mut host = host();
+        let mut transaction = tx(Step::SilenceBegin);
+        host.mode_step_response(&mut transaction, silence(true, false))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::SilencePoll));
+        assert!(!transaction.silence_ready);
+        let mut stale = mode_silence::Snapshot {
+            id: "old".into(),
+            active: true,
+            ready: true,
+            running: true,
+            failed: false,
+        };
+        assert!(host
+            .mode_step_response(&mut transaction, IpcResponse::ModeSilence(stale.clone()))
+            .is_err());
+        stale.id = "tx-test".into();
+        stale.running = false;
+        assert!(host
+            .mode_step_response(&mut transaction, IpcResponse::ModeSilence(stale))
+            .is_err());
+        host.mode_step_response(&mut transaction, silence(true, true))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::ClearRack));
+    }
+    #[test]
+    fn source_revision_change_and_missing_state_are_rejected() {
+        let mut host = host();
+        let mut transaction = tx(Step::ConfirmSource);
+        transaction.source_revision = 10;
+        assert!(host
+            .mode_step_response(&mut transaction, rack(vec![], 11))
+            .is_err());
+        let mut source = journal();
+        source.plugins = vec![plugin()];
+        source.plugins[0].state = None;
+        assert!(source.validate().is_err());
+        source.plugins = (0..33).map(|_| plugin()).collect();
+        assert!(source.validate().is_err());
+    }
+    #[test]
+    fn journal_write_failure_prevents_silence() {
+        let mut host = host();
+        host.live_modes.engine_epoch = "engine".into();
+        // 親が通常ファイルならjournalを作成できない。原本以外の既存ファイルは触らない。
+        let root = host.live_modes.path.parent().unwrap();
+        std::fs::write(root, b"not a directory").unwrap();
+        let mut transaction = tx(Step::SourceBuiltin);
+        host.mode_step_response(&mut transaction, builtin(Default::default(), false))
+            .unwrap();
+        host.mode_step_response(&mut transaction, monitor(None, false))
+            .unwrap();
+        assert!(await_disk(&mut host, &mut transaction).is_err());
+        assert!(!transaction.journaled);
+        assert!(matches!(transaction.step, Step::SourceMonitor));
+        host.set_link_for_test(true);
+        let generation = host.engine_generation;
+        host.fail_mode_transaction(transaction, "journal write failed".into(), false);
+        assert_eq!(host.engine_generation, generation);
+        assert!(host.link.is_open());
+        assert!(!host.mode_vst.blocked());
+        assert_eq!(host.mode_vst.status.as_ref().unwrap().phase, "failed");
+    }
+    #[test]
+    fn known_source_state_failure_keeps_the_original_engine_available() {
+        let mut host = host();
+        host.set_link_for_test(true);
+        let generation = host.engine_generation;
+        host.fail_mode_transaction(tx(Step::SourceState(0)), "state unavailable".into(), false);
+        assert_eq!(host.engine_generation, generation);
+        assert!(host.link.is_open());
+        assert!(!host.mode_vst.blocked());
+        assert_eq!(host.mode_vst.status.as_ref().unwrap().phase, "failed");
+    }
+    #[test]
+    fn known_apply_failure_rolls_back_and_second_failure_requires_recovery() {
+        let mut host = host();
+        let mut transaction = tx(Step::Restore(0));
+        transaction.journaled = true;
+        transaction.silence_ready = true;
+        transaction.source.plugins = vec![plugin()];
+        host.fail_mode_transaction(transaction, "load failed".into(), false);
+        let rolled = host.mode_vst.transaction.take().unwrap();
+        assert!(rolled.rollback && matches!(rolled.step, Step::ClearRack));
+        assert_eq!(rolled.destination, rolled.source.plugins);
+        assert!(host.guard_mode_vst().is_ok()); // workerは一時take中、外部はHost mutexで排他。
+        host.fail_mode_transaction(rolled, "rollback failed".into(), false);
+        assert!(host.mode_vst.blocked());
+        assert!(host.is_global_muted);
+        assert_eq!(
+            host.mode_vst.status.as_ref().unwrap().phase,
+            "recovery_required"
+        );
+    }
+    #[test]
+    fn ambiguous_response_never_rolls_back_or_unmutes() {
+        let mut host = host();
+        let mut transaction = tx(Step::Restore(0));
+        transaction.journaled = true;
+        transaction.silence_ready = true;
+        host.fail_mode_transaction(transaction, "timeout".into(), true);
+        assert!(!host.mode_vst.busy());
+        assert!(host.mode_vst.blocked());
+        assert!(host.is_global_muted);
+        assert!(host.start(None, None, None, None, None).is_err());
+        assert!(host.set_global_mute(false).is_err());
+        assert!(host.child.is_none());
+    }
+    #[test]
+    fn persisted_and_corrupt_journals_block_start_without_automatic_recovery() {
+        for corrupt in [false, true] {
+            let host = host();
+            let root = host.live_modes.path.parent().unwrap().to_path_buf();
+            if corrupt {
+                std::fs::create_dir_all(&root).unwrap();
+                std::fs::write(&host.mode_vst.path, b"{broken").unwrap();
+            } else {
+                crate::json_file::write_json(&host.mode_vst.path, &journal()).unwrap();
+            }
+            let mut restarted = AudioHost::new(root);
+            restarted.warmup().unwrap();
+            assert!(restarted.child.is_none());
+            assert!(restarted.is_global_muted);
+            assert!(restarted
+                .live_modes(model::Request::Snapshot)
+                .unwrap()
+                .transaction
+                .is_some());
+            assert!(restarted.start(None, None, None, None, None).is_err());
+            assert_eq!(
+                restarted
+                    .mode_vst
+                    .status
+                    .as_ref()
+                    .unwrap()
+                    .recovery_available,
+                !corrupt
+            );
+        }
+    }
+    #[test]
+    fn pending_builtin_and_staged_release_never_clear_journal() {
+        let mut host = host();
+        host.live_modes.engine_epoch = "engine".into();
+        let mut transaction = tx(Step::BuiltinWait);
+        transaction.rollback = true;
+        if let IpcResponse::BuiltinEffects(snapshot) = builtin(Default::default(), false) {
+            transaction.builtin = Some(snapshot);
+        }
+        crate::json_file::write_json(&host.mode_vst.path, &transaction.source).unwrap();
+        host.mode_step_response(&mut transaction, builtin(Default::default(), true))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::BuiltinWait));
+        host.mode_step_response(&mut transaction, builtin(Default::default(), false))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::MonitorRestore));
+        host.mode_step_response(&mut transaction, monitor(None, true))
+            .unwrap();
+        host.mode_step_response(&mut transaction, monitor(None, true))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::MonitorWait));
+        assert!(transaction.disk.is_none());
+        host.mode_step_response(&mut transaction, monitor(None, false))
+            .unwrap();
+        await_disk(&mut host, &mut transaction).unwrap();
+        assert!(matches!(transaction.step, Step::Finish));
+        host.mode_step_response(&mut transaction, silence(true, false))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::ReleasePoll));
+        assert!(host.mode_vst.path.exists());
+        assert_ne!(
+            host.mode_vst.status.as_ref().map(|s| s.phase.as_str()),
+            Some("completed")
+        );
+        host.mode_step_response(&mut transaction, silence(false, false))
+            .unwrap();
+        host.complete_mode_transaction(transaction);
+        assert!(!host.mode_vst.path.exists());
+    }
+    #[test]
+    fn monitor_restore_failure_or_stale_ack_never_releases_silence() {
+        for failure in ["pending", "failed", "epoch", "revision", "state"] {
+            let mut host = host();
+            let mut transaction = tx(Step::MonitorWait);
+            transaction.rollback = true;
+            transaction.journaled = true;
+            transaction.silence_ready = true;
+            transaction.source.origin_mode = None; // 個別設定中でも自分用の実設定を保持する。
+            transaction.source.monitor = Some(split_monitor::State {
+                mode: model::Mode::Talk,
+                config: Default::default(),
+            });
+            transaction.monitor_revision = Some("9".into());
+            if let IpcResponse::BuiltinEffects(snapshot) = builtin(Default::default(), false) {
+                transaction.builtin = Some(snapshot);
+            }
+            crate::json_file::write_json(&host.mode_vst.path, &transaction.source).unwrap();
+            assert_eq!(
+                read_journal(&host.mode_vst.path).unwrap().monitor,
+                transaction.source.monitor
+            );
+            let IpcResponse::ModeMonitor(mut snapshot) =
+                monitor(transaction.source.monitor.clone(), failure == "pending")
+            else {
+                unreachable!()
+            };
+            match failure {
+                "failed" => snapshot.failed = true,
+                "epoch" => snapshot.epoch = "old".into(),
+                "revision" => {
+                    snapshot.revision = "8".into();
+                    snapshot.completed_revision = "8".into();
+                }
+                "state" => snapshot.state = None,
+                _ => {}
+            }
+            let result =
+                host.mode_step_response(&mut transaction, IpcResponse::ModeMonitor(snapshot));
+            if failure == "pending" {
+                result.unwrap();
+                assert!(matches!(transaction.step, Step::MonitorWait));
+                assert!(transaction.disk.is_none());
+            } else {
+                host.fail_mode_transaction(transaction, result.unwrap_err().to_string(), false);
+                assert!(host.mode_vst.blocked());
+                assert_eq!(
+                    host.mode_vst.status.as_ref().unwrap().phase,
+                    "recovery_required"
+                );
+            }
+            assert!(host.mode_vst.path.exists());
+        }
+    }
+
+    #[test]
+    fn emergency_mute_and_stop_cancel_pending_receiver_without_waiting() {
+        for emergency in [false, true] {
+            let mut host = host();
+            let mut transaction = tx(Step::Restore(0));
+            transaction.journaled = true;
+            host.set_link_for_test(true);
+            transaction.pending = Some(Pending {
+                receiver: host.link.begin(None).unwrap(),
+                writer: None,
+                sent: Instant::now(),
+                limit: Duration::from_secs(10),
+            });
+            host.mode_vst.transaction = Some(transaction);
+            let started = Instant::now();
+            if emergency {
+                host.set_global_mute(true).unwrap();
+            } else {
+                host.stop().unwrap();
+            }
+            assert!(started.elapsed() < Duration::from_millis(500));
+            assert!(host.is_global_muted && host.mode_vst.blocked());
+            assert!(!host.mode_vst.busy());
+            assert!(host.child.is_none());
+        }
+    }
+    #[test]
+    fn full_fake_ipc_success_empty_rack_and_rollback_restore_every_source_value() {
+        for scenario in ["empty", "rack", "rollback", "commit-rollback", "recovery"] {
+            let mut host = host();
+            host.live_modes.engine_epoch = "engine".into();
+            host.is_global_muted = true;
+            let mut source_plugin = plugin();
+            source_plugin.path = "source.vst3".into();
+            source_plugin.state = Some("original-state".into());
+            source_plugin.gain = 0.6;
+            source_plugin.muted = true;
+            source_plugin.enabled = false;
+            let source_rack = crate::ipc::RackPlugin {
+                id: "source-id".into(),
+                path: source_plugin.path.clone(),
+                name: source_plugin.name.clone(),
+                enabled: source_plugin.enabled,
+                muted: source_plugin.muted,
+                gain: source_plugin.gain,
+                class_id: None,
+                channel_layout: crate::ipc::ChannelLayout::Stereo,
+            };
+            let original = builtin::Config {
+                active: true,
+                preset: builtin::Preset::Warm,
+                ..Default::default()
+            };
+            let desired = builtin::Config {
+                active: true,
+                preset: builtin::Preset::Bright,
+                ..Default::default()
+            };
+            let mut transaction = tx(Step::Configure);
+            transaction.source.original_mute = true;
+            transaction.desired = desired.clone();
+            transaction.destination = if scenario == "empty" {
+                vec![]
+            } else {
+                vec![plugin()]
+            };
+            if scenario == "rollback" {
+                let mut second = plugin();
+                second.path = "failing.vst3".into();
+                transaction.destination.push(second);
+            }
+            let expected = transaction.destination.clone();
+            let mut actual = vec![source_rack.clone()];
+            let mut states = std::collections::BTreeMap::from([(
+                "source-id".to_string(),
+                "original-state".to_string(),
+            )]);
+            let mut revision = 3u64;
+            let mut config = original.clone();
+            let mut builtin_revision = 4u64;
+            let mut silence_polls = 0;
+            let mut release_polls = 0;
+            let mut live_polls = 0;
+            let mut failed = false;
+            let original_monitor = split_monitor::State {
+                mode: model::Mode::Talk,
+                config: Default::default(),
+            };
+            let mut monitor_state = Some(original_monitor.clone());
+            let journal_path = host.mode_vst.path.clone();
+            if scenario == "recovery" {
+                crate::json_file::write_json(
+                    &host.last_config_path.with_file_name("live_output.json"),
+                    &crate::audio_engine::live_output::Config {
+                        split_processing: true,
+                        device_id: Some("fixture".into()),
+                        monitor_singing: Some(Default::default()),
+                        monitor_talk: Some(Default::default()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                transaction.recovery = true;
+                transaction.journaled = true;
+                transaction.source.plugins = vec![source_plugin.clone()];
+                transaction.source.builtin = original.clone();
+                transaction.source.monitor = monitor_state.clone();
+                transaction.destination = transaction.source.plugins.clone();
+                transaction.desired = original.clone();
+                transaction.step = Step::ClearRack;
+                crate::json_file::write_json(&host.mode_vst.path, &transaction.source).unwrap();
+                host.mode_vst.blocked = true;
+                actual.clear();
+                states.clear();
+            }
+            for tick in 0..100 {
+                assert!(tick < 99, "flow failed to finish: {scenario}");
+                if let Err(error) = await_disk(&mut host, &mut transaction) {
+                    assert!(scenario == "commit-rollback" && !failed);
+                    assert_eq!(monitor_state.as_ref().unwrap().mode, model::Mode::Singing);
+                    host.mode_vst.path = journal_path.clone();
+                    host.fail_mode_transaction(transaction, error.to_string(), false);
+                    transaction = host.mode_vst.transaction.take().unwrap();
+                    failed = true;
+                }
+                if matches!(transaction.step, Step::ReleasePoll)
+                    && host
+                        .mode_vst
+                        .status
+                        .as_ref()
+                        .is_some_and(|s| s.phase == "completed")
+                {
+                    break;
+                }
+                let step = transaction.step;
+                let response = match host.mode_step_command(&mut transaction).unwrap() {
+                    IpcCommand::ConfigureLiveModes { .. } => {
+                        let mut snapshot = host.mode_vst_snapshot();
+                        snapshot.epoch = "engine".into();
+                        snapshot.running = true;
+                        snapshot.target = Some(model::Mode::Talk);
+                        snapshot.phase = "settled".into();
+                        IpcResponse::LiveModes(Box::new(snapshot))
+                    }
+                    IpcCommand::GetPluginRack => {
+                        let mut response = rack(actual.clone(), revision);
+                        if let IpcResponse::PluginRack { running, .. } = &mut response {
+                            *running = scenario != "recovery";
+                        }
+                        response
+                    }
+                    IpcCommand::GetPluginState { id } => IpcResponse::PluginState {
+                        state: states[&id].clone(),
+                        id,
+                    },
+                    IpcCommand::ModeSilence { request } => match request {
+                        mode_silence::Request::Begin { .. } => {
+                            assert!(host.mode_vst.path.exists());
+                            assert!(!transaction.silence_ready);
+                            silence(true, false)
+                        }
+                        mode_silence::Request::Snapshot { .. }
+                            if matches!(step, Step::SilencePoll) =>
+                        {
+                            silence_polls += 1;
+                            silence(true, silence_polls >= 2)
+                        }
+                        mode_silence::Request::Finish { .. } => {
+                            assert!(transaction.silence_ready);
+                            assert_eq!(
+                                read_journal(&host.mode_vst.path).unwrap().phase,
+                                "committing"
+                            );
+                            silence(true, false)
+                        }
+                        _ => {
+                            release_polls += 1;
+                            silence(release_polls < 2, false)
+                        }
+                    },
+                    IpcCommand::UnloadPlugin { id } => {
+                        assert!(transaction.silence_ready || transaction.recovery);
+                        actual.retain(|p| p.id != id);
+                        states.remove(&id);
+                        revision += 1;
+                        IpcResponse::Success
+                    }
+                    IpcCommand::RestorePlugin {
+                        request,
+                        operation_id,
+                        ..
+                    } => {
+                        assert!(transaction.silence_ready || transaction.recovery);
+                        if scenario == "rollback" && !failed && request.path == "failing.vst3" {
+                            failed = true;
+                            IpcResponse::Error("injected second VST failure".into())
+                        } else {
+                            let id = format!("restored-{operation_id}");
+                            states.insert(id.clone(), request.state.clone().unwrap_or_default());
+                            actual.push(crate::ipc::RackPlugin {
+                                id: id.clone(),
+                                path: request.path,
+                                name: "restored".into(),
+                                enabled: !request.bypassed,
+                                muted: request.muted,
+                                gain: request.gain,
+                                class_id: request.class_id.clone(),
+                                channel_layout: crate::ipc::ChannelLayout::Stereo,
+                            });
+                            revision += 1;
+                            IpcResponse::PluginRestored {
+                                operation_id,
+                                plugin: crate::ipc::RestoredPlugin {
+                                    id,
+                                    name: "restored".into(),
+                                    prepared: scenario != "recovery",
+                                    class_id: None,
+                                    legacy_class_ambiguous: false,
+                                    channel_layout: crate::ipc::ChannelLayout::Stereo,
+                                },
+                            }
+                        }
+                    }
+                    IpcCommand::BuiltinEffects { request } => {
+                        if let builtin::Request::Apply { config: next, .. } = request {
+                            config = next;
+                            builtin_revision += 1;
+                        }
+                        let mut response = builtin(config.clone(), false);
+                        if let IpcResponse::BuiltinEffects(snapshot) = &mut response {
+                            snapshot.revision = builtin_revision.to_string();
+                            snapshot.applied_revision = builtin_revision.to_string();
+                        }
+                        response
+                    }
+                    IpcCommand::ModeMonitor { request } => {
+                        if let split_monitor::Request::Restore { state } = request {
+                            monitor_state = state;
+                        }
+                        monitor(monitor_state.clone(), false)
+                    }
+                    IpcCommand::LiveOutput {
+                        config: Some(config),
+                    } => IpcResponse::LiveOutput(Box::new(
+                        crate::audio_engine::live_output::Status {
+                            config,
+                            sink: None,
+                            error: None,
+                            broadcast_epoch: None,
+                            monitor: None,
+                        },
+                    )),
+                    IpcCommand::LiveMode { request } => {
+                        let mut snapshot = host.mode_vst_snapshot();
+                        snapshot.epoch = "engine".into();
+                        snapshot.running = true;
+                        snapshot.target = transaction.mode;
+                        snapshot.revision = "7".into();
+                        snapshot.completed_revision = "6".into();
+                        snapshot.phase = "transitioning".into();
+                        if matches!(step, Step::BuiltinSelect) {
+                            monitor_state = Some(split_monitor::State {
+                                mode: model::Mode::Singing,
+                                config: desired.clone(),
+                            });
+                        }
+                        if matches!(step, Step::ReadLive) {
+                            snapshot.phase = "settled".into();
+                            snapshot.target = Some(model::Mode::Talk);
+                        } else if matches!(request, model::Request::Snapshot) {
+                            live_polls += 1;
+                            if live_polls >= 2 {
+                                snapshot.completed_revision = "7".into();
+                                snapshot.applied = transaction.mode;
+                                snapshot.phase = "settled".into();
+                                if scenario == "commit-rollback" && !failed {
+                                    // 元journalは保持し、通常ファイルを親にしてcommit保存だけ失敗させる。
+                                    host.mode_vst.path = journal_path.join("unwritable");
+                                }
+                            }
+                        }
+                        IpcResponse::LiveModes(Box::new(snapshot))
+                    }
+                    _ => panic!("unexpected flow command"),
+                };
+                if let Err(error) = host.mode_step_response(&mut transaction, response) {
+                    assert!(scenario == "rollback" && failed, "{scenario}: {error}");
+                    host.fail_mode_transaction(transaction, error.to_string(), false);
+                    transaction = host.mode_vst.transaction.take().unwrap();
+                }
+            }
+            let restored_source = matches!(scenario, "rollback" | "commit-rollback" | "recovery");
+            if restored_source {
+                assert_eq!(monitor_state, Some(original_monitor));
+            }
+            assert!(rack_matches(
+                &actual,
+                if restored_source {
+                    std::slice::from_ref(&source_plugin)
+                } else {
+                    &expected
+                }
+            ));
+            assert_eq!(config, if restored_source { original } else { desired });
+            if restored_source {
+                assert_eq!(states.values().next().unwrap(), "original-state");
+            } else {
+                assert!(live_polls >= 2);
+            }
+            host.complete_mode_transaction(transaction);
+            assert!(!host.mode_vst.path.exists());
+            assert!(!host.mode_vst.blocked());
+            assert!(host.is_global_muted);
+            assert_eq!(
+                host.live_modes.target,
+                if restored_source {
+                    None
+                } else {
+                    Some(model::Mode::Singing)
+                }
+            );
+            if scenario == "rollback" {
+                assert_eq!(host.mode_vst.status.as_ref().unwrap().phase, "failed");
+            }
+        }
+    }
+    #[test]
+    fn delayed_durable_write_does_not_hold_host_or_resume_canceled_transaction() {
+        let mut host = host();
+        let mut transaction = tx(Step::SourceBuiltin);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Prepare,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        let started = Instant::now();
+        host.stop().unwrap();
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert!(host.mode_vst.blocked());
+        assert!(host.mode_vst.orphan_disk.is_some());
+        sender.send(Ok(journal())).unwrap();
+        host.poll_orphan_mode_disk();
+        assert!(!host.mode_vst.busy());
+        assert!(host.mode_vst.blocked());
+        assert!(host.is_global_muted);
+        assert_eq!(
+            host.mode_vst.status.as_ref().unwrap().phase,
+            "recovery_required"
+        );
+        assert!(host.child.is_none());
+    }
+    #[test]
+    fn blocked_writer_keeps_early_reply_pending_and_stop_remains_immediate() {
+        for emergency in [false, true] {
+            let mut host = host();
+            host.set_link_for_test(true);
+            host.conditions.lifecycle(true);
+            let witness = host.conditions.snapshot().unwrap();
+            let mut transaction = tx(Step::Restore(0));
+            transaction.journaled = true;
+            transaction.condition_pending = Some(host.conditions.begin());
+            let (_writer_sender, writer) = std::sync::mpsc::channel();
+            transaction.pending = Some(Pending {
+                receiver: host.link.begin(None).unwrap(),
+                writer: Some(writer),
+                sent: Instant::now(),
+                limit: Duration::from_secs(10),
+            });
+            host.mode_vst.transaction = Some(transaction);
+            host.link.deliver(IpcResponse::Success);
+            host.poll_mode_vst();
+            assert!(host
+                .mode_vst
+                .transaction
+                .as_ref()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .writer
+                .is_some());
+            assert!(witness.validate().is_err());
+            let started = Instant::now();
+            if emergency {
+                host.set_global_mute(true).unwrap();
+            } else {
+                host.stop().unwrap();
+            }
+            assert!(started.elapsed() < Duration::from_millis(500));
+            assert!(host.mode_vst.blocked() && host.is_global_muted);
+            assert!(!host.mode_vst.busy() && host.writer.is_none());
+            assert!(host.child.is_none());
+        }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn actual_full_child_pipe_does_not_block_stop_or_emergency_mute() {
+        use std::os::windows::process::CommandExt;
+        for emergency in [false, true] {
+            let mut host = host();
+            // この試験が起動したstdin非読取り子だけを使用し、音声機器・通常設定を開かない。
+            let mut child = Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Start-Sleep -Seconds 30",
+                ])
+                .creation_flags(0x0800_0000)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("create isolated nonreading child");
+            host.attach_stdin_for_test(child.stdin.take().expect("child stdin"));
+            host.child = Some(child);
+            host.set_link_for_test(true);
+            let mut transaction = tx(Step::Restore(0));
+            transaction.journaled = true;
+            transaction.pending = Some(
+                host.send_mode_command(IpcCommand::RestorePlugin {
+                    request: crate::ipc::RestorePluginRequest {
+                        path: "non-audio-test.vst3".into(),
+                        state: Some("A".repeat(4 * 1024 * 1024)),
+                        bypassed: true,
+                        muted: true,
+                        gain: 1.0,
+                        class_id: None,
+                    },
+                    operation_id: 1,
+                    expires_at_ms: u64::MAX,
+                })
+                .unwrap(),
+            );
+            host.mode_vst.transaction = Some(transaction);
+            let started = Instant::now();
+            while !host
+                .mode_vst
+                .writer_probe
+                .serialized
+                .load(Ordering::Acquire)
+            {
+                assert!(started.elapsed() < Duration::from_secs(5));
+                thread::sleep(Duration::from_millis(1));
+            }
+            thread::sleep(Duration::from_millis(50));
+            assert!(
+                !host.mode_vst.writer_probe.finished.load(Ordering::Acquire),
+                "payload must exceed the unread anonymous pipe capacity"
+            );
+            host.poll_mode_vst();
+            assert!(host.mode_vst.busy());
+            let started = Instant::now();
+            if emergency {
+                host.set_global_mute(true).unwrap();
+            } else {
+                host.stop().unwrap();
+            }
+            assert!(started.elapsed() < Duration::from_secs(2));
+            assert!(host.child.is_none() && host.writer.is_none());
+            assert!(host.mode_vst.blocked() && host.is_global_muted);
+            let started = Instant::now();
+            while !host.mode_vst.writer_probe.finished.load(Ordering::Acquire) {
+                assert!(started.elapsed() < Duration::from_secs(2));
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(!host.mode_vst.busy());
+        }
+    }
+
+    // ---- F1b-0a-1（T6・T11）。接続の土台と、書き込み・応答・切断の判定の順 ----
+    use crate::audio::compat_support as script;
+    use crate::audio::link::CloseCause;
+    use crate::audio::writer::{sinks, WriteDone, WriteResult};
+
+    fn open_link_host() -> AudioHost {
+        let mut host = host();
+        host.set_link_for_test(true);
+        host
+    }
+
+    fn journaled(step: Step) -> Transaction {
+        let mut transaction = tx(step);
+        transaction.journaled = true;
+        transaction.silence_ready = true;
+        transaction
+    }
+
+    fn write_done(result: WriteResult) -> Receiver<WriteDone> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(WriteDone {
+                result,
+                flushed_at: Instant::now(),
+            })
+            .unwrap();
+        receiver
+    }
+
+    fn pending(host: &AudioHost, writer: Option<WriteResult>) -> Pending {
+        Pending {
+            receiver: host.link.begin(None).unwrap(),
+            writer: writer.map(write_done),
+            sent: Instant::now(),
+            limit: Duration::from_secs(10),
+        }
+    }
+
+    fn failed_with_recovery(host: &AudioHost, message: &str) {
+        assert!(!host.mode_vst.busy(), "取引は終わっている");
+        assert!(host.mode_vst.blocked(), "ロールバックせず、復旧の経路へ");
+        assert!(host.is_global_muted);
+        let status = host.mode_vst.status.as_ref().unwrap();
+        assert_eq!(status.phase, "recovery_required");
+        assert_eq!(status.error.as_deref(), Some(message));
+    }
+
+    // T11：切断した接続の応答は、`Engine Crashed/Exited` に写して復旧の経路へ進む。
+    #[test]
+    fn t11_a_disconnected_reply_maps_to_engine_exited_and_never_rolls_back() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        drop(link_seam::win_eof(&host).unwrap());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.child.is_none());
+    }
+
+    // T11：書き込みの結果を、切断の検出より先に判定する。EOF が先に見えていても、書き込みの失敗が結果になる。
+    #[test]
+    fn t11_a_write_failure_is_judged_before_the_connection_loss() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(
+            &host,
+            Some(WriteResult::Err(std::io::Error::other("pipe broke"))),
+        ));
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "pipe broke");
+    }
+
+    // T11：`Aborted`（閉じていたので書かなかった）は書き込みの失敗にせず、EOF の結果を同じ10秒の中で待つ。
+    #[test]
+    fn t11_aborted_waits_for_the_eof_result_within_the_same_ten_seconds() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Aborted)));
+        host.mode_vst.transaction = Some(transaction);
+        let sender = link_seam::win_eof(&host).unwrap();
+        host.poll_mode_vst();
+        assert!(host.mode_vst.busy(), "EOF の結果が届くまで待つ");
+        let waiting = host.mode_vst.transaction.as_ref().unwrap();
+        assert!(waiting.pending.as_ref().unwrap().writer.is_none());
+        drop(sender);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        // 期限を過ぎても EOF の結果が来なければ、今の「応答が不明」で復旧の経路へ。
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        let mut expired = pending(&host, Some(WriteResult::Aborted));
+        expired.sent = Instant::now() - Duration::from_secs(11);
+        transaction.pending = Some(expired);
+        host.mode_vst.transaction = Some(transaction);
+        let _waiter = link_seam::win_eof(&host).unwrap();
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+    }
+
+    // T11：EOF を確かめた後は、次のIPCもロールバックも始めない（保留がない段でも）。
+    #[test]
+    fn t11_a_lost_connection_between_steps_starts_no_next_ipc() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(recording.text().is_empty(), "何も書いていない");
+    }
+
+    // Q8（F1b-0b-4。9.10 の (h)）：最後の接続の確認の後、`begin` の前に EOF が勝つ。閉じた接続への `begin` は
+    // 何も登録せず、復旧の経路は EOF の通知の列を待たずに進む（順の保証は、この段では行わない）。
+    #[test]
+    fn q8_a_begin_on_a_closed_link_registers_nothing_and_the_recovery_never_waits() {
+        let mut host = open_link_host();
+        let recorder = Arc::new(crate::audio::emit::Recorder::default());
+        host.emitter.set(recorder.emitter());
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        let link = host.link.clone();
+        let win = Arc::new(Mutex::new(None));
+        let held = win.clone();
+        before_mode_begin::set(move || {
+            *held.lock().unwrap() = link.close_eof();
+        });
+        host.poll_mode_vst();
+        assert!(
+            win.lock().unwrap().is_some(),
+            "EOF の競りに勝った reader がいる"
+        );
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(
+            !host.link.with_log_for_test(|log| log.in_flight_for_test())
+                && !link_seam::operation_awaiting(&host),
+            "閉じた接続には、何も登録しない"
+        );
+        assert_eq!(
+            host.link.shape_for_test(),
+            crate::audio::link::Shape::Closed(CloseCause::Eof)
+        );
+        assert_eq!(host.link.waits_entered_for_test(), 0, "EOF の列を待たない");
+        assert!(
+            recorder
+                .names()
+                .iter()
+                .any(|name| name == "live-modes-invalidated"),
+            "復旧の通知は出る: {:?}",
+            recorder.names()
+        );
+    }
+
+    // T11：世代が違う取引は、今の文言で復旧の経路へ。
+    #[test]
+    fn t11_a_stale_generation_is_not_adopted() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.generation = host.engine_generation + 1;
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        host.link.deliver(IpcResponse::Success);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "音声エンジンの世代または接続が変わりました");
+    }
+
+    // F1b-0a-2 の T7：モード VST の応答の期限は、命令の種類で決まる（起点は送った時点）。
+    fn silence_snapshot(ready: bool) -> IpcResponse {
+        IpcResponse::ModeSilence(mode_silence::Snapshot {
+            id: "tx-test".into(),
+            active: true,
+            ready,
+            running: true,
+            failed: false,
+        })
+    }
+
+    /// 製品の経路（`mode_step_command` → `send_mode_command`）で送った保留。書き込みの段は省く。
+    fn sent_pending(host: &mut AudioHost, step: Step, sent_ago: Duration) -> Pending {
+        host.link.cancel();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        let mut transaction = journaled(step);
+        let command = host.mode_step_command(&mut transaction).unwrap();
+        let mut pending = host.send_mode_command(command).unwrap();
+        let written = pending.writer.take().unwrap();
+        written.recv_timeout(Duration::from_secs(5)).unwrap();
+        pending.sent = Instant::now() - sent_ago;
+        pending
+    }
+
+    fn recorded_host() -> (AudioHost, Arc<emit::Recorder>) {
+        let host = open_link_host();
+        let recorder = Arc::new(emit::Recorder::default());
+        host.emitter.set(recorder.emitter());
+        (host, recorder)
+    }
+
+    fn poll_with(host: &mut AudioHost, step: Step, pending: Pending) {
+        let mut transaction = journaled(step);
+        transaction.pending = Some(pending);
+        host.mode_vst.transaction = Some(transaction);
+        host.poll_mode_vst();
+    }
+
+    #[test]
+    fn t7_the_deadline_follows_the_command_class() {
+        use crate::audio::deadline::{A, B};
+        let mut host = open_link_host();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        for (command, expected) in [
+            (IpcCommand::GetPluginRack, A),
+            (
+                IpcCommand::ModeSilence {
+                    request: mode_silence::Request::Snapshot { id: "x".into() },
+                },
+                A,
+            ),
+            (IpcCommand::GetPluginState { id: "x".into() }, B),
+            (
+                IpcCommand::ModeSilence {
+                    request: mode_silence::Request::Begin { id: "x".into() },
+                },
+                B,
+            ),
+            (
+                IpcCommand::RestorePlugin {
+                    request: restore_request(&plugin()),
+                    operation_id: 1,
+                    expires_at_ms: 0,
+                },
+                B,
+            ),
+        ] {
+            let mut pending = host.send_mode_command(command).unwrap();
+            assert_eq!(pending.limit, expected);
+            let written = pending.writer.take().unwrap();
+            written.recv_timeout(Duration::from_secs(5)).unwrap();
+            host.link.cancel();
+        }
+    }
+
+    #[test]
+    fn t7_a_b_command_accepts_a_reply_after_ten_seconds_and_aborts_at_thirty() {
+        let (mut host, recorder) = recorded_host();
+        let pending = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(15));
+        let received_at = pending.sent + Duration::from_secs(12);
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilenceBegin, pending);
+        assert!(
+            host.mode_vst.busy(),
+            "10秒を超えても、B の応答は採る: {:?}",
+            host.mode_vst.status
+        );
+        assert!(matches!(
+            host.mode_vst.transaction.as_ref().unwrap().step,
+            Step::SilencePoll
+        ));
+        assert!(host.link.is_open());
+
+        let (mut host, recorder_expired) = recorded_host();
+        let waiting = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(25));
+        poll_with(&mut host, Step::SilenceBegin, waiting);
+        assert!(host.mode_vst.busy(), "30秒までは待つ");
+        let expired = sent_pending(&mut host, Step::SilenceBegin, Duration::from_secs(31));
+        poll_with(&mut host, Step::SilenceBegin, expired);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+        assert!(host.child.is_none());
+        for names in [recorder.names(), recorder_expired.names()] {
+            assert!(!names.contains(&"audio-error".to_owned()));
+        }
+    }
+
+    #[test]
+    fn t7_an_a_command_keeps_the_ten_second_deadline() {
+        let mut host = open_link_host();
+        let waiting = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(9));
+        poll_with(&mut host, Step::SilencePoll, waiting);
+        assert!(host.mode_vst.busy());
+        let expired = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(11));
+        poll_with(&mut host, Step::SilencePoll, expired);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    }
+
+    // 判定は届いた時刻（`received_at`）で行う。tick が遅れても、期限の内の応答を捨てず、期限の外の応答を採らない。
+    #[test]
+    fn t7_the_judgement_uses_received_at_not_the_tick_time() {
+        let mut host = open_link_host();
+        let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
+        let received_at = pending.sent + Duration::from_secs(9);
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilencePoll, pending);
+        assert!(
+            host.mode_vst.busy(),
+            "期限の内に届いた応答は、tick が遅れても採る: {:?}",
+            host.mode_vst.status
+        );
+        assert!(host.link.is_open());
+
+        let mut host = open_link_host();
+        let pending = sent_pending(&mut host, Step::SilencePoll, Duration::from_secs(12));
+        let received_at = pending.sent + Duration::from_secs(11);
+        assert!(host.link.deliver_at(silence_snapshot(false), received_at));
+        poll_with(&mut host, Step::SilencePoll, pending);
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        assert_eq!(host.link.cause(), Some(CloseCause::ReplyTimeout));
+    }
+
+    // T11：モード VST の書き込みは、通常の命令と同じ writer の列を通る。
+    #[test]
+    fn t11_mode_commands_and_normal_commands_share_the_same_writer() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        let mut mode = host.send_mode_command(IpcCommand::GetPluginRack).unwrap();
+        let written = mode.writer.take().unwrap();
+        assert!(matches!(
+            written.recv_timeout(Duration::from_secs(5)).unwrap().result,
+            WriteResult::Ok
+        ));
+        host.link.deliver(IpcResponse::Success);
+        let outcome = mode.receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(
+            matches!(outcome, ReplyOutcome { resp, .. } if matches!(*resp, IpcResponse::Success))
+        );
+        let slot = host.link.clone();
+        let observed = recording.clone();
+        let reply = std::thread::spawn(move || {
+            let started = Instant::now();
+            while observed.text().lines().count() < 2 {
+                assert!(started.elapsed() < Duration::from_secs(5));
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            slot.deliver(IpcResponse::Success)
+        });
+        host.execute_running_command_inner(IpcCommand::GetDevices)
+            .unwrap();
+        assert!(reply.join().unwrap());
+        let types: Vec<String> = recording
+            .text()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<serde_json::Value>(line).unwrap()["type"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(types, ["GetPluginRack", "GetDevices"]);
+    }
+
+    /// 子の reader が、列の途中の `emit` で止まっている主の `AudioHost`。
+    fn host_with_reader_stuck_mid_chain() -> (AudioHost, script::Observer) {
+        let (mut host, observer) = script::scripted_parts([(
+            "GetDevices",
+            vec![
+                script::response_line(&IpcResponse::Devices(Vec::new())),
+                script::event_line(&script::started_event(1)),
+            ],
+        )]);
+        host.ensure_engine_running().unwrap();
+        observer.recorder.clear();
+        observer.recorder.block_after(1);
+        host.execute_running_command(IpcCommand::GetDevices)
+            .unwrap();
+        let started = Instant::now();
+        while observer.recorder.blocked_emits() != 1 {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        (host, observer)
+    }
+
+    /// 止まっていない場合に、同じ経路が出す通知の順（reader の列は先に済ませておく）。
+    fn notices_without_a_stuck_reader(path: fn(&mut AudioHost)) -> Vec<String> {
+        let (mut host, observer) = script::scripted_parts([(
+            "GetDevices",
+            vec![
+                script::response_line(&IpcResponse::Devices(Vec::new())),
+                script::event_line(&script::started_event(1)),
+            ],
+        )]);
+        host.ensure_engine_running().unwrap();
+        host.execute_running_command(IpcCommand::GetDevices)
+            .unwrap();
+        let started = Instant::now();
+        while !observer
+            .recorder
+            .names()
+            .iter()
+            .any(|name| name == "audio-started")
+        {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        observer.recorder.clear();
+        path(&mut host);
+        let names = observer.recorder.names();
+        drop(host);
+        let _ = std::fs::remove_dir_all(&observer.dir);
+        names
+    }
+
+    type SwitchPath = fn(&mut AudioHost);
+    fn stop_while_blocked(host: &mut AudioHost) {
+        host.mode_vst.transaction = Some(journaled(Step::Restore(0)));
+        host.stop().unwrap();
+    }
+
+    fn mute_while_blocked(host: &mut AudioHost) {
+        host.mode_vst.transaction = Some(journaled(Step::Restore(0)));
+        host.set_global_mute(true).unwrap();
+    }
+
+    fn fail_the_transaction(host: &mut AudioHost) {
+        host.fail_mode_transaction(journaled(Step::Restore(0)), "boom".into(), true);
+    }
+
+    // T6：reader が `emit`（列の途中）で止まったままでも、停止・緊急のミュート・モードの切り替えの失敗で、
+    // 子は終わる。保持した通知は、回収の後に今の順で出る。
+    #[test]
+    fn t6_stop_mute_and_a_failed_switch_retire_the_child_while_the_reader_is_stuck_in_emit() {
+        let paths: [(&str, SwitchPath); 3] = [
+            ("stop", stop_while_blocked),
+            ("mute", mute_while_blocked),
+            ("switch failure", fail_the_transaction),
+        ];
+        for (label, path) in paths {
+            let expected_tail = notices_without_a_stuck_reader(path);
+            assert!(
+                expected_tail
+                    .iter()
+                    .any(|name| name == "audio-conditions-changed"),
+                "{label}: 回収の後に出す通知がある"
+            );
+            let (mut host, observer) = host_with_reader_stuck_mid_chain();
+            assert_eq!(observer.recorder.names(), ["audio-conditions-changed"]);
+            let runner = std::thread::spawn(move || {
+                path(&mut host);
+                host
+            });
+            assert!(
+                observer.probe(0).wait_exit(5000),
+                "{label}: 通知が止まったままでも、子が回収される"
+            );
+            assert!(
+                !runner.is_finished(),
+                "{label}: 保持した通知は、回収の後に出す（通知の列を待つ）"
+            );
+            observer.recorder.release();
+            let host = runner.join().unwrap();
+            assert!(host.child.is_none(), "{label}");
+            let mut expected = vec![
+                "audio-conditions-changed".to_owned(),
+                "audio-started".to_owned(),
+            ];
+            expected.extend(expected_tail);
+            assert_eq!(observer.recorder.names(), expected, "{label}");
+            drop(host);
+            let _ = std::fs::remove_dir_all(&observer.dir);
+        }
+    }
+
+    // P1 2：拒否の応答がそろった tick の時点で接続が閉じていたら、巻き戻しを予約せず、復旧の経路へ進む。
+    #[test]
+    fn p1_a_rejected_reply_followed_by_eof_goes_to_recovery_not_rollback() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host.link.deliver(IpcResponse::Error("load refused".into())));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(
+            host.mode_vst.transaction.is_none(),
+            "巻き戻しの取引は残らない"
+        );
+        // 接続が開いたままなら、今のとおり巻き戻しを始める。
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        host.link.deliver(IpcResponse::Error("load refused".into()));
+        host.poll_mode_vst();
+        let rolled = host.mode_vst.transaction.as_ref().unwrap();
+        assert!(rolled.rollback);
+    }
+
+    // P1 2（今の順）：reader は先に `LinkState` を閉じ、`ReplySlot` はその後に閉じる。その間（接続は閉じ、
+    // 待ちはまだ開いている）に当たっても、次の送信へ進まず、文言は切断にそろえる。
+    #[test]
+    fn p1_a_closed_link_with_an_open_slot_reports_engine_exited_without_sending() {
+        let mut host = open_link_host();
+        let recording = sinks::Recording::default();
+        host.writer = Some(writer::Writer::start(recording.clone(), host.link.clone()));
+        host.mode_vst.transaction = Some(journaled(Step::ClearRack));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(recording.text().is_empty());
+    }
+
+    // P2（新しい順）：`LinkState` が閉じた後に拒否の応答を処理しても、接続の喪失として扱い、巻き戻しを
+    // 予約しない。
+    #[test]
+    fn p2_a_rejected_reply_after_the_link_close_is_a_loss() {
+        let mut host = open_link_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, Some(WriteResult::Ok)));
+        host.mode_vst.transaction = Some(transaction);
+        assert!(host.link.deliver(IpcResponse::Error("load refused".into())));
+        host.link.close(CloseCause::Eof);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.transaction.is_none());
+    }
+
+    // P2（新しい順）：reader が `LinkState` を閉じた直後で止まっている間に、`Commit` の書き込みの完了を
+    // 受け取っても、完了を確定せず、復旧の記録を消さない。
+    #[test]
+    fn p2_a_commit_completion_never_deletes_the_journal_after_the_link_close() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        host.link.close(CloseCause::Eof);
+        assert_eq!(
+            host.link.shape_for_test(),
+            crate::audio::link::Shape::Closed(CloseCause::Eof),
+            "接続は EOF で閉じている"
+        );
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
+    }
+
+    // 検出力（新しい順）：ディスクの結果を取り込んだ**後**に `LinkState` が閉じても、完了を確定せず、
+    // 復旧の記録を消さない（poll に入る前は開いている）。
+    #[test]
+    fn p2_a_link_closed_after_the_disk_result_is_adopted_never_completes() {
+        let mut host = open_link_host();
+        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
+        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
+        let mut transaction = journaled(Step::ReleasePoll);
+        transaction.recovery = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok(journal())).unwrap();
+        transaction.disk = Some(DiskJob {
+            receiver,
+            kind: DiskKind::Commit,
+        });
+        host.mode_vst.transaction = Some(transaction);
+        host.mode_vst.after_disk_adopted = Some(Box::new(|host| {
+            host.link.close(CloseCause::Eof);
+        }));
+        assert!(host.link.is_open());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+        assert!(host.mode_vst.path.exists(), "復旧の記録は残る");
+        let _ = std::fs::remove_dir_all(host.mode_vst.path.parent().unwrap());
+    }
+
+    /// 応答待ちの取引を持つホストと、EOF の競りに勝って止まっている reader。
+    fn tick_waiting_while_eof_is_paused() -> (
+        AudioHost,
+        Arc<emit::Recorder>,
+        reader::Pause,
+        std::thread::JoinHandle<()>,
+    ) {
+        let (mut host, recorder) = recorded_host();
+        host.writer = Some(writer::Writer::start(
+            sinks::Recording::default(),
+            host.link.clone(),
+        ));
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        let epoch = host.conditions.new_engine();
+        let pause = reader::Pause::closed();
+        let mut eof_reader = link_seam::reader_for(&host, epoch);
+        eof_reader.pause = Some(pause.clone());
+        let finishing = link_seam::finish_eof(eof_reader);
+        let started = Instant::now();
+        while host.link.is_open() {
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        (host, recorder, pause, finishing)
+    }
+
+    // T7（競合3 (b)）：reader が EOF の競りに勝って止まっている間に、別の入口が接続を捨てても、待ち手の送り側は
+    // reader の手に残る。tick の受け取りは、期限の中では `Empty`。通知が出た後に切断で解放される。回収は進む。
+    #[test]
+    fn t7_a_host_close_while_the_eof_is_paused_keeps_the_tick_waiting_for_the_notices() {
+        let (mut host, recorder, pause, finishing) = tick_waiting_while_eof_is_paused();
+        assert!(!host.drop_connection(CloseCause::Intentional));
+        assert!(host.writer.is_none() && host.child.is_none(), "回収は進む");
+        host.poll_mode_vst();
+        assert!(
+            host.mode_vst.busy(),
+            "期限の中では、通知を待って次の tick へ"
+        );
+        assert!(recorder.names().is_empty());
+        pause.release();
+        finishing.join().unwrap();
+        assert_eq!(
+            recorder.names(),
+            [
+                "audio-conditions-changed",
+                "audio-engine-exited",
+                "audio-error"
+            ]
+        );
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+    }
+
+    // T7：期限の処理は変えない。reader を解放しないまま期限に達すると、tick は今のとおり「応答が不明」で失敗する
+    // （通知より前でもよい。設計 9.10 の (g)）。
+    #[test]
+    fn t7_the_tick_deadline_still_fails_with_the_unknown_reply_message() {
+        let (mut host, _recorder, pause, finishing) = tick_waiting_while_eof_is_paused();
+        assert!(!host.drop_connection(CloseCause::Intentional));
+        host.mode_vst
+            .transaction
+            .as_mut()
+            .unwrap()
+            .pending
+            .as_mut()
+            .unwrap()
+            .sent = Instant::now() - Duration::from_secs(11);
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "VST切替の応答が不明です");
+        pause.release();
+        finishing.join().unwrap();
+    }
+
+    // T7：接続を捨てる側が競りに勝つ場合（reader より先）は、通知は出ず、待ち手は切断で解放される（今と同じ）。
+    #[test]
+    fn t7_when_the_host_close_wins_the_waiter_is_disconnected_and_no_notice_is_emitted() {
+        let (mut host, recorder) = recorded_host();
+        let mut transaction = journaled(Step::Restore(0));
+        transaction.pending = Some(pending(&host, None));
+        host.mode_vst.transaction = Some(transaction);
+        let epoch = host.conditions.new_engine();
+        let eof_reader = link_seam::reader_for(&host, epoch);
+        assert!(host.drop_connection(CloseCause::Intentional));
+        link_seam::finish_eof(eof_reader).join().unwrap();
+        assert!(recorder.names().is_empty());
+        host.poll_mode_vst();
+        failed_with_recovery(&host, "Engine Crashed/Exited");
+    }
+}

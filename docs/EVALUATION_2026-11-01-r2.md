@@ -30,7 +30,7 @@
 
 | Issue | 状態 | 確認した内容 | 判断 |
 | --- | --- | --- | --- |
-| #210 最小化中のCPU | Open（PRはRefs） | ネイティブの表示・最小化状態をDOMの可視性と合わせ（`src/lib/appVisibility.ts`、`src-tauri/src/window_activity.rs`）、非表示中は状態取得を止め、アニメーションも止める。背景のglowは静止させた | **解消を確認**。下のB節のとおり、最小化中・表示中とも大きく下がった。実トレイのクリックからの復帰は未確認 |
+| #210 最小化中のCPU | Open（PRはRefs） | ネイティブの表示・最小化状態をDOMの可視性と合わせ（`src/lib/appVisibility.ts`、`crates/vst-host/src/window_activity.rs`）、非表示中は状態取得を止め、アニメーションも止める。背景のglowは静止させた | **解消を確認**。下のB節のとおり、最小化中・表示中とも大きく下がった。実トレイのクリックからの復帰は未確認 |
 | #211 往復遅延と1時間の音切れ | Open（Refs） | 計測スクリプトを追加。ASIO 2構成で1時間運転し、underflow・ゼロ埋め・ドロップの増分が0 | **部分対応**。往復遅延と、固定素材による欠損解析が残る |
 | #212 CSP | Open（Refs） | `tauri.conf.json` に `csp`・`devCsp` を設定し、`withGlobalTauri` を `false` にした。デバッグ・E2E用の設定は別ファイル（`tauri.debug-global.conf.json`）に分けた | **実質的に解消**。外部ブラウザ起動の実UI確認だけが残る（PRの記録） |
 | #213 OBSパスワード | PRで Fixes | Windows DPAPI（現在のユーザー単位）で `obs-credentials.dpapi` に保存。画面へは接続先だけを返す。起動時に旧 `localStorage` の平文を移して消す | **解消を確認**。復号したバッファは使用後に上書きされている |

@@ -25,7 +25,7 @@ Chromeの物理再生はミュートし、マイクは開いていない。
 これはブラウザから採取したPCMであり、製品のプロセス入力・声の用途による録音試験とは分ける。
 実際の開始位置、ピーク、動画IDとSHA-256は`browser-pcm/source.json`に残す。
 
-[明示評価用Rustテスト](../src-tauri/src/audio_engine/core/noise_evaluation.rs)は、そのPCMに既存の`render_candidate`を適用する。
+[明示評価用Rustテスト](../crates/vst-host/src/audio_engine/core/noise_evaluation.rs)は、そのPCMに既存の`render_candidate`を適用する。
 通常のテストではignoredとし、指定した素材と新規保存先がある場合だけ実行する。
 製品のNR処理や設定、通常アプリの学習結果は変更しない。
 

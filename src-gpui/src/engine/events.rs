@@ -1,4 +1,4 @@
-//! 中核の出来事（Tauri の emit と同じ名前・本文）を、メーターの値と画面への通知にする。
+//! 中核の出来事を、メーターの値と画面への通知にする。
 
 use super::*;
 use auralyn_ui_model::recovery::{Cause, Exit};
@@ -65,7 +65,7 @@ pub(super) fn on_event(
                 .unwrap_or_default(),
         ),
         "audio-engine-exited" => Notice::EngineExited(exit(&payload)),
-        // 落ちたことは上の詳しい出来事で伝えるので、あとに続く旧の通知は出さない（Tauri 版と同じ）。
+        // 落ちたことは上の詳しい出来事で伝えるので、あとに続く旧の通知は出さない。
         "audio-error" if payload.as_str() == Some(LEGACY_EXIT) => return,
         "audio-error" | "audio-stream-error" => Notice::StreamError(
             payload

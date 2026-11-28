@@ -1,7 +1,7 @@
-//! 実エンジンとのつなぎ。`AudioHost`（Tauri と同じ親の処理）を、画面とは別のスレッドで動かす。
+//! 実エンジンとのつなぎ。`AudioHost`（親の処理）を、画面とは別のスレッドで動かす。
 //!
 //! - 命令は1本のスレッドが受付順に実行する。`AudioHost` の命令は応答を待つので、画面のスレッドでは呼ばない。
-//! - 通知は `AudioHost::set_event_sink`（中核 API の `EventSink`）で、Tauri と同じ順序のまま受ける。
+//! - 通知は `AudioHost::set_event_sink`（中核 API の `EventSink`）で、届いた順のまま受ける。
 //! - メーターは届くたびに画面へ送らず、最新の値だけを置く。画面が描画の周期で読む。
 
 use std::path::{Path, PathBuf};
@@ -58,7 +58,7 @@ pub use post_mix::{PostAction, Witness};
 pub enum Command {
     /// 保存した入出力の設定で開始する。
     Start,
-    /// 選んだ機器で開始する。開始できると、その設定が保存される（Tauri 版と同じ `last_audio_config.json`）。
+    /// 選んだ機器で開始する。開始できると、その設定が保存される（`last_audio_config.json`）。
     StartWith(StartWith),
     /// 音声エンジンが落ちたあと、保存した入出力で始め直す。`Some` の VST は読まずに並びへ残す。
     Recover(Option<Hold>),
@@ -112,7 +112,7 @@ pub enum Command {
     ReadPeak(Limit),
     /// 周囲の音の測定を読む・始める・止める・採用する。結果は `Notice::Measurement`。
     Measure(measurement::Action),
-    /// 保存した構成（Tauri 版と同じ `presets/`）の一覧を読む。結果は `Notice::Profiles`。
+    /// 保存した構成（`presets/`）の一覧を読む。結果は `Notice::Profiles`。
     ListProfiles,
     /// 今の VST の並び・ノイズ低減・声を整える設定を、構成として保存する（接続は含めない）。
     SaveProfile(String),
@@ -148,7 +148,7 @@ pub enum Command {
     ClearExclusions,
     /// 構成のファイルを消す。
     DeleteProfile(String),
-    /// 構成をファイルへ書き出す。接続は含めない（Tauri 版の書き出しの既定と同じ）。結果は `Notice::ProfileFile`。
+    /// 構成をファイルへ書き出す。接続は含めない。結果は `Notice::ProfileFile`。
     ExportProfile {
         name: String,
         path: PathBuf,
@@ -210,7 +210,7 @@ impl Command {
                     Command::Modes(ModeAction::Read),
                     Command::Modes(ModeAction::Read)
                 )
-                // 連打したショートカットは最後の押下だけ（Tauri 版と同じ）。
+                // 連打したショートカットは最後の押下だけ。
                 | (
                     Command::Modes(ModeAction::Shortcut(_)),
                     Command::Modes(ModeAction::Shortcut(_))
@@ -406,7 +406,7 @@ impl Slot {
     }
 }
 
-/// 並びの保存先（設定のフォルダの中）。Tauri 版の保存（webview の localStorage）とは別。
+/// 並びの保存先（設定のフォルダの中）。
 const RACK_FILE: &str = "gpui_rack.json";
 /// 音づくりの保存先。
 const SOUND_FILE: &str = "gpui_sound.json";
@@ -500,7 +500,7 @@ impl Engine {
     }
 }
 
-/// 中核の出来事の受け口（`auralyn_core::event::EventSink`）。名前・本文・順序は Tauri の emit と同じ。
+/// 中核の出来事の受け口（`auralyn_core::event::EventSink`）。名前・本文・順序はそのまま。
 /// reader などのスレッドから同期で呼ばれるので、待たずに戻る。
 struct Sink {
     levels: Arc<Mutex<LevelSlot>>,
@@ -570,8 +570,9 @@ struct Scan {
     next_poll: Instant,
 }
 
-/// 機器の走査の様子を見に行く間隔と、あきらめるまでの時間（Tauri 版と同じ）。
+/// 機器の走査の様子を見に行く間隔と、あきらめるまでの時間。
 const SCAN_POLL: Duration = Duration::from_millis(100);
+const MODE_POLL: Duration = Duration::from_millis(10);
 const SCAN_LIMIT: Duration = Duration::from_secs(35);
 
 /// まとめて届いた命令を実行する順。後の同じ種類の命令で置き換わるものは飛ばし、ミュートは先に行う
@@ -597,8 +598,14 @@ impl Control {
         self.restore_sound();
         self.start_saved();
         loop {
-            let first = if self.scan.is_some() {
-                match commands.recv_timeout(SCAN_POLL) {
+            // モードの VST の切替は、ホストが 10ms ごとの呼び出しで進める。
+            let poll = if self.host.mode_vst_pending() {
+                Some(MODE_POLL)
+            } else {
+                self.scan.as_ref().map(|_| SCAN_POLL)
+            };
+            let first = if let Some(poll) = poll {
+                match commands.recv_timeout(poll) {
                     Ok(command) => Some(command),
                     Err(flume::RecvTimeoutError::Timeout) => None,
                     Err(flume::RecvTimeoutError::Disconnected) => break,
@@ -616,6 +623,7 @@ impl Control {
                     self.execute(command);
                 }
             }
+            self.host.poll_mode_vst();
             self.poll_scan();
         }
     }
@@ -635,7 +643,7 @@ impl Control {
         let app = app_name(&config);
         let (input, output) = names(&config);
         let result = input::start(&mut self.host, config, None);
-        // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する（Tauri 版と同じ）。
+        // アプリの音声は、この起動の中で選んだアプリならホストが覚えている同じアプリで再開する。
         // 起動し直したあとは候補が無いので、選び直してもらう（既定のマイクにも替えない）。
         if let (Some(name), Err(e)) = (app, &result) {
             log::warn!("保存したアプリの音声で再開できません: {e}");
@@ -645,7 +653,7 @@ impl Control {
         self.started(result, input, output);
     }
 
-    /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する（Tauri 版の開始と同じく入力の元を明示する）。
+    /// 選んだ入力・出力・周波数・バッファ・チャンネルの割り当てで開始する。
     fn start_with(&mut self, start: StartWith) {
         let (config, candidate_id, input, output) = prepare(start);
         let result = input::start(&mut self.host, config, candidate_id);

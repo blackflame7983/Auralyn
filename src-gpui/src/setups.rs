@@ -1,4 +1,4 @@
-//! 保存した構成（Tauri 版と同じ `presets/` のファイル）：選んで適用する・直前の状態に戻す・今の設定を名前を付けて保存する・
+//! 保存した構成（`presets/` のファイル）：選んで適用する・直前の状態に戻す・今の設定を名前を付けて保存する・
 //! 削除する・ファイルへ書き出す・ファイルから読み込む。
 //! VST の画面の下に出す。読み書きするのは VST の並び・ノイズ低減・声を整える設定だけで、接続は変えない。
 //! 一覧に出すものと保存する名前の規則は `auralyn-ui-model` の `profile`。
@@ -80,7 +80,7 @@ impl SetupsPanel {
             .map(Command::SaveProfile)
     }
 
-    /// 音楽鑑賞のホームに置く、構成の切り替えだけの区画（Tauri 版の `MusicHomeDesk`）。構成が無ければ出さない。
+    /// 音楽鑑賞のホームに置く、構成の切り替えだけの区画。構成が無ければ出さない。
     /// 選択は VST の画面の区画と同じものを使う。
     pub fn render_music(&self, lang: Lang, cx: &App, send: OnCommand) -> Option<impl IntoElement> {
         if profile::choices(&self.entries).is_empty() {
