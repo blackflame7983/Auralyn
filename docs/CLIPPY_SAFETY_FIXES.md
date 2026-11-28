@@ -30,7 +30,7 @@ Defaultの提案、条件の統合、型の複雑さ、引数数、命名・数�
 - `cargo build --locked --bins` が成功。最新ビルドでOTT / TDR Novaの描画、重複起動防止、閉じる・再表示3回、リサイズ、表示中削除を確認した。OTTの複数同時表示、独立したDEPTH操作・状態復元、削除後再ロード5回も成功。
 - 検証用プロセスは終了し、実機の音声ストリームは開始しなかった。既存の配布sidecarは上書きせず、依存manifest / lockfileとアプリ番号も変更しない。
 
-Clippyの診断、検証ログはignoredの `src-tauri/target/clippy-safety-*` に保存する。
+Clippyの診断、検証ログはignoredの `target/clippy-safety-*` に保存する。
 高DPI・全VST・実機WASAPI / ASIO・長時間音声・性能測定・署名済み配布は未検証。単体テストをプラグイン全般の安全性や音質保証とは扱わない。
 push・PR作成・アプリ番号変更は行っていない。
 
@@ -51,7 +51,7 @@ push・PR作成・アプリ番号変更は行っていない。
 
 最新debug sidecarでOTT（310×440）とTDR Nova（830×598）の描画を画像でも確認した。重複表示防止、開閉・再表示3回、リサイズ、表示中削除、複数OTTの独立DEPTH操作・状態復元、削除後再ロード5回が成功した。検証用プロセスは終了した。
 
-今回のログはignoredの `src-tauri/target/clippy-safety-review-*` に保存する。実機音声、長時間運転、CPU・遅延測定、高DPI、全VSTは未検証。依存manifest / lockfile、配布sidecar、アプリ番号は変更せず、push・PR作成は行わない。
+今回のログはignoredの `target/clippy-safety-review-*` に保存する。実機音声、長時間運転、CPU・遅延測定、高DPI、全VSTは未検証。依存manifest / lockfile、配布sidecar、アプリ番号は変更せず、push・PR作成は行わない。
 
 参考: [AdjustWindowRectExによるクライアント矩形から外側矩形への変換](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex)。
 

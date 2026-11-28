@@ -67,42 +67,14 @@
     - **NO** locks (Mutex) that might block for undefined time. Use Atomic values or the existing `ringbuf` communication.
     - **NO** I/O (println, file write) inside the callback.
 
-### Tauri Integration
-- **Async Commands**: I/O・重い計算・同期IPC待機は`src-tauri/src/commands/mod.rs`の`run_blocking`へ渡す。`async`宣言だけではブロッキング処理は分離されない。軽い検証と結果変換をコマンド境界に残す。
-- **Type Safety**:
-    - Use `serde` for all data structs passed between Rust and JS.
-    - 現在の`src/api/`の型付きラッパーとRustのserde契約を対応させ、引数・結果を契約試験で確認する。未導入の型生成ツールを前提にしない。
+### 画面（GPUI）と中核の境界
+- **待つ処理を画面のスレッドで呼ばない**: `AudioHost` の命令は応答を待つ。`src-gpui/src/engine/` の専用のスレッドで受付順に実行し、結果を画面へ送る。I/O・重い計算も同じく画面のスレッドの外で行う。
+- **部品は描くだけ**: 判定・平滑化・候補の絞り込みなどの規則は GPUI に依存しない `crates/auralyn-ui-model` に置き、時刻などを引数で受けて `cargo test` で確かめる。
+- **IPC の型**: 画面と子（音声エンジン・スキャナー）の間は `crates/vst-host/src/ipc.rs` の serde の型で受け渡し、契約は Rust の試験で確かめる。
 - **Security**:
     - Do not expose sensitive system paths blindly.
-    - Validate all inputs from the frontend.
+    - 保存したファイルや子からの応答は、使う前に検証する。
 
-## TypeScript + React (Frontend)
-
-### General
-- strict mode is enabled.
-- Functional components only.
-- Use `React.FC` or explicitly type props.
-
-### Styling
-- Use **Tailwind CSS** for all styling.
-- Avoid CSS Modules unless strictly necessary for complex animations not possible with Tailwind.
-- Use semantic tokens in `src/index.css`, such as `bg-card`, `text-foreground`, and `text-muted-foreground`. Canvas and dynamic geometry may use inline values; new literal UI colors must use theme tokens.
-
-### State Management
-- Use `useState` for local state.
-- Use the existing Context and hooks for shared state. Mutually exclusive operation states use discriminated unions or enums; independent switches may remain boolean.
-- Keep simple.
-
-## Directory Structure
-- Group by feature where possible, or standard `components/`, `hooks/`, `utils/` split.
-
-## 機械検査が守る境界
-
-- `src/components/`は描画と操作を扱う。外部同期は`src/hooks/`または既存のfeature専用hookへ置き、操作をEffectで推測しない。
-- `src/lib/model/`は純粋な型・計算。UI・hooks・API・実行環境へ依存しない。`src/lib/`全体には既存のユースケース・実行環境依存処理もあるため、すべてを純粋層とは扱わない。
-- `src/lib/`・`src/api/`・`src/constants/`からUI・hooks・Contextへの逆参照は禁止。Tauriの直接参照はAPI側へ集約する。既存違反は宣言指紋付き台帳に固定する。
-- pollは`src/hooks/usePolling.ts`を使う。`request`は値を返し、`onValue`で反映する。停止後の応答は反映されない。callbackは`useCallback`等で安定させる。
-- 型の穴は`unknown`の検証で閉じる。`as const`や検証済み境界の絞り込みまで一律禁止しない。
-- 任意の計算がUIにあること、複数boolの意味、コメントの正しさはLintだけでは判定できない。状態遷移と不変条件の試験で補う。
+GPUI での書き方と落とし穴は [gpui/knowledge.md](gpui/knowledge.md)、理由つきの決定は [gpui/decisions.md](gpui/decisions.md)。
 
 実行方法、例外の撤去、RT検査の対象と限界は[GARDENING.md](GARDENING.md)を参照する。

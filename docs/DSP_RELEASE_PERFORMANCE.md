@@ -64,7 +64,7 @@ noise入力の分布を抜粋する。p95／p99も3 runの各値の中央値、�
 
 ## 再実行と記録
 
-`src-tauri`で実行する。計測器featureを指定せず、コンパイル等の負荷を並行実行しない。出力先は新しいディレクトリを用意し、コマンドの失敗時には次へ進まない。
+`crates/vst-host`で実行する。計測器featureを指定せず、コンパイル等の負荷を並行実行しない。出力先は新しいディレクトリを用意し、コマンドの失敗時には次へ進まない。
 
 ```powershell
 cargo build --locked --release --example dsp_performance --example dsp_retained_memory
@@ -80,7 +80,7 @@ if ($LASTEXITCODE -ne 0) { throw "メモリ測定失敗" }
 ```
 
 短い動作確認にはdsp_performance.exe --quickを使える。本結果にはpilotの値を使っていない。
-集計値・各trial中央値・環境・ソース／バイナリSHA-256は[measurements/dsp-release-performance-2026-10-16.json](measurements/dsp-release-performance-2026-10-16.json)。全ns生データ・ログはignoredのsrc-tauri/target/dsp-performance/へ保存した。
+集計値・各trial中央値・環境・ソース／バイナリSHA-256は[measurements/dsp-release-performance-2026-10-16.json](measurements/dsp-release-performance-2026-10-16.json)。全ns生データ・ログはignoredのtarget/dsp-performance/へ保存した。
 このJSONだけでは生データからの再集計はできない。生データとログはGitの配布対象に含まれず、別環境では再実行が必要となる。
 
 ### ソースハッシュの検証
@@ -123,4 +123,4 @@ PR #17の指摘対応では、3ソースそれぞれの測定時ファイル、G
 
 - 生データから108条件の集計値・504個のtrial中央値・件数を再計算して一致。記録されたソースとバイナリのSHA-256、保持メモリの2回分の一致も再確認。
 - `cargo test --locked --example dsp_performance`（1件）、`cargo clippy --locked --all-targets -- -D warnings`、3ソースのrustfmtチェック、`git diff --check`が成功。
-- 記録と同じreleaseバイナリで`dsp_performance --quick`の36条件・出力比較が成功。`dsp_retained_memory`の全6条件は元の記録と完全一致。追加ログは`src-tauri/target/dsp-performance-review-44695bea52434273850ab7454dfe8a2b/`（ignored）。quickの時間は上表の集計に追加していない。
+- 記録と同じreleaseバイナリで`dsp_performance --quick`の36条件・出力比較が成功。`dsp_retained_memory`の全6条件は元の記録と完全一致。追加ログは`target/dsp-performance-review-44695bea52434273850ab7454dfe8a2b/`（ignored）。quickの時間は上表の集計に追加していない。

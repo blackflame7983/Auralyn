@@ -1,31 +1,25 @@
 # 機能から実装と検証を探す
 
-AuralynはURLルーターではなく`src/hooks/useUIState.ts`の`AppPage`で画面を選ぶ。
-開発プレビューは`npm run dev`後に`http://localhost:1420/?mock=stopped-home&screen=<名前>`で開く。`?screen=`は本番ルートではない。
-利用できる状態・画面名の正本は`src/dev/previewScreen.ts`と[TESTING](TESTING.md#開発プレビューの模擬応答mock)。実行中の見た目には`mock=live-home`を使う。
+画面は `src-gpui/`（GPUI Kit）。左のレールの行き先は `src-gpui/src/shell.rs` の `Page`（ホーム・音づくり・VST・接続・設定）。
+画面は描くだけにし、振る舞いの規則は `crates/auralyn-ui-model/`、音声とエンジンの操作は `crates/vst-host/` に置く。エンジンの命令は `src-gpui/src/engine/` の専用のスレッドで受付順に実行する。
 
-| 利用者の機能 | AppPage／開発用screen | 主要コード | 検証入口 |
-| --- | --- | --- | --- |
-| ホーム・開始停止・緊急操作 | `home`／screenなし | `src/components/layout/AppShell.tsx`、`src/components/layout/StatusMenu.tsx`、`src/lib/startHomeAudio.ts` | `--feature home`、`home-actions.spec.ts`、`stopped-home.spec.ts`、`status-menu.spec.ts` |
-| 接続の確認（経路の図・送り先の変更・詳しい状態と履歴） | `home`／screenなし | `src/components/features/Home/PreparationPanel.tsx`、`Home/HomePanels.tsx`、`Home/DestinationChoice.tsx`、`src/components/ui/AudioFlow.tsx` | `--feature home`、`connection-panel.spec.ts`、`wide-home-route.spec.ts` |
-| 入出力メーター・波形 | `home` | `src/components/features/LevelMeter/`、`Home/SoundFlow.tsx`、`src/hooks/useSoundFlowCanvas.ts`、`src/lib/model/meter.ts` | `--feature home`、`routing.property.test.ts` |
-| 接続・ASIO・アプリの音声・使い道の切り替え | `connect`／`settings-audio` | `src/components/features/AudioSettings/`（`UsageSwitch.tsx`）、`src/lib/usageSwitch.ts`、`src/lib/usageDevices.ts`、`src/lib/audioChannelRouting.ts`、`src/api/audio.ts` | `--feature connection`、`asio-routing.spec.ts`、`process-input.spec.ts`、`usage-switch.spec.ts` |
-| 初回セットアップ | 初回表示／通常UIから開く | `src/components/features/SetupWizard/`、`wizardModel.ts` | `--feature connection`、`setup-asio.spec.ts`、`setup-overflow.spec.ts` |
-| 音づくり・保護・歌／雑談 | `sound`／`settings-sound` | `AudioSettings/`の各panel、`src/hooks/useLiveModes.ts`、`src-tauri/src/audio_engine/` | `--feature connection`、`safety-column.spec.ts`、関連Rust試験 |
-| VSTの追加・順序・原音比較 | `vst`／`vst`、`plugin-browser` | `PluginRack/`、`PluginBrowser/`、`src/hooks/usePlugins.ts`、`src/lib/model/plugin.ts` | `--feature vst`、`vst-scan-folders.spec.ts`、`live-mode-vst.spec.ts` |
-| 配信ミックス | `home`のパネル／`stream-mix` | `Home/StreamMixPanel.tsx`、`src/api/postMix.ts`、Rustの`audio_engine/mixing/` | `--feature home`、`mixing.spec.ts` |
-| 録音・試聴・ボイスチェック | モーダル／`voice-check` | `VoiceCheck/`、`src-tauri/src/commands/voice_check.rs` | `--feature voice-check`、`voice-check-summary.spec.ts` |
-| 保存・一時利用・復元 | モーダル／`presets` | `Presets/`、`Recovery/`、`src/lib/restorePluginSession.ts`、Rustの`profile/`・`bundle/` | `--feature restore`、`temporary-runtime.spec.ts`、`output-configuration.spec.ts` |
-| OBS・外観・ショートカット・システム | `settings`／`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system` | `AudioSettings/`、`src/hooks/useUIState.ts` | `--feature connection`、settings系spec |
-| 使い方・診断 | モーダル／`help`、`troubleshoot`、`obs-guide`、`discord-guide` | `Guide/`、`Troubleshoot/`、`user-docs/` | `how-to-use.spec.ts`、`npm run test:user-docs` |
-| 日英・テーマ・窓幅・状態横断 | 全画面 | `src/i18n/`（文言の正本は`src-tauri/crates/auralyn-core/locales/`）、`src/index.css`、レイアウト部品 | `screen-matrix.spec.ts`、`forced-colors-focus.spec.ts` |
+| 利用者の機能 | 行き先 | 画面（`src-gpui/src/`） | 規則（`crates/auralyn-ui-model/src/`） | 中核（`crates/vst-host/src/`） |
+| --- | --- | --- | --- | --- |
+| ホーム・開始停止・メーター・音の流れ | ホーム | `home.rs`、`view.rs`、`view/safety.rs`、`live.rs` | `meter.rs`、`flow.rs`、`session.rs` | `audio.rs`、`audio/` |
+| 接続の確認（経路・送り先・履歴） | ホーム | `prep.rs`、`prep_file.rs` | `preparation.rs`、`diagnostics.rs` | `routing_diag.rs` |
+| 接続・ASIO・周波数とバッファ・入力のペア | 接続 | `connect.rs`、`setup.rs`、`setups.rs`、`usage_file.rs` | `connect.rs`、`setup.rs`、`channel_signal.rs` | `audio_engine/devices.rs`、`audio_engine/channel_scan.rs` |
+| 音づくり・ノイズ低減・ピーク保護・歌／雑談 | 音づくり | `sound.rs`、`limiter.rs`、`measure.rs`、`modes.rs` | `sound.rs`、`peak.rs`、`measurement.rs`、`live_modes.rs` | `audio_engine/`、`profile/` |
+| VSTの追加・並び・音量・保存した構成 | VST | `vst.rs`、`vst_folders.rs`、`scan_file.rs`、`store.rs`、`recovery.rs` | `rack.rs`、`scan_folders.rs`、`profile.rs`、`recovery.rs` | `vst_host/`、`bundle/` |
+| 配信ミックス・ミックス後の VST | 接続・VST | `mix.rs`、`post_mix.rs` | `mix.rs`、`post_mix.rs`、`music.rs`、`live_output.rs` | `audio_engine/mixing/` |
+| ボイスチェック（録音・試聴） | 音づくり | `voice.rs` | `voice_check.rs` | `audio_engine/` |
+| OBS連携・シーン | 設定 | `obs.rs`、`obs_link.rs`、`obs_changes.rs`、`obs_text.rs`、`obs_timing.rs`、`scenes.rs`、`scene_file.rs` | `obs.rs`、`obs_timing.rs`、`scene_routing.rs` | `obs.rs`、`obs_setup/`、`obs_credentials.rs` |
+| 外観・言語・ショートカット・トレイ | 設定 | `settings.rs`、`theme_file.rs`、`locale_file.rs`、`desktop.rs`、`typeface.rs`、`color.rs` | `shortcuts.rs` | `desktop_integration.rs` |
+| 使い方 | 設定 | `settings.rs` | `docs.rs`（`user-docs/`） | — |
+| 日英の文言・色 | 全画面 | `i18n.rs`、`color.rs` | — | 文言は `crates/auralyn-core/locales/`、色は `crates/auralyn-core/tokens.json` |
 
-表のfeature名は`npm run verify -- --feature <名前>`に渡す。ブラウザも確認するときは`--browser`を付ける。specの場所は`e2e/browser/`、機能フォルダーは特記しない限り`src/components/features/`である。
-CLIが選択する試験の正本は`config/verification-features.json`。共有API・Context・設定の変更、複数機能に及ぶ変更は`--full`を使う。
-指定specは開発中の案内であり、その成功だけで機能全体を合格にしない。
+規則は `cargo test -p auralyn-ui-model`、中核は `crates/vst-host` の `cargo test --locked --lib <対象名>`、まとめては `npm run verify -- --static --rust`。表は探す入口であり、そのファイルの試験の成功だけで機能全体を合格にしない。
 
 ## 実機が必要な境界
 
-ブラウザはIPCモックで、保存先・Rust・sidecarの動作を証明しない。
-実保存・再起動・IPCは`npm run test:e2e:native`、実機・聴感・ASIO/WASAPI・長時間運転は[TESTING](TESTING.md)の該当手順を使う。
+規則の試験とクラウドの型検査は、描画・フォーカス・狭い窓・日英・実音声を証明しない。画面は Windows の実機で [src-gpui/README.md](../src-gpui/README.md) の手順で確かめ、実機・聴感・ASIO/WASAPI・長時間運転は [TESTING](TESTING.md) の該当手順を使う。
 音声開始・既定機器・OBSの設定変更を通常の検証CLIへ混ぜない。

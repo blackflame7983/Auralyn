@@ -95,12 +95,10 @@ Auralyn 自体は仮想マイクを作成しません。他アプリへ送るに
 <details>
 <summary><strong>配布形式と更新について</strong></summary>
 
-- **MSIX** を今後の主軸として準備しています。現在の互換性試作は、正式な Microsoft Store 公開版ではありません。
-- **通常版 EXE** は、MSIX の長時間試験と設定移行の確認が完了するまで維持します。Portable 版の更新は配布ページから行います。
-- **Store 入手版**は Store、直接配布の **MSIX** は元の配布元から更新する設計です。試作での確認と、正式 Store での配信・更新確認は区別しています。
-- **MSI** は今後のビルド・配布・検証対象から外しています。過去の公開済みファイルは削除しません。
+- 画面を GPUI で作り直しました。新しい版の配布（インストーラー・自動更新）は準備中で、それまで新しい版は公開しません。公開済みの版は配布ページから入手できます。
+- 配布形式は **MSIX** を主軸にする予定です。**MSI** は配布対象から外しています。過去の公開済みファイルは削除しません。
 
-詳しくは [リリース方針](docs/RELEASE_PLAN.md)、[MSIX 試作](docs/MSIX_PROTOTYPE.md)、[設定保存・移行](docs/MSIX_STORAGE.md)を参照してください。
+詳しくは [リリース方針](docs/RELEASE_PLAN.md)、[設定保存・移行](docs/MSIX_STORAGE.md)を参照してください。
 
 </details>
 
@@ -118,27 +116,26 @@ Auralyn 自体は仮想マイクを作成しません。他アプリへ送るに
 
 ## 開発する
 
-**React + TypeScript** の UI と **Rust** の音声エンジンを、**Tauri** でつないでいます。音声処理と VST3 スキャンはサイドカーで実行します。
+画面は **Rust** の **GPUI**（GPUI Kit）で作っています。音声処理と VST3 スキャンは別のプロセス（サイドカー）で実行し、JSON-RPC でつなぎます。
 
 ```text
-React UI  ←→  Tauri / JSON-RPC  ←→  Audio engine
-                                   VST3 scanner
+GPUI の画面（auralyn-gpui）  ←→  JSON-RPC  ←→  音声エンジン（audio_engine）
+                                              VST3 スキャナー（plugin_scanner）
 ```
 
 <details>
 <summary><strong>ローカル開発の準備とコマンド</strong></summary>
 
-Windows 11 x64、Node.js、Rust、Microsoft C++ Build Tools、LLVM/Clang、ASIO SDK が必要です。バージョンと環境変数は [ビルドガイド](docs/BUILD_GUIDE.md)を参照してください。
+Windows 11 x64、Rust、Microsoft C++ Build Tools、LLVM/Clang、ASIO SDK が必要です。バージョンと環境変数は [ビルドガイド](docs/BUILD_GUIDE.md)を参照してください。
 
 ```powershell
-npm ci
-npm run rebuild-engine
-npm run tauri dev
+cargo build
+cargo run -p auralyn-gpui
 ```
 
-配布ビルドは `npm run tauri build`。MSIX は[専用の梱包手順](docs/MSIX_PROTOTYPE.md)を使います。
+リポジトリ直下の `cargo build` が、画面・音声エンジン・スキャナーの3つを同じ `target\debug` に作ります。GPUI 版の配布（インストーラー・更新）はまだありません。
 
-公式 Source ZIP には、公式ビルドで利用した ASIO SDK 2.3.4 の `common` / `host` ソースとライセンスを含めています。Source ZIP から再ビルドする場合は、同梱 SDK を `CPAL_ASIO_DIR` に指定してください。ASIO SDK は GPLv3 の選択肢に基づいて利用しています。
+ASIO SDK は GPLv3 の選択肢に基づいて利用しています（版と SHA-256 は `config/asio-sdk.json`）。過去の公式 Source ZIP から再ビルドする場合は、同梱 SDK を `CPAL_ASIO_DIR` に指定してください。
 
 </details>
 
@@ -154,7 +151,7 @@ npm run tauri dev
 ---
 
 <p align="center">
-  <img src="public/auralyn_icon.png" alt="" width="44"><br>
+  <img src="src-gpui/icons/icon.png" alt="" width="44"><br>
   <strong>Auralyn</strong><br>
   <sub>声を整える時間も、心地よく。</sub>
 </p>
@@ -165,7 +162,7 @@ npm run tauri dev
 
 公式バイナリと同一コミットの対応ソース ZIP・SHA-256・manifest は、同じ GitHub Release から無償で取得できます。詳細は [SOURCE-DISTRIBUTION.md](SOURCE-DISTRIBUTION.md)を参照してください。
 
-[Tauri](https://tauri.app/) · [React](https://react.dev/) · [Rust](https://www.rust-lang.org/) · [vst3-rs](https://crates.io/crates/vst3) · [cpal](https://crates.io/crates/cpal) · [nnnoiseless](https://crates.io/crates/nnnoiseless) と、そのほかのオープンソースプロジェクトに支えられています。全ライセンスと権利表示はアプリの「設定 → ライセンス情報」から確認できます。
+[GPUI](https://www.gpui.rs/) · [Rust](https://www.rust-lang.org/) · [vst3-rs](https://crates.io/crates/vst3) · [cpal](https://crates.io/crates/cpal) · [nnnoiseless](https://crates.io/crates/nnnoiseless) と、そのほかのオープンソースプロジェクトに支えられています。全ライセンスと権利表示はアプリの「設定 → ライセンス情報」から確認できます。
 
 VST® は Steinberg Media Technologies GmbH の登録商標です。<br>
 ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.

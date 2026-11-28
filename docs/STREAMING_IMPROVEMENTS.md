@@ -117,7 +117,7 @@
 
 ## 検証と未確認事項
 
-ローカルの実行結果は以下のとおり。ログとブラウザー用mock fixtureはignoredの `src-tauri/target/improvements/` に保持する。
+ローカルの実行結果は以下のとおり。ログとブラウザー用mock fixtureはignoredの `target/improvements/` に保持する。
 これらのfixtureは実装のIPCを模した検証であり、実Engine/OBS/実機の確認を代用しない。
 
 ### 初回実装候補のローカル検証結果（2026-10-27）

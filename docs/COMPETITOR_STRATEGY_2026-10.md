@@ -25,7 +25,7 @@ Auralynは既存機能を保持し、自宅・ゲーセンの配信と通話を�
 - GitHubの既存Issue #92〜#100、#72、#28、#73〜#77の本文・コメントと状態を読み取った。これら16件は確認時点で全てOPEN。OPENは未実装を意味せず、マージや自動テスト成功も全受入完了を意味しない。
 - [PR #103](https://github.com/blackflame7983/Auralyn/pull/103)、[PR #104](https://github.com/blackflame7983/Auralyn/pull/104)、[PR #105](https://github.com/blackflame7983/Auralyn/pull/105)はMERGEDと確認。順にNR時間合わせ、準備導線、#95〜#99の実装を含む。
 
-主なコード根拠は `src/hooks/usePreparation.ts`、`src/lib/preparation.ts`、`src-tauri/src/audio_engine/core/noise_learning.rs`、`src/components/features/VoiceCheck/useVoiceCheck.ts`、`src-tauri/src/temporary_session.rs`、`src/hooks/usePlugins.ts`、`src/components/features/Presets/RecoveryActionsPanel.tsx`。保存・復帰の実装範囲は上記実装記録と併せて読む。
+主なコード根拠は `src/hooks/usePreparation.ts`、`src/lib/preparation.ts`、`crates/vst-host/src/audio_engine/core/noise_learning.rs`、`src/components/features/VoiceCheck/useVoiceCheck.ts`、`crates/vst-host/src/temporary_session.rs`、`src/hooks/usePlugins.ts`、`src/components/features/Presets/RecoveryActionsPanel.tsx`。保存・復帰の実装範囲は上記実装記録と併せて読む。
 
 ## 公開情報で分かる競合の位置付け
 

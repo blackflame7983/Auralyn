@@ -77,7 +77,7 @@ OBSソースのclock補正は [設計案](OBS_SOURCE_PLUGIN_DESIGN.md)（#223）
 
 ## 実行
 
-`src-tauri` で次を実行する。デバイスは開かない。
+`crates/vst-host`で次を実行する。デバイスは開かない。
 
 ```powershell
 cargo test --locked --lib rapid_delay_changes_drop_the_old_impulse_and_reset_block_does_not_allocate

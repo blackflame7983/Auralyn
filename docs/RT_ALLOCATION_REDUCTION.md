@@ -59,7 +59,7 @@
 - 実AddProcessor分岐を抽出した隔離probeで、全u8 index×slot空き／使用中×回収キュー空き／満杯の1024条件を確認。受理したslotと件数、拒否値の分類、保持・後続要求の停止と再開が期待どおりで、対象コールバック処理の確保・解放・Dropは0回。
 - 入力転送closureも旧／新ソースから抽出し、648条件でチャンネル変換、空き容量、チャンク分割、受理prefixのサンプルビット列を比較。結果一致、確保・解放0回。実CPALと同時に消費するスレッドの性能試験ではない。
 
-ログ・隔離probeはignoredのsrc-tauri/target/rt-allocation-*に保存する。実機WASAPI／ASIO、実音声・音質・CPU・遅延・デバイス切替・長時間、高DPI、release／インストーラ／署名配布は未検証。実機ストリームを開始するintegration_test・repro_ottはコンパイルのみとする。DSP係数の変更、commit・push・PR作成は行わない。
+ログ・隔離probeはignoredのtarget/rt-allocation-*に保存する。実機WASAPI／ASIO、実音声・音質・CPU・遅延・デバイス切替・長時間、高DPI、release／インストーラ／署名配布は未検証。実機ストリームを開始するintegration_test・repro_ottはコンパイルのみとする。DSP係数の変更、commit・push・PR作成は行わない。
 
 参照したAPIは固定バージョンのrubatoのResampler、nnnoiselessのDenoiseState、easyfftのdyn_size/realfft実装。Context7 CLIは資格情報エラー、docs.rsは取得不可だったため、Cargoが取得した固定バージョンのregistryソースで直接照合した。
 
@@ -81,4 +81,4 @@
 
 `cargo test --locked --lib --bins --test audio_queue_contract`はlib 46件＋queue 2件成功、実OTT寿命テスト1件と合わせて49テスト成功。`cargo clippy --locked --all-targets --message-format=json -- -D warnings`も成功、警告0件。`git diff --check`成功。今回の追加変更はテストと記録だけのため、同一製品コードのcheck・build・GUI成功ログを確認し、それらの反復実行は行っていない。
 
-ログはignoredのsrc-tauri/target/rt-allocation-review-*に保存する。DSP初回FFTキャッシュとreset_stateのRT割当、ストリーム停止時の破棄スレッド、同時消費がある実機音声・性能・長時間等は引き続き未解消または未検証。DSP係数の変更、commit・push・PR作成は行わない。
+ログはignoredのtarget/rt-allocation-review-*に保存する。DSP初回FFTキャッシュとreset_stateのRT割当、ストリーム停止時の破棄スレッド、同時消費がある実機音声・性能・長時間等は引き続き未解消または未検証。DSP係数の変更、commit・push・PR作成は行わない。

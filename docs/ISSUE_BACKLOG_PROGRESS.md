@@ -231,7 +231,7 @@ helper SHA256 `44E638C456FBCB288DCA3AE3D02BCD25F4AA5D540C4833E08EABA8DDE6D22B4C`
 
 singing初回中央値は8.9／9.2µsだが、初回は圧縮検出器の履歴も短く、コードcacheだけの差と解釈しない。単一プロセス内の予備計測で、統計的有意差・最悪時間・全エンジン性能を保証しない。
 構造体本体のsize_ofは旧voice chain 32bytes、SingingChain 172bytes。歌向けchainは旧chainと併存する。この値はstack上の構造体だけで、係数メッセージ・Host・キュー・録音・候補buffer等を含む全保持メモリ増加量ではない。RT割当は別の対象テストで0を確認した。
-helperと集計JSONはignoredの `src-tauri/target/issue-backlog-singing-performance.*` に保持。集計JSONだけから全生サンプルの再集計はできない。歌唱音質・実VST併用・実機連続運転は未確認。
+helperと集計JSONはignoredの `target/issue-backlog-singing-performance.*` に保持。集計JSONだけから全生サンプルの再集計はできない。歌唱音質・実VST併用・実機連続運転は未確認。
 
 ### 歌向け候補の短時間実機確認（#34）
 
@@ -312,7 +312,7 @@ frontend初回の全体64files／476tests成功。その後の独立レビュー
 
 Ryzen 7 7800X3D／Windows 11 Pro 10.0.26300／バランス電源、通常priority／affinity。コンパイラー・Auralyn音声プロセス不在を確認し、OS背景処理は隔離していない。1回の短い予備測定で、全wrapperのinterleave／収集・callback・VST・全engine CPUや最悪時間の保証ではない。初回値もreset直後のcold cacheだけを意味しない。
 
-数値helper SHA256 `0A9F1DD1CEA094C2553E5CF72BAA852C0B635A4576D4E41F2702A58A408662C3`、数値JSON `2B7941A07AC86EEF237107C73EC2B627AA7EFA07D1266C9C0D22D2C0ABCCAF26`。時間helper `F9D574A344CCAA58D7FA04E55D55E5A8ACE7B26A22115168469E7A6FB156C2F6`、全sampleを含む時間JSON `7AD677A33B05B2377DB31D0D121411C20DC991808BA93A8744BE749483C6A583`。helper・raw JSON・manifestはignoredのsrc-tauri/targetに保持した。実機・独立clock・聴感・長時間は未確認。
+数値helper SHA256 `0A9F1DD1CEA094C2553E5CF72BAA852C0B635A4576D4E41F2702A58A408662C3`、数値JSON `2B7941A07AC86EEF237107C73EC2B627AA7EFA07D1266C9C0D22D2C0ABCCAF26`。時間helper `F9D574A344CCAA58D7FA04E55D55E5A8ACE7B26A22115168469E7A6FB156C2F6`、全sampleを含む時間JSON `7AD677A33B05B2377DB31D0D121411C20DC991808BA93A8744BE749483C6A583`。helper・raw JSON・manifestはignoredのtargetに保持した。実機・独立clock・聴感・長時間は未確認。
 
 ### キュー監視とフレーム対応の設計調査（#47・#28）
 
@@ -332,7 +332,7 @@ WASAPIの観測input peakは0.008042／0.007191。既知8kHz sourceを起動し�
 
 900×600／DPR1の実Hostでは、未登録の歌指定が日本語エラー、適用済みのbroadcast OFF／残響nullを歌・雑談へ登録、歌settled→本番保護ON→雑談settled→保護中Stop→停止中目標保持を確認した。保護解除後、同じ内蔵設定を手動applyしてCustomへ戻した。別Host probeで二重Begin・予約中mode／arm／save・不一致End・旧Endを拒否し、snapshot不変／pure preflight許可／finally End成功も確認。実画面のテストは合成DOM操作で、OS実キーやNarratorの代替ではない。
 
-試験前に存在しなかったlive_modes.jsonだけを、試験が書いたSHA256 `3CFF52A661A15870B5B1DE5E5B118D99490337A112CCE9BA4A0473FDFA5E581F`との一致・絶対pathを確認して削除し、元の未登録状態へ戻した。元のASIO96k／512・VST2本・NR／内蔵OFF・gain100%を保持。停止はAutoGain status running=falseとlive mode running=falseで確認した。既存get_audio_state.is_runningはsidecar生存を示すため、停止判定には使っていない。自分が起動したHost PID84516だけを終了し、Host／engine不在を確認した。元のVSTバックアップSHA256 `C90B35B06E2544B0D7633303BB24F44FA6020DEDCD38F341EDFEC3F45D27C6AF`も不変。画面画像はsrc-tauri/target/issue-backlog-live-modes-900.png、私的probe結果は.git/issue-backlog-recoveryへ保持した。
+試験前に存在しなかったlive_modes.jsonだけを、試験が書いたSHA256 `3CFF52A661A15870B5B1DE5E5B118D99490337A112CCE9BA4A0473FDFA5E581F`との一致・絶対pathを確認して削除し、元の未登録状態へ戻した。元のASIO96k／512・VST2本・NR／内蔵OFF・gain100%を保持。停止はAutoGain status running=falseとlive mode running=falseで確認した。既存get_audio_state.is_runningはsidecar生存を示すため、停止判定には使っていない。自分が起動したHost PID84516だけを終了し、Host／engine不在を確認した。元のVSTバックアップSHA256 `C90B35B06E2544B0D7633303BB24F44FA6020DEDCD38F341EDFEC3F45D27C6AF`も不変。画面画像はtarget/issue-backlog-live-modes-900.png、私的probe結果は.git/issue-backlog-recoveryへ保持した。
 
 実OBSのscene連動、OS hotkey／Stream Deck、歌唱／クリックの聴感、長時間は未確認で、#36全面完了には含めない。
 
@@ -680,7 +680,7 @@ writerの製品source凍結・handoff後、親がuseAudioConfigの状態取得�
 
 native page fenceの再レビューはPASS。言語selectorには実際の同期応答が返るまでaria-busyを公開し、最新要求だけで完了／失敗を確定する処理を追加。対象3tests・UI独立レビュー成功。更新版の全UI78files／595tests（15.81秒）、tsc／Vite、全Rust326lib＋関連integration／OTT editor（7.56秒）が成功。OTT module試験1件は従来どおりignored。fmt確認で今回所有3filesの整形漏れを修正しfmt成功、通常Host＋engine build1m02s成功。書式だけの後続差分に全Rustを重ねてはいない。
 
-最初の実画面試験はVite停止によりHTML未到達でFAIL。2回目は検証用observerがTauriの非writableなinvokeを差替えられると仮定して待機に失敗し、observerを除去した。前提確認を追加した次の試行は、HTTP拒否をHost起動前に検出した。Vite終了の原因は、workspace直下targetへ置いたRust TEMP内のlink一時ファイルを監視したEBUSYとログで確認。検証専用Viteでtarget／src-tauriを監視対象から除外し、今後のテストTEMPもsrc-tauri/target配下へ置く。製品Vite設定は変更していない。
+最初の実画面試験はVite停止によりHTML未到達でFAIL。2回目は検証用observerがTauriの非writableなinvokeを差替えられると仮定して待機に失敗し、observerを除去した。前提確認を追加した次の試行は、HTTP拒否をHost起動前に検出した。Vite終了の原因は、workspace直下targetへ置いたRust TEMP内のlink一時ファイルを監視したEBUSYとログで確認。検証専用Viteでtarget／src-tauriを監視対象から除外し、今後のテストTEMPもtarget配下へ置く。製品Vite設定は変更していない。
 
 実Host4788の900×600／DPR1では、同じ設定dialogを保った英語切替、native projection保存、reload後の英語保持、page epoch2→3、旧page要求の拒否、日本語への切替完了を確認。親も英語の画像を実表示確認した。詳細本文が日本語のままであることを画面にも案内するphase1の証拠で、実trayのOS表示・実キー・Narrator・200%DPIの確認ではない。
 

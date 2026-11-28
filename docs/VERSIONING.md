@@ -71,18 +71,16 @@ UI の見た目の変更だけで major にしない。操作経路や対応機�
 
 ## 番号の反映とタグ
 
-- バージョンの正本は `package.json`。同期先は `package-lock.json`（ルートと `packages[""]`）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` の `[package]`、`src-tauri/Cargo.lock` の `vst-host`。
-- `npm run set-version -- 1.2.3 --dry-run` で確認し、反映依頼後に `npm run set-version -- 1.2.3`。`npm run set-version -- --check` で不一致を検出する。
-- 同期処理は依存解決・コミット・タグ作成・公開を行わない。公開履歴や過去のアーカイブ名も書き換えない。
-- `npm run release:check` と変更範囲に応じた検証を実行する。バージョン変更だけでリリース準備完了とは扱わない。
+- バージョンの正本は直下 `Cargo.toml` の `[workspace.package] version`。`crates/vst-host` と `src-gpui` は `version.workspace = true` で受け、画面の「版」は `src-gpui` の `CARGO_PKG_VERSION` を出す。`package.json` は検査用の道具だけで版を持たない。
+- 反映を依頼されたら正本の1行を書き換え、`cargo update -w --offline` で `Cargo.lock` の自分のパッケージの版だけを合わせる。依存解決・コミット・タグ作成・公開はしない。公開履歴や過去のアーカイブ名も書き換えない。
+- GPUI 版の配布手順（インストーラー・更新・Source ZIP）はまだ無い。Tauri 版の `set-version`・`release:check`・更新経路は 2026-11-28 に取り除いた。配布を作るまで、新しい版を公開しない。
 - 公開版と同じ番号で成果物を差し替えない。再ビルドして再配布する場合も新しい patch 以上を使う。公開済みタグの付け替えや強制 push をしない。
 - 承認されたリリースコミットに注釈付きタグ `vX.Y.Z` を付ける。公開先の Release タグと、Source manifest の元コミットを一致させる。タグ作成と push はそれぞれ許可された範囲で実施する。
-- `latest.json` の `version`、インストーラー、Portable、Source ZIP は同じ番号・同じコミットに揃える。公開後は取得した manifest・チェックサム・更新経路も確認する。
+- 配布物（インストーラー・Source ZIP など）は同じ番号・同じコミットに揃える。公開後は取得した manifest・チェックサム・更新経路も確認する。
 
 ## 検証版と緊急修正
 
 SemVer の `-alpha.N` / `-beta.N` / `-rc.N` は将来の検証版の候補形式とする。
 現行運用は安定版の3桁のみを受け付ける。検証版は、Windows installer の扱い、GitHub prerelease、別の更新経路、安定版への遷移を検証してから導入する。
-安定版用 `latest.json` に検証版を混ぜない。`+build` は更新順に影響しないため、再配布の番号として使わない。
-[Tauri Updater](https://tauri.app/plugin/updater/) は既定で現在より新しい版を更新候補とする。
+安定版の更新経路に検証版を混ぜない。`+build` は更新順に影響しないため、再配布の番号として使わない。
 ロールバックは古いタグの差し替えではなく、直前の安定動作へ修正した新しい patch を公開する。破壊的変更を含むなら major 基準を維持する。

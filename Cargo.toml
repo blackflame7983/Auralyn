@@ -4,6 +4,10 @@ members = ["crates/auralyn-core", "crates/auralyn-ui-model", "crates/vst-host", 
 # 差し替えた依存（third_party）はワークスペースに入れない（その開発用の依存まで解決させない）。
 exclude = ["third_party"]
 
+# アプリの版の正本（docs/VERSIONING.md）。画面の「版」はこの値を出す。
+[workspace.package]
+version = "1.1.0"
+
 # 依存はリリースでも開発でも最適化する（エンジンの起動・音声処理を速くする）。
 [profile.dev.package."*"]
 opt-level = 3

@@ -8,10 +8,11 @@
 ## 1. 配布戦略
 
 ### 1.1 配布場所と更新
+*   **現状（2026-11-28）**: Tauri 版の配布手順（NSIS・MSIX 梱包・Updater・`release:*` スクリプト）を取り除いた。GPUI 版の配布（インストーラー・更新・Source ZIP）を作るまで新しい版を出さない。以下の配布形式・更新方式は、作り直すときの方針として残す。
 *   **開発リポジトリ**: `blackflame7983/Auralyn`は当面Privateで維持できるが、配布した各版の対応ソースは必ず公開する。
 *   **無料版配布**: `blackflame7983/Auralyn-Releases`のGitHub Releasesへ、署名済みインストーラー、Portable版、`latest.json`、同一コミットのSource ZIP、SHA-256、source manifestを配置する。
 *   **配布形式の今後の方針**: MSIXを主軸とする。通常版EXE（NSIS）はMSIXの数日間の長時間試験と設定移行の確認が完了するまで維持する。MSIは今後のビルド・配布・実機検証の対象から外す。公開済みMSIと過去のReleaseは削除しない。
-*   **更新方式**: 通常配布版はTauri Updaterを使用し、失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。MSIX版ではTauri Updaterを登録せず、Store入手版はStoreの更新画面、直接配布のMSIXは元の配布元から更新する。判定不能時は外部インストーラーによる更新を開始しない。詳細と未検証範囲は[MSIX_PROTOTYPE.md](MSIX_PROTOTYPE.md)を参照する。
+*   **更新方式**: 通常配布版の更新は GPUI 版で作り直す。失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。Store入手版はStoreの更新画面、直接配布のMSIXは元の配布元から更新する。判定不能時は外部インストーラーによる更新を開始しない。
 *   **収益化**: AuralynはGPL版として配布し、任意支援、公式ビルド、サポート等を候補とする。排他的なソフトウェア販売は別プロダクトで設計する。
 
 ### 1.2 セキュリティとSmartScreen対策
@@ -20,7 +21,7 @@
     *   *対策*:
         1.  Webサイトのダウンロードボタン付近に「**SmartScreenの警告が出る場合**」というFAQリンクまたはツールチップを設置する。
         2.  インストーラーのファイルハッシュ (SHA-256) をWebサイトに明記し、改ざんされていないことをユーザーが確認できるようにする。
-*   **インストーラー形式**: 主軸はMSIX、移行期間は `.exe` (NSIS) を維持する。通常のTauriビルド対象はNSISだけとし、MSIXは専用の梱包手順を使用する。MSIへのフォールバックは行わない。
+*   **インストーラー形式**: 主軸はMSIX、移行期間は `.exe` (NSIS) を維持する。MSIへのフォールバックは行わない。
 
 ---
 
@@ -72,11 +73,11 @@ OBSソースプラグインは [設計案](OBS_SOURCE_PLUGIN_DESIGN.md) の合�
     > VST is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
 *   **ASIO (Steinberg)**: ASIO SDKを使用している場合。
     > ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
-    *   `config/release-policy.json`にGPL-3.0-only、公式SDK URL、確認日を記録し、対応ソースと同時に公開する。
+    *   `config/asio-sdk.json`にGPL-3.0-only、公式SDK URL、SHA-256、確認日を記録し、対応ソースと同時に公開する。
 
 ### 4.2 サードパーティライセンス (Third Party Notices)
-*   OSSライブラリ（Rustクレート、Reactライブラリ）のライセンスを一覧化したページまたはテキストファイルが必要。
-*   *実装*: 生成したnpm/CargoライセンスとAuralyn本体の`NOTICE.md`・GPLv3全文を、アプリ内の「ライセンス」モーダルに表示する。
+*   OSSライブラリ（Rustクレート）のライセンスを一覧化したページまたはテキストファイルが必要。
+*   *実装*: 生成したCargoライセンスとAuralyn本体の`NOTICE.md`・GPLv3全文を、アプリ内の「ライセンス」モーダルに表示する。
 
 ---
 
@@ -88,9 +89,6 @@ OBSソースプラグインは [設計案](OBS_SOURCE_PLUGIN_DESIGN.md) の合�
 *   **クラッシュ対策**:
     *   **サイドカー分離**: エンジンが落ちてもUIは生き残るため、ユーザーに「エンジンがクラッシュしました。再起動しますか？」と通知を出して復帰させる。
     *   **セーフモード**: 起動時に特定のプラグインで連続クラッシュした場合、そのプラグインをブラックリスト化して起動する機能を（将来的に）実装する。
-
-### 5.2 Tauri 版を出す前の画面試験
-*   ブラウザ試験（Playwright）は 2026-11-25 から CI で回していない。GPUI 版が置き換えるまでに Tauri 版を出すときは、出す前に手元で `npm run test:e2e` を回し、結果を記録する。
 
 ---
 
@@ -116,10 +114,8 @@ OBSソースプラグインは [設計案](OBS_SOURCE_PLUGIN_DESIGN.md) の合�
 
 ### 7.1 バージョン表記の運用
 *   改修内容に応じたmajor / minor / patch / noneの判定、AI提案形式、タグ運用は [VERSIONING.md](VERSIONING.md) を正本とする。
-*   `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`は`npm run set-version -- <version>`で同期する。`--dry-run`で変更予定、`--check`で同期状態を確認できる。
-*   Tauri Updaterの`latest.json`とReleaseタグも同じバージョンにする。
-*   公開前に`npm run release:check`を実行し、バージョン同期、公開先、GPLメタデータ、ASIO GPL選択、lockfileのGit管理を検証する。これだけで実機動作・署名・更新経路の確認完了とは扱わない。
-*   `npm run release:upload -- <version>`はcleanなHEADから署名バイナリを再ビルドした後、同じHEADのSource ZIP・SHA-256・manifestを生成し、同じReleaseへアップロードする。
+*   版の値は直下 `Cargo.toml` の `[workspace.package] version` だけにある。更新経路とReleaseタグも同じバージョンにする。
+*   配布を作り直すときは、公開前の検査（版・公開先・GPLメタデータ・ASIO GPL選択・lockfileのGit管理）と、同じHEADから署名バイナリ・Source ZIP・SHA-256・manifestを作る手順も作り直す。検査だけで実機動作・署名・更新経路の確認完了とは扱わない。
 
 ---
 

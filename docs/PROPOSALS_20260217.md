@@ -9,7 +9,7 @@ VSTプラグインを使わなくても、アプリ本体だけで「ON/OFF可�
 ### 技術的アプローチ
 - **候補ライブラリ**: `nnnoiseless` (Rust, RNNoise系)
   - 音声向けの軽量ノイズ抑制として有力。
-  - `src-tauri/Cargo.toml` へ依存追加可能。
+  - `crates/vst-host/Cargo.toml` へ依存追加可能。
 - **実装前提**
   - RNNoise系は 48kHz / 固定フレーム（480 samples）前提。
   - 現行エンジンの可変バッファサイズと整合させるため、フレームアダプタ（リングバッファ）が必要。

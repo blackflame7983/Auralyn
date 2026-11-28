@@ -1,69 +1,23 @@
 # Auralyn (.gemini)
 
-このファイルは、AIエージェント（GEMINI）がプロジェクトのコンテキスト、ルール、アーキテクチャ上の決定事項を理解するためのドキュメントです。
+共通の作業入口はルート `AGENTS.md`。モデル名・世代にかかわらず、その参照先の現行方針を適用する。
 
-共通の作業入口はルート `AGENTS.md` です。モデル名・世代にかかわらず、その参照先の現行方針を適用します。
+## ブランチ
 
-## 1. ブランチ運用ルール
+- 開発の主軸は `main`。新機能や修正は `codex/` プレフィックスのブランチで作業し、`main` へ直接コミットしない。
+- push・PR作成前に差分と検証結果を提示し、明示承認を待つ。
 
-- **Main Branch**: `main`
-    - `master` ブランチは廃止されました。開発の主軸は `main` です。
-- **Workflow**:
-    - 新機能や修正は `codex/` プレフィックスのついたブランチで作業します。push・PR作成前に差分と検証結果を提示し、明示承認を待ちます。
-    - 直接 `main` にコミットすることは避けてください。
+## バージョン
 
-## 2. バージョン管理 (Version Management)
+- 判定・タグ・反映の正本は `docs/VERSIONING.md`（版の値は直下 `Cargo.toml` の `[workspace.package] version`）。
+- AIは前回公開版からの全差分・互換性・検証結果から番号を提案し、提案だけでタグ作成や公開は行わない。
 
-- **Single Source of Truth**: `package.json`
-    - バージョン番号の管理は `package.json` に集約されています。
-- **自動化スクリプト**:
-    - バージョンを更新する際は、必ず以下のコマンドを使用してください。
-      ```bash
-      npm run set-version -- <new_version>
-      ```
-      このスクリプトは `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` を同期させます。
-- **判定・タグの正本**: `docs/VERSIONING.md` を参照します。AIは前回公開版からの全差分・互換性・検証結果から番号を提案し、提案だけでタグ作成や公開は行いません。
-- **フロントエンド使用**:
-    - フロントエンドコード内では、`import.meta.env.PACKAGE_VERSION` を使用してバージョンを参照します（`vite.config.ts` で注入）。
+## 構成
 
-## 3. アーキテクチャ & 実装ルール
+- 画面は `src-gpui/`（GPUI Kit）。書き方は `docs/gpui/knowledge.md`、決定は `docs/gpui/decisions.md`。
+- 中核は `crates/vst-host`（音声エンジン・VST3 スキャナーのサイドカーと JSON-RPC）、画面の規則は `crates/auralyn-ui-model`、文言とデザイントークンは `crates/auralyn-core`。
+- 音声コールバックの無割当・非ブロッキング方針を維持する。
 
-### 音声設定 (Audio Configuration)
-- **定数管理**:
-    - サンプリングレートやバッファサイズのデフォルト値は `src/constants/audio.ts` で定義されています。マジックナンバーの使用は避けてください。
-- **状態管理 (AudioConfigContext)**:
-    - 音声設定は `AudioConfigContext` で管理され、`localStorage` に永続化されます。
-    - ステートの更新には関数型更新パターンを使用し、古いステートに基づく更新を防いでいます。
+## スキル
 
-### コンポーネント設計
-- **ModalLayer**:
-    - `onClear`, `onRecover` などのリカバリーアクションでは、明示的に `inputId`, `outputId` を渡す必要があります。
-
-## 4. 利用可能なスキル (Skills)
-
-このプロジェクトには、`.agent/skills` ディレクトリに以下のスキルが定義されています。
-
-- **version-management**: バージョン管理の自動化フローとベストプラクティス。
-- **secure-coding**: セキュリティガイドライン。
-
-## 5. ベストプラクティス & 推奨パターン
-
-### API抽象化 (API Abstraction)
-- **原則**: コンポーネントやHooksから直接 `invoke` を呼ばないこと。
-- **実装**: `src/api/` 配下にモジュール分割し、API呼び出しをカプセル化する。型定義もここに含める。
-    - Good: `audioApi.start(...)`
-    - Bad: `invoke('start_audio', ...)`
-
-### フックの責務分離 (Hook Responsibility)
-- **原則**: "God Hook"（巨大なフック）を避け、責務ごとに分割する。
-- **推奨構造**: 状態管理 (`useState` / `useContext`) と アクション (`useActions`)、永続化ロジック (`usePersistence`) を分離することを検討する。
-    - 現状の `usePlugins` は肥大化しているため、将来的なリファクタリング対象。
-
-### UIフィードバック (User Feedback)
-- **通知**: ユーザーへの通知には `sonner` (`toast`) を使用する。
-- **Undo機能**: 削除などの破壊的操作には、Toastによる Undo アクションを提供する（`usePlugins.ts` の削除処理参照）。
-- **Optimistic UI**: 状態を先に更新し、バックエンド処理が失敗した場合にロールバックするパターンを採用する。
-
-### バックエンド設計 (Rust/Tauri)
-- **モジュール分割**: ロジックは `lib.rs` に詰め込まず、機能ごとのモジュール（`audio_engine`, `vst_host` 等）に分割する。
-- **Command責務**: Tauri Command は薄いラッパーに留め、実際の処理はドメインロジック層に委譲する。
+`.agent/skills` に、version-management・secure-coding などのスキルがある。

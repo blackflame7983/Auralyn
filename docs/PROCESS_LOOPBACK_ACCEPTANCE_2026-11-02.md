@@ -80,7 +80,7 @@ VLCは中断せず65分を完了した。
 ## 証拠は専用環境に保存した
 
 集計・証拠ファイルのSHA-256は、ignoredの`test-results/process-input-audition-20261102/acceptance-results.json`に保存する。
-Chromeは`src-tauri/target/process-loopback-probe/app-chrome-fd795d261a`、VLCは同じ親の`app-vlc-e420febbef`に、最終`summary.json`、約2秒ごとの`samples.jsonl`、原音用デバイスの復元記録がある。
+Chromeは`target/process-loopback-probe/app-chrome-fd795d261a`、VLCは同じ親の`app-vlc-e420febbef`に、最終`summary.json`、約2秒ごとの`samples.jsonl`、原音用デバイスの復元記録がある。
 実UIの両アプリ開始は試聴環境内の`verification-1793613854930`、最終の停止中起動確認は`verification-latest.json`から参照する。
 
 試聴環境と両長時間試験のEngineは同一で、SHA-256は`c0408eceeef31721ddb4f9e1e0df302400710df8b53370a0c67e19935a02d320`。

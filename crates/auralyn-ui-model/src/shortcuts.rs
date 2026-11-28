@@ -1,5 +1,5 @@
 //! グローバルショートカット。保存は Tauri 版と同じ `shortcuts.json`（`[{"action": "muteToggle", "shortcut": "Alt+KeyM"}]`）。
-//! 読み方・既定・確かめ方は Tauri 版（`src-tauri/src/shortcuts.rs`）に揃える。
+//! 読み方・既定・確かめ方は Tauri 版（`crates/vst-host/src/shortcuts.rs`）に揃える。
 
 /// 登録できる数の上限（Tauri 版と同じ）。
 pub const MAX: usize = 8;

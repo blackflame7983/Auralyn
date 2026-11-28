@@ -52,7 +52,7 @@
 
 2026-11-08、この作業ツリーで実行した。
 
-- `cargo test --locked --lib --bins`（`src-tauri`）: lib は 752件成功、5件 ignored、失敗 0。各バイナリの単体テストは 0件。終了コード 0。このうちカタログの差分・世代・移行・破損復旧は 17件、設定移行の `vst_catalog.json` 検証は 1件、スキャナーの失敗種別と候補列挙は既存の出力テストに加えて成功した。
+- `cargo test --locked --lib --bins`（`crates/vst-host`）: lib は 752件成功、5件 ignored、失敗 0。各バイナリの単体テストは 0件。終了コード 0。このうちカタログの差分・世代・移行・破損復旧は 17件、設定移行の `vst_catalog.json` 検証は 1件、スキャナーの失敗種別と候補列挙は既存の出力テストに加えて成功した。
 - `cargo check --locked --all-targets`: 終了コード 0。
 - `cargo clippy --locked --all-targets -- -D warnings`: 終了コード 0。指定のコマンドより警告をエラーとして扱った。
 - `npm test -- --run --maxWorkers=4`: 166ファイル、1899件、失敗 0。失敗一覧の表示と1件再試行は 2件。

@@ -35,7 +35,7 @@ InitDllだけを追加する対照実験で、getSizeが310×440となり、子�
 - OTTとTDR Novaで、重複起動防止、開閉・再表示3回、リサイズ、表示中削除を確認。TDR Novaは830×598の描画も画像で確認した。
 - 検証用の音声ストリームは開始せず、プロセスを終了。APPDATAや利用者のプリセット、既存の配布sidecarには書き込まない。
 
-調査ログ・比較画像はローカルのignored `src-tauri/target/ott-editor-investigation/` に保存し、配布ソースには含めない。
+調査ログ・比較画像はローカルのignored `target/ott-editor-investigation/` に保存し、配布ソースには含めない。
 ビルド中にtauri-buildが古い配布sidecarをtarget/debugへコピーするため、ビルド完了後の実行ファイルで再現と修正後を確認した。
 
 100%以外の実DPI、異なるOTT版、全VST、長時間の音声運転、インストーラー・署名済み配布は未検証。
@@ -53,9 +53,9 @@ InitDllがない場合と初期化失敗時にはExitDllを呼ばず、呼出し
 
 - Rustの33 lib + 2 audio queueテストが成功。追加テストは失敗時のfactory解放 → ExitDllの順序を確認。
 - 実OTTの遅延解放・共有寿命テスト1件が成功。2つを追加し、一方をretire後も残るProcessorでメモリ内の無音を処理でき、状態が維持されることを確認。保持先が残る状態で再ロードし、独立した共有参照を最後に解放する経路も確認した。
-- この実OTTテストは通常実行ではignoreされる。インストール済みOTTがある環境で、`src-tauri`から `cargo test --locked --test ott_module_lifetime -- --ignored` と明示して実行する。実機ストリーム・録音・出音は開始しない。必要に応じて `AURALYN_TEST_OTT_PATH` を実体のOTT.vst3へ指定する。
+- この実OTTテストは通常実行ではignoreされる。インストール済みOTTがある環境で、`crates/vst-host`から `cargo test --locked --test ott_module_lifetime -- --ignored` と明示して実行する。実機ストリーム・録音・出音は開始しない。必要に応じて `AURALYN_TEST_OTT_PATH` を実体のOTT.vst3へ指定する。
 - factory参照の修正後にも、複数OTTの表示・独立したDEPTH操作・状態復元・削除後再ロード5回が成功。OTTとTDR Novaの開閉・再表示3回、リサイズ、表示中削除、両エディタの描画も再確認した。
 - cargo check / clippy --locked --all-targets、cargo build --locked --bins、git diff --checkが成功。既存のClippy警告は残る。新規の実OTTテストは個別rustfmt検査も成功。
-- 今回の比較ログ・画像はignored `src-tauri/target/ott-editor-review/` に保存した。音声系依存のmanifest / lockfile、アプリ番号、既存の配布sidecarは変更していない。
+- 今回の比較ログ・画像はignored `target/ott-editor-review/` に保存した。音声系依存のmanifest / lockfile、アプリ番号、既存の配布sidecarは変更していない。
 
 高DPI・他バージョンのOTT・全VST・長時間音声・配布の未検証範囲は引き続き残る。

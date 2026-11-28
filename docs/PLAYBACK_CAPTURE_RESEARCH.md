@@ -38,7 +38,7 @@ CPAL の公開資料も [公式 WASAPI 実装](https://github.com/rustaudio/cpal
 ## 現行コードとの接続
 
 - `third_party/cpal-0.17.3/src/host/wasapi/mod.rs` と `device.rs` は、再生機器に対する input stream 作成で `AUDCLNT_STREAMFLAGS_LOOPBACK` を設定する。
-- Auralyn の `src-tauri/src/audio_engine/devices.rs` は、通常入力を `input_devices()` から解決する。出力名を入力欄へ追加するだけでは接続できない。入力の種別、実 ID、ホストを区別する契約が必要になる。
+- Auralyn の `crates/vst-host/src/audio_engine/devices.rs` は、通常入力を `input_devices()` から解決する。出力名を入力欄へ追加するだけでは接続できない。入力の種別、実 ID、ホストを区別する契約が必要になる。
 - `core.rs` の既存の rate 選択・ストリーム構築・異率変換へ接続し、取り込み側の mix format、処理 rate、出力 rate を区別する。形式変更や機器消失では停止と再選択へ戻し、別機器へ無言で切り替えない。元の音を聴かずに取り込める専用の再生先を用意できない場合は、この方式を勧めず仮想ケーブル方式を案内する。
 - プロセス方式は `ActivateAudioInterfaceAsync` と非同期 COM 初期化、対象 PID の寿命、capture buffer を既存の有界キューへ渡す adapter の設計が必要になる。既存 `windows` crate の feature だけで実現できる範囲は未コンパイルであり、依存追加が不要とは断定しない。
 - `loopback_probe` は接続確認用の短時間取得であり、常時取り込みとして流用しない。
