@@ -124,6 +124,30 @@ mod tests {
         assert_eq!(tokens.radius("card"), Some(12.0));
     }
 
+    /// WCAG の相対輝度。
+    fn luminance(c: Rgb) -> f64 {
+        let lin = |v: u8| {
+            let v = f64::from(v) / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+
+    #[test]
+    fn card_borders_stand_out_in_every_theme() {
+        // カードの輪郭が暗い画面で沈まないよう、枠とカードの比を 2:1 以上に保つ（再監査 r4）。
+        for theme in Theme::ALL {
+            let [a, b] =
+                ["border", "card"].map(|name| luminance(tokens().color(name, theme).unwrap()));
+            let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+            assert!(ratio >= 2.0, "{theme:?}: {ratio:.2}");
+        }
+    }
+
     #[test]
     fn hex_colors_round_trip() {
         let color = Rgb::parse_hex("#0b6f65").unwrap();

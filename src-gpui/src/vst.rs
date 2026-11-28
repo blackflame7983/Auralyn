@@ -221,7 +221,7 @@ impl VstPage {
         self.scanning = Some(false);
     }
 
-    /// ホーム（音楽を聴くとき）の短い一覧：通す・外すと編集だけ。足す・並べ替えるのは VST の画面で。
+    /// ホームの右の列の先頭に置く短い一覧：通す・外すと編集だけ。足す・並べ替えるのは VST の画面で。
     pub fn render_quick(
         &self,
         lang: Lang,
