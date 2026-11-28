@@ -54,6 +54,7 @@ use auralyn_ui_model::live_modes::Mode as LiveMode;
 use auralyn_ui_model::measurement;
 use auralyn_ui_model::meter::{self, Meter, OutputTag, State as MeterState, Verdict};
 use auralyn_ui_model::peak::Limit;
+use auralyn_ui_model::preparation::Usage;
 use auralyn_ui_model::recovery::{Choice, Exit};
 use auralyn_ui_model::scene_routing::Action as SceneAction;
 use auralyn_ui_model::session::{compare_blocker, Event as SessionEvent, Phase};
@@ -188,7 +189,7 @@ impl MainView {
         .detach();
         let connect = ConnectPage::new(lang, window, cx);
         let setup = SetupPanel::new(window, cx);
-        for state in [&setup.microphone, &setup.output, &connect.output_mode] {
+        for state in [&setup.input, &setup.output, &connect.output_mode] {
             cx.subscribe(state, |_, _, _: &SelectEvent<Vec<SharedString>>, cx| {
                 cx.notify()
             })
@@ -448,7 +449,8 @@ impl MainView {
         if self.page == Page::Settings && !self.hidden.get() {
             self.obs.recheck();
         }
-        if self.page == Page::Home && !self.hidden.get() {
+        // 接続の確認は音楽を聴くときは出さないので、読みにも行かない。
+        if self.page == Page::Home && !self.hidden.get() && !self.music {
             if let Some(command) = self.prep.tick(window, cx) {
                 self.engine.send(command);
             }
@@ -484,14 +486,14 @@ impl MainView {
         if self.page == Page::Sound && self.peak_polled.elapsed() >= PEAK_POLL {
             for limit in Limit::ALL {
                 if !self.hidden.get()
-                    && self.sound_part == Part::Peak
+                    && self.shown_part() == Part::Peak
                     && self.sound.limiter(limit).polls()
                 {
                     self.peak_polled = Instant::now();
                     self.engine.send(Command::ReadPeak(limit));
                 }
             }
-            let checking = self.sound_part == Part::Check;
+            let checking = self.shown_part() == Part::Check;
             let open = self
                 .voice
                 .open(checking && self.phase == Phase::Running && !self.hidden.get());
@@ -502,7 +504,7 @@ impl MainView {
                 self.peak_polled = Instant::now();
                 self.engine.send(Command::Listen(Listen::Status));
             }
-            if self.sound_part == Part::Noise && self.sound.shows_measurement() {
+            if self.shown_part() == Part::Noise && self.sound.shows_measurement() {
                 self.peak_polled = Instant::now();
                 self.engine
                     .send(Command::Measure(measurement::Action::Read));
@@ -586,10 +588,8 @@ impl MainView {
                 self.recovery = None;
                 self.prep.audio_changed();
                 self.advance(SessionEvent::Started);
-                // 始めた接続を使い道の記録に残したので、接続の画面の切り替え先を読み直す。
-                if self.page == Page::Connect {
-                    self.send(Command::ListDevices);
-                }
+                // 始めた接続を保存したので読み直す（接続の画面の切り替え先と、音楽を聴くかで変わるホーム・音づくり）。
+                self.send(Command::ListDevices);
                 self.reread_peak();
                 self.reread_mix();
             }
@@ -837,13 +837,31 @@ impl MainView {
         }
     }
 
+    /// 音づくりの区切り。音楽を聴くときは声向けの区切り（ノイズ・声を整える・モード・ボイスチェック）を出さない。
+    fn sound_parts(&self) -> &'static [Part] {
+        if self.music {
+            &[Part::Peak]
+        } else {
+            &Part::ALL
+        }
+    }
+
+    /// 開いている音づくりの区切り。音楽に切り替えたあとは、声向けの区切りを開いていても出力の安全を出す。
+    fn shown_part(&self) -> Part {
+        if self.sound_parts().contains(&self.sound_part) {
+            self.sound_part
+        } else {
+            Part::Peak
+        }
+    }
+
     /// レールの子を開く（今の行き先が音づくりか設定のとき）。音づくりの子を離れるときは、
     /// 見えなくなる測定・録音・試聴を止める（見ていない間に測り終えて置き去りにしない）。
     fn open_child(&mut self, index: usize) {
         match self.page {
             Page::Sound => {
-                if let Some(&part) = Part::ALL.get(index) {
-                    if part != self.sound_part {
+                if let Some(&part) = self.sound_parts().get(index) {
+                    if part != self.shown_part() {
                         self.page_epoch += 1;
                         self.leave_sound();
                     }
@@ -1099,8 +1117,12 @@ impl Render for MainView {
         );
         let children = match self.page {
             Page::Sound => Some(shell::Children {
-                labels: Part::ALL.map(|p| core(lang, p.label())).to_vec(),
-                selected: index_of(&Part::ALL, self.sound_part),
+                labels: self
+                    .sound_parts()
+                    .iter()
+                    .map(|p| core(lang, p.label()))
+                    .collect(),
+                selected: index_of(self.sound_parts(), self.shown_part()),
             }),
             Page::Settings => Some(shell::Children {
                 labels: Section::ALL.map(|s| core(lang, s.label())).to_vec(),
@@ -1281,15 +1303,19 @@ impl Render for MainView {
                                                         if let Some((input, output)) =
                                                             this.setup.chosen(cx)
                                                         {
-                                                            let usage = this.setup.goal().into();
-                                                            if let Some(command) = this.prep.act(
-                                                                crate::prep::Action::Usage(usage),
-                                                            ) {
+                                                            let goal = this.setup.goal();
+                                                            if let Some(command) =
+                                                                Usage::of_goal(goal).and_then(|usage| {
+                                                                    this.prep.act(
+                                                                        crate::prep::Action::Usage(usage),
+                                                                    )
+                                                                })
+                                                            {
                                                                 this.engine.send(command);
                                                             }
                                                             this.start_with(StartWith {
                                                                 input: Input::Device(input),
-                                                                purpose: Purpose::Voice,
+                                                                purpose: goal.purpose(),
                                                                 output,
                                                                 sample_rate: None,
                                                                 buffer_size: None,
@@ -1316,7 +1342,7 @@ impl Render for MainView {
                                             .flex()
                                             .flex_col()
                                             .gap_3()
-                                            .children(home::sound_flow(&self.flow, lang))
+                                            .children(home::sound_flow(&self.flow, self.music, lang))
                                             .when(self.music && self.show_source_hint, |this| {
                                                 let playback = self.input_name.as_deref().and_then(
                                                     auralyn_ui_model::music::cable_playback_name,
@@ -1367,27 +1393,42 @@ impl Render for MainView {
                                                         }),
                                                 )
                                             })
-                                            .child(div().max_w(px(560.)).child(self.prep.render(
-                                                lang,
-                                                {
-                                                    let entity = entity.clone();
-                                                    Rc::new(move |action, _, cx| {
-                                                        entity.update(cx, |this, cx| {
-                                                            if let Some(command) =
-                                                                this.prep.act(action)
-                                                            {
-                                                                this.engine.send(command);
-                                                            }
-                                                            cx.notify();
+                                            // 接続の確認は声の送り先（OBS・通話）を確かめるので、音楽を聴くときは出さない。
+                                            .when(!self.music, |this| {
+                                                this.child(div().max_w(px(560.)).child(self.prep.render(
+                                                    lang,
+                                                    {
+                                                        let entity = entity.clone();
+                                                        Rc::new(move |action, _, cx| {
+                                                            entity.update(cx, |this, cx| {
+                                                                if let Some(command) =
+                                                                    this.prep.act(action)
+                                                                {
+                                                                    this.engine.send(command);
+                                                                }
+                                                                cx.notify();
+                                                            })
                                                         })
-                                                    })
-                                                },
-                                                goto(&entity),
-                                            ))),
+                                                    },
+                                                    goto(&entity),
+                                                )))
+                                            }),
                                         div()
                                             .flex()
                                             .flex_col()
                                             .gap_3()
+                                            // 音楽を聴くとき、配信ミックスを使っていなければ右の列に VST の短い一覧を置く（空けない）。
+                                            .when(self.music && !self.mix.in_use(), |this| {
+                                                let entity = entity.clone();
+                                                this.child(div().max_w(px(560.)).child(
+                                                    self.vst.render_quick(lang, send.clone(), move |_, cx| {
+                                                        entity.update(cx, |this, cx| {
+                                                            this.open(Page::Vst);
+                                                            cx.notify();
+                                                        })
+                                                    }),
+                                                ))
+                                            })
                                             .when(!self.music || self.mix.in_use(), |this| {
                                                 this.child(div().max_w(px(560.)).child(
                                                     self.mix.render(
@@ -1510,7 +1551,7 @@ impl Render for MainView {
                                             send,
                                         )),
                                 )),
-                                Page::Sound => this.child(match self.sound_part {
+                                Page::Sound => this.child(match self.shown_part() {
                                     Part::Modes => {
                                         div().max_w(px(560.)).child(self.modes.render(lang, send))
                                     }

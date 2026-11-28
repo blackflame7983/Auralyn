@@ -68,13 +68,14 @@ pub fn from_key<T: Copy>(all: &[T], key: impl Fn(T) -> &'static str, text: &str)
     all.iter().copied().find(|value| key(*value) == text)
 }
 
-/// はじめての設定で選んだ使い道を、送り先にする。
-impl From<crate::setup::Goal> for Usage {
-    fn from(goal: crate::setup::Goal) -> Self {
+impl Usage {
+    /// はじめての設定で選んだ使い道の、声の送り先。音楽を聴くときは声の送り先が無い（接続の確認も使わない）。
+    pub fn of_goal(goal: crate::setup::Goal) -> Option<Usage> {
         match goal {
-            crate::setup::Goal::Obs => Usage::Obs,
-            crate::setup::Goal::Chat => Usage::Discord,
-            crate::setup::Goal::Listen => Usage::Listening,
+            crate::setup::Goal::Obs => Some(Usage::Obs),
+            crate::setup::Goal::Chat => Some(Usage::Discord),
+            crate::setup::Goal::Listen => Some(Usage::Listening),
+            crate::setup::Goal::Music => None,
         }
     }
 }

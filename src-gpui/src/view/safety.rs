@@ -64,14 +64,28 @@ impl MainView {
     fn render_input(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         section()
-            .child(heading(core(lang, keys::MIC)))
+            .child(heading(core(
+                lang,
+                if self.music {
+                    keys::SOURCE_HEADING
+                } else {
+                    keys::MIC
+                },
+            )))
             .when_some(self.input_name.clone(), |this, name| {
                 this.child(device(name))
             })
             .child(meter_bar("input-meter", &self.input, lang))
             .child(slider_row(
                 "input-gain",
-                core(lang, keys::MIC_VOLUME),
+                core(
+                    lang,
+                    if self.music {
+                        keys::SOURCE_VOLUME
+                    } else {
+                        keys::MIC_VOLUME
+                    },
+                ),
                 &self.input_gain,
                 lang,
                 cx,

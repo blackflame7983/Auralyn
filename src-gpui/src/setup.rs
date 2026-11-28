@@ -1,4 +1,4 @@
-//! ホームの「はじめての設定」：まだ一度も開始していないときだけ出す。使い道を選ぶと、マイクと出力先を勧めて、そのまま開始できる。
+//! ホームの「はじめての設定」：まだ一度も開始していないときだけ出す。使い道を選ぶと、入力（マイク、音楽なら再生の音）と出力先を勧めて、そのまま開始できる。
 //! 勧め方は `auralyn-ui-model` の `setup`。ここでは WASAPI だけを扱い、ASIO などは接続の画面へ案内する。
 
 use std::rc::Rc;
@@ -19,10 +19,12 @@ type Names = SelectState<Vec<SharedString>>;
 
 pub struct SetupPanel {
     goal: Goal,
-    microphones: Vec<Device>,
+    /// 最後に届いた機器の一覧（使い道を選び直したら、入力の候補をここから作り直す）。
+    devices: Vec<Device>,
+    inputs: Vec<Device>,
     outputs: Vec<Device>,
     /// 選び直したら開始のボタンを描き直す（`MainView` が購読する）。
-    pub microphone: Entity<Names>,
+    pub input: Entity<Names>,
     pub output: Entity<Names>,
 }
 
@@ -32,23 +34,35 @@ impl SetupPanel {
             |cx: &mut Context<V>| cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
         Self {
             goal: Goal::Obs,
-            microphones: Vec::new(),
+            devices: Vec::new(),
+            inputs: Vec::new(),
             outputs: Vec::new(),
-            microphone: select(cx),
+            input: select(cx),
             output: select(cx),
         }
     }
 
     /// 機器の一覧が届いた（ホームや接続の画面を開くたび）。選んでいた機器が残っていれば保ち、無ければ勧めるものを選ぶ。
     pub fn set_devices(&mut self, devices: &[Device], window: &mut Window, cx: &mut App) {
-        let microphones = setup::microphones(devices);
-        let outputs = setup::outputs(devices);
-        let mic = setup::recommend_microphone(&microphones);
-        let out = setup::recommend_output(self.goal, &outputs);
-        fill(&self.microphone, &microphones, mic, window, cx);
-        fill(&self.output, &outputs, out, window, cx);
-        self.microphones = microphones.into_iter().cloned().collect();
+        self.devices = devices.to_vec();
+        self.fill_inputs(window, cx);
+        self.fill_outputs(window, cx);
+    }
+
+    /// 使い道に合う出力先を候補に入れる（音楽なら仮想ケーブルを外す）。
+    fn fill_outputs(&mut self, window: &mut Window, cx: &mut App) {
+        let outputs = setup::outputs(self.goal, &self.devices);
+        let row = setup::recommend_output(self.goal, &outputs);
+        fill(&self.output, &outputs, row, window, cx);
         self.outputs = outputs.into_iter().cloned().collect();
+    }
+
+    /// 使い道に合う入力を候補に入れる（音楽なら再生の音、ほかはマイク）。
+    fn fill_inputs(&mut self, window: &mut Window, cx: &mut App) {
+        let inputs = setup::inputs(self.goal, &self.devices);
+        let row = setup::recommend_input(self.goal, &inputs);
+        fill(&self.input, &inputs, row, window, cx);
+        self.inputs = inputs.into_iter().cloned().collect();
     }
 
     /// 使い道を選んだ。出力先は勧め直す（勧められなければ選択を外す）。
@@ -58,6 +72,8 @@ impl SetupPanel {
 
     pub fn set_goal(&mut self, goal: Goal, window: &mut Window, cx: &mut App) {
         self.goal = goal;
+        self.fill_inputs(window, cx);
+        self.fill_outputs(window, cx);
         let outputs: Vec<&Device> = self.outputs.iter().collect();
         let row = setup::recommend_output(goal, &outputs);
         self.output.update(cx, |state, cx| {
@@ -65,7 +81,7 @@ impl SetupPanel {
         });
     }
 
-    /// 選んでいるマイクと出力先。
+    /// 選んでいる入力と出力先。
     pub fn chosen(&self, cx: &App) -> Option<(Device, Device)> {
         let pick = |state: &Entity<Names>, devices: &[Device]| {
             let label = state.read(cx).selected_value()?.clone();
@@ -76,7 +92,7 @@ impl SetupPanel {
             devices.get(row).cloned()
         };
         Some((
-            pick(&self.microphone, &self.microphones)?,
+            pick(&self.input, &self.inputs)?,
             pick(&self.output, &self.outputs)?,
         ))
     }
@@ -120,8 +136,12 @@ impl SetupPanel {
                 ))
                 .child(field(
                     lang,
-                    keys::SETUP_MICROPHONE,
-                    Select::new(&self.microphone).placeholder(core(lang, keys::NO_DEVICES)),
+                    if goal == Goal::Music {
+                        keys::SETUP_PLAYBACK
+                    } else {
+                        keys::SETUP_MICROPHONE
+                    },
+                    Select::new(&self.input).placeholder(core(lang, keys::NO_DEVICES)),
                 ))
                 .child(field(
                     lang,
@@ -129,7 +149,9 @@ impl SetupPanel {
                     Select::new(&self.output).placeholder(core(lang, keys::NO_DEVICES)),
                 ))
                 .map(|this| {
-                    if goal.sends_to_cable() {
+                    if goal == Goal::Music {
+                        this.child(note(core(lang, keys::SETUP_MUSIC_HINT)))
+                    } else if goal.sends_to_cable() {
                         this.child(note(format!(
                             "{}{}{}",
                             core(lang, keys::SETUP_CABLE_BEFORE),
@@ -173,6 +195,7 @@ fn goal_label(goal: Goal) -> &'static str {
         Goal::Obs => keys::SETUP_GOAL_OBS,
         Goal::Chat => keys::SETUP_GOAL_CHAT,
         Goal::Listen => keys::SETUP_GOAL_LISTEN,
+        Goal::Music => keys::SETUP_GOAL_MUSIC,
     }
 }
 
