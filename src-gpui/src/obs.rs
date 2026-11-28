@@ -304,7 +304,7 @@ impl ObsPanel {
                         .aria_label(core(lang, label)),
                 )
         };
-        card(
+        let connection = card(
             core(lang, keys::OBS_TITLE),
             div().text_sm().child(status),
             div()
@@ -416,6 +416,20 @@ impl ObsPanel {
                 .when(state == State::Connected, |this| {
                     this.child(self.render_reach(lang, on.clone()))
                 })
+                .child(note(core(lang, keys::OBS_NEEDS))),
+        )
+        .icon(IconName::Cast)
+        .hint(
+            lang,
+            paragraphs(lang, &[keys::OBS_SERVER, keys::OBS_PASSWORD_SCOPE]),
+        );
+        let changes = card(
+            core(lang, keys::OBS_CHANGES_CARD),
+            div(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
                 .child(self.timing.render(
                     lang,
                     cx,
@@ -426,14 +440,15 @@ impl ObsPanel {
                 .child(
                     self.changes
                         .render(lang, state == State::Connected, self.reaching, on),
-                )
-                .child(note(core(lang, keys::OBS_NEEDS))),
+                ),
         )
-        .icon(IconName::Cast)
-        .hint(
-            lang,
-            paragraphs(lang, &[keys::OBS_SERVER, keys::OBS_PASSWORD_SCOPE]),
-        )
+        .icon(IconName::SlidersHorizontal);
+        div()
+            .flex()
+            .flex_col()
+            .gap_6()
+            .child(connection)
+            .child(changes)
     }
 
     fn render_reach(&self, lang: Lang, on: OnOrder) -> impl IntoElement {

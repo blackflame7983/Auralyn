@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use auralyn_ui_model::live_modes::Mode;
 use auralyn_ui_model::scene_routing::{Action, Issue, Routing, Strategy};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
@@ -14,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{choices, note, segment, with_hint};
+use crate::part::{card, choices, note, segment};
 use crate::scene_file;
 
 const STRATEGIES: [(Strategy, &str); 3] = [
@@ -126,21 +127,10 @@ impl ScenePanel {
     }
 
     pub fn render(&self, lang: Lang, on: OnEdit) -> impl IntoElement {
-        div()
+        let body = div()
             .flex()
             .flex_col()
             .gap_2()
-            .pt_3()
-            .border_t_1()
-            .border_color(crate::color::border())
-            .child(with_hint(
-                "scene-hint",
-                lang,
-                core(lang, keys::SCENE_LEAD),
-                div()
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(core(lang, keys::SCENE_TITLE)),
-            ))
             .child(choices(
                 "scene-strategy",
                 lang,
@@ -225,6 +215,9 @@ impl ScenePanel {
                     Saved::Names => core(lang, keys::SCENE_NAMES).to_string(),
                     Saved::Failed(e) => format!("{} {e}", core(lang, keys::SCENE_SAVE_FAILED)),
                 }))
-            })
+            });
+        card(core(lang, keys::SCENE_TITLE), div(), body)
+            .icon(IconName::Layers)
+            .hint(lang, core(lang, keys::SCENE_LEAD))
     }
 }

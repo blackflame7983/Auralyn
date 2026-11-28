@@ -3766,5 +3766,6 @@
   "gpuiShell.reasonMixDevice": "機器を選ぶと適用できます",
   "gpuiShell.reasonMixChannels": "入力チャンネルを選ぶと適用できます",
   "gpuiShell.reasonListenStale": "録り直すと再生できます",
-  "gpuiShell.connectAdvanced": "音質・遅延"
+  "gpuiShell.connectAdvanced": "音質・遅延",
+  "gpuiShell.obsChangesCard": "OBSの設定"
 }
