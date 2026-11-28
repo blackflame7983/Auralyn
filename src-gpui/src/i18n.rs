@@ -730,8 +730,10 @@ pub mod keys {
     pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     pub const CONNECT_ADVANCED: &str = "gpuiShell.connectAdvanced";
+    pub const OBS_CHANGES_CARD: &str = "gpuiShell.obsChangesCard";
+    pub const FLOW_COMFORT: &str = "home.levelOk";
     #[cfg(test)]
-    pub const ALL: [&str; 718] = [
+    pub const ALL: [&str; 720] = [
         REASON_CONFIRM,
         REASON_MIX_DEVICE,
         REASON_MIX_CHANNELS,
@@ -751,6 +753,8 @@ pub mod keys {
         MODES_FIRST,
         OPEN_CONNECT,
         CONNECT_ADVANCED,
+        OBS_CHANGES_CARD,
+        FLOW_COMFORT,
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,

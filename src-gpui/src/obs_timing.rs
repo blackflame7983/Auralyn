@@ -169,9 +169,6 @@ impl TimingPanel {
             .flex()
             .flex_col()
             .gap_2()
-            .pt_3()
-            .border_t_1()
-            .border_color(crate::color::border())
             .child(div().child(toggle))
             .when(open, |this| {
                 this.child(crate::part::reveal(
