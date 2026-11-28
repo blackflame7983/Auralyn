@@ -333,7 +333,7 @@ def main() -> int:
         setattr(args, name, getattr(args, name).resolve(strict=True))
     if args.kind == 'vlc':
         args.vlc = args.vlc.resolve(strict=True)
-    root = (args.output_dir or Path('src-tauri/target/process-loopback-probe') / ('app-' + args.kind + '-' + uuid.uuid4().hex[:10])).resolve()
+    root = (args.output_dir or Path('target/process-loopback-probe') / ('app-' + args.kind + '-' + uuid.uuid4().hex[:10])).resolve()
     root.mkdir(parents=True, exist_ok=False)
     print(json.dumps({'directory': str(root), 'kind': args.kind, 'requestedSeconds': args.seconds}), flush=True)
     summary = {'passed': False, 'kind': args.kind, 'requestedSeconds': args.seconds}

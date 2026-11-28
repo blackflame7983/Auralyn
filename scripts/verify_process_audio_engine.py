@@ -160,7 +160,7 @@ def main() -> int:
     args = parser.parse_args()
     engine = args.engine.resolve(strict=True)
     probe = args.probe.resolve(strict=True)
-    directory = (args.output_dir or Path("src-tauri/target/process-loopback-probe") / ("engine-cable-" + uuid.uuid4().hex[:10])).resolve()
+    directory = (args.output_dir or Path("target/process-loopback-probe") / ("engine-cable-" + uuid.uuid4().hex[:10])).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     summary = {"functional_pass": False, "engine_sha256": hashlib.sha256(engine.read_bytes()).hexdigest(),
                "probe_sha256": hashlib.sha256(probe.read_bytes()).hexdigest()}

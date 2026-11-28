@@ -14,7 +14,7 @@ if (args.some(arg => !known.has(arg))) {
 if (['--full', '--changed', '--static'].filter(mode => args.includes(mode)).length > 1) { console.error('検証モードは1つだけ指定してください。'); process.exit(1); }
 const changed = () => [...new Set([
     ...execFileSync('git', ['diff', 'HEAD', '--name-only', '--no-renames', '-z'], { encoding: 'utf8' }).split('\0'),
-    ...execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z', 'src-tauri/src', 'src-tauri/crates', 'src-gpui', 'scripts', 'config', 'docs', 'AGENTS.md', 'CLAUDE.md', 'ruff.toml', 'requirements-dev.txt'], { encoding: 'utf8' }).split('\0'),
+    ...execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z', 'crates', 'src-gpui', 'scripts', 'config', 'docs', 'AGENTS.md', 'CLAUDE.md', 'ruff.toml', 'requirements-dev.txt'], { encoding: 'utf8' }).split('\0'),
 ])].filter(Boolean);
 const runId = new Date().toISOString().replaceAll(/[:.]/g, '-');
 const output = path.join(root, 'test-results/gardening', runId);
@@ -51,19 +51,16 @@ try {
         run('distribution-tests', process.execPath, ['--test', ...fs.readdirSync('scripts').filter(file => file.endsWith('.test.cjs')).map(file => `scripts/${file}`)]);
     }
     if (args.includes('--rust')) {
-        const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--no-deps', '--format-version', '1'], { encoding: 'utf8' }));
+        const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], { encoding: 'utf8' }));
         const drive = path.parse(metadata.target_directory).root.match(/^([A-Za-z]):/)?.[1];
         if (!drive) throw new Error('WindowsのCargo保存先ドライブを特定できません。BUILD_GUIDE.mdに従って確認してください。');
         console.log(`Cargo target: ${metadata.target_directory}`);
         run('rust-capacity', 'powershell', ['-NoProfile', '-Command', '$d = Get-PSDrive -Name $env:AURALYN_BUILD_DRIVE; if ($d.Free -lt 12GB) { throw "Rust検証には保存先に12 GiB以上の空きが必要です" }; Get-Process cargo,rustc -ErrorAction SilentlyContinue | ForEach-Object { throw "別のRustビルドが実行中です" }; exit 0'], { env: { ...process.env, AURALYN_BUILD_DRIVE: drive } });
-        run('rust-fmt', 'cargo', ['fmt', '--manifest-path', 'src-tauri/Cargo.toml', '--all', '--', '--check']);
-        run('rust-clippy', 'cargo', ['clippy', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']);
-        run('rust-core', 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '-p', 'auralyn-core', '-p', 'auralyn-ui-model']);
-        for (const filter of ['gain_ramp::', 'comparison::', 'native_stream::']) run(`rust-${filter.replaceAll(':', '')}`, 'cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', filter]);
-        const gpui = { cwd: path.join(root, 'src-gpui') };
-        run('gpui-fmt', 'cargo', ['fmt', '--all', '--', '--check'], gpui);
-        run('gpui-clippy', 'cargo', ['clippy', '--locked', '--all-targets', '--', '-D', 'warnings'], gpui);
-        run('gpui-test', 'cargo', ['test', '--locked'], gpui);
+        run('rust-fmt', 'cargo', ['fmt', '--all', '--', '--check']);
+        run('rust-clippy', 'cargo', ['clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']);
+        run('rust-core', 'cargo', ['test', '--locked', '-p', 'auralyn-core', '-p', 'auralyn-ui-model']);
+        for (const filter of ['gain_ramp::', 'comparison::', 'native_stream::']) run(`rust-${filter.replaceAll(':', '')}`, 'cargo', ['test', '--locked', '-p', 'vst-host', '--lib', filter]);
+        run('gpui-test', 'cargo', ['test', '--locked', '-p', 'auralyn-gpui']);
     }
 } catch (error) {
     console.error(error instanceof Error ? error.message : error);
