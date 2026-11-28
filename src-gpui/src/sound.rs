@@ -504,7 +504,7 @@ impl SoundPage {
                     &[keys::DEESSER_HINT],
                     Switch::new("deesser-on")
                         .checked(current.deesser.on)
-                        .accessibility_label(core(lang, keys::DEESSER))
+                        .accessibility_label(core(lang, keys::DEESSER_NAMED))
                         .on_click({
                             let fold = self.deesser_fold.clone();
                             move |on, _, cx| {

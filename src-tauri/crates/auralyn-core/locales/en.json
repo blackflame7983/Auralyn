@@ -3696,7 +3696,7 @@
   "gpuiShell.modesLinked": "Modes linked to switch together with VSTs can't be switched on this screen yet.",
   "gpuiShell.modesLocked": "This can't be done while operations are locked. Unlock it with the lock button in the right column, then try again.",
   "gpuiShell.themeSaveFailed": "The theme changed for this session, but could not be saved. It may reset when you reopen the app.",
-  "gpuiShell.recoverySafety": "Your saved VST rack is kept. You can reload or delete excluded VSTs on the VST page later. After resuming, check that the receiving app gets the audio.",
+  "gpuiShell.recoverySafety": "Your saved VST rack is kept. Excluded VSTs stay in the rack and load again at the next start or from the VST page. To drop one, delete its slot on the VST page. After resuming, check that the receiving app gets the audio.",
   "gpuiShell.reloadMissing": "Reload not-loaded VSTs",
   "gpuiShell.reloadMissingHint": "Loads excluded or failed VSTs again. If one caused the crash, audio may stop again. Moved or removed VSTs load only after you put them back.",
   "gpuiShell.themeNote": "Changes the colors only.",
@@ -3746,6 +3746,6 @@
   "gpuiShell.forgetShort": "Delete history",
   "gpuiShell.removeShort": "Remove",
   "gpuiShell.resetShort": "Reset",
-  "gpuiShell.mixRouteShort": "Send the player to another output and mute that output in Windows.",
+  "gpuiShell.mixRouteShort": "Send the player to another output and mute that output in Windows (not the app itself).",
   "gpuiShell.listenShort": "Choose an output that streams and calls do not capture."
 }

@@ -86,12 +86,14 @@ pub mod keys {
     pub const LISTEN_LEAD: &str = "voice.copy.038";
     pub const LISTEN_SHORT: &str = "gpuiShell.listenShort";
     pub const LISTEN_REFRESH: &str = "gpuiShell.copyListenRefresh";
+    pub const LISTEN_REFRESH_NAMED: &str = "voice.copy.040";
     pub const LISTEN_DEVICE: &str = "voice.copy.041";
     pub const LISTEN_CHOOSE: &str = "voice.copy.042";
     pub const LISTEN_SAFE: &str = "gpuiShell.copyListenSafe";
     pub const LISTEN_PLAYING: &str = "gpuiShell.copyListenPlaying";
     pub const LISTEN_STOPPED: &str = "voice.copy.051";
     pub const LISTEN_PLAY: &str = "gpuiShell.copyListenPlay";
+    pub const LISTEN_PLAY_NAMED: &str = "voice.copy.059";
     pub const LISTEN_STOP: &str = "voice.copy.060";
     pub const LISTEN_LOOP: &str = "voice.copy.061";
     pub const LISTEN_RETRY: &str = "voice.copy.039";
@@ -195,6 +197,7 @@ pub mod keys {
     pub const REVERB_DECAY: &str = "settings.SingingControls.417";
     pub const REVERB_DAMPING: &str = "settings.SingingControls.418";
     pub const DEESSER: &str = "gpuiShell.copyDeesser";
+    pub const DEESSER_NAMED: &str = "settings.deesser";
     pub const DEESSER_HINT: &str = "settings.deesserHint";
     pub const DEESSER_AMOUNT: &str = "settings.deesserAmount";
     pub const QUIT_HELP: &str = "band.quitHelp";
@@ -532,7 +535,9 @@ pub mod keys {
     pub const SCENE_REMOVE: &str = "settings.ObsModeRoutingSettings.328";
     pub const REMOVE_SHORT: &str = "gpuiShell.removeShort";
     pub const SCENE_ADD: &str = "gpuiShell.copySceneAdd";
+    pub const SCENE_ADD_NAMED: &str = "settings.ObsModeRoutingSettings.329";
     pub const SCENE_SAVE: &str = "gpuiShell.copySceneSave";
+    pub const SCENE_SAVE_NAMED: &str = "settings.ObsModeRoutingSettings.330";
     pub const SCENE_SAVED: &str = "settings.ObsModeRoutingSettings.309";
     pub const SCENE_NAMES: &str = "settings.ObsModeRoutingSettings.308";
     pub const SCENE_SAVE_FAILED: &str = "settings.ObsModeRoutingSettings.310";
@@ -707,7 +712,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 694] = [
+    pub const ALL: [&str; 699] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -752,7 +757,9 @@ pub mod keys {
         SCENE_REMOVE,
         REMOVE_SHORT,
         SCENE_ADD,
+        SCENE_ADD_NAMED,
         SCENE_SAVE,
+        SCENE_SAVE_NAMED,
         SCENE_SAVED,
         SCENE_NAMES,
         SCENE_SAVE_FAILED,
@@ -863,12 +870,14 @@ pub mod keys {
         LISTEN_LEAD,
         LISTEN_SHORT,
         LISTEN_REFRESH,
+        LISTEN_REFRESH_NAMED,
         LISTEN_DEVICE,
         LISTEN_CHOOSE,
         LISTEN_SAFE,
         LISTEN_PLAYING,
         LISTEN_STOPPED,
         LISTEN_PLAY,
+        LISTEN_PLAY_NAMED,
         LISTEN_STOP,
         LISTEN_LOOP,
         LISTEN_RETRY,
@@ -972,6 +981,7 @@ pub mod keys {
         REVERB_DECAY,
         REVERB_DAMPING,
         DEESSER,
+        DEESSER_NAMED,
         DEESSER_HINT,
         DEESSER_AMOUNT,
         QUIT_HELP,
@@ -1433,6 +1443,30 @@ pub fn core_with(lang: Lang, key: &'static str, args: &[(&str, &dyn std::fmt::Di
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpui_japanese_text_has_no_space_between_japanese_and_vst() {
+        for key in keys::ALL
+            .into_iter()
+            .filter(|k| k.starts_with("gpuiShell."))
+        {
+            let text: Vec<char> = core(Lang::Ja, key).chars().collect();
+            for (i, window) in text.windows(4).enumerate() {
+                let before = window[0] as u32 > 0x7f && window[1] == ' ';
+                if before && window[2..] == ['V', 'S'] {
+                    panic!("{key}: 日本語とVSTの間に空白があります");
+                }
+                if window[..3] == ['V', 'S', 'T'] && window[3] == ' ' {
+                    if let Some(next) = text.get(i + 4) {
+                        assert!(
+                            *next as u32 <= 0x7f,
+                            "{key}: VSTと日本語の間に空白があります"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn every_core_key_exists_in_both_languages() {

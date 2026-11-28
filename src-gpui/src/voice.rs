@@ -362,6 +362,7 @@ impl VoicePanel {
                         let send = send.clone();
                         Button::new("listen-devices")
                             .label(core(lang, keys::LISTEN_REFRESH))
+                            .accessibility_label(core(lang, keys::LISTEN_REFRESH_NAMED))
                             .outline()
                             .disabled(playing)
                             .on_click(move |_, _, cx| send(Command::Listen(Listen::Devices), cx))
@@ -428,6 +429,7 @@ impl VoicePanel {
                     let looped = self.looped.get();
                     Button::new("listen-play")
                         .label(core(lang, keys::LISTEN_PLAY))
+                        .accessibility_label(core(lang, keys::LISTEN_PLAY_NAMED))
                         .primary()
                         .disabled(play.is_none())
                         .on_click(move |_, _, cx| {
