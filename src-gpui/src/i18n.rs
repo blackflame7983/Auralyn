@@ -729,8 +729,9 @@ pub mod keys {
     pub const REASON_TIMING_TARGET: &str = "gpuiShell.reasonTimingTarget";
     pub const MODES_FIRST: &str = "gpuiShell.modesFirst";
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
+    pub const CONNECT_ADVANCED: &str = "gpuiShell.connectAdvanced";
     #[cfg(test)]
-    pub const ALL: [&str; 717] = [
+    pub const ALL: [&str; 718] = [
         REASON_CONFIRM,
         REASON_MIX_DEVICE,
         REASON_MIX_CHANNELS,
@@ -749,6 +750,7 @@ pub mod keys {
         REASON_TIMING_TARGET,
         MODES_FIRST,
         OPEN_CONNECT,
+        CONNECT_ADVANCED,
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,

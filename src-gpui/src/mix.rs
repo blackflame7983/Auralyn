@@ -12,6 +12,7 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Disableable as _, IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -652,7 +653,7 @@ impl MixPanel {
                              checked: bool,
                              change: fn(bool) -> Change| {
                                 let send = send.clone();
-                                Checkbox::new(id)
+                                Switch::new(id)
                                     .checked(checked)
                                     .label(core(lang, label))
                                     .on_click(move |checked, _, cx| {

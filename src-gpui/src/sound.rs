@@ -17,7 +17,7 @@ use crate::engine::Command;
 use crate::i18n::{core, core_with, keys, Lang};
 use crate::limiter::LimiterPanel;
 use crate::measure::MeasurePanel;
-use crate::part::{choices, note, paragraphs, shift, with_hint, Card, Fold, OnCommand};
+use crate::part::{note, paragraphs, segment, shift, with_hint, Card, Fold, OnCommand};
 
 const NOISE_MODES: [(NoiseMode, &str); 2] = [
     (NoiseMode::Low, keys::NOISE_LOW),
@@ -323,7 +323,7 @@ impl SoundPage {
                         .flex()
                         .flex_col()
                         .gap_2()
-                        .child(choices(
+                        .child(segment(
                             "noise-mode",
                             lang,
                             &NOISE_MODES,
@@ -365,7 +365,7 @@ impl SoundPage {
                                         .child(core(lang, keys::NOISE_DETAILS)),
                                 )
                                 .child(div().text_sm().child(core(lang, keys::NOISE_ADAPTIVE)))
-                                .child(choices(
+                                .child(segment(
                                     "noise-adaptive",
                                     lang,
                                     &ADAPTIVE_MODES,
@@ -451,7 +451,7 @@ impl SoundPage {
                         .flex()
                         .flex_col()
                         .gap_2()
-                        .child(choices("effects-preset", lang, &PRESETS, current.preset, {
+                        .child(segment("effects-preset", lang, &PRESETS, current.preset, {
                             let set = set.clone();
                             move |preset, _, cx| set(Change::Preset(preset), cx)
                         }))
