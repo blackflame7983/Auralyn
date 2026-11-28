@@ -519,10 +519,7 @@ impl State {
                 .parent()
                 .ok_or_else(|| anyhow!("保存先がありません"))?
                 .join("post-mix-runtime");
-            let built = Box::new(super::control::post_mix_child_host(
-                root,
-                self.retired.clone(),
-            ));
+            let built = Box::new(post_mix_child_host(root, self.retired.clone()));
             #[cfg(test)]
             let built = if self.test_children.is_empty() {
                 built
@@ -1116,6 +1113,11 @@ impl State {
         );
         Ok(())
     }
+}
+fn post_mix_child_host(root: PathBuf, retired: Arc<engine_life::Store>) -> AudioHost {
+    let mut child = AudioHost::with_retired(root, retired);
+    child.post_role = true;
+    child
 }
 #[cfg(test)]
 #[path = "tests/post_mix_life_tests.rs"]

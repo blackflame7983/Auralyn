@@ -1,8 +1,6 @@
 pub(crate) mod conditions;
-pub(crate) mod control;
-pub(crate) mod emit;
-pub use control::{AudioControl, ControlError, Entry, EntryKind, JobClass};
 mod deadline;
+pub(crate) mod emit;
 mod engine_exit;
 pub(crate) mod engine_life;
 pub(crate) mod frontend_bootstrap;
@@ -2898,9 +2896,6 @@ fn start_with_mute(
     }
 }
 
-// Global state container
-pub struct AudioState(pub control::AudioControl);
-
 /// Translate common audio engine errors into user-friendly Japanese messages.
 pub fn localize_audio_error(e: String) -> String {
     let lower = e.to_lowercase();
@@ -2969,26 +2964,6 @@ mod compat_tests;
 #[cfg(test)]
 #[path = "audio/tests/engine_life_tests.rs"]
 mod engine_life_tests;
-
-#[cfg(test)]
-#[path = "audio/tests/control_tests.rs"]
-mod control_tests;
-
-#[cfg(test)]
-#[path = "audio/tests/actor_tests.rs"]
-mod actor_tests;
-
-#[cfg(test)]
-#[path = "audio/tests/queue_support.rs"]
-mod queue_support;
-
-#[cfg(test)]
-#[path = "audio/tests/stop_priority_tests.rs"]
-mod stop_priority_tests;
-
-#[cfg(test)]
-#[path = "audio/tests/class_tests.rs"]
-mod class_tests;
 
 #[cfg(test)]
 #[path = "audio/tests/link_seam.rs"]

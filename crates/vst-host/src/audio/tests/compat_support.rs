@@ -522,9 +522,9 @@ pub(crate) fn scripted_parts(
     )
 }
 
-/// `AudioControl`の下に置いた台本つきの`AudioHost`。コマンド経由の試験に使う。
+/// 台本つきの`AudioHost`。
 pub(crate) struct Fixture {
-    pub(crate) control: control::AudioControl,
+    pub(crate) host: std::sync::Mutex<AudioHost>,
     observer: Observer,
 }
 
@@ -532,7 +532,7 @@ impl Fixture {
     pub(crate) fn new(overrides: impl IntoIterator<Item = (&'static str, Vec<Step>)>) -> Self {
         let (host, observer) = scripted_parts(overrides);
         Self {
-            control: control::AudioControl::new(host),
+            host: std::sync::Mutex::new(host),
             observer,
         }
     }
@@ -547,7 +547,7 @@ impl Deref for Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
-        if let Ok(mut host) = self.control.lock(control::Entry::command("fixture_drop")) {
+        if let Ok(mut host) = self.host.lock() {
             host.kill_engine();
         }
         let _ = std::fs::remove_dir_all(&self.observer.dir);

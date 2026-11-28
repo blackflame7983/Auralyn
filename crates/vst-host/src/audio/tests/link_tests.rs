@@ -46,10 +46,8 @@ fn broken_pipe() -> WriteResult {
     ))
 }
 
-fn lock_host(f: &Fixture) -> super::control::HostLease<'_> {
-    f.control
-        .lock(control::Entry::command("link_test"))
-        .unwrap()
+fn lock_host(f: &Fixture) -> std::sync::MutexGuard<'_, AudioHost> {
+    f.host.lock().unwrap()
 }
 
 fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {

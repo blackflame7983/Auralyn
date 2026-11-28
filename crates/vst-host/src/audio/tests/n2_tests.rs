@@ -621,7 +621,6 @@ fn q11_the_state_changes_the_logs_and_the_waits_stay_where_the_design_puts_them(
         include_str!("../post_mix.rs"),
         include_str!("../reader.rs"),
         include_str!("../writer.rs"),
-        include_str!("../control.rs"),
         include_str!("../engine_life.rs"),
     ]
     .iter()

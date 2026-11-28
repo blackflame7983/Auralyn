@@ -4,7 +4,7 @@
     {
       "file": "crates/vst-host/src/audio.rs",
       "rule": "rust/suppression",
-      "hash": "1d6551c17e884f4f0cec4b5a40b1b25d3af05579abd18fa1ea3a8613275b1a64",
+      "hash": "3dc6c29516dd581fe22f3ea4886fb3e338bdf73faa5375488ec844f3e6b9ab8a",
       "count": 8,
       "reason": "導入前のRust例外をファイル指紋で固定する。新規allow/expectの追加や変更時の追認には使用しない。"
     },

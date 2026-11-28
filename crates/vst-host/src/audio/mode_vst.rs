@@ -2275,35 +2275,6 @@ pub(super) mod tests {
         host
     }
 
-    /// X13：次の tick で完了を確定できる切替（`ReleasePoll`で`completed`）を入れる。
-    pub(in crate::audio) fn install_completing_switch(host: &mut AudioHost) {
-        host.set_link_for_test(true);
-        std::fs::create_dir_all(host.mode_vst.path.parent().unwrap()).unwrap();
-        std::fs::write(&host.mode_vst.path, b"journal").unwrap();
-        host.mode_vst.status = Some(model::TransactionSnapshot {
-            id: "tx-test".into(),
-            phase: "completed".into(),
-            target: Some(model::Mode::Singing),
-            error: None,
-            recovery_available: false,
-        });
-        host.mode_vst.transaction = Some(journaled(Step::ReleasePoll));
-    }
-
-    /// X13：切替の取引と状態を、文字列にして比べる。
-    pub(in crate::audio) fn switch_state(host: &AudioHost) -> String {
-        let status = host
-            .mode_vst
-            .status
-            .as_ref()
-            .map(|status| (status.phase.clone(), status.error.clone()));
-        format!(
-            "transaction={} status={status:?} muted={}",
-            host.mode_vst.busy(),
-            host.is_global_muted
-        )
-    }
-
     fn journaled(step: Step) -> Transaction {
         let mut transaction = tx(step);
         transaction.journaled = true;
