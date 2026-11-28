@@ -731,7 +731,7 @@ pub mod keys {
     pub const OPEN_CONNECT: &str = "gpuiShell.openConnect";
     pub const CONNECT_ADVANCED: &str = "gpuiShell.connectAdvanced";
     pub const OBS_CHANGES_CARD: &str = "gpuiShell.obsChangesCard";
-    pub const FLOW_COMFORT: &str = "gpuiShell.flowComfort";
+    pub const FLOW_COMFORT: &str = "home.levelOk";
     #[cfg(test)]
     pub const ALL: [&str; 720] = [
         REASON_CONFIRM,

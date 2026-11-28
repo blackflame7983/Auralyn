@@ -3767,6 +3767,5 @@
   "gpuiShell.reasonMixChannels": "入力チャンネルを選ぶと適用できます",
   "gpuiShell.reasonListenStale": "録り直すと再生できます",
   "gpuiShell.connectAdvanced": "音質・遅延",
-  "gpuiShell.obsChangesCard": "OBSの設定の調整と復元",
-  "gpuiShell.flowComfort": "ちょうど良い大きさ"
+  "gpuiShell.obsChangesCard": "OBSの設定"
 }

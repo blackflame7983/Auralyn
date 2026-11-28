@@ -446,7 +446,7 @@ impl ObsPanel {
         div()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_6()
             .child(connection)
             .child(changes)
     }

@@ -17,7 +17,7 @@ const BEFORE_LINE_ALPHA: f32 = 0.7;
 /// 加工後の塗りの不透明度（`soundFlowDraw.ts` の 0.95）。
 const AFTER_ALPHA: f32 = 0.95;
 /// 話し声のちょうど良い大きさの帯の不透明度。波形より目立たせない。
-const BAND_ALPHA: f32 = 0.08;
+const BAND_ALPHA: f32 = 0.12;
 /// 波形の片側の高さの上限（段の半分に対する割合）。
 const WAVE_SPAN: f32 = 0.92;
 
@@ -113,7 +113,7 @@ fn legend(lang: Lang) -> impl IntoElement {
                     div()
                         .w(px(16.))
                         .h(px(8.))
-                        .bg(color::primary().opacity(BAND_ALPHA * 2.)),
+                        .bg(color::primary().opacity(BAND_ALPHA)),
                 )
                 .child(core(lang, keys::FLOW_COMFORT)),
         )
