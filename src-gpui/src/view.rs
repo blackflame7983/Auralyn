@@ -1359,28 +1359,7 @@ impl Render for MainView {
                                                         })
                                                     })
                                                 },
-                                                {
-                                                    let entity = entity.clone();
-                                                    Rc::new(move |goto, _, cx| {
-                                                        entity.update(cx, |this, cx| {
-                                                            match goto {
-                                                                Goto::Connect => {
-                                                                    this.open(Page::Connect)
-                                                                }
-                                                                Goto::Sound(part) => {
-                                                                    this.sound_part = part;
-                                                                    this.open(Page::Sound)
-                                                                }
-                                                                Goto::Settings(section) => {
-                                                                    this.settings_section =
-                                                                        section;
-                                                                    this.open(Page::Settings)
-                                                                }
-                                                            }
-                                                            cx.notify();
-                                                        })
-                                                    })
-                                                },
+                                                goto(&entity),
                                             ))),
                                         div()
                                             .flex()
@@ -1393,6 +1372,7 @@ impl Render for MainView {
                                                         self.live.ready(),
                                                         cx,
                                                         send.clone(),
+                                                        goto(&entity),
                                                     ),
                                                 ))
                                                 .child(div().max_w(px(560.)).child(
@@ -1605,4 +1585,25 @@ fn sound_command(event: &SliderEvent, change: impl Fn(f32) -> Change) -> Command
         SliderEvent::Change(value) => Command::PreviewSound(change(value.end())),
         SliderEvent::Release(value) => Command::SetSound(change(value.end())),
     }
+}
+
+/// ほかの画面を開く（ホームのカードから）。
+fn goto(entity: &Entity<MainView>) -> crate::prep::OnGoto {
+    let entity = entity.clone();
+    Rc::new(move |goto, _, cx| {
+        entity.update(cx, |this, cx| {
+            match goto {
+                Goto::Connect => this.open(Page::Connect),
+                Goto::Sound(part) => {
+                    this.sound_part = part;
+                    this.open(Page::Sound)
+                }
+                Goto::Settings(section) => {
+                    this.settings_section = section;
+                    this.open(Page::Settings)
+                }
+            }
+            cx.notify();
+        })
+    })
 }

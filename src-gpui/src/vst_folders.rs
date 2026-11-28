@@ -152,7 +152,10 @@ impl ScanFolders {
                 .small()
                 .on_click(toggle),
             div().when(open, |this| {
-                this.child(self.render_body(lang, busy, &folders, send))
+                this.child(crate::part::reveal(
+                    "scan-folders-body".into(),
+                    div().child(self.render_body(lang, busy, &folders, send)),
+                ))
             }),
         )
         .icon(IconName::FolderSearch)

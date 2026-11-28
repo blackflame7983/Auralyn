@@ -284,7 +284,10 @@ impl PrepPanel {
                         .on_click(act(Action::Toggle)),
                 ),
             div().when(open, |this| {
-                this.child(self.render_body(lang, availability, next, &on, act, open_page))
+                this.child(crate::part::reveal(
+                    "prep-body".into(),
+                    div().child(self.render_body(lang, availability, next, &on, act, open_page)),
+                ))
             }),
         )
         .icon(IconName::ListChecks)

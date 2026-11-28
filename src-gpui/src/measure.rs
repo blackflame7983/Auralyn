@@ -128,7 +128,10 @@ impl MeasurePanel {
                             }
                         }),
                 )
-                .child(button("measure-use", keys::MEASURE_USE, approve))
+                .child(crate::part::action(
+                    button("measure-use", keys::MEASURE_USE, approve),
+                    (!quiet).then(|| core(lang, keys::REASON_CONFIRM)),
+                ))
             })
             .when(reading.is_some_and(Measurement::shows_previous), |this| {
                 this.child(note(core(lang, keys::MEASURE_PREVIOUS)))

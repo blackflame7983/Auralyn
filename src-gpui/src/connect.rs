@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use crate::color;
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{hint, note, with_hint};
+use crate::part::{hint, note, shift, with_hint};
 
 type Choices = SelectState<Vec<SharedString>>;
 
@@ -560,25 +560,31 @@ impl ConnectPage {
                         ),
                 )
             })
-            .map(|this| {
-                if app {
-                    this.child(self.render_app(lang, on_apps))
-                } else {
-                    this.child(if shared {
-                        field_hint(
-                            lang,
-                            core(lang, keys::DEVICE),
-                            Some(keys::ASIO_SHARED),
-                            Select::new(&self.input).placeholder(empty),
-                        )
+            .child(shift(
+                ElementId::NamedInteger(
+                    "connect-input".into(),
+                    u64::from(app) * 2 + u64::from(shared),
+                ),
+                div().map(|this| {
+                    if app {
+                        this.child(self.render_app(lang, on_apps))
                     } else {
-                        field(
-                            core(lang, keys::MICROPHONE),
-                            Select::new(&self.input).placeholder(empty),
-                        )
-                    })
-                }
-            })
+                        this.child(if shared {
+                            field_hint(
+                                lang,
+                                core(lang, keys::DEVICE),
+                                Some(keys::ASIO_SHARED),
+                                Select::new(&self.input).placeholder(empty),
+                            )
+                        } else {
+                            field(
+                                core(lang, keys::MICROPHONE),
+                                Select::new(&self.input).placeholder(empty),
+                            )
+                        })
+                    }
+                }),
+            ))
             .when(!shared, |this| {
                 this.child(field(
                     core(lang, keys::OUTPUT),
@@ -596,7 +602,10 @@ impl ConnectPage {
                 Select::new(&self.buffer),
             ))
             .when(shared, |this| {
-                this.child(self.render_routing(lang, signal, on_use_pair, cx))
+                this.child(shift(
+                    "connect-routing".into(),
+                    div().child(self.render_routing(lang, signal, on_use_pair, cx)),
+                ))
             })
             .child(
                 div()

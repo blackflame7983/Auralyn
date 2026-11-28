@@ -122,6 +122,8 @@ impl ModesPanel {
             ))
         } else if modes.phase == "partial" {
             Some(core(lang, keys::MODES_PARTIAL).to_owned())
+        } else if !modes.singing_saved && !modes.talk_saved {
+            Some(core(lang, keys::MODES_FIRST).to_owned())
         } else if !modes.running && (modes.singing_saved || modes.talk_saved) {
             Some(core(lang, keys::MODES_STOPPED).to_owned())
         } else if modes.phase == "custom" && (modes.singing_saved || modes.talk_saved) {

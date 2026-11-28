@@ -115,7 +115,25 @@ impl Live {
 
 /// 保存できるか：下書きが保存と違い、確認の印が付いていること。
 pub fn can_save(draft: &Draft, saved: &Draft, confirmed: bool) -> bool {
-    confirmed && draft != saved
+    save_blocker(draft, saved, confirmed).is_none()
+}
+
+/// 保存できない理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveBlocker {
+    Unchanged,
+    Unconfirmed,
+}
+
+/// 保存できない最初の理由。変えていなければ、確認より先にそれを伝える。
+pub fn save_blocker(draft: &Draft, saved: &Draft, confirmed: bool) -> Option<SaveBlocker> {
+    if draft == saved {
+        Some(SaveBlocker::Unchanged)
+    } else if !confirmed {
+        Some(SaveBlocker::Unconfirmed)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -166,6 +184,14 @@ mod tests {
         assert!(!can_save(&changed, &saved, false));
         assert!(can_save(&changed, &saved, true));
         assert!(!can_save(&saved, &saved, true));
+        assert_eq!(
+            save_blocker(&saved, &saved, false),
+            Some(SaveBlocker::Unchanged)
+        );
+        assert_eq!(
+            save_blocker(&changed, &saved, false),
+            Some(SaveBlocker::Unconfirmed)
+        );
         // 出力が無ければ分けられず、出力を外すと分けるのもやめる。
         assert!(!saved.clone().with(Change::Split(true)).split);
         let split = saved

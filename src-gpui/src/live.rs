@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
-use auralyn_ui_model::live_output::{self, Change, Draft, Live, Verdict};
+use auralyn_ui_model::live_output::{self, Change, Draft, Live, SaveBlocker, Verdict};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::Command;
 use crate::i18n::{core, keys, Lang};
-use crate::part::{note, with_hint, Card, OnCommand};
+use crate::part::{action, note, with_hint, Card, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -235,6 +235,15 @@ impl LivePanel {
             .as_ref()
             .zip(saved)
             .is_some_and(|(draft, saved)| live_output::can_save(draft, saved, confirmed));
+        let save_reason = draft
+            .as_ref()
+            .zip(saved)
+            .filter(|_| !saving)
+            .and_then(|(draft, saved)| live_output::save_blocker(draft, saved, confirmed))
+            .map(|blocker| match blocker {
+                SaveBlocker::Unchanged => keys::REASON_UNCHANGED,
+                SaveBlocker::Unconfirmed => keys::REASON_CONFIRM,
+            });
         let verdict = self.live.as_ref().map(Live::verdict);
         let refresh = {
             let send = send.clone();
@@ -333,7 +342,7 @@ impl LivePanel {
                                 }
                             }),
                     )
-                    .child(
+                    .child(action(
                         Button::new("live-save")
                             .label(core(lang, keys::LIVE_SAVE))
                             .primary()
@@ -346,7 +355,8 @@ impl LivePanel {
                                     window.refresh();
                                 }
                             }),
-                    )
+                        save_reason.map(|key| core(lang, key)),
+                    ))
                 }),
         )
         .icon(IconName::Radio)

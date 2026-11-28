@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use auralyn_ui_model::obs::{
-    self, Reach, State, Target, Verdict, DEFAULT_HOST, DEFAULT_PORT, RECHECK_MS,
+    self, Invalid, Reach, State, Target, Verdict, DEFAULT_HOST, DEFAULT_PORT, RECHECK_MS,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -271,6 +271,13 @@ impl ObsPanel {
         let use_saved = matches && self.use_saved.get();
         let password = self.password.read(cx).value();
         let request = obs::request(&host, &port_text, &password, use_saved, saved);
+        let connect_reason = match &request {
+            _ if !editable || state == State::Connected => None,
+            Ok(_) => None,
+            Err(Invalid::Host) => Some(keys::REASON_OBS_HOST),
+            Err(Invalid::Port) => Some(keys::REASON_OBS_PORT),
+        };
+        let request = request.ok();
         let status = match state {
             State::Checking => core(lang, keys::OBS_CHECKING).to_string(),
             State::Connecting => core(lang, keys::OBS_CONNECTING).to_string(),
@@ -388,6 +395,9 @@ impl ObsPanel {
                                     .disabled(!editable)
                                     .on_click(move |_, _, cx| on(Order::Forget, cx)),
                             )
+                        })
+                        .when_some(connect_reason, |this, key| {
+                            this.child(note(core(lang, key)))
                         }),
                 )
                 .when(state == State::Connected, |this| {

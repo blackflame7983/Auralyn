@@ -16,7 +16,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, Listen};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, paragraphs, save_as, with_hint, OnCommand};
+use crate::part::{card, note, paragraphs, save_as, shift, with_hint, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -207,7 +207,8 @@ impl VoicePanel {
                         }),
                 )
                 .when(recording.can_save(running), |this| {
-                    this.child(
+                    this.child(shift(
+                        "voice-save".into(),
                         div()
                             .flex()
                             .flex_wrap()
@@ -229,7 +230,7 @@ impl VoicePanel {
                                 keys::VOICE_AFTER,
                                 Source::Processed,
                             )),
-                    )
+                    ))
                 })
                 .when(self.saved, |this| {
                     this.child(note(core(lang, keys::VOICE_SAVED)))
@@ -239,7 +240,10 @@ impl VoicePanel {
                         .as_ref()
                         .filter(|_| recording.can_save(running)),
                     |this, listening| {
-                        this.child(self.render_listen(listening, lang, cx, send.clone()))
+                        this.child(shift(
+                            "voice-listen".into(),
+                            div().child(self.render_listen(listening, lang, cx, send.clone())),
+                        ))
                     },
                 )
                 .when_some(
@@ -322,6 +326,12 @@ impl VoicePanel {
                 voice_check::seconds(listening.position_ms),
                 voice_check::seconds(listening.duration_ms)
             )
+        } else if listening.stale {
+            core(lang, keys::REASON_LISTEN_STALE).to_owned()
+        } else if chosen.is_none() {
+            core(lang, keys::REASON_LISTEN_PICK).to_owned()
+        } else if !safe {
+            core(lang, keys::REASON_CONFIRM).to_owned()
         } else {
             core(lang, keys::LISTEN_STOPPED).to_owned()
         };
