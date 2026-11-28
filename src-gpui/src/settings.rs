@@ -395,7 +395,8 @@ pub fn plugins(
             .child(
                 div().child(
                     Button::new("exclusions-clear")
-                        .label(core(lang, keys::EXCL_BUTTON))
+                        .label(core(lang, keys::RESET_SHORT))
+                        .accessibility_label(core(lang, keys::EXCL_BUTTON))
                         .danger()
                         .on_click(move |_, window, cx| {
                             let send = send.clone();

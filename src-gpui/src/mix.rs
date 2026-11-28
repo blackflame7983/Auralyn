@@ -19,7 +19,7 @@ use gpui_kit::*;
 use crate::color;
 use crate::engine::{Command, MixAction};
 use crate::i18n::{core, core_with, keys, Lang};
-use crate::part::{card, note, Fold, OnCommand};
+use crate::part::{card, note, with_hint, Fold, OnCommand};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -558,7 +558,12 @@ impl MixPanel {
                             Select::new(&self.pair).disabled(mix.running),
                         ))
                         .when(app_chosen, |this| {
-                            this.child(note(core(lang, keys::MIX_ROUTE_HELP)))
+                            this.child(with_hint(
+                                "mix-route-hint",
+                                lang,
+                                core(lang, keys::MIX_ROUTE_HELP),
+                                note(core(lang, keys::MIX_ROUTE_SHORT)),
+                            ))
                         })
                         .when(route_unmuted, |this| {
                             this.child(warning(core(lang, keys::MIX_ROUTE_MUTE_FIRST).to_owned()))

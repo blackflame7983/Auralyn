@@ -189,7 +189,8 @@ impl ScenePanel {
                             ))
                             .child(
                                 Button::new(SharedString::from(format!("scene-remove-{index}")))
-                                    .label(core_with(
+                                    .label(core(lang, keys::REMOVE_SHORT))
+                                    .accessibility_label(core_with(
                                         lang,
                                         keys::SCENE_REMOVE,
                                         &[("n", &(index + 1))],

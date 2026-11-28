@@ -42,7 +42,7 @@ pub mod keys {
     pub const NO_DEVICES: &str = "settings.AudioSettingsModal.040";
     pub const ASIO_SHARED: &str = "settings.AudioSettingsModal.044";
     pub const FIRST_START_HINT: &str = "settings.connection.firstStartHint";
-    pub const SAMPLE_RATE: &str = "settings.AudioSettingsModal.060";
+    pub const SAMPLE_RATE: &str = "gpuiShell.copySampleRate";
     pub const WASAPI_RATE: &str = "settings.AudioSettingsModal.070";
     pub const BUFFER_SIZE: &str = "settings.AudioSettingsModal.065";
     pub const SAMPLES: &str = "settings.AudioSettingsModal.067";
@@ -64,7 +64,7 @@ pub mod keys {
     pub const SETUPS_CONFIRM_DELETE: &str = "presets.copy.038";
     pub const SETUPS_EXPORT: &str = "presets.copy.078";
     pub const SETUPS_EXPORTED: &str = "presets.copy.041";
-    pub const SETUPS_IMPORT: &str = "presets.copy.065";
+    pub const SETUPS_IMPORT: &str = "gpuiShell.copySetupsImport";
     pub const SETUPS_IMPORTED: &str = "presets.copy.043";
     pub const SETUPS_APPLIED: &str = "gpuiShell.setupsApplied";
     pub const SETUPS_RESTORED: &str = "gpuiShell.setupsRestored";
@@ -84,13 +84,14 @@ pub mod keys {
     pub const VOICE_SAVED: &str = "voice.copy.121";
     pub const LISTEN_TITLE: &str = "voice.copy.036";
     pub const LISTEN_LEAD: &str = "voice.copy.038";
-    pub const LISTEN_REFRESH: &str = "voice.copy.040";
+    pub const LISTEN_SHORT: &str = "gpuiShell.listenShort";
+    pub const LISTEN_REFRESH: &str = "gpuiShell.copyListenRefresh";
     pub const LISTEN_DEVICE: &str = "voice.copy.041";
     pub const LISTEN_CHOOSE: &str = "voice.copy.042";
-    pub const LISTEN_SAFE: &str = "voice.copy.045";
-    pub const LISTEN_PLAYING: &str = "voice.copy.049";
+    pub const LISTEN_SAFE: &str = "gpuiShell.copyListenSafe";
+    pub const LISTEN_PLAYING: &str = "gpuiShell.copyListenPlaying";
     pub const LISTEN_STOPPED: &str = "voice.copy.051";
-    pub const LISTEN_PLAY: &str = "voice.copy.059";
+    pub const LISTEN_PLAY: &str = "gpuiShell.copyListenPlay";
     pub const LISTEN_STOP: &str = "voice.copy.060";
     pub const LISTEN_LOOP: &str = "voice.copy.061";
     pub const LISTEN_RETRY: &str = "voice.copy.039";
@@ -115,6 +116,7 @@ pub mod keys {
     pub const EXCL_DONE: &str = "settings.AudioSettingsModal.185";
     pub const EXCL_FAILED: &str = "settings.AudioSettingsModal.186";
     pub const EXCL_BUTTON: &str = "settings.AudioSettingsModal.187";
+    pub const RESET_SHORT: &str = "gpuiShell.resetShort";
     pub const VST_ADD: &str = "rack.addEffects";
     pub const VST_SEARCH: &str = "pluginBrowser.searchPlaceholder";
     pub const VST_SCANNING: &str = "pluginBrowser.scanning";
@@ -170,7 +172,7 @@ pub mod keys {
     pub const MEASURE_SHORT: &str = "measurement.short";
     pub const MEASURE_VARIABLE: &str = "measurement.variable";
     pub const MEASURE_UNCERTAIN: &str = "measurement.uncertain";
-    pub const MEASURE_QUIET: &str = "measurement.quiet";
+    pub const MEASURE_QUIET: &str = "gpuiShell.copyMeasureQuiet";
     pub const MEASURE_USE: &str = "measurement.use";
     pub const MEASURE_PREVIOUS: &str = "measurement.previous";
     pub const MEASURE_LIMITS: &str = "measurement.limits";
@@ -192,7 +194,7 @@ pub mod keys {
     pub const REVERB_MIX: &str = "settings.SingingControls.416";
     pub const REVERB_DECAY: &str = "settings.SingingControls.417";
     pub const REVERB_DAMPING: &str = "settings.SingingControls.418";
-    pub const DEESSER: &str = "settings.deesser";
+    pub const DEESSER: &str = "gpuiShell.copyDeesser";
     pub const DEESSER_HINT: &str = "settings.deesserHint";
     pub const DEESSER_AMOUNT: &str = "settings.deesserAmount";
     pub const QUIT_HELP: &str = "band.quitHelp";
@@ -282,7 +284,7 @@ pub mod keys {
     pub const LIVE_BROADCAST_TRIM: &str = "liveOutput.broadcastTrim";
     pub const LIVE_MONITOR_MUTED: &str = "liveOutput.monitorMuted";
     pub const LIVE_CONFIRM: &str = "liveOutput.confirm";
-    pub const LIVE_SAVE: &str = "liveOutput.save";
+    pub const LIVE_SAVE: &str = "gpuiShell.copyLiveSave";
     pub const LIVE_SPLIT_KEPT: &str = "gpuiShell.liveSplitKept";
     pub const LIVE_SPLIT: &str = "liveOutput.split";
     pub const LIVE_SPLIT_SCOPE: &str = "liveOutput.splitScope";
@@ -296,6 +298,7 @@ pub mod keys {
     pub const MIX_REFRESH_APPS: &str = "mixing.refreshApps";
     pub const MIX_ROUTE: &str = "mixing.chooseRoute";
     pub const MIX_ROUTE_HELP: &str = "mixing.routeHelp";
+    pub const MIX_ROUTE_SHORT: &str = "gpuiShell.mixRouteShort";
     pub const MIX_ROUTE_MUTED: &str = "mixing.muted";
     pub const MIX_ROUTE_NEEDS_MUTE: &str = "mixing.unmuted";
     pub const MIX_ROUTE_MUTE_FIRST: &str = "mixingUi.routeMuted";
@@ -303,7 +306,7 @@ pub mod keys {
     pub const MIX_SOURCE: &str = "mixing.device";
     pub const MIX_CHANNELS: &str = "mixing.channels";
     pub const MIX_STOP_FIRST: &str = "mixing.stopped";
-    pub const MIX_CONFIRM: &str = "mixing.confirm";
+    pub const MIX_CONFIRM: &str = "gpuiShell.copyMixConfirm";
     pub const MIX_APPLY: &str = "mixing.save";
     pub const MIX_DISABLE: &str = "mixing.disable";
     pub const MIX_VOICE: &str = "mixing.voice";
@@ -311,7 +314,7 @@ pub mod keys {
     pub const MIX_VOICE_MUTE: &str = "gpuiShell.mixVoiceMute";
     pub const MIX_MUSIC_MUTE: &str = "gpuiShell.mixMusicMute";
     pub const MIX_MONITOR: &str = "mixing.monitor";
-    pub const MIX_RELOAD: &str = "mixing.reload";
+    pub const MIX_RELOAD: &str = "gpuiShell.copyMixReload";
     pub const MIX_OFFSET: &str = "mixing.offset";
     pub const MIX_OFFSET_APPLY: &str = "mixing.applyLevels";
     pub const MIX_OFFSET_INVALID: &str = "mixingUi.invalidLevels";
@@ -390,7 +393,7 @@ pub mod keys {
     pub const MODES_UNLOCK_HINT: &str = "liveBar.unlockHint";
     pub const MODES_PROTECT_HINT: &str = "liveBar.protectHint";
     pub const MODES_PROTECT_NEEDS_AUDIO: &str = "liveBar.protectNeedsAudio";
-    pub const MODES_REFRESH: &str = "settings.LiveModeControls.236";
+    pub const MODES_REFRESH: &str = "gpuiShell.copyModesRefresh";
     pub const MODES_LINKED: &str = "gpuiShell.modesLinked";
     pub const MODES_CANCEL: &str = "settings.mode.cancelRegistration";
     pub const MODES_LOCKED: &str = "gpuiShell.modesLocked";
@@ -441,10 +444,10 @@ pub mod keys {
     pub const SOURCE: &str = "processInput.source";
     pub const SOURCE_DEVICE: &str = "processInput.device";
     pub const SOURCE_APP: &str = "processInput.process";
-    pub const SOURCE_ASIO: &str = "processInput.asioUnavailable";
+    pub const SOURCE_ASIO: &str = "gpuiShell.copySourceAsio";
     pub const PURPOSE: &str = "processInput.purpose";
-    pub const PURPOSE_VOICE: &str = "processInput.voice";
-    pub const PURPOSE_MUSIC: &str = "processInput.music";
+    pub const PURPOSE_VOICE: &str = "gpuiShell.copyPurposeVoice";
+    pub const PURPOSE_MUSIC: &str = "gpuiShell.copyPurposeMusic";
     pub const APP: &str = "processInput.app";
     pub const APP_CHOOSE: &str = "processInput.choose";
     pub const APP_RESELECT: &str = "processInput.reselect";
@@ -463,10 +466,10 @@ pub mod keys {
     pub const RECOVERY_PENDING: &str = "recovery.pending";
     pub const RECOVERY_EXCLUDE: &str = "recovery.exclude";
     pub const RECOVERY_RELOAD: &str = "recovery.reload";
-    pub const RECOVERY_EMPTY: &str = "recovery.empty";
+    pub const RECOVERY_EMPTY: &str = "gpuiShell.copyRecoveryEmpty";
     pub const RECOVERY_SAFETY: &str = "gpuiShell.recoverySafety";
     pub const RECOVERY_STOP: &str = "recovery.stop";
-    pub const RECOVERY_DEVICE_STOP: &str = "recovery.deviceStop";
+    pub const RECOVERY_DEVICE_STOP: &str = "gpuiShell.copyRecoveryDeviceStop";
     pub const RECOVERY_CHOOSE_DEVICE: &str = "recovery.chooseDevice";
     pub const EXITED_UNKNOWN: &str = "audioNotices.engineExitedUnknown";
     pub const EXITED_VST: &str = "audioNotices.engineExitedVst";
@@ -527,8 +530,9 @@ pub mod keys {
     pub const SCENE_SINGING: &str = "settings.ObsModeRoutingSettings.326";
     pub const SCENE_TALK: &str = "settings.ObsModeRoutingSettings.327";
     pub const SCENE_REMOVE: &str = "settings.ObsModeRoutingSettings.328";
-    pub const SCENE_ADD: &str = "settings.ObsModeRoutingSettings.329";
-    pub const SCENE_SAVE: &str = "settings.ObsModeRoutingSettings.330";
+    pub const REMOVE_SHORT: &str = "gpuiShell.removeShort";
+    pub const SCENE_ADD: &str = "gpuiShell.copySceneAdd";
+    pub const SCENE_SAVE: &str = "gpuiShell.copySceneSave";
     pub const SCENE_SAVED: &str = "settings.ObsModeRoutingSettings.309";
     pub const SCENE_NAMES: &str = "settings.ObsModeRoutingSettings.308";
     pub const SCENE_SAVE_FAILED: &str = "settings.ObsModeRoutingSettings.310";
@@ -549,7 +553,9 @@ pub mod keys {
     pub const OBS_SETUP_CHANGE: &str = "settings.ObsSafeSetup.350";
     pub const OBS_SETUP_NOT_RESTORABLE: &str = "settings.ObsSafeSetup.355";
     pub const OBS_SETUP_UNDO: &str = "settings.obs.undo";
+    pub const UNDO_SHORT: &str = "gpuiShell.undoShort";
     pub const OBS_SETUP_FORGET: &str = "settings.obs.forget";
+    pub const FORGET_SHORT: &str = "gpuiShell.forgetShort";
     pub const OBS_SETUP_FORGET_TEXT: &str = "settings.ObsSafeSetup.360";
     pub const OBS_SETUP_FORGET_OK: &str = "settings.ObsSafeSetup.361";
     pub const OBS_SETUP_FORGET_CANCEL: &str = "settings.ObsSafeSetup.362";
@@ -612,7 +618,7 @@ pub mod keys {
     pub const PREP_CALL_SCOPE: &str = "prep.callScope";
     pub const PREP_CHECKING: &str = "prep.checking";
     pub const PREP_CHECK_RECEIVER: &str = "prep.checkReceiver";
-    pub const PREP_EXTERNAL_CHANGED: &str = "prep.externalChanged";
+    pub const PREP_EXTERNAL_CHANGED: &str = "gpuiShell.copyPrepExternalChanged";
     pub const PREP_EXTERNAL_SCOPE: &str = "prep.externalScope";
     pub const PREP_FAILED: &str = "prep.failed";
     pub const PREP_HOME: &str = "prep.home";
@@ -634,7 +640,7 @@ pub mod keys {
     pub const PREP_REFRESH: &str = "prep.refresh";
     pub const PREP_RUNNING: &str = "prep.running";
     pub const PREP_SEPARATE: &str = "prep.separate";
-    pub const PREP_SESSION_CHECKED: &str = "prep.sessionChecked";
+    pub const PREP_SESSION_CHECKED: &str = "gpuiShell.copyPrepSessionChecked";
     pub const PREP_SIGNAL: &str = "prep.signal";
     pub const PREP_SIGNAL_UNKNOWN: &str = "prep.signalUnknown";
     pub const PREP_STALE: &str = "prep.stale";
@@ -648,7 +654,7 @@ pub mod keys {
     pub const PREP_VENUE_WARNING: &str = "prep.venueWarning";
     pub const SHELL_CONFIGURE: &str = "shell.configure";
     pub const SHELL_LISTEN: &str = "shell.listen";
-    pub const SHELL_SOUND: &str = "shell.sound";
+    pub const SHELL_SOUND: &str = "gpuiShell.copyShellSound";
     pub const SHELL_STOPPED: &str = "shell.stopped";
     pub const SHELL_UNCONFIGURED: &str = "shell.unconfigured";
     pub const SHELL_UNKNOWN: &str = "shell.unknown";
@@ -680,7 +686,7 @@ pub mod keys {
     pub const SETTINGS_SYSTEM: &str = "settings.system";
     pub const POST_ON: &str = "flow.enabled";
     pub const POST_OFF: &str = "flow.disabled";
-    pub const MIX_DIAG_TITLE: &str = "mixingDiagnostics.title";
+    pub const MIX_DIAG_TITLE: &str = "gpuiShell.copyMixDiagTitle";
     pub const MIX_DIAG_CAPTURE: &str = "mixingDiagnostics.capture";
     pub const MIX_DIAG_QUEUE: &str = "mixingDiagnostics.queue";
     pub const MIX_DIAG_CORRECTION: &str = "mixingDiagnostics.correction";
@@ -701,7 +707,7 @@ pub mod keys {
     pub const MIX_DIAG_DECLARED: &str = "mixingDiagnostics.declared";
 
     #[cfg(test)]
-    pub const ALL: [&str; 688] = [
+    pub const ALL: [&str; 694] = [
         OBS_SETUP_TITLE,
         OBS_SETUP_STOP_FIRST,
         OBS_SETUP_PREVIEW,
@@ -719,7 +725,9 @@ pub mod keys {
         OBS_SETUP_CHANGE,
         OBS_SETUP_NOT_RESTORABLE,
         OBS_SETUP_UNDO,
+        UNDO_SHORT,
         OBS_SETUP_FORGET,
+        FORGET_SHORT,
         OBS_SETUP_FORGET_TEXT,
         OBS_SETUP_FORGET_OK,
         OBS_SETUP_FORGET_CANCEL,
@@ -742,6 +750,7 @@ pub mod keys {
         SCENE_SINGING,
         SCENE_TALK,
         SCENE_REMOVE,
+        REMOVE_SHORT,
         SCENE_ADD,
         SCENE_SAVE,
         SCENE_SAVED,
@@ -852,6 +861,7 @@ pub mod keys {
         VOICE_SAVED,
         LISTEN_TITLE,
         LISTEN_LEAD,
+        LISTEN_SHORT,
         LISTEN_REFRESH,
         LISTEN_DEVICE,
         LISTEN_CHOOSE,
@@ -883,6 +893,7 @@ pub mod keys {
         EXCL_DONE,
         EXCL_FAILED,
         EXCL_BUTTON,
+        RESET_SHORT,
         VST_ADD,
         VST_SEARCH,
         VST_SCANNING,
@@ -1063,6 +1074,7 @@ pub mod keys {
         MIX_REFRESH_APPS,
         MIX_ROUTE,
         MIX_ROUTE_HELP,
+        MIX_ROUTE_SHORT,
         MIX_ROUTE_MUTED,
         MIX_ROUTE_NEEDS_MUTE,
         MIX_ROUTE_MUTE_FIRST,
