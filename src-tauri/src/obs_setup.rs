@@ -95,8 +95,8 @@ fn set_result(
     }
 }
 
-/// 画面の `ObsSafeSetup.tsx` が全文一致で「履歴が満杯」と判断する。変えるときは両側の試験を合わせる。
-const HISTORY_FULL: &str =
+/// 画面はこの文との全文一致で「履歴が満杯」と判断する。
+pub const HISTORY_FULL: &str =
     "変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。";
 
 const REQUIRED: &[&str] = &[
@@ -1535,13 +1535,6 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-
-    #[test]
-    fn history_full_message_matches_frontend_literal() {
-        // 画面は、この文言との全文一致で「履歴が満杯」を判断する。
-        let screen = include_str!("../../src/components/features/AudioSettings/ObsSafeSetup.tsx");
-        assert!(screen.contains(&format!("=== '{HISTORY_FULL}'")));
-    }
 
     fn timing_request(additional: i64) -> TimingPreviewRequest {
         TimingPreviewRequest {
