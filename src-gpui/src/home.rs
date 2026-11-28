@@ -16,6 +16,8 @@ const BEFORE_LINE_WIDTH: f32 = 1.5;
 const BEFORE_LINE_ALPHA: f32 = 0.7;
 /// 加工後の塗りの不透明度（`soundFlowDraw.ts` の 0.95）。
 const AFTER_ALPHA: f32 = 0.95;
+/// 話し声のちょうど良い大きさの帯の不透明度。波形より目立たせない。
+const BAND_ALPHA: f32 = 0.08;
 /// 波形の片側の高さの上限（段の半分に対する割合）。
 const WAVE_SPAN: f32 = 0.92;
 
@@ -102,6 +104,19 @@ fn legend(lang: Lang) -> impl IntoElement {
                 )
                 .child(core(lang, keys::FLOW_AFTER)),
         )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .child(
+                    div()
+                        .w(px(16.))
+                        .h(px(8.))
+                        .bg(color::primary().opacity(BAND_ALPHA * 2.)),
+                )
+                .child(core(lang, keys::FLOW_COMFORT)),
+        )
 }
 
 /// 加工後をオーロラ色で塗り、その上に加工前の上下の包絡を線で重ねる（`soundFlowDraw.ts` の `drawFlowWave`）。
@@ -139,6 +154,18 @@ fn paint_wave(bounds: Bounds<Pixels>, samples: &[Sample], mode: Mode, window: &m
     let after = |s: &Sample| s.after;
     let before = |s: &Sample| s.before;
     window.with_content_mask(Some(ContentMask { bounds }), |window| {
+        let (low, high) = meter::comfortable_band();
+        for sign in [-1., 1.] {
+            let edges = [low, high].map(|at| center + mid * (sign * at * WAVE_SPAN));
+            let top = edges[0].min(edges[1]);
+            window.paint_quad(fill(
+                Bounds::new(
+                    point(bounds.origin.x, top),
+                    size(width, (edges[0] - edges[1]).abs()),
+                ),
+                color::primary().opacity(BAND_ALPHA),
+            ));
+        }
         let mut fill = PathBuilder::fill();
         let mut outline = points(after, -1.);
         outline.extend(points(after, 1.).into_iter().rev());
