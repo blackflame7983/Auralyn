@@ -13,7 +13,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{core, keys, Lang};
-use crate::part::{card, note};
+use crate::part::{action, card, note};
 
 type Names = SelectState<Vec<SharedString>>;
 
@@ -140,10 +140,9 @@ impl SetupPanel {
                         this.child(note(core(lang, keys::SETUP_LISTEN_HINT)))
                     }
                 })
-                .child(
+                .child(action(
                     div()
                         .flex()
-                        .flex_wrap()
                         .gap_2()
                         .child(
                             Button::new("setup-start")
@@ -158,10 +157,9 @@ impl SetupPanel {
                                 .outline()
                                 .on_click(move |_, window, cx| on_connect(window, cx)),
                         ),
-                )
-                .when(!ready, |this| {
-                    this.child(note(core(lang, keys::REASON_SETUP_PICK)))
-                }),
+                    (stopped && self.chosen(cx).is_none())
+                        .then(|| core(lang, keys::REASON_SETUP_PICK)),
+                )),
         )
         .icon(IconName::Sparkles)
         .hint(lang, core(lang, keys::SETUP_LEAD))

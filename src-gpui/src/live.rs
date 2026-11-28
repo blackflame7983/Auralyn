@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use auralyn_ui_model::connect::{self, Device};
-use auralyn_ui_model::live_output::{self, Change, Draft, Live, Verdict};
+use auralyn_ui_model::live_output::{self, Change, Draft, Live, SaveBlocker, Verdict};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
@@ -235,12 +235,15 @@ impl LivePanel {
             .as_ref()
             .zip(saved)
             .is_some_and(|(draft, saved)| live_output::can_save(draft, saved, confirmed));
-        let save_reason = match draft.as_ref().zip(saved) {
-            _ if saving || can_save => None,
-            Some((draft, saved)) if draft == saved => Some(keys::REASON_UNCHANGED),
-            Some(_) => Some(keys::REASON_CONFIRM),
-            None => None,
-        };
+        let save_reason = draft
+            .as_ref()
+            .zip(saved)
+            .filter(|_| !saving)
+            .and_then(|(draft, saved)| live_output::save_blocker(draft, saved, confirmed))
+            .map(|blocker| match blocker {
+                SaveBlocker::Unchanged => keys::REASON_UNCHANGED,
+                SaveBlocker::Unconfirmed => keys::REASON_CONFIRM,
+            });
         let verdict = self.live.as_ref().map(Live::verdict);
         let refresh = {
             let send = send.clone();

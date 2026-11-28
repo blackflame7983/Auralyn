@@ -452,10 +452,16 @@ impl MixPanel {
             && matches!(chosen, Some((_, true)))
             && confirmed;
         // ほかの理由（配信用の出力・止める・ミュート）は上に注意として出ている。
-        let apply_reason = if !ready || mix.running || route_unmuted {
+        let apply_reason = if !ready || mix.running || route_unmuted || mix.error.is_some() {
             None
+        } else if self.selected(cx).is_none() {
+            Some(keys::REASON_MIX_DEVICE)
         } else if chosen.is_none() {
-            Some(keys::REASON_PICK_SOURCE)
+            Some(if app_chosen {
+                keys::REASON_MIX_ROUTE
+            } else {
+                keys::REASON_MIX_CHANNELS
+            })
         } else if !confirmed {
             Some(keys::REASON_CONFIRM)
         } else {

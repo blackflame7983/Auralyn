@@ -106,43 +106,42 @@ impl Form {
 
     /// 最初に足りない入力。そろっているか、提案できない（`blocked`）ときは `None`。
     pub fn missing(&self) -> Option<Missing> {
-        if self.blocked().is_some() {
-            return None;
-        }
-        let delay = self.difference.trim().parse::<i64>().ok();
-        if self.direction.is_none() {
-            Some(Missing::Direction)
-        } else if !delay.is_some_and(|delay| (1..=MAX_DELAY_MS).contains(&delay)) {
-            Some(Missing::Difference)
-        } else if optional(&self.fps, |fps: f64| {
-            fps.is_finite() && (1.0..=240.0).contains(&fps)
-        })
-        .is_none()
-        {
-            Some(Missing::Fps)
-        } else if optional(&self.track, |track: u8| (1..=6).contains(&track)).is_none() {
-            Some(Missing::Track)
-        } else if self.note.trim().is_empty() || self.note.chars().count() > MAX_NOTE_CHARS {
-            Some(Missing::Note)
-        } else if !self.checked {
-            Some(Missing::Checked)
-        } else {
-            None
-        }
+        self.read().err().flatten()
     }
 
     /// 入力がそろっていて範囲内なら、送れる形にする。
     pub fn measurement(&self) -> Option<Measurement> {
-        self.role()?;
-        if self.missing().is_some() {
-            return None;
+        self.read().ok()
+    }
+
+    /// 入力を上から順に読む。提案できないときは `Err(None)`、足りない入力があれば `Err(Some(その入力))`。
+    fn read(&self) -> Result<Measurement, Option<Missing>> {
+        if self.blocked().is_some() {
+            return Err(None);
         }
+        let direction = self.direction.ok_or(Some(Missing::Direction))?;
+        let delay_ms = self
+            .difference
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|delay| (1..=MAX_DELAY_MS).contains(delay))
+            .ok_or(Some(Missing::Difference))?;
+        let fps = optional(&self.fps, |fps: f64| {
+            fps.is_finite() && (1.0..=240.0).contains(&fps)
+        })
+        .ok_or(Some(Missing::Fps))?;
+        let track = optional(&self.track, |track: u8| (1..=6).contains(&track))
+            .ok_or(Some(Missing::Track))?;
         let note = self.note.trim();
-        let delay_ms: i64 = self.difference.trim().parse().ok()?;
-        let fps = self.fps.trim().parse().ok();
-        let track = self.track.trim().parse().ok();
-        let late = self.direction == Some(Direction::Late);
-        Some(Measurement {
+        if note.is_empty() || self.note.chars().count() > MAX_NOTE_CHARS {
+            return Err(Some(Missing::Note));
+        }
+        if !self.checked {
+            return Err(Some(Missing::Checked));
+        }
+        let late = direction == Direction::Late;
+        Ok(Measurement {
             delay_ms,
             measured_ms: if late { delay_ms } else { -delay_ms },
             note: note.to_string(),

@@ -208,10 +208,7 @@ impl VoicePanel {
                 )
                 .when(recording.can_save(running), |this| {
                     this.child(shift(
-                        ElementId::NamedInteger(
-                            "voice-save".into(),
-                            u64::from(recording.duration_ms),
-                        ),
+                        "voice-save".into(),
                         div()
                             .flex()
                             .flex_wrap()
@@ -244,10 +241,7 @@ impl VoicePanel {
                         .filter(|_| recording.can_save(running)),
                     |this, listening| {
                         this.child(shift(
-                            ElementId::NamedInteger(
-                                "voice-listen".into(),
-                                u64::from(recording.duration_ms),
-                            ),
+                            "voice-listen".into(),
                             div().child(self.render_listen(listening, lang, cx, send.clone())),
                         ))
                     },
@@ -332,8 +326,12 @@ impl VoicePanel {
                 voice_check::seconds(listening.position_ms),
                 voice_check::seconds(listening.duration_ms)
             )
-        } else if play.is_none() && !safe {
+        } else if listening.stale {
+            core(lang, keys::REASON_LISTEN_STALE).to_owned()
+        } else if chosen.is_none() {
             core(lang, keys::REASON_LISTEN_PICK).to_owned()
+        } else if !safe {
+            core(lang, keys::REASON_CONFIRM).to_owned()
         } else {
             core(lang, keys::LISTEN_STOPPED).to_owned()
         };

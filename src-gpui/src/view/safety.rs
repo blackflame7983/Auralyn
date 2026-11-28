@@ -218,14 +218,14 @@ impl MainView {
                 } else {
                     None
                 };
-                this.when_some(text, |this, key| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .text_color(color::muted())
-                            .child(core(lang, key)),
-                    )
-                })
+                // 文が無いときも1行分を空けておき、下のロックを動かさない。
+                this.child(
+                    div()
+                        .min_h(px(COMPARE_NOTE_HEIGHT))
+                        .text_xs()
+                        .text_color(color::muted())
+                        .children(text.map(|key| core(lang, key))),
+                )
             })
     }
 
@@ -442,3 +442,6 @@ fn slider_row(
                 .child(Slider::new(state).horizontal().accessibility_label(label)),
         )
 }
+
+/// 比較のボタンの下の文（`text_xs` の1行）の高さ。
+const COMPARE_NOTE_HEIGHT: f32 = 16.;

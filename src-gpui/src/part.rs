@@ -91,11 +91,6 @@ fn rise<E: IntoElement + Styled + 'static>(
     )
 }
 
-/// 開いた回数で動き直す id。
-pub fn opened_id(name: &'static str, opened: u64) -> ElementId {
-    ElementId::NamedInteger(SharedString::new_static(name), opened)
-}
-
 impl Card {
     pub fn new(title: &'static str, body: impl IntoElement) -> Self {
         Self {
@@ -351,14 +346,25 @@ pub fn choices<T: Copy + PartialEq + 'static>(
         }))
 }
 
-/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に出し、出ても消えても下の行を動かさない。
-pub fn action(button: impl IntoElement, reason: Option<&'static str>) -> impl IntoElement {
+/// ボタンと、押せないときの理由（何をすれば押せるか）。理由はボタンの横に2行まで出し、折り返して下の行を押し下げない。
+pub fn action<R: Into<SharedString>>(
+    button: impl IntoElement,
+    reason: Option<R>,
+) -> impl IntoElement {
     div()
         .flex()
-        .flex_wrap()
         .items_center()
-        .gap_x_3()
-        .gap_y_1()
-        .child(button)
-        .when_some(reason, |this, reason| this.child(note(reason)))
+        .gap_3()
+        .child(div().flex_none().child(button))
+        .when_some(reason, |this, reason| {
+            this.child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_sm()
+                    .text_color(color::muted())
+                    .line_clamp(2)
+                    .child(reason.into()),
+            )
+        })
 }

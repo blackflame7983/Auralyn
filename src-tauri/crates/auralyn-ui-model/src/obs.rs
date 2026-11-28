@@ -51,21 +51,28 @@ pub fn saved_matches(saved: Option<&Target>, host: &str, port: u16) -> bool {
     saved.is_some_and(|saved| saved.host == host.trim().to_ascii_lowercase() && saved.port == port)
 }
 
-/// 入力から接続の要求を作る。ホスト名が空か、ポートが不正なら作らない。
+/// 接続の要求を作れない理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Invalid {
+    Host,
+    Port,
+}
+
+/// 入力から接続の要求を作る。ホスト名が空か、ポートが不正なら作らない（ホスト名を先に見る）。
 pub fn request(
     host: &str,
     port_text: &str,
     password: &str,
     use_saved: bool,
     saved: Option<&Target>,
-) -> Option<Request> {
-    let port = port(port_text)?;
+) -> Result<Request, Invalid> {
     let host = host.trim();
     if host.is_empty() {
-        return None;
+        return Err(Invalid::Host);
     }
+    let port = port(port_text).ok_or(Invalid::Port)?;
     let password = (!(use_saved && saved_matches(saved, host, port))).then(|| password.to_string());
-    Some(Request {
+    Ok(Request {
         target: Target {
             host: host.to_string(),
             port,
@@ -175,8 +182,11 @@ mod tests {
 
     #[test]
     fn blank_hosts_and_bad_ports_make_no_request() {
-        assert_eq!(request("  ", "4455", "", false, None), None);
-        assert_eq!(request("localhost", "0", "", false, None), None);
+        assert_eq!(request("  ", "0", "", false, None), Err(Invalid::Host));
+        assert_eq!(
+            request("localhost", "0", "", false, None),
+            Err(Invalid::Port)
+        );
     }
 
     #[test]

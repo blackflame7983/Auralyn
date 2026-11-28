@@ -26,8 +26,6 @@ use crate::part::{action, choices, note};
 #[derive(Default)]
 struct Picked {
     open: bool,
-    /// 開いた回数。開くたびに中身をふわっと出す。
-    opened: u64,
     comparison: Comparison,
     direction: Option<Direction>,
     mixed: bool,
@@ -149,10 +147,7 @@ impl TimingPanel {
         busy: bool,
         on: OnOrder,
     ) -> impl IntoElement {
-        let (open, opened) = {
-            let picked = self.picked.borrow();
-            (picked.open, picked.opened)
-        };
+        let open = self.picked.borrow().open;
         let toggle = {
             let picked = self.picked.clone();
             Button::new("obs-timing-open")
@@ -167,7 +162,6 @@ impl TimingPanel {
                 .on_click(move |_, window, _| {
                     let mut picked = picked.borrow_mut();
                     picked.open = !picked.open;
-                    picked.opened += u64::from(picked.open);
                     window.refresh();
                 })
         };
@@ -181,7 +175,7 @@ impl TimingPanel {
             .child(div().child(toggle))
             .when(open, |this| {
                 this.child(crate::part::reveal(
-                    crate::part::opened_id("obs-timing-body", opened),
+                    "obs-timing-body".into(),
                     div().child(self.render_form(lang, cx, connected, busy, on)),
                 ))
             })
@@ -318,14 +312,17 @@ impl TimingPanel {
                 measurement: m.clone(),
             });
         let idle = connected && !busy;
-        let fetch_reason = form.missing().map(|missing| match missing {
-            Missing::Direction => keys::REASON_TIMING_DIRECTION,
-            Missing::Difference => keys::REASON_TIMING_DIFFERENCE,
-            Missing::Fps => keys::REASON_TIMING_FPS,
-            Missing::Track => keys::REASON_TIMING_TRACK,
-            Missing::Note => keys::REASON_TIMING_NOTE,
-            Missing::Checked => keys::REASON_CONFIRM,
-        });
+        let fetch_reason = form
+            .missing()
+            .filter(|_| idle)
+            .map(|missing| match missing {
+                Missing::Direction => keys::REASON_TIMING_DIRECTION,
+                Missing::Difference => keys::REASON_TIMING_DIFFERENCE,
+                Missing::Fps => keys::REASON_TIMING_FPS,
+                Missing::Track => keys::REASON_TIMING_TRACK,
+                Missing::Note => keys::REASON_TIMING_NOTE,
+                Missing::Checked => keys::REASON_CONFIRM,
+            });
         let preview_reason = (measurement.is_some() && supported.is_some() && selected.is_none())
             .then_some(keys::REASON_TIMING_TARGET);
         div()

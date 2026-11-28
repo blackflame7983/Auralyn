@@ -71,8 +71,6 @@ pub struct PrepPanel {
     clear_receiver: bool,
     /// 利用者が開閉を選んだ。`None` の間は、問題があるときだけ開く。
     open: Option<bool>,
-    /// 開いた回数。開くたびに中身をふわっと出す。
-    opened: u64,
     _subscription: Subscription,
 }
 
@@ -108,7 +106,6 @@ impl PrepPanel {
             sequence: 0,
             clear_receiver: false,
             open: None,
-            opened: 0,
             _subscription,
         }
     }
@@ -231,9 +228,7 @@ impl PrepPanel {
                 return None;
             }
             Action::Toggle => {
-                let open = !self.is_open();
-                self.opened += u64::from(open);
-                self.open = Some(open);
+                self.open = Some(!self.is_open());
                 return None;
             }
             Action::Refresh => {}
@@ -290,7 +285,7 @@ impl PrepPanel {
                 ),
             div().when(open, |this| {
                 this.child(crate::part::reveal(
-                    crate::part::opened_id("prep-body", self.opened),
+                    "prep-body".into(),
                     div().child(self.render_body(lang, availability, next, &on, act, open_page)),
                 ))
             }),
